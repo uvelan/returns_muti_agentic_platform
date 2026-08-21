@@ -112,6 +112,8 @@ from return_platform.policy import EligibilityDecision, PolicyRoute
 
 __all__ = [
     "DEFAULT_RETURN_METHOD_REQUIREMENTS",
+    "POLICY_GATE_STATE_FACT",
+    "POLICY_GATE_SUSPENDED",
     "REQUIREMENT_DIMENSIONS",
     "ROUTE_VERIFICATION_DIMENSIONS",
     "UNRESOLVED_DIMENSIONS",
@@ -120,11 +122,24 @@ __all__ = [
     "ReturnMethodRequirementTable",
     "effective_decision",
     "is_terminal_status",
+    "policy_gate_suspended",
     "resolve_completion",
     "resolve_method_requirements",
     "route_authority_stands",
     "verification_dimension",
 ]
+
+#: The fact `EvaluateCaseEligibility` writes to say whether the gate ran, and the
+#: one value of it that means the operator switched the gate off.
+#:
+#: Named here as literals rather than imported from `PolicyGateState`: that enum
+#: lives in the workflow module, and the projection reaching into `workflows/`
+#: would invert the dependency and drag `temporalio` into every process that
+#: reads a case. `assembly.py` names the bay facts the same way and for the same
+#: reason. The pair is pinned to the enum by a test, so the two cannot drift in
+#: silence.
+POLICY_GATE_STATE_FACT: Final[str] = "policy_evaluation_state"
+POLICY_GATE_SUSPENDED: Final[str] = "SKIPPED_BY_CONFIGURATION"
 
 #: The dimensions a requirement table row may name. Exactly the fulfilment ones:
 #: an unresolved dimension is a statement about the *profile*, so a table that
@@ -550,6 +565,23 @@ def _verification_recorded(case: CaseProjectionState) -> bool:
     return any(record.returnReference is not None for record in case.records())
 
 
+def policy_gate_suspended(case: CaseProjectionState) -> bool:
+    """Whether the operator has switched the eligibility gate off for this case.
+
+    Read from the fact log because that is the only place it exists. A suspended
+    gate deliberately writes **no** evaluation -- no route, no decision, no
+    reason codes -- since each of those would be an answer and the gate produced
+    none, and `POLICY_APPROVED` in particular is the one thing a suspended gate
+    must never manufacture. So `policyEvaluation` is `None` here, exactly as it
+    is on a case whose evaluation has not run yet, and the fact is what tells
+    the two apart.
+    """
+    for fact in case.facts or ():
+        if fact.factName == POLICY_GATE_STATE_FACT:
+            return str(fact.value) == POLICY_GATE_SUSPENDED
+    return False
+
+
 def route_authority_stands(case: CaseProjectionState) -> bool:
     """Whether whoever is answerable for this route has said yes.
 
@@ -557,9 +589,22 @@ def route_authority_stands(case: CaseProjectionState) -> bool:
     function because it is one question -- *may this case's requirement set be
     consulted at all* -- and because splitting it is how the profile came to
     resolve on a test that one of the two routes can never pass.
+
+    **A suspended gate has nobody answerable, and that is an answer.** With
+    `policy_evaluation.enabled = false` no decision will ever be recorded, so
+    reading the missing approval as "not yet" left the case awaiting `POLICY`
+    for the rest of its life: Support's console printed *Waiting on POLICY* two
+    inches below *Policy Evaluation: Skipped by configuration*, and
+    `businessComplete` was unreachable however fully the return was fulfilled.
+    The operator's decision to switch the gate off is the authority here --
+    which is not an approval, and is not recorded as one: nothing below turns
+    into `APPROVE`, `POLICY_APPROVED` is still never set, and the skip and its
+    stated reason are what a human is shown.
     """
     if verification_dimension(case) is not None:
         return _verification_recorded(case)
+    if policy_gate_suspended(case):
+        return True
     return effective_decision(case) is EligibilityDecision.APPROVE
 
 

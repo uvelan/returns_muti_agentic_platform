@@ -185,3 +185,98 @@ def test_incomplete_return_information_is_stated_rather_than_implied() -> None:
     assert "- Required Return Information: Incomplete" in handoff.text
     assert f"- Selected lines: {UNAVAILABLE}" in handoff.text
     assert handoff.payload["verification"]["requiredReturnInformationComplete"] is False
+
+
+# --------------------------------------------------------------------------
+# The subject: the one line a queue draws for this return
+# --------------------------------------------------------------------------
+
+
+def test_the_subject_says_which_return_this_is() -> None:
+    """The complaint, on the list side of the same message.
+
+    Every row in the Support queue read `Return request for case <uuid>`. A desk
+    with thirteen open requests saw thirteen indistinguishable lines and had to
+    open each one to find out what it was about -- while the order number, the
+    product and the customer were all in the message underneath.
+    """
+    handoff = _compose()
+
+    assert handoff.subject == (
+        "Return CQ800002 line 1 · 6X12 CEIL ALUM 4-WAY REG SAND · THELMA OSBORNE"
+    )
+    assert "case-1" not in handoff.subject
+
+
+def test_a_multi_line_return_is_counted_rather_than_listed() -> None:
+    """Two product names in a queue row is a list, not a subject."""
+    handoff = _compose(
+        order=SupportHandoffOrder(
+            reference="CQ800002",
+            items=(
+                SupportHandoffItem(line_reference="1", product_name="6X12 CEIL ALUM"),
+                SupportHandoffItem(line_reference="4", product_name="1/2 TEST PLUG"),
+            ),
+        )
+    )
+
+    assert handoff.subject == "Return CQ800002 line 1, 4 · 2 lines · THELMA OSBORNE"
+
+
+def test_the_subject_invents_nothing_the_case_does_not_carry() -> None:
+    """Same rule as the body. A return that knows only its order number gets a
+    shorter subject, not a padded one."""
+    handoff = _compose(
+        customer=SupportHandoffCustomer(reference="600911"),
+        order=SupportHandoffOrder(reference="CQ800002"),
+    )
+
+    assert handoff.subject == "Return CQ800002"
+    assert UNAVAILABLE not in handoff.subject
+
+
+def test_a_case_carrying_no_identity_still_gets_a_row_it_can_be_found_by() -> None:
+    """The fallback is the old wording, and it is worth keeping: a row with no
+    identity at all is worse than one identified by a case id."""
+    handoff = _compose(
+        customer=SupportHandoffCustomer(),
+        order=SupportHandoffOrder(),
+    )
+
+    assert handoff.subject == "Return request for case case-1"
+
+
+def test_a_long_subject_is_cut_where_the_composer_decides() -> None:
+    """A queue draws this in a narrow column. Cut on a word boundary with an
+    ellipsis, rather than letting the browser truncate mid-word."""
+    handoff = _compose(
+        order=SupportHandoffOrder(
+            reference="CQ800002",
+            items=(
+                SupportHandoffItem(
+                    line_reference="1",
+                    product_name=(
+                        "SINGLE HANDLE PRESSURE BALANCE SHOWER TRIM WITH DIVERTER "
+                        "IN MATTE BLACK FINISH FOR RESIDENTIAL INSTALLATION"
+                    ),
+                ),
+            ),
+        )
+    )
+
+    assert len(handoff.subject) <= 110
+    assert handoff.subject.endswith("…")
+    assert handoff.subject.startswith("Return CQ800002 line 1 · SINGLE HANDLE")
+
+
+def test_the_subject_never_carries_the_message_framing() -> None:
+    """A product description is source data rather than associate-typed text, but
+    it still ends up on a line of its own in somebody's list."""
+    handoff = _compose(
+        order=SupportHandoffOrder(
+            reference="CQ800002",
+            items=(SupportHandoffItem(line_reference="1", product_name="TAP"),),
+        )
+    )
+
+    assert "\n" not in handoff.subject

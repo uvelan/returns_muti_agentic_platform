@@ -129,3 +129,42 @@ async def test_a_naive_deadline_is_refused_rather_than_stored() -> None:
         await _open(service, sla_due_at=datetime(2026, 8, 18, 17, 0))
 
     assert work_items.documents == [], "a refused deadline still opened a thread"
+
+
+@pytest.mark.asyncio
+async def test_a_composed_subject_is_the_work_items_subject() -> None:
+    """The row a human picks this return out of a queue by.
+
+    Composed by the caller, from the same facts as the message, because this
+    service is handed a finished message and an id and has no idea what the
+    return is about.
+    """
+    service, work_items = _service()
+
+    await _open(service, subject="Return CQ800002 line 4 · 1 HDL PRESS BAL · DUANE HOPKINS")
+
+    (document,) = work_items.documents
+    assert document["subject"] == "Return CQ800002 line 4 · 1 HDL PRESS BAL · DUANE HOPKINS"
+
+
+@pytest.mark.asyncio
+async def test_no_subject_leaves_the_case_id_fallback_standing() -> None:
+    """What every row used to say, kept for a caller that composes nothing."""
+    service, work_items = _service()
+
+    await _open(service)
+
+    (document,) = work_items.documents
+    assert document["subject"] == f"Return request for case {CASE_ID}"
+
+
+@pytest.mark.asyncio
+async def test_a_blank_subject_is_not_a_blank_row() -> None:
+    """An empty string is the shape a failed composition takes, and a queue row
+    with nothing in it is unclickable. Absent and blank mean the same thing."""
+    service, work_items = _service()
+
+    await _open(service, subject="   ")
+
+    (document,) = work_items.documents
+    assert document["subject"] == f"Return request for case {CASE_ID}"

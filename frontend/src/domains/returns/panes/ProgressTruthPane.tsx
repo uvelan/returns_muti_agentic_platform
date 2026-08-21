@@ -110,8 +110,15 @@ const MILESTONES: readonly Milestone[] = [
       pairs(
         ["Order", projection?.confirmedOrder?.orderReference],
         [
+          // The name first. This read `customerReference ?? displayName`, so a
+          // case that knew the customer was DUANE HOPKINS drew `600654` -- an
+          // internal id, on the rail an associate reads while talking to that
+          // customer. The agent is forbidden from showing a customer id in as
+          // many words; the screen beside it should not either. The reference
+          // stays as the fallback, because a case that has resolved an id and
+          // not yet a name has something true to show.
           "Customer",
-          projection?.customer?.customerReference ?? projection?.customer?.displayName,
+          projection?.customer?.displayName ?? projection?.customer?.customerReference,
         ],
       ),
   },

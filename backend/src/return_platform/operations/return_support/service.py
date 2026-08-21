@@ -449,6 +449,7 @@ class ReturnSupportService:
         support_draft: str,
         idempotency_key: str,
         business_payload: Mapping[str, Any] | None = None,
+        subject: str | None = None,
         work_item_id: str | None = None,
         queue: str | None = None,
         sla_due_at: datetime | None = None,
@@ -461,6 +462,13 @@ class ReturnSupportService:
         never by parsing the text back into fields, which is a display that
         breaks the day the wording changes. `caseId` is always present in it;
         a caller supplying one cannot remove that.
+
+        `subject` is the line the queue draws for this return, composed by the
+        caller from the same facts as the message. It is the caller's because
+        this service has no idea what the return is about -- it is handed a
+        finished message and an id. Absent, the fallback below stands: it names
+        the case and nothing else, which is what every row in the queue used to
+        say, and is why the composed subject exists.
 
         `work_item_id` lets the caller decide the id. The workflow mints one so
         that the activity which *composes* the request can name the work item the
@@ -549,7 +557,7 @@ class ReturnSupportService:
             "priority": "NORMAL",
             "priorityRank": 2,
             "queue": queue or "RETURNS_SUPPORT",
-            "subject": f"Return request for case {case_id}",
+            "subject": (subject or "").strip() or f"Return request for case {case_id}",
             "requestSnapshotDigest": _digest({"caseId": case_id}),
             "assignedTo": None,
             "externalTicketReference": None,

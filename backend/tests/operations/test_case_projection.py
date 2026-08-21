@@ -37,6 +37,8 @@ from return_platform.operations.case_projection import (
     AWAITING_DIMENSION_ORDER,
     COMPLETION_FORBIDDING_STATUSES,
     DEFAULT_RETURN_METHOD_REQUIREMENTS,
+    POLICY_GATE_STATE_FACT,
+    POLICY_GATE_SUSPENDED,
     REQUIREMENT_DIMENSIONS,
     STAGE_PRECEDENCE,
     STAGE_PRECEDENCE_LEVELS,
@@ -71,7 +73,9 @@ from return_platform.operations.case_projection import (
     WarehouseProjection,
     classify_stage_transition,
     derive_copilot_stage,
+    effective_decision,
     is_terminal_status,
+    policy_gate_suspended,
     project_case,
     resolve_completion,
     resolve_method_requirements,
@@ -1671,6 +1675,115 @@ def test_every_verification_dimension_has_a_route_that_raises_it() -> None:
 def test_an_unevaluated_case_awaits_both_policy_and_method() -> None:
     assessment = resolve_completion(case(), requirements=BASELINE)
     assert assessment.awaiting == (AwaitingDimension.POLICY, AwaitingDimension.RETURN_METHOD)
+
+
+# --------------------------------------------------------------------------
+# A gate the operator has switched off
+# --------------------------------------------------------------------------
+
+
+def gate_suspended(*, reason: str = "eligibility gate suspended") -> CaseFactProjection:
+    """What `EvaluateCaseEligibility` writes when the gate is off.
+
+    Note what is *not* here: no evaluation, no route, no decision. A suspended
+    gate records none of those on purpose, so this fact is the only thing on the
+    case that distinguishes "the operator switched it off" from "it has not run
+    yet" -- which is why the completion profile has to read it.
+    """
+    assert reason
+    return CaseFactProjection(
+        factId="F-POLICY-STATE",
+        factName=POLICY_GATE_STATE_FACT,
+        value=POLICY_GATE_SUSPENDED,
+    )
+
+
+def test_the_projection_and_the_workflow_mean_the_same_thing_by_a_suspended_gate() -> None:
+    """The two constants are declared in different layers, and must not drift.
+
+    `PolicyGateState` lives in the workflow module; the projection cannot import
+    it without inverting the dependency and pulling `temporalio` into every
+    reader of a case, so it names the strings itself. This is the seam that
+    catches a rename -- the only alternative to which is nobody noticing until a
+    suspended gate silently starts blocking completion again.
+    """
+    from return_platform.workflows.return_case_workflow import PolicyGateState
+
+    assert POLICY_GATE_SUSPENDED == PolicyGateState.SKIPPED_BY_CONFIGURATION.value
+
+
+def test_a_suspended_gate_is_not_awaited() -> None:
+    """The defect, as the thing that was not true.
+
+    `policy_evaluation.enabled = false` means no decision will ever be recorded,
+    so reading the missing approval as "not yet" left the case waiting on POLICY
+    for the rest of its life -- and Support's console printed *Waiting on
+    POLICY* directly under *Policy Evaluation: Skipped by configuration*.
+    """
+    assessment = resolve_completion(case(facts=(gate_suspended(),)), requirements=BASELINE)
+
+    assert AwaitingDimension.POLICY not in assessment.awaiting
+    # The method is genuinely unresolved on a bare case, and stays reported.
+    assert assessment.awaiting == (AwaitingDimension.RETURN_METHOD,)
+
+
+def test_a_suspended_gate_lets_a_fulfilled_return_complete() -> None:
+    """The consequence, which is the part that mattered: `businessComplete` was
+    unreachable however fully the return was fulfilled."""
+    state = case(
+        status=ReturnCaseStatus.PROCESSING_RETURN,
+        returnRecords=(parcel_record(),),
+        facts=(gate_suspended(),),
+    )
+    assessment = resolve_completion(state, requirements=BASELINE)
+
+    assert assessment.completion_profile_resolved
+    assert assessment.awaiting == ()
+    assert assessment.business_complete
+
+
+def test_a_suspended_gate_is_not_an_approval() -> None:
+    """Proceeding is not a verdict.
+
+    The case carries no evaluation and no decision, and this fix does not give
+    it one. What changed is that the profile stops waiting for an answer nobody
+    will give -- not that an answer appeared.
+    """
+    state = case(facts=(gate_suspended(),))
+
+    assert policy_gate_suspended(state)
+    assert state.policyEvaluation is None
+    assert effective_decision(state) is None
+
+
+def test_any_other_gate_state_is_still_awaited() -> None:
+    """Only the suspension clears it. `EVALUATION_FAILED` and
+    `POLICY_NOT_CONFIGURED` are operational failures that park or hold the case,
+    and reading either as authority would let a case nobody evaluated complete."""
+    for state_value in ("EVALUATED", "EVALUATION_FAILED", "POLICY_NOT_CONFIGURED"):
+        state = case(
+            facts=(
+                CaseFactProjection(
+                    factId="F-POLICY-STATE", factName=POLICY_GATE_STATE_FACT, value=state_value
+                ),
+            )
+        )
+        assessment = resolve_completion(state, requirements=BASELINE)
+        assert not policy_gate_suspended(state), state_value
+        assert AwaitingDimension.POLICY in assessment.awaiting, state_value
+
+
+def test_a_verification_route_is_unaffected_by_the_gate_fact() -> None:
+    """A warranty case reports its verification, not `POLICY`, and a stray gate
+    fact must not turn Support's verification into something already satisfied."""
+    state = case(
+        policyEvaluation=evaluation(None, route=PolicyRoute.WARRANTY),
+        facts=(gate_suspended(),),
+    )
+    assessment = resolve_completion(state, requirements=BASELINE)
+
+    assert assessment.awaiting == (AwaitingDimension.WARRANTY_VERIFICATION,)
+    assert not assessment.business_complete
 
 
 # --------------------------------------------------------------------------

@@ -398,10 +398,18 @@ class SupportRequestDraft:
     The text is what a person reads; the payload is the same facts structured,
     and it is what is persisted on the message so no screen has to parse the
     prose back into fields.
+
+    Declared here and again in `return_case_workflow`, because the workflow side
+    may not import this module. The two must gain a field together: the shapes
+    are serialized across the activity boundary, and a field on one side only is
+    a value dropped in transit.
     """
 
     text: str
     payload: dict[str, Any]
+    #: The one line the Support queue draws for this return, composed beside the
+    #: message so the row and the body are built from the same facts.
+    subject: str = ""
 
 
 class ReturnCaseActivities:
@@ -1164,6 +1172,7 @@ class ReturnCaseActivities:
         return SupportRequestDraft(
             text=handoff.text + await self._drafted_note(request.case_id, facts),
             payload=handoff.payload,
+            subject=handoff.subject,
         )
 
     async def _drafted_note(self, case_id: str, facts: Mapping[str, Any]) -> str:
@@ -1273,6 +1282,8 @@ class ReturnCaseActivities:
         # would fail a return over a message decoration.
         if request.business_payload and self._support_accepts("business_payload"):
             arguments["business_payload"] = request.business_payload
+        if request.subject and self._support_accepts("subject"):
+            arguments["subject"] = request.subject
         if request.work_item_id is not None and self._support_accepts("work_item_id"):
             arguments["work_item_id"] = request.work_item_id
         if request.queue is not None and self._support_accepts_queue():

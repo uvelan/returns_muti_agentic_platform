@@ -131,6 +131,10 @@ export function orderLine(
     lineReference: "L1",
     sku: "PART-A",
     description: "Line one",
+    // Absent by default, like `unitPrice`: the source extract carries a colour
+    // on some lines and not others, so a fixture that always had one would let
+    // a screen assume it. A test that wants a colour says so.
+    colour: null,
     orderedQuantity: 2,
     unitPrice: null,
     productReference: "PART-A",

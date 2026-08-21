@@ -819,3 +819,102 @@ then the agent's `Seven customers match Dane ... Which branch is this Dane on
 -- NASH, GARDEN, DALLAS or LAKEWOOD?`. Before the fix the same row rendered the
 associate's line alone, with progress reset to `Ready`, while the workflow was
 still waiting for the answer.
+
+---
+
+## F-24 · Candidates are live-turn state, and a resumed conversation drops them
+
+Reported as "candidates are not populated". They populate on a live turn, at
+both stages, measured on a driven run:
+
+| Stage | What the Context pane drew |
+|---|---|
+| Customer resolution | `Candidates (5)`, *Showing 5 of 7 matched*, Account Id / Customer Name, Select per row |
+| Order lines | *Showing 10 of 25 matched*, Sales Order Number / Line Number / SKU / Product Description / Ordered Quantity, "Show 10 more · 15 not shown" |
+
+They are dropped on **re-entry**. `readTranscript` returns messages and nothing
+else, and `ReturnCopilotPage.open` clears the list on purpose -- for a resumed
+*case* that is right, because the confirmed order is rebuilt from the case and a
+stale search would sit beside it. For a resumed *past search* that raised no
+case, the list is simply gone.
+
+Nothing is lost server-side: `conversation_state.orderSearchCache.candidateSet`
+holds the ids and the query execution id for thirty minutes, and the evidence
+record still holds the rows. Restoring them needs the transcript endpoint to
+carry that cache. **Recorded, not done** -- it is an API shape change and the
+three defects below were the ones blocking a person reading a screen.
+
+---
+
+## F-25 · The progress rail drew an internal customer id
+
+`ProgressTruthPane` read `customerReference ?? displayName`, so a case that knew
+the customer was `DUANE HOPKINS` drew `600654` -- on the rail an associate reads
+*while talking to that customer*. The Order Agent's own prompt forbids this in as
+many words (`Never ask for or show a customer_id`); the screen beside it did it
+anyway.
+
+The fallback was backwards. It now reads `displayName ?? customerReference`: the
+reference stays for a case that has resolved an id and not yet a name, which is
+something true to show.
+
+A test asserted `CUST-9012` on that chip, so the defect was pinned. Updated
+rather than deleted -- its intent, *the rail names the customer*, is right.
+
+---
+
+## F-26 · Support was told to wait for a policy that had been switched off
+
+The console printed **"Waiting on POLICY, RETURN_METHOD."** two inches below
+**"Policy Evaluation: Skipped by configuration"**, on the same screen.
+
+`AwaitingDimension.POLICY` means *no APPROVE on the effective decision yet*.
+With `policy_evaluation.enabled = false` there will never be one: the gate
+deliberately writes no evaluation, no route and no decision, because each would
+be an answer it did not produce. So `route_authority_stands` read the missing
+approval as "not yet" and the case awaited `POLICY` for the rest of its life --
+and `businessComplete` was unreachable however fully the return was fulfilled.
+
+The suspension reached the workflow (`PolicyGateState.SKIPPED_BY_CONFIGURATION`)
+and the Evaluation pane, and stopped there. It now reaches the completion
+profile too, read from the fact the gate writes -- which is the only place it
+exists, and the only thing that distinguishes *switched off* from *has not run
+yet*, both of which carry `policyEvaluation: null`.
+
+**It is not an approval and is not recorded as one.** No decision is
+manufactured, `POLICY_APPROVED` is still never set, and the message still says
+skipped and quotes the operator's reason.
+
+`PolicyGateState` lives in the workflow module, which the projection may not
+import without inverting the dependency and pulling `temporalio` into every
+reader of a case, so the two strings are declared on both sides -- pinned
+together by a test that imports the enum and asserts they match.
+
+---
+
+## F-27 · Every row in the Support queue read `Return request for case <uuid>`
+
+Thirteen open requests, thirteen indistinguishable lines. A human had to open
+each one to find out what it was about -- while the order number, the product
+and the customer were all in the message underneath. F-17 fixed the body and
+left the subject.
+
+`compose_support_handoff` now yields a third output beside `text` and `payload`:
+a `subject` built from the same facts under the same rule -- nothing absent is
+invented, so a return that knows only its order number gets a shorter subject
+rather than a padded one, and a case that knows nothing falls back to the case
+id, because a row with no identity is worse than one identified by a uuid.
+
+    Return CQ800002 line 1 · 6X12 CEIL ALUM 4-WAY REG SAND · THELMA OSBORNE
+
+Written once when the thread opens, so rows raised before this keep the old
+wording. That is not a migration and is not treated as one.
+
+### The duplication this turned up
+
+`SupportRequestDraft` is declared **twice** -- once in `return_case_workflow` and
+once in `return_case_activities`, because the workflow sandbox may not import the
+activity module. Adding `subject` to one side failed thirty tests with
+`unexpected keyword argument 'subject'`, which is the good outcome; the bad one
+is a field accepted on both sides that carries nothing across the boundary.
+Nothing was checking the pair. A test now asserts the two shapes match.

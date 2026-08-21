@@ -19,6 +19,8 @@ would be a repository nobody could test without one.
 
 from return_platform.operations.case_projection.completion import (
     DEFAULT_RETURN_METHOD_REQUIREMENTS,
+    POLICY_GATE_STATE_FACT,
+    POLICY_GATE_SUSPENDED,
     REQUIREMENT_DIMENSIONS,
     UNRESOLVED_DIMENSIONS,
     CompletionAssessment,
@@ -26,6 +28,7 @@ from return_platform.operations.case_projection.completion import (
     ReturnMethodRequirementTable,
     effective_decision,
     is_terminal_status,
+    policy_gate_suspended,
     resolve_completion,
     resolve_method_requirements,
 )
@@ -84,6 +87,8 @@ __all__ = [
     "COMPLETION_FORBIDDING_STATUSES",
     "DEFAULT_RETURN_METHOD_REQUIREMENTS",
     "DEFAULT_STAGE_DERIVATION_POLICY",
+    "POLICY_GATE_STATE_FACT",
+    "POLICY_GATE_SUSPENDED",
     "REQUIREMENT_DIMENSIONS",
     "STAGE_LIFECYCLE_ORDER",
     "STAGE_PRECEDENCE",
@@ -128,6 +133,7 @@ __all__ = [
     "derive_copilot_stage",
     "effective_decision",
     "is_terminal_status",
+    "policy_gate_suspended",
     "project_case",
     "resolve_completion",
     "resolve_method_requirements",

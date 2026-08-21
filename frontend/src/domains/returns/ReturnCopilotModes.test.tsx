@@ -399,6 +399,45 @@ describe("an RMA with a label and no tracking", () => {
     expect(screen.getAllByText("Pending").length).toBeGreaterThan(0);
     expect(screen.getByText("LBL-OPS01.pdf")).toBeInTheDocument();
   });
+
+  it("names the customer on the rail rather than showing their internal id", () => {
+    // This read `customerReference ?? displayName`, so a case that knew the
+    // customer was Melgon Heating drew `CUST-9012` -- an internal id, on the
+    // rail an associate reads while talking to that customer. The agent is
+    // forbidden from showing a customer id in as many words.
+    render(
+      <ProgressTruthPane
+        candidates={[]}
+        fields={[]}
+        projection={caseProjection({
+          stage: "ITEM_SELECTION",
+          customer: customer(),
+          confirmedOrder: confirmedOrder(),
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Melgon Heating")).toBeInTheDocument();
+    expect(screen.queryByText("CUST-9012")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the reference for a customer whose name is not resolved yet", () => {
+    // Not a regression of the above: an id is something true to show, and a
+    // blank chip on a case that has resolved a customer says less.
+    render(
+      <ProgressTruthPane
+        candidates={[]}
+        fields={[]}
+        projection={caseProjection({
+          stage: "ITEM_SELECTION",
+          customer: customer({ displayName: null }),
+          confirmedOrder: confirmedOrder(),
+        })}
+      />,
+    );
+
+    expect(screen.getByText("CUST-9012")).toBeInTheDocument();
+  });
 });
 
 describe("a return in two packages", () => {
@@ -492,7 +531,10 @@ describe("the progress pane reads the case and nothing else", () => {
     );
 
     expect(screen.getByText("SO-A1")).toBeInTheDocument();
-    expect(screen.getByText("CUST-9012")).toBeInTheDocument();
+    // The customer, by the name an associate would say out loud. This asserted
+    // `CUST-9012` and so pinned the defect: the rail drew the internal id in
+    // preference to the name sitting beside it.
+    expect(screen.getByText("Melgon Heating")).toBeInTheDocument();
     expect(screen.getByText("IN_TRANSIT")).toBeInTheDocument();
     expect(screen.getByText("PREPAID_PARCEL")).toBeInTheDocument();
     expect(screen.getByText("Covers L1")).toBeInTheDocument();

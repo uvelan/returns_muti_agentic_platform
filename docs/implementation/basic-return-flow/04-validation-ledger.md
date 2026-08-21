@@ -346,3 +346,36 @@ Four cases added to
 recovery of a question stored before the fix, a completed reply not repeated,
 ordering taken from `conversation_version` rather than insertion order, and the
 count-mismatch fallback.
+
+
+## V-22 · The three screen defects, fixed and measured live
+
+Driven end to end on case `7b216e58-7608-4dbd-9b35-2313b10d90c5` (order
+CQ800002, line 1, THELMA OSBORNE) after a host restart.
+
+| Check | Before | After |
+|---|---|---|
+| Progress rail, customer chip | `600654` | `THELMA OSBORNE` |
+| Chip on a case with an id and no name | id | id, unchanged |
+| `awaiting` with the gate suspended | `["POLICY", "RETURN_METHOD"]` | `["RETURN_METHOD"]` |
+| `policyEvaluation` after the fix | `null` | `null` -- no decision invented |
+| Support queue row | `Return request for case 7b216e58-…` | `Return CQ800002 line 1 · 6X12 CEIL ALUM 4-WAY REG SAND · THELMA OSBORNE` |
+| Support message body | complete template | unchanged, colour and all |
+
+Case `2328a586-…`, raised *before* the completion fix, re-projected to
+`["RETURN_METHOD"]` on the next read -- the profile is computed on read, so no
+backfill was needed for it.
+
+| Command | Result |
+|---|---|
+| `pytest tests -q` | **4067 passed, 3 skipped** (was 4050; seventeen added) |
+| `vitest run` | 479 passed |
+| `tsc -b` | clean -- fixed a pre-existing break in `modeFixtures.orderLine`, which had not carried `colour` since it became required |
+| `ruff check src tests` | 1 error -- the known `I001` (D-3) |
+| `eslint src` | 5 errors -- all pre-existing, in `schemaConformance.ts` |
+
+New coverage: six cases on the suspended gate (not awaited, a fulfilled return
+completes, it is still not an approval, every other gate state is still awaited,
+a verification route is unaffected, and the projection/workflow constants match),
+six on the composed subject, three on the service writing it, two on the rail's
+customer chip, and two pinning the duplicated `SupportRequestDraft` shapes.

@@ -695,10 +695,18 @@ class SupportRequestDraft:
     Two halves on purpose: `text` is the message a person reads, `payload` is the
     same facts structured. The payload is persisted on the opening message so a
     screen reads business fields from data and never by parsing the prose.
+
+    Declared again in `return_case_activities`, which the workflow sandbox may
+    not import. The two must gain a field together, or the value is dropped in
+    transit across the activity boundary.
     """
 
     text: str = ""
     payload: dict[str, Any] = field(default_factory=dict)
+    #: The one line the Support queue draws for this return. Composed with the
+    #: message rather than by the service, so the row and the body are built
+    #: from the same facts and cannot describe different returns.
+    subject: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -712,6 +720,9 @@ class OpenSupportWorkItemInput:
     #: Support's screen reads business fields from data rather than by parsing
     #: the message text back into fields.
     business_payload: dict[str, Any] = field(default_factory=dict)
+    #: The line the Support queue draws for this return, composed beside the
+    #: message. Empty leaves the service's own fallback standing.
+    subject: str = ""
     #: The id the thread is opened under, minted by the workflow so the draft
     #: composed by the previous activity could name it.
     work_item_id: str | None = None
@@ -1488,6 +1499,7 @@ class ReturnCaseWorkflow:
                 principal_id=workflow_input.principal_id,
                 support_draft=draft.text,
                 business_payload=draft.payload,
+                subject=draft.subject,
                 work_item_id=intended_work_item_id,
                 # Derived from the case, not minted per attempt: a retry, and a
                 # replay after continue_as_new, must not open a second thread

@@ -193,6 +193,9 @@ class SupportHandoffPolicy:
 class SupportHandoff:
     text: str
     payload: dict[str, Any]
+    #: The one line that stands for this return in a list of them. See
+    #: `_subject`.
+    subject: str = ""
 
 
 def _item_payload(item: SupportHandoffItem) -> dict[str, Any]:
@@ -206,6 +209,67 @@ def _item_payload(item: SupportHandoffItem) -> dict[str, Any]:
         "reason": _clean(item.reason),
         "condition": _clean(item.condition),
     }
+
+
+#: How long a subject may be before it is cut. A queue draws these as one line
+#: in a narrow column, and a subject that wraps or is truncated by the browser
+#: tells a reader less than one that ends where the composer decided.
+_SUBJECT_LIMIT = 110
+
+
+def _shorten(text: str, limit: int) -> str:
+    """`text`, cut on a word boundary where there is one, with an ellipsis."""
+    if len(text) <= limit:
+        return text
+    cut = text[: limit - 1].rstrip()
+    spaced = cut.rsplit(" ", 1)[0] if " " in cut[limit // 2 :] else cut
+    return f"{spaced.rstrip()}…"
+
+
+def _subject(
+    *,
+    case_id: str,
+    customer: SupportHandoffCustomer,
+    order: SupportHandoffOrder,
+) -> str:
+    """One line that says which return this is.
+
+    **The queue used to read `Return request for case <uuid>`, every row.** A
+    desk with thirteen open requests saw thirteen indistinguishable lines and
+    had to open each one to find out what it was about -- while the order
+    number, the customer and the product were all sitting in the message
+    underneath. The body was fixed and the subject was not.
+
+    Composed from the same facts and under the same rule as the body: nothing
+    absent is invented. Each part is appended only where the case carries it, so
+    a return that knows only its order number gets a shorter subject rather than
+    a padded one, and a case that knows nothing at all falls back to the case id
+    -- which is worth keeping, because a row with no identity at all is worse
+    than a row identified by a uuid.
+    """
+    parts: list[str] = []
+    reference = _clean(order.reference)
+    if reference is not None:
+        lines = ", ".join(item.line_reference for item in order.items)
+        parts.append(f"Return {reference} line {lines}" if lines else f"Return {reference}")
+
+    products = [
+        product for product in (_clean(item.product_name) for item in order.items) if product
+    ]
+    # One product names the return; several would make the subject a list, and
+    # the count is the useful summary of a multi-line return.
+    if len(products) == 1:
+        parts.append(products[0])
+    elif len(products) > 1:
+        parts.append(f"{len(products)} lines")
+
+    name = _clean(customer.name)
+    if name is not None:
+        parts.append(name)
+
+    if not parts:
+        return f"Return request for case {case_id}"
+    return _shorten(" · ".join(parts), _SUBJECT_LIMIT)
 
 
 def _item_lines(items: Sequence[SupportHandoffItem]) -> list[str]:
@@ -359,4 +423,8 @@ def compose_support_handoff(
             },
         },
     }
-    return SupportHandoff(text="\n".join(sections).rstrip() + "\n", payload=payload)
+    return SupportHandoff(
+        text="\n".join(sections).rstrip() + "\n",
+        payload=payload,
+        subject=_subject(case_id=case_id, customer=customer, order=order),
+    )
