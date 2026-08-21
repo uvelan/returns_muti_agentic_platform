@@ -957,6 +957,53 @@ class FeatureFlagsConfiguration(StrictConfigModel):
     graph_first_runtime_configuration: bool = False
 
 
+class PolicyEvaluationConfiguration(StrictConfigModel):
+    """Whether the deterministic eligibility gate runs at all, and why not.
+
+    Deliberately **not** a member of `FeatureFlagsConfiguration`. Everything in
+    that block enables a surface; this one suspends a governance control, and an
+    operator scanning a release should find it under its own name rather than as
+    a fourth boolean beside a console toggle.
+
+    Disabling it is not an approval and must never be read as one. The case's
+    fact log records `POLICY_SKIPPED_BY_CONFIGURATION` with the stated reason,
+    no route, and no decision -- so a reader can tell "no rule was applied" from
+    "a rule approved this", which is the distinction the whole gate exists to
+    keep. Nothing downstream may substitute a decision for the absence of one.
+
+    It is also not the same as publishing no policy.
+    `validate_return_eligibility_policy` still refuses to activate a release
+    without a rule set: a deployment must be able to turn evaluation back on
+    without cutting a new policy release, and an absent policy remains the
+    operational failure it always was.
+    """
+
+    #: The default, and what production runs on. A release that says nothing
+    #: evaluates every case, which is the behaviour that existed before this
+    #: block did.
+    enabled: bool = True
+
+    #: Why evaluation is suspended. Required when `enabled` is false, because a
+    #: gate switched off with no stated reason is indistinguishable from one
+    #: switched off by accident -- and this string is what the case fact log and
+    #: the Support handoff quote.
+    disabled_reason: NonBlank | None = None
+
+    @model_validator(mode="after")
+    def require_reason_when_disabled(self) -> PolicyEvaluationConfiguration:
+        if not self.enabled and self.disabled_reason is None:
+            raise ValueError(
+                "policy_evaluation.disabled_reason must state why eligibility evaluation is "
+                "suspended; a gate disabled without a recorded reason cannot be audited"
+            )
+        if self.enabled and self.disabled_reason is not None:
+            raise ValueError(
+                "policy_evaluation.disabled_reason is only meaningful while enabled is false; "
+                "a stale reason beside an active gate misreports the deployment"
+            )
+        return self
+
+
 class CopilotConfiguration(StrictConfigModel):
     """Which registered agent policy the Copilot's conversation turns are routed to.
 
@@ -1258,6 +1305,11 @@ class ReturnPlatformConfiguration(StrictConfigModel):
         default_factory=RuntimeIntegrationsConfiguration
     )
     feature_flags: FeatureFlagsConfiguration = Field(default_factory=FeatureFlagsConfiguration)
+    # Defaulted so a release cut before the block still loads, and the default
+    # runs the gate -- an older release must not become one that skips policy.
+    policy_evaluation: PolicyEvaluationConfiguration = Field(
+        default_factory=PolicyEvaluationConfiguration
+    )
     # Defaulted so a release cut before the block still loads. The default is
     # empty rather than a guessed agent id -- see `CopilotConfiguration`.
     copilot: CopilotConfiguration = Field(default_factory=CopilotConfiguration)

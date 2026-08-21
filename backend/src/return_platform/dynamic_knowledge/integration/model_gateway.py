@@ -235,7 +235,19 @@ class RoutePoolReasoningModelGateway:
         validation_error: str | None = None,
     ) -> ModelInvocationResult:
         context_json = json.dumps(
-            context.model_dump(mode="json"),
+            # `correlation_id` is deliberately not in the prompt. It exists for
+            # AI telemetry (W4.12) and reaches telemetry through
+            # `InvocationCorrelation` below, not through here; no prompt in
+            # `ai_gateway.yaml` mentions it, and no reasoning decision could
+            # legitimately turn on it.
+            #
+            # Leaving it in was not merely noise. The API middleware mints a new
+            # one per HTTP request, so two attempts at the *same* turn produced
+            # two different context strings and therefore two different request
+            # digests -- which is the identity durable interception recognises a
+            # held request by. An operator could answer a held reasoning request
+            # and the retry would open a fresh one, forever.
+            context.model_dump(mode="json", exclude={"correlation_id"}),
             ensure_ascii=False,
             separators=(",", ":"),
             sort_keys=True,
@@ -294,6 +306,12 @@ class RoutePoolReasoningModelGateway:
                 case_id=context.case_id,
                 conversation_id=context.conversation_id,
                 agent_id=context.agent_id,
+                # The turn, not the HTTP call. `correlation_id` changes on every
+                # attempt at this same turn, and durable interception keys the
+                # held request on whichever of the two it is given -- so without
+                # this, answering a held reasoning request achieved nothing:
+                # the retry asked a brand new question.
+                turn_id=context.client_turn_id,
             ),
         )
         return ModelInvocationResult(

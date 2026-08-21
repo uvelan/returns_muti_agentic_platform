@@ -44,6 +44,32 @@ async def test_start_run_is_idempotent_for_the_same_thread(
 
 
 @pytest.mark.asyncio
+async def test_start_run_returns_the_same_instant_on_every_attempt(
+    reasoning_store: ReasoningTestFixture,
+) -> None:
+    """The attempt's one clock read, and it must not move.
+
+    `run_turn` pins the turn's `as_of` to this value. `as_of` travels in the
+    reasoning prompt and therefore in the request digest, so a second call that
+    returned "now" would make a retried turn ask a materially different
+    question: a different "today" for every relative date window, and an
+    identity nothing downstream could match against the first attempt.
+    """
+    lifecycle = ReasoningRunLifecycle(reasoning_store.store)
+
+    first = await lifecycle.start_run(run_id="run-clock", thread_id="thread-clock")
+    second = await lifecycle.start_run(run_id="run-clock", thread_id="thread-clock")
+
+    assert second == first
+    assert first.tzinfo is not None, "a naive instant loses its offset in isoformat()"
+    # Not cosmetic: BSON dates are milliseconds, so a returned value carrying
+    # microseconds differs from the one a retry reads back -- invisible to a
+    # reader and fatal to anything hashing the ISO string.
+    assert first.microsecond % 1000 == 0
+    assert first.isoformat() == second.isoformat()
+
+
+@pytest.mark.asyncio
 async def test_start_run_rejects_reuse_under_a_different_thread(
     reasoning_store: ReasoningTestFixture,
 ) -> None:

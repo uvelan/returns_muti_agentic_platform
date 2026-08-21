@@ -23,6 +23,33 @@ from return_platform.platform.system_store.repository import SystemStore
 _RUNS_STRUCTURE = "reasoning_runs"
 
 
+def _utc(value: Any, *, fallback: datetime) -> datetime:
+    """A stored instant as an aware UTC datetime.
+
+    MongoDB has no time zone: a `datetime` written aware comes back naive, and
+    handing a naive one to `.isoformat()` produces a stamp with no offset that
+    every downstream reader then has to guess about. `fallback` covers a record
+    written before this field was relied upon.
+    """
+    if not isinstance(value, datetime):
+        return fallback
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+def _storable(value: datetime) -> datetime:
+    """The instant at the resolution MongoDB will hand back.
+
+    BSON dates are milliseconds. A `datetime` carrying microseconds is truncated
+    on the way in, so the value the first caller holds and the value a retry
+    reads back differ in their last three digits -- invisible in a log and fatal
+    to anything that hashes the ISO string, which `as_of` is: it travels in the
+    reasoning request and therefore in its digest. Truncating here makes the
+    returned instant identical to the stored one by construction rather than by
+    luck.
+    """
+    return value.replace(microsecond=(value.microsecond // 1000) * 1000)
+
+
 class RunBoundToDifferentThread(RuntimeError):
     """A run_id already exists, bound to a different thread_id than requested."""
 
@@ -39,15 +66,23 @@ class ReasoningRunLifecycle:
 
     async def start_run(
         self, *, run_id: str, thread_id: str, workflow_id: str | None = None
-    ) -> None:
+    ) -> datetime:
         """Create the initial RUNNING record for a new reasoning attempt.
 
         Idempotent: retrying `start_run` for the same run_id (e.g. a Temporal
         activity retry before any node has run) is a silent no-op as long as
         the thread_id agrees -- it must never resurrect a run that already
         moved on, so no field is reset here.
+
+        **Returns the instant this attempt began**, which is `created_at` on the
+        first call and the *same* `created_at` on every retry. That makes it the
+        one durable clock read a reasoning attempt has, which is what the caller
+        needs: an attempt that re-reads the wall clock asks the model a
+        materially different question the second time -- a different "today" for
+        every date filter, and a different request digest, so a held request
+        answered by an operator is never recognised on the way back in.
         """
-        now = self._now()
+        now = _storable(self._now())
         document = {
             "_id": run_id,
             "run_id": run_id,
@@ -70,6 +105,8 @@ class ReasoningRunLifecycle:
                     f"run {run_id!r} already exists bound to thread_id "
                     f"{existing.get('thread_id')!r}, not {thread_id!r}"
                 ) from None
+            return _utc(existing.get("created_at"), fallback=now)
+        return now
 
     async def transition_non_terminal(
         self, *, run_id: str, lifecycle_state: RunLifecycleState

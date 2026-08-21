@@ -560,6 +560,83 @@ class FinalDispatcher:
             if observer is not None:
                 await observer.on_record_failed(trace_id=trace_id, error=error)
 
+    async def _answered_outcome[ValueT](
+        self,
+        request: DispatchRequest,
+        *,
+        trace_id: str,
+        response: ProviderResponse,
+        validate: Callable[[ProviderResponse], ValueT],
+        reason: str | None,
+        observer: DispatchObserver,
+    ) -> DispatchOutcome[ValueT]:
+        """An operator's answer, carried to the caller as a usable result.
+
+        Before this existed, an answered interception was a dead end: `decide`
+        returned the operator's text, `dispatch` wrapped it in a `ProviderResponse`
+        and returned -- with `value` unset, because nothing had parsed it. Every
+        structured caller then refused the outcome on the decision alone, so a
+        held request could be answered but the answer could never be acted on.
+        Interception could stop work and never resume it.
+
+        The answer goes through **the same two gates a model's answer does**, and
+        in the same order: `inspect_output` then `validate`. That is the rule the
+        response-review point already states -- a human's words are not trusted
+        more than a model's -- and it is what stops an operator putting unparsed
+        text into a caller's result type. A malformed answer fails here as
+        `RESPONSE_INVALID`, exactly as a malformed model reply does, and the
+        caller sees an outcome with no value rather than a broken one.
+
+        No route is named and no cost is recorded, because no provider was
+        called. The attempt is recorded so an operator-answered request is
+        visible in the trace rather than being the one dispatch that left no row.
+        """
+        try:
+            safety = inspect_output(response.text)
+            if not safety.allowed:
+                raise ProviderError("POLICY_BLOCKED")
+            value = validate(response)
+        except (ProviderError, ValueError, TypeError) as error:
+            error_code = error.code if isinstance(error, ProviderError) else "RESPONSE_INVALID"
+            await self.record_attempt(
+                trace_id=trace_id,
+                request=request,
+                route=None,
+                attempt_number=1,
+                status="FAILED",
+                selection_reason="HUMAN_RESPONSE",
+                error_code=error_code,
+                response=response,
+                observer=observer,
+            )
+            return DispatchOutcome(
+                decision=DispatchDecision.HUMAN_RESPONSE,
+                response=response,
+                reason=reason,
+                last_error=error_code,
+                attempts=1,
+                failure_summary={error_code: 1},
+            )
+
+        await self.record_attempt(
+            trace_id=trace_id,
+            request=request,
+            route=None,
+            attempt_number=1,
+            status="SUCCESS",
+            selection_reason="HUMAN_RESPONSE",
+            safety_status=safety.status.value,
+            response=response,
+            observer=observer,
+        )
+        return DispatchOutcome(
+            decision=DispatchDecision.HUMAN_RESPONSE,
+            value=value,
+            response=response,
+            reason=reason,
+            attempts=1,
+        )
+
     async def dispatch[ValueT](
         self,
         request: DispatchRequest,
@@ -590,16 +667,19 @@ class FinalDispatcher:
 
         verdict = await self._interception.decide(request)
         if verdict.decision is not DispatchDecision.ALLOW_PROVIDER:
-            return DispatchOutcome(
-                decision=verdict.decision,
-                response=(
-                    _human_response(request, verdict.response_text)
-                    if verdict.decision is DispatchDecision.HUMAN_RESPONSE
-                    and verdict.response_text is not None
-                    else None
-                ),
-                reason=verdict.reason,
-            )
+            if (
+                verdict.decision is DispatchDecision.HUMAN_RESPONSE
+                and verdict.response_text is not None
+            ):
+                return await self._answered_outcome(
+                    request,
+                    trace_id=trace_id,
+                    response=_human_response(request, verdict.response_text),
+                    validate=validate,
+                    reason=verdict.reason,
+                    observer=watcher,
+                )
+            return DispatchOutcome(decision=verdict.decision, reason=verdict.reason)
 
         if request.precondition is not None:
             refusal = await request.precondition()

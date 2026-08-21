@@ -503,15 +503,24 @@ class DynamicOrderAgentCoordinator:
         run_id = thread_id
         # Idempotent for an already-registered thread, which is exactly the resume
         # case (see test_run_lifecycle.py::test_start_run_is_idempotent_for_the_same_thread).
-        await self._run_lifecycle.start_run(
+        #
+        # The turn's one clock read, and it comes back from the run record rather
+        # than from `datetime.now()` so that it is the same instant on every
+        # attempt at this turn. This runs inside a Temporal *activity*
+        # (workflows/order_discovery_activities.py) or directly under FastAPI --
+        # never in a workflow body -- so reading a real clock is allowed here and
+        # nowhere further in; everything downstream reads it out of graph state.
+        #
+        # Re-reading the clock per attempt was not a cosmetic difference. The
+        # instant travels in `contextJson.as_of` and in the temporal-grounding
+        # prompt, so it is part of the request digest: a retried turn asked a
+        # *different* question, and durable interception -- which recognises a
+        # held request by that digest -- could hold a turn but never resume one.
+        # An operator's answer was opened, answered, and then looked for under an
+        # id nothing would ever derive again.
+        as_of = await self._run_lifecycle.start_run(
             run_id=run_id, thread_id=thread_id, workflow_id=workflow_id
         )
-
-        # The turn's one clock read. This runs inside a Temporal *activity*
-        # (workflows/order_discovery_activities.py) or directly under FastAPI --
-        # never in a workflow body -- so a real `now()` is allowed here and
-        # nowhere further in. Everything downstream reads it out of graph state.
-        as_of = datetime.now(UTC)
         session_timezone = normalize_session_timezone(request.session_timezone)
 
         initial_state: OrderAgentGraphState = {

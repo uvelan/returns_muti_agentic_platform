@@ -195,13 +195,22 @@ def interception_id_for(request: DispatchRequest) -> str:
     Built from the task, the digest of what would have been sent, and the
     caller's correlation identifiers -- so two turns of the same conversation are
     distinct, and one turn retried is not.
+
+    **The retry unit is `turn_id` where the caller has one, and only otherwise
+    `correlation_id`.** The distinction is the difference between this working
+    and not: `correlation_id` is minted per HTTP request by the API middleware,
+    so an order-agent turn that is retried after its request was held derived a
+    *different* id, opened a *second* interception, and left the operator's
+    answer to the first one sitting unread. Manual mode could hold a turn but
+    never resume one. Callers without a turn identity keep the previous
+    behaviour exactly, because `turn_id` is `None` for them.
     """
     correlation = request.correlation
     material = "\x1f".join(
         (
             request.task_id,
             request.request_digest,
-            correlation.correlation_id or "",
+            correlation.turn_id or correlation.correlation_id or "",
             correlation.conversation_id or "",
             correlation.case_id or "",
             correlation.session_id or "",

@@ -38,7 +38,7 @@ import json
 import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from pydantic import BaseModel
@@ -521,13 +521,39 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
             observer=observer,
         )
 
-        if outcome.decision is not DispatchDecision.ALLOW_PROVIDER:
+        # An operator's answer is a real answer. It has already been through
+        # `inspect_output` and this caller's own `validate` inside the dispatcher,
+        # so `value` being set means it parsed as this task's response model --
+        # the same bar a provider's reply clears. Refusing it on the decision
+        # alone, which is what happened before, made durable interception able to
+        # hold a request and unable to ever resume one: the operator answered,
+        # and the answer was thrown away on the way back.
+        #
+        # A `HUMAN_RESPONSE` with no value is a request still awaiting an answer,
+        # or one whose answer failed validation, and falls through to the refusal
+        # below exactly as before.
+        answered = (
+            outcome.decision is DispatchDecision.HUMAN_RESPONSE and outcome.value is not None
+        )
+        if outcome.decision is not DispatchDecision.ALLOW_PROVIDER and not answered:
             # A reasoning loop must not be handed a fabricated answer, so a
             # policy refusal raises like every other unavailability rather than
             # returning something the caller would act on.
             raise self._unavailable_error(
                 f"{self._subject} was not dispatched: {outcome.decision.value}"
                 f"{f' ({outcome.reason})' if outcome.reason else ''}"
+            )
+        if answered:
+            assert outcome.response is not None  # set with `value` by the dispatcher
+            return StructuredInvocation(
+                value=cast("ResponseT", outcome.value),
+                # Reported as what it is. Attributing a person's words to the
+                # route that was never called would put human text into an
+                # evaluation set as though a model had produced it.
+                provider=outcome.response.provider,
+                model=outcome.response.model,
+                prompt_tokens=0,
+                completion_tokens=0,
             )
         if outcome.value is None or outcome.response is None or outcome.route is None:
             summary = ",".join(

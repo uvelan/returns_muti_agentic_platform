@@ -66,6 +66,17 @@ class InvocationCorrelation:
     conversation_id: str | None = None
     agent_id: str | None = None
     session_id: str | None = None
+    #: The unit of work that survives a retry, where the caller has one.
+    #:
+    #: `correlation_id` is per *request*: the API middleware mints a fresh one
+    #: for every HTTP call, so two attempts at the same conversational turn carry
+    #: different values. That is right for tracing and wrong for anything that
+    #: has to recognise the second attempt as the same work -- which is exactly
+    #: what `interception_id_for` needs, and why an operator's answer to a held
+    #: request was never found by the retry that came looking for it.
+    #:
+    #: A caller with no such identity leaves it `None` and behaves as before.
+    turn_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

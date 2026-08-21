@@ -45,6 +45,7 @@ from return_platform.ai.gateway.structured_invocation import (
     StructuredInvocationUnavailable,
     StructuredOutputInvoker,
 )
+from return_platform.ai.gateway.telemetry import InvocationCorrelation
 from return_platform.ai.interception.records import (
     RESUMABLE,
     Interception,
@@ -338,10 +339,24 @@ async def test_a_human_answer_is_returned_as_manual_and_never_reaches_a_provider
         answered_by="operator-1",
     )
 
-    # The structured path raises rather than returning a fabricated model result;
-    # what matters for AI-01 is that no provider ran.
-    with pytest.raises(StructuredInvocationUnavailable, match="HUMAN_RESPONSE"):
-        await invoker.invoke(payload=_PAYLOAD, size_probe="small", log_context={})
+    # The resumed call, which is what this test is named for. The operator's
+    # answer comes back as a parsed result -- it went through `inspect_output`
+    # and this caller's own `validate` inside the dispatcher, so it cleared the
+    # same bar a provider's reply clears and is not a fabrication.
+    #
+    # This assertion used to be `pytest.raises(..., match="HUMAN_RESPONSE")`,
+    # which made the whole feature write-only: a request could be held and
+    # answered, and the answer was then discarded on the way back to the caller.
+    # Nothing could resume, and the test read as though that were intended.
+    result = await invoker.invoke(payload=_PAYLOAD, size_probe="small", log_context={})
+
+    assert result.value.verdict == "human"
+    # The point the docstring makes: reported as MANUAL, never as the model it
+    # replaced, and with no token counts to inflate a model's usage.
+    assert result.provider == "MANUAL"
+    assert result.model == "manual-human-v1"
+    assert result.prompt_tokens == 0
+    assert result.completion_tokens == 0
     assert len(provider.calls) == 0
 
 
@@ -548,6 +563,59 @@ async def test_the_three_outcomes_are_the_only_ones_the_policy_can_produce() -> 
         DispatchDecision.REJECT,
     }
     assert set(DispatchDecision) == seen
+
+
+def _dispatch_request(**correlation: str) -> DispatchRequest:
+    loaded = load_ai_gateway_configuration(CONFIG)
+    task_id = _structured_task_id(loaded.configuration)
+    return DispatchRequest(
+        task_id=task_id,
+        task=loaded.configuration.tasks[task_id],
+        system_prompt="p",
+        payload={},
+        request_digest="d",
+        estimated_tokens=1,
+        correlation=InvocationCorrelation(**correlation),
+    )
+
+
+def test_a_retried_turn_derives_the_same_interception_id() -> None:
+    """The invariant `interception_id_for` documents, now actually held.
+
+    `correlation_id` is minted per HTTP request by the API middleware, so two
+    attempts at one order-agent turn carry different values. Keying on it meant
+    an operator answered a held request and the retry -- looking for that answer
+    -- derived a different id, opened a second interception, and asked the same
+    question again. Manual mode could hold a turn and never resume one.
+    """
+    first = _dispatch_request(turn_id="turn-1", correlation_id="http-request-1")
+    retry = _dispatch_request(turn_id="turn-1", correlation_id="http-request-2")
+
+    assert interception_id_for(first) == interception_id_for(retry)
+
+
+def test_two_turns_of_one_conversation_stay_distinct() -> None:
+    """The other half of the same invariant. Collapsing the two would make one
+    operator answer serve a question they were never shown."""
+    conversation = {"conversation_id": "conv-1", "correlation_id": "http-request-1"}
+    first = _dispatch_request(turn_id="turn-1", **conversation)
+    second = _dispatch_request(turn_id="turn-2", **conversation)
+
+    assert interception_id_for(first) != interception_id_for(second)
+
+
+def test_a_caller_without_a_turn_identity_still_keys_on_its_request() -> None:
+    """`turn_id` is optional, and its absence must change nothing. Every caller
+    that is not a conversational turn -- schema analysis, eligibility, the
+    simulator -- has no turn to be retried as, and the HTTP request remains the
+    right unit for them."""
+    first = _dispatch_request(correlation_id="http-request-1")
+    second = _dispatch_request(correlation_id="http-request-2")
+
+    assert interception_id_for(first) != interception_id_for(second)
+    assert interception_id_for(first) == interception_id_for(
+        _dispatch_request(correlation_id="http-request-1")
+    )
 
 
 def test_the_policy_satisfies_the_boundary_protocol() -> None:

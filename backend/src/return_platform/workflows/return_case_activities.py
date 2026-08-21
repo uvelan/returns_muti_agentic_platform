@@ -643,6 +643,36 @@ class ReturnCaseActivities:
         """
         evaluated_at = datetime.fromisoformat(request.evaluated_at_iso)
         configuration = self._configuration() if self._configuration is not None else None
+
+        # Checked before the policy is required, and deliberately so: a
+        # deployment that has suspended the gate should not also have to publish
+        # a rule set to get past this line. The order is the only thing that
+        # makes "evaluation is off" independent of "no policy exists" -- the two
+        # are different states with different operational answers, and the
+        # release validator still refuses activation on the second.
+        if configuration is not None and not configuration.policy_evaluation.enabled:
+            reason = configuration.policy_evaluation.disabled_reason or "UNSPECIFIED"
+            logger.info(
+                "policy_evaluation_skipped_by_configuration",
+                extra={"case_id": request.case_id},
+            )
+            await self._append_policy_facts(
+                request,
+                (
+                    (
+                        "policy_evaluation_state",
+                        PolicyGateState.SKIPPED_BY_CONFIGURATION.value,
+                    ),
+                    ("policy_evaluation_skip_reason", reason),
+                ),
+            )
+            # No route, no decision, no reason codes. Every one of those fields
+            # would be an answer, and the gate produced none.
+            return CaseEligibilityOutcome(
+                state=PolicyGateState.SKIPPED_BY_CONFIGURATION.value,
+                failure_reason=None,
+            )
+
         if configuration is None or configuration.return_eligibility_policy is None:
             logger.error(
                 "return_eligibility_policy_not_configured", extra={"case_id": request.case_id}

@@ -196,6 +196,13 @@ class PolicyGateState(StrEnum):
 
     #: The evaluator ran and produced a `PolicyOutcome`.
     EVALUATED = "EVALUATED"
+    #: The deployment has suspended the gate through
+    #: `policy_evaluation.enabled = false`. **Not a decision and not an
+    #: approval**: no rule was applied, no route was chosen, and nothing may
+    #: later read this as `APPROVE`. The case proceeds to Support carrying the
+    #: operator's stated reason, so a human sees that the gate did not run
+    #: rather than seeing a verdict nobody reached.
+    SKIPPED_BY_CONFIGURATION = "SKIPPED_BY_CONFIGURATION"
     #: No eligibility policy is published for this deployment. Park the case.
     POLICY_NOT_CONFIGURED = "POLICY_NOT_CONFIGURED"
     #: The evaluator, or the fact assembly in front of it, raised. Fail closed to
@@ -1163,6 +1170,17 @@ class ReturnCaseWorkflow:
                 failure_reason="POLICY_EVALUATION_ACTIVITY_FAILED",
             )
         self._state.policy = outcome
+
+        if outcome.state == PolicyGateState.SKIPPED_BY_CONFIGURATION.value:
+            # Proceed, but set no status. `POLICY_APPROVED` would be a verdict
+            # nobody reached, and it is the one thing a suspended gate must not
+            # produce -- the activity has already recorded the skip and the
+            # operator's reason on the fact log, which is what Support reads.
+            workflow.logger.info(
+                "policy evaluation skipped by configuration for case %s",
+                workflow_input.case_id,
+            )
+            return True
 
         if outcome.state == PolicyGateState.POLICY_NOT_CONFIGURED.value:
             return await self._park_for_policy_unavailable(
