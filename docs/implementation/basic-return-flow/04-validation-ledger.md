@@ -139,3 +139,80 @@ but "none could be".
 model as `[REDACTED]`. That is `redact_payload` working as designed -- the model
 is not shown customer identity -- and it is why the Support template must be
 composed from **case state**, not from anything the model saw.
+
+## V-11 · The case names its customer
+
+| Field | Value |
+|---|---|
+| Command | drive the flow to confirmation, then `GET /api/cases/{id}` |
+| Scope | Phase 4 |
+| Exit | 0 |
+| Result | `customer: {"customerReference": "600911", "displayName": "THELMA OSBORNE", ...}` on case `10fcba5e`. Before the fix, `customer: null` on case `e5ce5c59` under identical inputs. |
+
+## V-12 · The order line names its colour
+
+| Field | Value |
+|---|---|
+| Command | `GET /api/cases/{id}/order-lines` |
+| Scope | Phase 4 |
+| Exit | 0 |
+| Result | `lineReference "1" \| description "6X12 CEIL ALUM 4-WAY REG SAND" \| colour "Sandtone"`. Before the binding reached the release, the same call returned `colour: null` with the field wired -- which is how F-13 was found. |
+
+## V-13 · The complete handoff, end to end
+
+| Field | Value |
+|---|---|
+| Command | order number -> confirm -> `POST /api/cases/{id}/selected-items` -> `GET /api/v1/return-support/work-items/{id}/messages` |
+| Scope | Phases 5-9 |
+| Exit | 0 |
+| Result | see below |
+
+Sequencing observed on case `10fcba5e`:
+
+1. after confirmation the case sat at `GATHERING_INFO` with `support: null` --
+   **the handoff waited** (F-15);
+2. `POST /selected-items` recorded line 1, quantity 1, `ORDERED_IN_ERROR`,
+   `NEW_IN_ORIGINAL_PACKAGING` and the branch contact, and signalled the
+   workflow;
+3. the case moved to `AWAITING_SUPPORT` with work item
+   `8b2d9519-d033-4fc8-8688-e3c842d3398b`.
+
+The message delivered:
+
+- **Case** -- case id, work item id, created instant, workflow status
+- **Customer** -- `THELMA OSBORNE`, reference `600911`, branch associate name,
+  email and phone
+- **Order** -- `CQ800002`, line `1`, `6X12 CEIL ALUM 4-WAY REG SAND`, colour
+  `Sandtone`, SKU `KHHJUB`, quantity `1`, reason `ORDERED_IN_ERROR`, condition
+  `NEW_IN_ORIGINAL_PACKAGING`
+- **Bay Assignment** -- `RECOMMENDED`, bay `686-BAY-01`, warehouse `686`,
+  return location `686/686-BAY-01`
+- **Verification** -- order confirmed, required information complete,
+  `Policy Evaluation: Skipped by configuration (...)`, source
+  `Bay Assignment Agent`
+- **Requested Support Action** -- review, confirm the bay, verify Support-owned
+  conditions, create or decline the RMA
+
+No RMA, label, tracking or policy approval is asserted anywhere in it.
+`businessPayload` carries the same facts under `schemaVersion:
+support-handoff-v1`.
+
+## V-14 · Support Chat UI renders the document
+
+| Field | Value |
+|---|---|
+| Command | browser at `/support`, select the work item, read computed style |
+| Scope | Phase 9 |
+| Exit | 0 |
+| Result | `white-space: pre`, `overflow-x: auto`, monospace; 50 lines and all 7 section headers present; `scrollWidth 826` inside `clientWidth 241`, and `document.body.scrollWidth === clientWidth` -- the bubble scrolls, the page does not. |
+
+## V-15 · Targeted tests
+
+| Command | Result |
+|---|---|
+| `pytest tests/operations tests/api tests/configuration tests/policy tests/reasoning -q` | **1179+ passed**, 0 failed |
+| `pytest tests/operations/test_support_handoff.py -q` | 8 passed (new) |
+| `npm run test -- --run src/domains/support` | 35 passed, including 2 new rendering tests |
+| `ruff check src scripts tests` | 1 error -- the known `I001`, see D-3 |
+| `npm run lint` | 5 errors -- all pre-existing, see D-3 |
+| `scripts/check_openapi_drift.py --write` | PASS; `colour` added to `OrderLineView` in all four snapshots and the generated TypeScript |

@@ -85,6 +85,7 @@ from return_platform.resources import RuntimeResources
 from return_platform.security.authorization import require_associate_roles, require_read_roles
 from return_platform.security.principal import Principal
 from return_platform.shared.contracts import APIResponse, ResponseMeta
+from return_platform.workflows.return_case_workflow import return_case_workflow_id
 
 logger = logging.getLogger("return_platform.api.order_lines")
 
@@ -671,6 +672,42 @@ def _selections(
 #: for the *branch* associate, and the case already carries an unrelated
 #: `principalId` for whoever is signed in. They are frequently the same person
 #: and are not the same field -- a counter terminal is shared.
+async def _notify_case_workflow(request: Request, *, case_id: str, items: int) -> None:
+    """Tell the case's workflow that the associate has named what is coming back.
+
+    Signalled rather than polled: the workflow is the only thing that knows
+    whether it is waiting, and a poll would either be a timer nobody needs or a
+    delay a counter conversation can feel.
+
+    **Only when there is something to report.** An empty replace-set is the
+    associate withdrawing their selection, and telling the workflow that details
+    have arrived because a selection was cleared is the opposite of true.
+
+    Best-effort, and after the write has committed. A signal that could not be
+    delivered leaves the case waiting for the timeout it was already bounded by;
+    failing this request instead would refuse a selection that is already
+    recorded, which is worse in both directions.
+    """
+    if items <= 0:
+        return
+    # Off `app.state.resources`, the same way `api/cases.py` reaches it: a
+    # deployment without Temporal still records the selection, and every test of
+    # the recording half of this endpoint still passes.
+    resources = getattr(request.app.state, "resources", None)
+    client = getattr(resources, "temporal", None)
+    if client is None:
+        return
+    try:
+        handle = client.get_workflow_handle(return_case_workflow_id(case_id))
+        await handle.signal("return_details_recorded")
+    except Exception:  # noqa: BLE001 - see the docstring
+        logger.warning(
+            "case_workflow_not_notified_of_return_details",
+            extra={"case_id": case_id},
+            exc_info=True,
+        )
+
+
 _CONTACT_FACTS: tuple[tuple[str, str], ...] = (
     ("branch_associate_name", "name"),
     ("branch_associate_email", "email"),
@@ -824,6 +861,7 @@ async def replace_case_selected_items(
         ) from authorized
 
     await _record_return_contact(repository, case_id=case_id, contact=payload.contact)
+    await _notify_case_workflow(request, case_id=case_id, items=len(outcome.items))
 
     return APIResponse(
         data=SelectedItems(

@@ -28,6 +28,7 @@ from return_platform.configuration.runtime_activation import build_worker_runtim
 from return_platform.configuration.runtime_integrations import verify_runtime_validation_receipts
 from return_platform.configuration.runtime_loader import resolve_process_configuration
 from return_platform.data_platform.graph.sync_service import MongoTargetedSyncRunLedger
+from return_platform.dynamic_knowledge.config_loader import resolve_active_schema
 from return_platform.dynamic_knowledge.integration.bay_observations import (
     GraphWarehouseBayObservations,
 )
@@ -39,8 +40,14 @@ from return_platform.dynamic_knowledge.integration.shipment_state_sync import Gr
 from return_platform.dynamic_knowledge.integration.targeted_sync import (
     build_targeted_graph_access,
 )
+from return_platform.dynamic_knowledge.release_store import SchemaReleaseStore
+from return_platform.operations.order_lines.case_detail import SourceOrderLineDetails
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_support.service import ReturnSupportService
+from return_platform.operations.seed_manifest import (
+    SOURCE_PRODUCTS_DATASET,
+    SOURCE_SALES_DATASET,
+)
 from return_platform.operations.sql_business_state import SQLBusinessStateRepository
 from return_platform.operations.warehouse.case_placement import CaseBayPlacement
 from return_platform.workflows.persistence import ReturnSessionRepository
@@ -94,6 +101,21 @@ async def _run() -> None:
             operation_timeout_seconds=_PERSISTENCE_TIMEOUT_SECONDS,
         )
         operational_repository = OperationalRepository(mongo, settings, source_mongo)
+        # The Support handoff has to say what is coming back, not only which line
+        # reference it is. That needs the sales document for the line's own
+        # description and the product catalogue for its colour, both through the
+        # active release's bindings -- so the schema is resolved here, once, and
+        # handed to the activities as a port.
+        active_schema = await resolve_active_schema(
+            settings.dynamic_knowledge_schema_path,
+            SchemaReleaseStore(mongo, settings.mongo_database),
+        )
+        order_line_details = SourceOrderLineDetails(
+            sales=await operational_repository.source_dataset(SOURCE_SALES_DATASET),
+            catalogue=await operational_repository.source_dataset(SOURCE_PRODUCTS_DATASET),
+            schema=active_schema,
+            colour_paths=runtime.return_configuration.configuration.source_resolution.product_colour_paths,
+        )
         # `ReturnCaseWorkflow` was registered nowhere in a deployed process:
         # `create_return_workflow_worker` takes its activities optionally and
         # this script never supplied them, so a case could be started and would
@@ -157,6 +179,11 @@ async def _run() -> None:
                 # cannot hold, because it moves with the clock.
                 live_capacity=sql_business_state,
             ),
+            # What a selected line actually *is* -- the product name, the SKU and
+            # the colour -- for the Support handoff. A port rather than a call
+            # inside the activity, for the same reason bay placement is one: the
+            # activity's dependencies are the surface a reader checks.
+            order_line_details=order_line_details,
             # SLA-01: the business calendar the support wait and the reminder
             # cadence are counted against. Read per call through the activated
             # state rather than captured, so a corrected holiday list reaches a

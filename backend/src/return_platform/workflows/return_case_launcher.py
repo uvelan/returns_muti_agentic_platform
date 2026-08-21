@@ -134,6 +134,8 @@ def case_timings_from_configuration(
     """
     return ReturnCaseTimings(
         bay_wait_seconds=configuration.bay_wait_seconds,
+        return_details_wait_seconds=configuration.return_details_wait_seconds,
+        return_details_required=configuration.return_details_required,
         support_response_wait_seconds=configuration.support_response_wait_seconds,
         reminder_interval_seconds=configuration.reminder_interval_seconds,
         max_reminders=configuration.max_reminders,

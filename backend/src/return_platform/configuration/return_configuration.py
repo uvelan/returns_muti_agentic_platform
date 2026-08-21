@@ -755,6 +755,31 @@ class ReturnCaseTimingConfiguration(StrictConfigModel):
     #: and capped at a day because a hold nobody has authorized by then is an
     #: abandoned selection whatever the operator intended.
     item_reservation_ttl_seconds: int = Field(default=1_800, ge=60, le=86_400)
+    #: How long the case waits for the associate to finish naming what is coming
+    #: back, before the Support handoff either goes without it or is refused --
+    #: `return_details_required` decides which.
+    #:
+    #: Wall clock, and for the same reason `item_reservation_ttl_seconds` is: it
+    #: bounds a live counter conversation, and stretching it across a weekend
+    #: would leave one hanging. The default matches the reservation TTL because
+    #: they bound the same thing from two directions -- a selection whose hold
+    #: has expired is a selection the associate is no longer making.
+    return_details_wait_seconds: int = Field(default=1_800, ge=0, le=86_400)
+    #: Whether the return details are a **precondition** of the Support handoff.
+    #:
+    #: `False` -- the default, and what the platform did before this existed --
+    #: opens the thread as soon as the case is cleared and lets the associate go
+    #: on adding detail; Support is told early and told incompletely.
+    #:
+    #: `True` refuses to hand off a return nobody has described. The case waits
+    #: `return_details_wait_seconds` for a selection and parks if none arrives,
+    #: because a Support request with no line, no quantity and no reason is a
+    #: task a human cannot act on and will have to come back and ask about.
+    #:
+    #: Defaulted to the old behaviour on purpose: turning this on changes when a
+    #: human is contacted, which is an operator's decision and not a release
+    #: note.
+    return_details_required: bool = False
     support_response_wait_seconds: int = Field(default=28_800, ge=60)
     reminder_interval_seconds: int = Field(default=7_200, ge=60)
     max_reminders: int = Field(default=3, ge=0, le=50)

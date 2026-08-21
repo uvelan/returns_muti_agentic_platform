@@ -73,13 +73,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import sys
-from pathlib import Path
 from typing import Any
-
-_SRC = Path(__file__).resolve().parents[1] / "src"
-if str(_SRC) not in sys.path:  # running as a file, not as a module
-    sys.path.insert(0, str(_SRC))
 
 import pymssql
 from pymongo import AsyncMongoClient

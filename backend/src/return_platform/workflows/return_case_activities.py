@@ -51,12 +51,25 @@ from return_platform.operations.case_projection.projection import project_case
 from return_platform.operations.case_projection.vocabulary import SupportOutcome
 from return_platform.operations.errors import ConcurrencyConflictError
 from return_platform.operations.models import FactAcquisition, FactChannel
+from return_platform.operations.order_lines.case_detail import (
+    CaseOrderLineDetail,
+    OrderLineDetailPort,
+)
 from return_platform.operations.order_lines.reservations import (
     QuantityReservationExpiredError,
     ReservationState,
     is_held,
 )
 from return_platform.operations.repository import OperationalRepository
+from return_platform.operations.support_handoff import (
+    SupportHandoffBay,
+    SupportHandoffCustomer,
+    SupportHandoffItem,
+    SupportHandoffOrder,
+    SupportHandoffPolicy,
+    SupportHandoffReturn,
+    compose_support_handoff,
+)
 from return_platform.policy.evaluator import PolicyClock, evaluate_return_eligibility
 from return_platform.policy.outcome import PolicyOutcome
 from return_platform.policy.vocabulary import PolicyRoute
@@ -337,6 +350,60 @@ def _branch_associate_sentence(facts: Mapping[str, Any]) -> str:
     return f"The branch associate for this return is {name} ({joined}). "
 
 
+def _text_of(value: Any) -> str | None:
+    """One stored field as text, or `None`. Never the string `"None"`."""
+    if value is None or isinstance(value, bool):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _moment_of(value: Any) -> datetime | None:
+    """A stored instant, made aware. Mongo hands back naive UTC."""
+    if not isinstance(value, datetime):
+        return None
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+def _count_of(value: Any) -> int | None:
+    """A quantity, or `None`. A bool is not a count however it stores."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def _handoff_item(item: Mapping[str, Any], detail: CaseOrderLineDetail | None) -> SupportHandoffItem:
+    """One selected line joined to what the source calls it.
+
+    The selection is the authority for quantity, reason and condition -- they are
+    the associate's answers. The source is the authority for the name, the SKU
+    and the colour. Neither side is allowed to fill in for the other.
+    """
+    return SupportHandoffItem(
+        line_reference=str(item.get("orderLineId") or item.get("orderLineReference") or ""),
+        product_name=detail.description if detail is not None else None,
+        colour=detail.colour if detail is not None else None,
+        sku=detail.sku if detail is not None else None,
+        product_reference=_text_of(item.get("productReference")),
+        quantity=_count_of(item.get("quantity")),
+        reason=_text_of(item.get("reason")),
+        condition=_text_of(item.get("condition")),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class SupportRequestDraft:
+    """Both halves of the handoff, across the activity boundary.
+
+    The text is what a person reads; the payload is the same facts structured,
+    and it is what is persisted on the message so no screen has to parse the
+    prose back into fields.
+    """
+
+    text: str
+    payload: dict[str, Any]
+
+
 class ReturnCaseActivities:
     """Narrow injected surface: one repository, one support service, one drafter."""
 
@@ -349,6 +416,7 @@ class ReturnCaseActivities:
         graph_sync: ReturnRecordGraphSyncPort | None = None,
         return_store: ReturnRecordStorePort | None = None,
         bay_placement: CaseBayPlacementPort | None = None,
+        order_line_details: OrderLineDetailPort | None = None,
         configuration: Callable[[], ReturnPlatformConfiguration | None] | None = None,
     ) -> None:
         self._repository = repository
@@ -357,6 +425,7 @@ class ReturnCaseActivities:
         self._graph_sync = graph_sync
         self._return_store = return_store
         self._bay_placement = bay_placement
+        self._order_line_details_port = order_line_details
         # A callable, not a value: Track E's activation loop replaces the
         # process's configuration in place, and an activity that captured the
         # release it started with would go on using a holiday list a release
@@ -1006,42 +1075,129 @@ class ReturnCaseActivities:
             )
 
     @activity.defn(name="draft_support_request")
-    async def draft_support_request(self, request: DraftSupportRequestInput) -> str:
-        """The message Support will read.
+    async def draft_support_request(self, request: DraftSupportRequestInput) -> SupportRequestDraft:
+        """The message Support will read, and the same facts structured beside it.
 
-        Falls back to a deterministic template when no drafter is configured or
-        the model is unavailable. Support being asked in plainer words is a far
-        better outcome than a return that stops because a provider is down.
+        **This is composed, not written.** Every value comes from the case's own
+        state -- its facts, its selected lines, its bay recommendation, its
+        policy outcome -- and `compose_support_handoff` holds the rules about
+        what may and may not be said. What it replaces was a single sentence
+        naming one order reference and asking for an RMA: true, and short of
+        every fact the person receiving it needed.
 
-        **The branch associate travels in the message text, because the message
-        text is the whole of what Support receives.** `SupportWorkItemView`
-        carries a subject, a queue and a status and no case detail at all, and
-        the opening message's `businessPayload` is `{"caseId": ...}`; a human on
-        the Returns Support desk reads the thread. So a contact recorded on the
-        case and left out of the draft is a contact that reached a database and
-        not a person -- and the entire reason Fergusonhome asks for it is that a
-        UPS label or an LTL bill of lading cannot be raised without someone to
-        address. The model drafter already receives every fact and can phrase it
-        itself; this is the path that has to be told.
+        **No model drafts it, and that is deliberate rather than incidental.**
+        A generated draft cannot be held to "do not invent unavailable values",
+        which is the rule that matters most in a handoff a human then acts on --
+        a plausible customer name or a plausible quantity is worse than a blank.
+        `self._drafter` is still consulted where a deployment wires one, but only
+        as an *addition*: its text is carried under the structured request rather
+        than in place of it, so the facts are never at the mercy of the wording.
+
+        **The payload is the contract, not the prose.** `SupportRequestDraft`
+        carries both halves so `open_support_work_item` can persist the
+        structured record on the message; a screen reads that and never parses
+        the text back into fields.
+
+        Best-effort in every direction that is not the message itself: an
+        unreadable order leaves the product names unavailable, a case with no bay
+        result says so, and none of it stops the handoff. A return that cannot be
+        described is still a return Support has to be told about.
         """
-        facts = await self._repository.latest_case_facts(request.case_id)
-        plain = {name: fact.get("value") for name, fact in facts.items()}
-        if self._drafter is not None:
-            try:
-                drafted = await self._drafter.draft(case_id=request.case_id, facts=plain)
-                if drafted.strip():
-                    return drafted
-            except Exception:  # noqa: BLE001 - fall back, never fail the case
-                logger.warning(
-                    "support_draft_unavailable", extra={"case_id": request.case_id}, exc_info=True
-                )
-        order = plain.get("confirmed_order_reference") or "an order"
-        return (
-            f"Hello -- we have a return to raise against {order}. "
-            "Could you create the RMA and send the return label or pickup "
-            f"instructions when you have a moment? {_branch_associate_sentence(plain)}"
-            "Happy to supply anything else you need. Thank you."
+        # Three narrow reads, not the whole case projection. The projection
+        # assembles fifteen blocks this message does not use and needs a
+        # requirement table to do it; the handoff needs the case's own row, its
+        # fact log and its unassigned items, and reading exactly those keeps the
+        # activity doubleable and its dependencies legible.
+        case = await self._repository.get_case(request.case_id) or {}
+        latest = await self._repository.latest_case_facts(request.case_id)
+        facts = {name: fact.get("value") for name, fact in latest.items()}
+        selected = await self._selected_items(request.case_id)
+
+        order_reference = _stated(facts, "confirmed_order_reference") or _text_of(
+            case.get("confirmedOrderReference")
         )
+        details = await self._order_line_details(order_reference)
+
+        handoff = compose_support_handoff(
+            case_id=request.case_id,
+            work_item_id=request.work_item_id,
+            created_at=_moment_of(case.get("updatedAt")),
+            workflow_status=_text_of(case.get("status")),
+            customer=SupportHandoffCustomer(
+                name=_stated(facts, "customer_name"),
+                reference=_stated(facts, "customer_id"),
+                contact_name=_stated(facts, "branch_associate_name"),
+                contact_email=_stated(facts, "branch_associate_email"),
+                contact_phone=_stated(facts, "branch_associate_phone"),
+            ),
+            order=SupportHandoffOrder(
+                reference=order_reference,
+                items=tuple(
+                    _handoff_item(item, details.get(str(item.get("orderLineId") or "")))
+                    for item in selected
+                ),
+            ),
+            return_details=SupportHandoffReturn(
+                method=_stated(facts, "return_method"),
+                requested_resolution=_stated(facts, "requested_resolution"),
+                product_presence=_stated(facts, "product_presence"),
+                associate_notes=_stated(facts, "associate_notes"),
+            ),
+            bay=SupportHandoffBay(
+                status=_stated(facts, "bay_reason"),
+                bay_reference=_stated(facts, "bay_reference"),
+                warehouse_reference=_stated(facts, "bay_warehouse_reference"),
+                return_location=_stated(facts, "bay_return_location"),
+                handling_instructions=_stated(facts, "bay_handling_instructions"),
+                unresolved_reason=_stated(facts, "bay_reason"),
+            ),
+            policy=SupportHandoffPolicy(
+                state=_stated(facts, "policy_evaluation_state"),
+                skipped_reason=_stated(facts, "policy_evaluation_skip_reason"),
+                route=_stated(facts, "policy_route"),
+                decision=_stated(facts, "policy_decision"),
+            ),
+            order_confirmed=order_reference is not None,
+            required_details_complete=bool(selected),
+        )
+        return SupportRequestDraft(text=handoff.text, payload=handoff.payload)
+
+    async def _selected_items(self, case_id: str) -> list[Mapping[str, Any]]:
+        """The lines the associate named that no RMA covers yet.
+
+        An item carrying a `returnRecordId` belongs to an issued RMA and is not
+        part of *this* request; including it would ask Support to authorise
+        something already authorised. Same rule `project_selected_items` applies,
+        applied here because this reads the items directly.
+        """
+        items = await self._repository.list_case_return_items(case_id)
+        return [item for item in items if not _text_of(item.get("returnRecordId"))]
+
+    async def _order_line_details(
+        self, order_reference: str | None
+    ) -> Mapping[str, CaseOrderLineDetail]:
+        """Product names and colours for the confirmed order, or nothing.
+
+        A worker with no detail port answers with nothing and every product
+        renders as unavailable, which is the same shape of degradation the bay
+        and the customer already take. It is logged once rather than silently,
+        because a deployment that meant to wire it and did not would otherwise
+        produce handoffs that look deliberately anonymous.
+        """
+        if order_reference is None:
+            return {}
+        if self._order_line_details_port is None:
+            logger.info("support_draft_order_line_details_not_configured")
+            return {}
+        try:
+            return await self._order_line_details_port.line_details(order_reference)
+        except Exception:  # noqa: BLE001 - see the docstring
+            logger.warning(
+                "support_draft_order_line_details_unavailable",
+                extra={"order_reference": order_reference},
+                exc_info=True,
+            )
+            return {}
 
     @activity.defn(name="open_support_work_item")
     async def open_support_work_item(self, request: OpenSupportWorkItemInput) -> str:
@@ -1077,9 +1233,25 @@ class ReturnCaseActivities:
             "case_id": request.case_id,
             "tenant_id": request.tenant_id,
             "principal_id": request.principal_id,
-            "support_draft": request.support_draft,
+            # A thread whose request text never existed is a conversation a human
+            # opens and finds empty, so the minimal wording stands in when
+            # composition failed -- and says that it did.
+            "support_draft": request.support_draft
+            or (
+                "RETURN SUPPORT REQUEST\n\n"
+                f"Case:\n- Case ID: {request.case_id}\n\n"
+                "The full return detail could not be composed for this case. "
+                "Please open the case in the console before acting on it."
+            ),
             "idempotency_key": request.idempotency_key,
         }
+        # Both travel through the signature check for the same reason `queue`
+        # does: several support doubles predate them, and a `TypeError` here
+        # would fail a return over a message decoration.
+        if request.business_payload and self._support_accepts("business_payload"):
+            arguments["business_payload"] = request.business_payload
+        if request.work_item_id is not None and self._support_accepts("work_item_id"):
+            arguments["work_item_id"] = request.work_item_id
         if request.queue is not None and self._support_accepts_queue():
             arguments["queue"] = request.queue
         elif request.queue is not None:

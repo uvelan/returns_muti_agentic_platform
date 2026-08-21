@@ -298,6 +298,11 @@ class ReturnCaseTimings:
     #: it parks the case for an operator rather than completing or cancelling
     #: it -- the platform has no answer at that point, and inventing one would
     #: be the silent close this whole section removes.
+    #: How long to wait for the associate to name what is coming back, and
+    #: whether the Support handoff may go without it. Both pinned at start like
+    #: every other timing here.
+    return_details_wait_seconds: int = 1_800
+    return_details_required: bool = False
     absolute_lifetime_seconds: int = _DEFAULT_LIFETIME_SECONDS
 
 
@@ -675,6 +680,25 @@ class CaseEligibilityOutcome:
 class DraftSupportRequestInput:
     case_id: str
     configuration_release_id: str
+    #: The id the thread will be opened under, minted by the workflow so the
+    #: message can name it. Composing the draft and opening the thread are two
+    #: activities, and a service-minted id is only known to the second -- so the
+    #: handoff could never identify the work item a reader is looking at.
+    #: `workflow.uuid4()` is replay-stable, so a retry names the same one.
+    work_item_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SupportRequestDraft:
+    """What `draft_support_request` answers with.
+
+    Two halves on purpose: `text` is the message a person reads, `payload` is the
+    same facts structured. The payload is persisted on the opening message so a
+    screen reads business fields from data and never by parsing the prose.
+    """
+
+    text: str = ""
+    payload: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -684,6 +708,13 @@ class OpenSupportWorkItemInput:
     principal_id: str
     support_draft: str
     idempotency_key: str
+    #: The structured half of the handoff, persisted on the opening message so
+    #: Support's screen reads business fields from data rather than by parsing
+    #: the message text back into fields.
+    business_payload: dict[str, Any] = field(default_factory=dict)
+    #: The id the thread is opened under, minted by the workflow so the draft
+    #: composed by the previous activity could name it.
+    work_item_id: str | None = None
     #: The queue the work item belongs on, when the policy route named one.
     #: `None` leaves the support service's own default standing. Route context
     #: travels as a queue and never as a work-item type field (plan sect. 7.6).
@@ -804,6 +835,11 @@ class _Mutable:
 
     status: str = ReturnCaseStatus.GATHERING_INFO.value
     work_item_id: str | None = None
+    #: Whether the associate has named what is coming back. Set by the
+    #:  signal, and only ever set -- a selection that is
+    #: later edited is still a selection, and a case that had reached the handoff
+    #: must not fall back into waiting for one.
+    return_details_recorded: bool = False
     reminders_sent: int = 0
     bay: BayResultNotice | None = None
     #: The **last applied** notice, not the only one. Kept because "has Support
@@ -875,6 +911,22 @@ class ReturnCaseWorkflow:
         """
         if self._state.bay is None:
             self._state.bay = notice
+
+    @workflow.signal(name="return_details_recorded")
+    def return_details_recorded(self) -> None:
+        """The associate has named what is coming back.
+
+        Sent by the write that records the selection, so the case learns without
+        polling. Idempotent and one-way: a selection edited twice signals twice
+        and the second is a no-op, and nothing ever clears it -- a case that has
+        already been handed to Support must not go back to waiting for a detail
+        it was handed with.
+
+        Carries no payload on purpose. What was selected is read from the case at
+        the moment the handoff is composed; a payload here would be a second copy
+        of it, arriving out of order with the write that produced it.
+        """
+        self._state.return_details_recorded = True
 
     @workflow.signal(name="support_response")
     def support_response(self, notice: SupportResponseNotice) -> None:
@@ -1062,6 +1114,12 @@ class ReturnCaseWorkflow:
                 return self._outcome()
             if self._cancelled():
                 return await self._finish_cancelled()
+            # After the gate and before the handoff: a return Support is asked
+            # about should be one somebody has described.
+            if not await self._await_return_details(timings):
+                if self._cancelled():
+                    return await self._finish_cancelled()
+                return self._outcome()
             await self._open_support(timings)
             if self._cancelled():
                 return await self._finish_cancelled()
@@ -1359,26 +1417,68 @@ class ReturnCaseWorkflow:
         finally:
             self._state.policy_review_open = False
 
-    async def _open_support(self, timings: ReturnCaseTimings) -> None:
-        del timings
-        workflow_input = self._require_input()
+    async def _await_return_details(self, timings: ReturnCaseTimings) -> bool:
+        """Wait for the associate to say what is coming back. `False` parks.
+
+        Only when the release asks for it. `return_details_required` defaults to
+        false, which is what the platform did before: open the thread as soon as
+        the case is cleared, and let the detail follow. A deployment that turns
+        it on is saying that a Support request with no line, no quantity and no
+        reason is a task a human cannot act on -- and it is right, which is why
+        the switch exists rather than the behaviour being unconditional.
+
+        The wait is bounded and parks rather than proceeding, because proceeding
+        is the one thing the setting forbids. A case parked here is a return
+        nobody finished describing; the reason says so, and the selection an
+        associate makes afterwards is still there when it is recovered.
+        """
+        if not timings.return_details_required or self._state.return_details_recorded:
+            return True
+        await self._set_status(ReturnCaseStatus.GATHERING_INFO)
         try:
-            draft: str = await workflow.execute_activity(
+            await workflow.wait_condition(
+                lambda: self._state.return_details_recorded or self._cancelled(),
+                timeout=timedelta(seconds=timings.return_details_wait_seconds),
+                timeout_summary="return-details-wait",
+            )
+        except TimeoutError:
+            workflow.logger.info(
+                "no return details were recorded for case %s; parking rather than "
+                "asking Support about a return nobody described",
+                self._require_input().case_id,
+            )
+            self._state.parked_reason = "RETURN_DETAILS_NOT_RECORDED"
+            await self._set_status(
+                ReturnCaseStatus.RECOVERY_REQUIRED, fact_value="RETURN_DETAILS_NOT_RECORDED"
+            )
+            return False
+        return not self._cancelled()
+
+    async def _open_support(self, timings: ReturnCaseTimings) -> None:
+        workflow_input = self._require_input()
+        # Minted here, before either activity runs, so the draft can name the
+        # work item it is about to become. `workflow.uuid4()` is replay-stable,
+        # so a retry of either activity uses the same id and the idempotent open
+        # resolves to the same thread.
+        intended_work_item_id = str(workflow.uuid4())
+        try:
+            draft: SupportRequestDraft = await workflow.execute_activity(
                 "draft_support_request",
                 DraftSupportRequestInput(
                     case_id=workflow_input.case_id,
                     configuration_release_id=workflow_input.configuration_release_id,
+                    work_item_id=intended_work_item_id,
                 ),
-                result_type=str,
+                result_type=SupportRequestDraft,
                 start_to_close_timeout=_DRAFT_TIMEOUT,
                 retry_policy=_DRAFT_RETRY,
             )
         except ActivityError:
-            # The model is unavailable. Support still needs asking, and a
-            # deterministic request is better than a parked case -- the
-            # activity's own fallback decides the wording.
-            workflow.logger.warning("support draft unavailable; using the deterministic template")
-            draft = ""
+            # Composition failed. Support still needs asking, and an empty draft
+            # is better than a parked case -- the opening activity supplies the
+            # minimal wording rather than leaving a thread with no request in it.
+            workflow.logger.warning("support draft unavailable; opening with the minimal request")
+            draft = SupportRequestDraft()
 
         work_item_id: str = await workflow.execute_activity(
             "open_support_work_item",
@@ -1386,7 +1486,9 @@ class ReturnCaseWorkflow:
                 case_id=workflow_input.case_id,
                 tenant_id=workflow_input.tenant_id,
                 principal_id=workflow_input.principal_id,
-                support_draft=draft,
+                support_draft=draft.text,
+                business_payload=draft.payload,
+                work_item_id=intended_work_item_id,
                 # Derived from the case, not minted per attempt: a retry, and a
                 # replay after continue_as_new, must not open a second thread
                 # with a human on the other end of it.

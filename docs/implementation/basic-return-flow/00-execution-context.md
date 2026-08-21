@@ -94,30 +94,38 @@ to report as unavailable.
 
 ## Active implementation state
 
-Phases 1-3 complete. Phase 6's configuration switch is implemented (not yet
-activated for the run). Phase 4 is in progress.
+Phases 1-9 complete and validated end to end on case
+`10fcba5e-1312-404e-9dab-f7c5bdd25371`. Remaining: the adversarial validations
+and the final gates.
 
 Runtime mode for this run:
 
 | Setting | Value | Where |
 |---|---|---|
 | `PLATFORM_AI_PROVIDER_ORDER` | `MANUAL` | `.env` (backup at `.env.backup-basic-flow`) |
-| `PLATFORM_AI_MANUAL_HANDOFF` | `UI` | `.env` |
+| `PLATFORM_AI_MANUAL_HANDOFF` | `AUTO` (resolves to the AI Control Center wherever a store is wired) | `.env` |
 | `interceptMode` | `false` | `PUT /api/v1/ai-gateway/settings` |
+| `policy_evaluation.enabled` | `false`, with a stated reason | configuration release |
+| `bay.allow_prearrival_reservation` | `true` | configuration release |
+| `bay.require_physical_receipt` | `false` | configuration release |
+| `source_resolution.product_colour_paths` | `["eco.colorFinish"]` | configuration release (F-13) |
+| `return_case.return_details_required` | `true`, wait 900s | configuration release |
 
-Host stack runs detached with per-process logs at `<scratchpad>/logs/*.log`,
-started by `<scratchpad>/start_hosts.ps1` and restarted by `restart_hosts.ps1`
-(both non-blocking mirrors of `scripts/run_all_host.ps1`). The flow is driven
-through the real API by `<scratchpad>/flow.py`, which stands where the browser
-stands.
+The release is cut and published by `<scratchpad>/dev_release.py` through the
+platform's own release API. `config/returns/production.yaml` is never edited for
+this run beyond adding the colour binding, which is a permanent default.
+
+Host stack runs detached with per-process logs at `<scratchpad>/logs/*.log`
+(`start_hosts.ps1`, `restart_hosts.ps1`). The conversation is driven through the
+real API by `<scratchpad>/flow.py`, which stands where the browser stands.
 
 ## Last completed validation
 
-V-10 -- one order number returned exactly one order through the normal agent
-path, in manual mode, with no live provider reachable.
+V-15 -- targeted backend and frontend suites green, OpenAPI snapshots
+regenerated, both known baseline failures unchanged.
 
 ## Next executable action
 
-Confirm order `CQ800002` and its line, then read the case projection to see
-which primary details (line number, customer name, product name, colour) reach
-the UI and which need a mapping fix.
+Work through the adversarial validations in the authoritative prompt, starting
+with the order-discovery ones (unknown order number, whitespace, duplicate
+submission, multiple matches) since they need no new fixtures.

@@ -880,4 +880,58 @@ describe("SupportConsolePage", () => {
       expect(screen.queryByRole("button", { name: /record or correct a shipment/i })).toBeNull();
     });
   });
+
+  describe("the opening request is a document, not a sentence", () => {
+    const HANDOFF = [
+      "RETURN SUPPORT REQUEST",
+      "",
+      "Case:",
+      "- Case ID: case-1",
+      "",
+      "Order:",
+      "- Order Number: CW273354",
+      "- Line/Order-Line Number: 1",
+      "  - Product Name: 6X12 CEIL ALUM 4-WAY REG SAND",
+      "  - Colour: Sandtone",
+      "",
+      "Bay Assignment:",
+      "- Recommended Bay: 686-BAY-01",
+    ].join("\n");
+
+    it("keeps every line of a sectioned request", async () => {
+      mocks.listMessages.mockResolvedValue([{ ...AGENT_MESSAGE, messageText: HANDOFF }]);
+      renderPage();
+      fireEvent.click(await screen.findByText("Return for CW273354"));
+
+      // `findByText` with an exact string is the assertion: HTML collapses
+      // whitespace, so before the fix these lines arrived concatenated into one
+      // paragraph and none of them could be found on its own.
+      const heading = await screen.findByText("RETURN SUPPORT REQUEST", { exact: false });
+      const bubble = enclosing(heading, "div");
+
+      expect(bubble.textContent).toContain("- Colour: Sandtone");
+      expect(bubble.textContent).toContain("- Recommended Bay: 686-BAY-01");
+      // Every section survives as its own line, indentation included.
+      for (const line of HANDOFF.split("\n")) {
+        expect(bubble.textContent?.split("\n")).toContain(line);
+      }
+      // Wide content scrolls inside the bubble rather than wrapping a value
+      // away from the label that introduces it.
+      expect(bubble.className).toContain("whitespace-pre");
+      expect(bubble.className).toContain("overflow-x-auto");
+    });
+
+    it("leaves an ordinary one-line reply as an ordinary bubble", async () => {
+      mocks.listMessages.mockResolvedValue([AGENT_MESSAGE]);
+      renderPage();
+      fireEvent.click(await screen.findByText("Return for CW273354"));
+
+      const text = await screen.findByText("Could you raise the RMA?");
+      const bubble = enclosing(text, "div");
+
+      expect(bubble.className).toContain("whitespace-pre-wrap");
+      expect(bubble.className).toContain("max-w-[80%]");
+      expect(bubble.className).not.toContain("overflow-x-auto");
+    });
+  });
 });

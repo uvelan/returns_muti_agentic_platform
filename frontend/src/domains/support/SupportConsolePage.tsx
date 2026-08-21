@@ -1468,10 +1468,32 @@ function DraftRecordBlock({
  * Support knows it is talking to an agent -- that is the stated design, not
  * something to hide -- so who said what is marked plainly rather than styled
  * to look human.
+ *
+ * **A message with newlines is a document, and is rendered as one.** The
+ * opening request is sectioned -- Case, Customer, Order, Return Details, Bay
+ * Assignment, Verification -- and HTML collapses runs of whitespace, so without
+ * this every section ran together into a single paragraph and each label lost
+ * the value it belongs to. A structured handoff nobody can read is not a
+ * handoff.
+ *
+ * Three things follow from that and each earns its place:
+ *
+ * * `whitespace-pre` rather than `pre-wrap`, so a long value -- an ISO
+ *   timestamp, a case id -- stays on the line whose label introduces it instead
+ *   of wrapping into the next field's position.
+ * * `overflow-x-auto`, because the consequence of not wrapping is that the
+ *   widest line decides the width. It scrolls inside its own bubble; the page
+ *   does not.
+ * * the full column width, because an 80% bubble is right for a sentence and
+ *   wrong for a table of fields.
+ *
+ * A single-line message -- every reply a human types, and every reminder -- is
+ * untouched and still renders as an ordinary chat bubble.
  */
 function Message({ message }: { message: SupportMessage }) {
   const fromAgent = message.senderRole === "AGENT";
   const isReminder = "reminderKey" in message.businessPayload;
+  const isStructured = message.messageText.includes("\n");
   return (
     <li className={`flex gap-3 ${fromAgent ? "" : "justify-end"}`}>
       {fromAgent ? (
@@ -1483,7 +1505,11 @@ function Message({ message }: { message: SupportMessage }) {
         </span>
       ) : null}
       <div
-        className={`max-w-[80%] break-words rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+        className={`${
+          isStructured
+            ? "min-w-0 flex-1 overflow-x-auto whitespace-pre font-mono text-[12px]"
+            : "max-w-[80%] whitespace-pre-wrap break-words text-sm"
+        } rounded-2xl px-3.5 py-2.5 leading-relaxed ${
           fromAgent
             ? "rounded-tl-sm border border-outline-variant bg-surface-container-low text-on-surface"
             : "rounded-tr-sm bg-primary text-on-primary"

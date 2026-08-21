@@ -6783,6 +6783,8 @@ export interface components {
         OrderLineView: {
             /** Activereservationquantity */
             activeReservationQuantity: number;
+            /** Colour */
+            colour?: string | null;
             /** Completedreturnquantity */
             completedReturnQuantity: number;
             dataInconsistency?: components["schemas"]["DataInconsistency"] | null;

@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any, Final, cast
@@ -448,10 +448,25 @@ class ReturnSupportService:
         principal_id: str,
         support_draft: str,
         idempotency_key: str,
+        business_payload: Mapping[str, Any] | None = None,
+        work_item_id: str | None = None,
         queue: str | None = None,
         sla_due_at: datetime | None = None,
     ) -> str:
         """Open Channel B for a case, once, and return the work-item id.
+
+        `business_payload` is the structured half of the handoff -- the same
+        facts the message text states, as data. It is persisted on the opening
+        message beside the prose so a screen reads business fields from it and
+        never by parsing the text back into fields, which is a display that
+        breaks the day the wording changes. `caseId` is always present in it;
+        a caller supplying one cannot remove that.
+
+        `work_item_id` lets the caller decide the id. The workflow mints one so
+        that the activity which *composes* the request can name the work item the
+        activity which *opens* it will create -- two activities, one id, and a
+        replay-stable `workflow.uuid4()` behind it. `None` keeps the previous
+        behaviour of minting one here.
 
         `queue` is how a warranty or delivery-claim verification reaches the team
         that verifies it. It is optional and defaults to the returns queue, so
@@ -521,7 +536,7 @@ class ReturnSupportService:
             return str(existing["_id"])
 
         now = _now()
-        item_id = str(uuid.uuid4())
+        item_id = work_item_id or str(uuid.uuid4())
         thread_id = str(uuid.uuid4())
         sla_minutes = self._config.workflow.sla_minutes["support_acknowledgement"]
         document: dict[str, Any] = {
@@ -572,7 +587,9 @@ class ReturnSupportService:
             "messageType": SupportMessageType.REQUEST.value,
             "messageText": support_draft,
             "attachmentIds": [],
-            "businessPayload": {"caseId": case_id},
+            # The case id is written last so a caller cannot displace it: it is
+            # the link every reader of this message resolves the case through.
+            "businessPayload": {**dict(business_payload or {}), "caseId": case_id},
             "createdAt": now,
         }
 

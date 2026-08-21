@@ -312,3 +312,145 @@ and handoff settings together.
 
 `.env` is backed up to `.env.backup-basic-flow` before the change. Nothing in
 `config/returns/production.yaml` is touched.
+
+---
+
+## F-11 · The platform knew the customer and recorded nothing about them
+
+- **timestamp:** 2026-08-21
+- **baseline commit:** `47f5abd`
+- **evidence:** `case_projection/assembly.py::project_customer` reads two facts,
+  `customer_name` (`assembly.py:197`) and `customer_id` (`:196`). Their only
+  writer was the reasoning model's `observed_facts`. `redact_payload` masks
+  `customer_name`, `ship_to_name` and `ship_to_phone` before a candidate row
+  reaches a prompt -- measured on the live search result for `CQ800002`, which
+  arrives at the model as `"customer_name": "[REDACTED]"`.
+- **finding:** the model is structurally forbidden to see the customer, so it can
+  never report one, so the facts are never written and **every confirmed case
+  projects `customer: null`** -- verified on case `e5ce5c59`. The Support handoff
+  is then about a customer it cannot name.
+- **decision:** the workflow reads the identity off the confirmed order through
+  the paths the release already binds (`source_resolution.customer_name_paths`,
+  `customer_id_paths`) and records it as `SYSTEM` / `OBSERVED`. Not
+  `CHANNEL_A` / `STATED`: no associate said it, and the difference is what a
+  reader needs on the day a source read and a person disagree.
+- **affected files:** `workflows/case_customer_identity.py` (new),
+  `workflows/return_case_activities.py`, `workflows/return_case_workflow.py`,
+  `workflows/worker.py`.
+- **validated:** V-11.
+
+---
+
+## F-12 · Colour is not on the order line and is not in the schema
+
+- **timestamp:** 2026-08-21
+- **baseline commit:** `47f5abd`
+- **evidence:** `GET /api/cases/{id}/order-lines` returned
+  `description: "6X12 CEIL ALUM 4-WAY REG SAND"` and no colour. The `product`
+  entity in `config/dynamic_knowledge/active-schema.return-order.yaml` declares
+  fourteen fields and **none is a colour**. The value does exist at the source:
+  `lkpSearchProduct._id = "4000096"` carries `eco.colorFinish: ["Sandtone"]`,
+  and 253 of 1000 catalogue documents carry one.
+- **finding:** `production.yaml` already declares `product_colour` as a
+  return-detail field with a note saying it is unusable until a colour is
+  resolvable. It was unusable because nothing bound a path to it.
+- **decision:** bind it in `source_resolution.product_colour_paths` and resolve
+  it with one `$in` per order. **Never inferred from the description** --
+  `"16X20 STL W/ FLTR FRAME RTN AIR GRL WHIT"` is a description that ends in a
+  colour word, not a statement of colour.
+- **affected files:** `configuration/return_configuration.py`,
+  `config/returns/production.yaml`,
+  `operations/order_lines/product_attributes.py` (new),
+  `operations/order_lines/case_detail.py` (new), `api/order_lines.py`.
+- **validated:** V-12.
+
+---
+
+## F-13 · A key added inside an existing config block cannot reach a live release
+
+- **timestamp:** 2026-08-21
+- **baseline commit:** `47f5abd`
+- **evidence:** `product_colour_paths` was added to `production.yaml` and
+  `bootstrap_graph_configuration.py` was re-run; the runtime configuration still
+  reported `"product_colour_paths": []`.
+- **finding:** not new -- the codebase already records it. The
+  `SelectionVocabularyConfiguration` docstring names it as **platform defect
+  D11**: `bootstrap_graph_configuration` merges the packaged file *underneath* an
+  active release at **top-level granularity**, so a key added inside an existing
+  block is dropped by that block's released value and can never arrive. It is why
+  `return_eligibility_policy`, `copilot` and `selection_vocabulary` are all
+  top-level.
+- **decision:** publish it through the release API instead, which is the
+  established path for a configuration change and is RFC 7396, so naming the one
+  key is enough. `production.yaml` keeps the binding for a deployment bootstrapped
+  from scratch. **Not worked around in code** -- a code-side default would make
+  the release the platform is running and the file it was compiled from disagree.
+- **affected files:** none. Recorded because it explains why a correct
+  configuration edit appeared to do nothing.
+
+---
+
+## F-14 · Support was asked about a case id, not about a return
+
+- **timestamp:** 2026-08-21
+- **baseline commit:** `47f5abd`
+- **evidence:** the message actually delivered to the Support thread of case
+  `721fb62e`, read back from `/api/v1/return-support/work-items/{id}/messages`:
+
+  ```
+  Hello -- we have a return to raise against CQ800002. Could you create the RMA
+  and send the return label or pickup instructions when you have a moment?
+  Happy to supply anything else you need. Thank you.
+  ```
+
+  `businessPayload` was `{"caseId": "721fb62e-..."}`.
+- **finding:** F-6 confirmed in production behaviour, not only in the source.
+  Two separate defects in one message: no business fact a human could act on, and
+  nothing structured for a screen to read.
+- **decision:** `operations/support_handoff.py` composes both halves from
+  authoritative case state; `open_case_thread` persists the structured half on
+  the opening message beside the prose.
+- **affected files:** `operations/support_handoff.py` (new),
+  `workflows/return_case_activities.py`, `workflows/return_case_workflow.py`,
+  `operations/return_support/service.py`.
+- **validated:** V-13.
+
+---
+
+## F-15 · The handoff went before anyone had described the return
+
+- **timestamp:** 2026-08-21
+- **baseline commit:** `47f5abd`
+- **evidence:** `ReturnCaseWorkflow.run` runs `_gather_bay` -> `_policy_cleared`
+  -> `_open_support` with nothing between the gate and the handoff. Observed on
+  case `721fb62e`: the work item opened within a second of confirmation, while
+  `awaiting` still reported `RETURN_METHOD` and `selectedItems` was `null`.
+- **finding:** Support received a request naming an order and no line, no
+  quantity and no reason -- a task a human cannot act on and has to come back and
+  ask about. Phase 5 requires the opposite: *"prevent final support handoff while
+  required information remains missing."*
+- **decision:** a configured precondition, not an unconditional change of
+  behaviour. `return_case.return_details_required` defaults to **false**, which is
+  exactly what the platform did before; turning it on makes the case wait
+  `return_details_wait_seconds` for a selection and park if none arrives. Turning
+  it on changes when a human is contacted, which is an operator's decision.
+  The wait is ended by a `return_details_recorded` signal sent by the write that
+  records the selection -- event-driven, so a counter conversation feels no delay.
+- **affected files:** `configuration/return_configuration.py`,
+  `workflows/return_case_workflow.py`, `workflows/return_case_launcher.py`,
+  `api/order_lines.py`.
+- **validated:** V-13.
+
+---
+
+## D-3 · Known baseline failures for this task
+
+Two, both measured with this task's changes **stashed**, so neither is
+attributable to it:
+
+| Failure | Evidence |
+|---|---|
+| `ruff I001` on `tests/dynamic_knowledge/test_a_turn_that_asks_is_not_complete.py:26` | Pre-dates the baseline commit. `ruff --fix` corrected it once as a side effect and the file was **reverted**: an unrelated import sort does not belong in this change. |
+| 5 ESLint errors -- `canonicalHandlers.contract.test.ts:64`, `schemaConformance.ts:71,77,254` | Identical output with the working tree stashed. |
+
+A gate reporting exactly these is a pass. Anything more is a regression.

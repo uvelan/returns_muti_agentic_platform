@@ -9798,6 +9798,17 @@
             "title": "Activereservationquantity",
             "type": "integer"
           },
+          "colour": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Colour"
+          },
           "completedReturnQuantity": {
             "minimum": 0.0,
             "title": "Completedreturnquantity",

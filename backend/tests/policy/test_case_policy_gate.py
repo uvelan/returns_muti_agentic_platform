@@ -131,6 +131,17 @@ class _Repository:
     async def list_case_facts(self, case_id: str) -> list[dict[str, Any]]:
         return [fact for fact in self.facts if fact["caseId"] == case_id]
 
+    async def list_case_return_items(self, case_id: str) -> list[dict[str, Any]]:
+        """No selection, and that is a real state rather than a gap in the double.
+
+        The gate under test runs before an associate has named a line, so the
+        handoff composed here reports the return information as incomplete --
+        which is what it should do -- instead of inventing an item to fill the
+        section.
+        """
+        del case_id
+        return []
+
     async def latest_case_facts(self, case_id: str) -> dict[str, dict[str, Any]]:
         latest: dict[str, dict[str, Any]] = {}
         for document in await self.list_case_facts(case_id):
@@ -349,9 +360,7 @@ def reviewing_configuration(
             "return_eligibility_policy": policy.model_copy(
                 update={
                     "standard_stock_return": policy.standard_stock_return.model_copy(
-                        update={
-                            "unstated_condition_facts": UnstatedConditionFacts.REVIEW_REQUIRED
-                        }
+                        update={"unstated_condition_facts": UnstatedConditionFacts.REVIEW_REQUIRED}
                     )
                 }
             )
@@ -460,6 +469,10 @@ async def _run_case(
     table: dict[str, Callable[[Any], Awaitable[Any]]] = {
         "record_case_status": activities.record_case_status,
         "resolve_business_deadline": activities.resolve_business_deadline,
+        # Named on the case before anything reads it. The double answers
+        # nothing -- it has no sales source -- which is exactly the
+        # degradation the activity is written to take.
+        "record_case_customer_identity": activities.record_case_customer_identity,
         "request_bay_assignment": activities.request_bay_assignment,
         "evaluate_case_eligibility": activities.evaluate_case_eligibility,
         "draft_support_request": activities.draft_support_request,
@@ -825,7 +838,9 @@ async def test_a_declared_route_queue_is_used(
 # ---------------------------------------------------------------------------
 
 
-def _claim_facts(*, delivery_date: str | None = "2026-08-15T09:00:00+00:00") -> list[dict[str, Any]]:
+def _claim_facts(
+    *, delivery_date: str | None = "2026-08-15T09:00:00+00:00"
+) -> list[dict[str, Any]]:
     """An approvable return re-reasoned as a shipping-damage delivery claim.
 
     The default delivery date is the morning of `NOW`, so the two-business-day
@@ -847,7 +862,9 @@ def _mon_fri(configuration: ReturnPlatformConfiguration) -> ReturnPlatformConfig
     the test can measure it.
     """
     (declared,) = [
-        calendar for calendar in configuration.business_calendars if calendar.calendar_id == "default"
+        calendar
+        for calendar in configuration.business_calendars
+        if calendar.calendar_id == "default"
     ]
     weekdays = tuple(
         period.model_copy(update={"weekday": weekday, "start_minute": 540, "end_minute": 1020})
@@ -965,7 +982,9 @@ async def test_an_undeterminable_window_keeps_the_desk_sla_and_says_that_it_did(
     assert harness.repository.value_of("policy_delivery_claim_window_state") == "UNDETERMINED"
     assert harness.repository.value_of("policy_delivery_claim_reporting_deadline") is None
     (work_item,) = harness.support.work_items.values()
-    assert work_item["slaDueAt"] is None, "a deadline was invented for a window nobody could compute"
+    assert work_item["slaDueAt"] is None, (
+        "a deadline was invented for a window nobody could compute"
+    )
     assert (
         harness.repository.value_of("support_sla_basis")
         == "DELIVERY_CLAIM_REPORTING_WINDOW_UNDETERMINED"
@@ -1066,6 +1085,10 @@ async def test_an_approving_override_lets_the_case_through(
         {
             "record_case_status": activities.record_case_status,
             "resolve_business_deadline": activities.resolve_business_deadline,
+            # Named on the case before anything reads it. The double answers
+            # nothing -- it has no sales source -- which is exactly the
+            # degradation the activity is written to take.
+            "record_case_customer_identity": activities.record_case_customer_identity,
             "request_bay_assignment": activities.request_bay_assignment,
             "evaluate_case_eligibility": activities.evaluate_case_eligibility,
             "draft_support_request": activities.draft_support_request,
@@ -1121,6 +1144,10 @@ async def test_a_rejecting_override_is_terminal_and_opens_nothing(
         {
             "record_case_status": activities.record_case_status,
             "resolve_business_deadline": activities.resolve_business_deadline,
+            # Named on the case before anything reads it. The double answers
+            # nothing -- it has no sales source -- which is exactly the
+            # degradation the activity is written to take.
+            "record_case_customer_identity": activities.record_case_customer_identity,
             "request_bay_assignment": activities.request_bay_assignment,
             "evaluate_case_eligibility": activities.evaluate_case_eligibility,
             "draft_support_request": activities.draft_support_request,
