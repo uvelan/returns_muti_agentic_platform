@@ -265,3 +265,41 @@ that was not run.
 
 The measured baseline at Wave 0 was **4025 passed, 3 skipped**. The suite is now
 **4040 passed, 3 skipped** -- fifteen added, none removed, none failing.
+
+## V-18 · Visual check of both screens
+
+Driven in the browser against the running stack, at 1600x900 and 760x1100.
+
+| Screen | Observed | Verdict |
+|---|---|---|
+| Support console, work item `8b2d9519` | All seven sections present, 50 lines, `white-space: pre`, `overflow-x: auto`, `scrollWidth 826` inside `clientWidth 355`; `document.body.scrollWidth === clientWidth`, so the bubble scrolls and the page does not | **PASS** |
+| Support console, case pane | `BAY RECOMMENDATION` with warehouse 686, bay `686-BAY-01`, return location, confidence, reason `RECOMMENDED`, capacity `LIVE`; *"No RMA has been issued for this case yet"* | **PASS** |
+| Copilot, conversation history | `Previous returns` opens and lists the driven cases with their statuses -- `CQ800002 / AWAITING_SUPPORT`, `CQ363350 / 1 RMA`, `CW273354 / 2 RMAs` | **PASS** |
+| Copilot, workflow progress | 3/6 milestones: 1 match, order `CQ800002`, customer `600911`, support ticket `8b2d9519`, facility `686`, bay `686-BAY-01`, resolution `AWAITING_SUPPORT` | **PASS** |
+| Support message header | `Current Workflow Status: GATHERING_INFO` beside a live `AWAITING_SUPPORT` | **FAILED -> F-18** |
+| Copilot evaluation pane | `Policy Evaluation Pending` on a suspended gate | **FAILED -> F-19** |
+| Copilot verified-facts panel | Reason, condition and the branch associate absent | **FAILED -> F-20** |
+
+After the three fixes, read back from the live DOM:
+
+- evaluation pane: `Policy Evaluation Skipped` / `No policy was applied to this
+  return` / `Basic return flow validation: eligibility gate suspended by the
+  operator.` / badge `SKIPPED` / `Applied Policy Code: Not evaluated` /
+  `Restocking Fee: Not evaluated`; neither `Pending` nor `Approved` appears;
+- verified facts: Order number `CQ800002`, Customer name `THELMA OSBORNE`,
+  Return reason `ORDERED_IN_ERROR`, Branch associate `Dana Reyes`, Branch
+  associate email `dana.reyes@example.com`, Branch associate phone `555-0142`,
+  Product condition `NEW_IN_ORIGINAL_PACKAGING`, Quantity `1`.
+
+The message already in the thread still reads `Current Workflow Status`: it was
+composed before F-18 was fixed and the log is not rewritten. The new label is
+covered by the composer's unit tests and applies to the next case.
+
+## V-19 · Gates after the UI fixes
+
+| Command | Result |
+|---|---|
+| `pytest tests -q` | **4040 passed, 3 skipped**, 217.26s |
+| `ruff check src scripts tests` | 1 error -- the known `I001` (D-3) |
+| `npx vitest run --maxWorkers=3` | **30 files, 477 passed** (was 471; six added) |
+| `npm run lint` | 5 errors -- all pre-existing (D-3) |

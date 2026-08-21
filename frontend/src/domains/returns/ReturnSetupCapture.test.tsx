@@ -28,6 +28,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as CasesModuleNamespace from "../../api/cases";
 import type * as OrderAgentModuleNamespace from "../../api/orderAgent";
 import type * as OrderLinesModuleNamespace from "../../api/orderLines";
+import type { CaseFactProjection } from "../../api/cases";
 import type { CapturedFact } from "../../api/orderAgent";
 import type { RuntimeConfig } from "../../api/runtimeConfig";
 import { APIError } from "../../api/client";
@@ -146,6 +147,24 @@ function Wrapper({ children }: { children: ReactNode }) {
 
 function captured(overrides: Partial<CapturedFact> & { name: string }): CapturedFact {
   return { status: "USABLE", acquisition: "STATED", ...overrides };
+}
+
+/** One entry of the case's own fact log, as the projection serves it. */
+function caseFact(
+  overrides: Partial<CaseFactProjection> & { factName: string },
+): CaseFactProjection {
+  return {
+    factId: `fact-${overrides.factName}`,
+    value: null,
+    channel: "CHANNEL_A",
+    acquisitionMethod: "STATED",
+    agentId: "return-copilot",
+    sourceSystem: null,
+    observedAt: "2026-08-21T10:00:00Z",
+    recordedAt: "2026-08-21T10:00:00Z",
+    supersedesFactId: null,
+    ...overrides,
+  };
 }
 
 beforeEach(() => {
@@ -271,7 +290,89 @@ describe("the extracted fields are the model's, not the agent's prose", () => {
       factOrder: PUBLISHED_FACT_ORDER,
     });
 
-    expect(fields).toMatchObject([{ label: "Quantity", value: "3", provenance: "RECORDED" }]);
+    expect(fields.filter((field) => field.label === "Quantity")).toMatchObject([
+      { label: "Quantity", value: "3", provenance: "RECORDED" },
+    ]);
+  });
+
+  it("shows the reason and the condition the selection recorded", () => {
+    // The panel's empty state promises a reason, and until this it could only
+    // show one the associate had said out loud. `POST /selected-items` records
+    // both against the return *item*, so a return set up in the item pane --
+    // which is how one is set up -- displayed neither.
+    const fields = extractedReturnFields({
+      captured: [],
+      projection: caseProjection({
+        selectedItems: [selectedItem({ reason: "ORDERED_IN_ERROR", condition: "USED" })],
+      }),
+      factOrder: PUBLISHED_FACT_ORDER,
+    });
+
+    expect(fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "Return reason",
+          value: "ORDERED_IN_ERROR",
+          provenance: "RECORDED",
+        }),
+        expect.objectContaining({
+          label: "Product condition",
+          value: "USED",
+          provenance: "RECORDED",
+        }),
+      ]),
+    );
+  });
+
+  it("prefers the recorded reason over the spoken one, and shows one row", () => {
+    // They should agree. Where they cannot, the copy everything downstream
+    // reads wins -- and two rows for one question would be worse than either.
+    const fields = extractedReturnFields({
+      captured: [captured({ name: "return_reason", value: "said something else" })],
+      projection: caseProjection({
+        selectedItems: [selectedItem({ reason: "ORDERED_IN_ERROR" })],
+      }),
+      factOrder: PUBLISHED_FACT_ORDER,
+    });
+
+    const reasons = fields.filter((field) => field.label === "Return reason");
+    expect(reasons).toMatchObject([
+      { value: "ORDERED_IN_ERROR", provenance: "RECORDED" },
+    ]);
+  });
+
+  it("shows the branch associate the case recorded", () => {
+    // Three case facts `POST /selected-items` writes, and no
+    // `clarification_policy` field names any of them -- so the panel never
+    // asked, and a contact collected for a carrier reached a database and not a
+    // screen.
+    const fields = extractedReturnFields({
+      captured: [],
+      projection: caseProjection({
+        facts: [
+          caseFact({ factName: "branch_associate_name", value: "Dana Reyes" }),
+          caseFact({ factName: "branch_associate_phone", value: "555-0142" }),
+        ],
+      }),
+      factOrder: PUBLISHED_FACT_ORDER,
+    });
+
+    expect(fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "Branch associate",
+          value: "Dana Reyes",
+          provenance: "RECORDED",
+        }),
+        expect.objectContaining({
+          label: "Branch associate phone",
+          value: "555-0142",
+          provenance: "RECORDED",
+        }),
+      ]),
+    );
+    // Absent is no row, never a blank one.
+    expect(fields.some((field) => field.label === "Branch associate email")).toBe(false);
   });
 
   it("bounds the quantity rows and counts what it left out", () => {
@@ -289,12 +390,17 @@ describe("the extracted fields are the model's, not the agent's prose", () => {
       factOrder: PUBLISHED_FACT_ORDER,
     });
 
-    expect(rows).toHaveLength(5);
+    const quantities = rows.filter((row) => row.label.startsWith("Quantity"));
+    expect(quantities).toHaveLength(5);
     // Last, and still attached to the lines it counts. The quantity rows move
     // through the ordering as one block for this reason: a counter sorted apart
     // from the rows it describes would report a bound over nothing in
     // particular.
-    expect(rows[4].value).toBe("3 further lines not shown");
+    expect(quantities[4].value).toBe("3 further lines not shown");
+    // The same bound, applied to every per-line value the selection carries.
+    expect(
+      rows.filter((row) => row.label.startsWith("Product condition")),
+    ).toHaveLength(5);
   });
 
   it("leaves the branch out entirely when the case has none", () => {
@@ -417,6 +523,7 @@ describe("the panel's order is the release's, not the client's", () => {
       "Branch",
       "Customer name",
       "Order number",
+      "Product condition",
       "Product sku",
       "Quantity",
       "Return reason",
@@ -424,10 +531,13 @@ describe("the panel's order is the release's, not the client's", () => {
   });
 
   it("puts the rows configuration cannot rank after the ones it can", () => {
-    // Quantity comes from the selection write and branch from the principal;
-    // no `clarification_policy` field names either, because neither is
-    // something an associate is ever asked for. They take the documented tail
-    // rather than a slot somebody picked.
+    // Quantity and condition come from the selection write and branch from the
+    // principal; no `clarification_policy` field names any of them, because
+    // none is something an associate is ever asked for in discovery. They take
+    // the documented alphabetical tail rather than a slot somebody picked.
+    //
+    // `return_reason` *is* ranked, and stays ranked whichever source supplied
+    // it -- which is why it leads here even though the selection recorded it.
     const fields = extractedReturnFields({
       captured: [captured({ name: "return_reason", value: "damaged" })],
       projection: caseProjection({
@@ -437,7 +547,12 @@ describe("the panel's order is the release's, not the client's", () => {
       factOrder: PUBLISHED_FACT_ORDER,
     });
 
-    expect(fields.map((field) => field.label)).toEqual(["Return reason", "Branch", "Quantity"]);
+    expect(fields.map((field) => field.label)).toEqual([
+      "Return reason",
+      "Branch",
+      "Product condition",
+      "Quantity",
+    ]);
   });
 });
 

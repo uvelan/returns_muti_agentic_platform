@@ -505,3 +505,87 @@ A gate reporting exactly these is a pass. Anything more is a regression.
   this before the code did; both now agree.
 - **affected files:** `tests/test_support_draft_carries_the_branch_associate.py`,
   `workflows/return_case_activities.py`
+
+---
+
+## F-18 · The request said its status was the one it was about to leave
+
+- **timestamp:** 2026-08-21
+- **found by:** reading the Support console in the browser
+- **evidence:** the delivered message read `Current Workflow Status:
+  GATHERING_INFO` while the case pane beside it read `AWAITING_SUPPORT`.
+- **finding:** mine, introduced with the composed request. The draft is composed
+  *before* the thread is opened and before `_set_status(AWAITING_SUPPORT)`, so a
+  field labelled "current" always disagrees with the live status shown next to
+  it -- and a reader comparing the two would be right to distrust one of them.
+- **decision:** every field in the message is a snapshot; this is the one where
+  saying so matters. Relabelled `Workflow Status at Handoff`, and the payload key
+  to `workflowStatusAtHandoff`. Not changed to the status it is *about* to have,
+  which would be a guess about the future dressed as a reading.
+- **affected files:** `operations/support_handoff.py`
+
+---
+
+## F-19 · A suspended policy gate was reported to the associate as pending
+
+- **timestamp:** 2026-08-21
+- **found by:** reading the Copilot's evaluation pane in the browser
+- **evidence:** the pane showed `Policy Evaluation Pending` under
+  `Authoritative Policy Engine`, with `Applied Policy Code: Pending` and
+  `Restocking Fee: Pending`, on a case whose gate had been suspended by
+  configuration.
+- **finding:** `ReturnEvaluationMode` takes only `PolicyEvaluationProjection`,
+  and a suspended gate produces none -- which is exactly what a case that has
+  not been evaluated *yet* looks like. Reading the second as the first tells an
+  associate a verdict is on its way when none is coming. The Support handoff got
+  this right; the associate's own screen did not.
+- **decision:** pass `policy_evaluation_state` and the operator's reason from the
+  case fact log -- `projectedFactString` is the established way this page reads a
+  projected fact -- and render `Policy Evaluation Skipped`, badge `SKIPPED`,
+  subtitle `No policy was applied to this return`, with the reason beneath it and
+  `Not evaluated` in place of `Pending`. A real evaluation always wins over the
+  state fact, so a stale fact cannot displace a decision.
+- **caught by the repository's own guard:** the first attempt wrote
+  `policySkipReason ?? "Suspended by configuration"`, and
+  `ReturnCopilotFabrication.test.ts` refused it -- a literal fallback on a
+  business value is a reason nobody gave. The reason now renders only when it
+  exists.
+- **affected files:** `domains/returns/modes/ReturnEvaluationMode.tsx`,
+  `domains/returns/ReturnCopilotPage.tsx`
+
+---
+
+## F-20 · The verified-facts panel could not show the return details it promised
+
+- **timestamp:** 2026-08-21
+- **found by:** the operator asking where the quantity, reason and branch details
+  had gone
+- **evidence:** the panel showed order number, customer name and quantity. Its
+  own empty state promises *"SKU, quantity, colour or finish, **reason** and
+  order number"*. The case carried `branch_associate_name`,
+  `branch_associate_email` and `branch_associate_phone` as facts, and
+  `selectedItems[0]` carried `reason: ORDERED_IN_ERROR` and
+  `condition: NEW_IN_ORIGINAL_PACKAGING`.
+- **finding:** three separate causes, and only the quantity had been solved:
+  1. **Return reason** is a configured fact (`clarification_policy` ranks it last
+     of eighteen), so the panel *asked* for it -- and looked for a case fact of
+     that name, which nothing writes. `POST /selected-items` records it against
+     the return **item**.
+  2. **Product condition** is on the item too and is named by no configured
+     field, so nothing asked for it at all.
+  3. **The branch associate's three contact facts** are on the case fact log, but
+     no configured field names them either, so the panel's
+     configured-plus-captured union never reached them. The existing "Branch" row
+     is a different thing entirely -- the principal's branch id.
+  A contact collected because a carrier needs it reached a database and not a
+  screen, which is the same failure `test_support_draft_carries_the_branch_associate`
+  exists to prevent on the Support side.
+- **decision:** read reason and condition from the selection the way quantity
+  already is, bounded the same way. Reason keeps its configured rank whichever
+  source supplied it and prefers the recorded copy over the spoken one, so a case
+  holding both shows one row. Condition and the three contact rows take the
+  documented alphabetical tail, because no configured field names them.
+- **affected files:** `domains/returns/extractedFields.ts`
+- **validated:** live -- the panel now reads Order number, Customer name, Return
+  reason, Branch associate, Branch associate email, Branch associate phone,
+  Product condition, Quantity.

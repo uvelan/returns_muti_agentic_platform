@@ -252,7 +252,13 @@ def compose_support_handoff(
     sections.append(
         _line("Created Date/Time", created_at.isoformat() if created_at is not None else None)
     )
-    sections.append(_line("Current Workflow Status", workflow_status))
+    # "at handoff", not "current". The request is composed *before* the thread is
+    # opened and before the case moves to `AWAITING_SUPPORT`, so a field labelled
+    # current would always disagree with the live status shown beside it -- a
+    # reader comparing the two would be right to distrust one of them. Every
+    # field in this message is a snapshot; this is the one where saying so
+    # matters.
+    sections.append(_line("Workflow Status at Handoff", workflow_status))
     sections.append("")
 
     sections.append("Customer:")
@@ -314,7 +320,7 @@ def compose_support_handoff(
         "caseId": case_id,
         "workItemId": work_item_id,
         "createdAt": created_at.isoformat() if created_at is not None else None,
-        "workflowStatus": _clean(workflow_status),
+        "workflowStatusAtHandoff": _clean(workflow_status),
         "customer": {
             "name": _clean(customer.name),
             "reference": _clean(customer.reference),

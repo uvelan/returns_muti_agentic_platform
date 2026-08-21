@@ -205,6 +205,58 @@ describe("Return Copilot 8-Mode Lifecycle Contract", () => {
       expect(screen.getAllByText("Pending").length).toBeGreaterThan(0);
     });
 
+    it("Mode 4: a suspended gate is skipped, not pending, and not approved", () => {
+      // Two different absences wearing one shape. A deployment can turn the gate
+      // off through `policy_evaluation.enabled`, and the evaluator then produces
+      // no route and no decision -- exactly what a case that has not been
+      // evaluated *yet* looks like. Reading the second as the first tells an
+      // associate a verdict is coming when none is.
+      render(
+        <ReturnEvaluationMode
+          evaluation={null}
+          policyEvaluationState="SKIPPED_BY_CONFIGURATION"
+          policySkipReason="Eligibility gate suspended by the operator."
+        />,
+      );
+
+      expect(screen.getByText("Policy Evaluation Skipped")).toBeInTheDocument();
+      expect(screen.getByText("SKIPPED")).toBeInTheDocument();
+      expect(screen.getByText("No policy was applied to this return")).toBeInTheDocument();
+      // The operator's own words reach the associate, as they reach Support.
+      expect(screen.getByText("Eligibility gate suspended by the operator.")).toBeInTheDocument();
+      // Neither of the two things it must never say.
+      expect(screen.queryByText("Policy Evaluation Pending")).toBeNull();
+      expect(screen.queryByText("Return Eligible · Policy Approved")).toBeNull();
+      expect(screen.getAllByText("Not evaluated").length).toBeGreaterThan(0);
+    });
+
+    it("Mode 4: a real evaluation is never overridden by the state fact", () => {
+      // Defensive: the fact exists to tell one absence from another, and a case
+      // carrying a stale state fact beside a real decision must show the
+      // decision.
+      render(
+        <ReturnEvaluationMode
+          evaluation={policyEvaluation()}
+          policyEvaluationState="SKIPPED_BY_CONFIGURATION"
+          policySkipReason="stale"
+        />,
+      );
+
+      expect(screen.getByText("Return Eligible · Policy Approved")).toBeInTheDocument();
+      expect(screen.queryByText("Policy Evaluation Skipped")).toBeNull();
+      expect(screen.queryByText("stale")).toBeNull();
+    });
+
+    it("Mode 4: a skipped gate with no recorded reason invents none", () => {
+      render(
+        <ReturnEvaluationMode evaluation={null} policyEvaluationState="SKIPPED_BY_CONFIGURATION" />,
+      );
+
+      expect(screen.getByText("Policy Evaluation Skipped")).toBeInTheDocument();
+      expect(screen.getByText("No policy was applied to this return")).toBeInTheDocument();
+      expect(screen.queryByText(/Suspended by configuration/i)).toBeNull();
+    });
+
     it("Mode 4: offers no control that would issue the RMA", () => {
       // The button that stood here submitted the words "authorize rma" into the
       // discovery conversation. By the time this pane is drawn the workflow has

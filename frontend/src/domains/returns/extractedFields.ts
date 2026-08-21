@@ -117,6 +117,20 @@ const SETTLED = "USABLE";
 const ORDER_FACT = "order_number";
 
 /**
+ * The configured fact whose value the *selection* carries rather than the
+ * conversation.
+ *
+ * `clarification_policy` ranks `return_reason` last of eighteen, so the panel
+ * has always asked for it -- and always looked for a case fact of that name,
+ * which nothing writes. `POST /selected-items` records the reason against the
+ * return **item**, so a return set up through the item pane rather than said
+ * out loud showed no reason at all, under an empty state that promises one.
+ * Read from the selection first and from the conversation second, so a spoken
+ * reason still appears before the associate has committed a line.
+ */
+const REASON_FACT = "return_reason";
+
+/**
  * A captured value as one line of text, or `null` when there is nothing to show.
  *
  * Arrays are joined because an identification field configured `multiple: true`
@@ -308,6 +322,116 @@ function quantityBlock(projection: CaseProjection | null): FactBlock | null {
 }
 
 /**
+ * One value the selection recorded per line, bounded the way quantity is.
+ *
+ * `label` is singular when one line carries the value and carries the line
+ * reference when several do, for the same reason quantity does: two lines
+ * returned for different reasons are two reasons, and collapsing them would
+ * state one the case does not hold.
+ */
+function selectionRows(
+  projection: CaseProjection | null,
+  key: string,
+  label: string,
+  read: (item: NonNullable<CaseProjection["selectedItems"]>[number]) => string | null,
+): readonly ExtractedField[] {
+  const named = (projection?.selectedItems ?? []).flatMap((item) => {
+    const value = text(read(item));
+    return value === null ? [] : [{ item, value }];
+  });
+  const shown = named.slice(0, MAX_QUANTITY_ROWS);
+  const hidden = named.length - shown.length;
+
+  const rows: ExtractedField[] = shown.map(({ item, value }) => ({
+    key: `${key}-${item.returnItemId}`,
+    label: named.length === 1 ? label : `${label} · line ${item.orderLineReference}`,
+    value,
+    provenance: "RECORDED" as const,
+    unsettledBecause: null,
+  }));
+  if (hidden > 0) {
+    rows.push({
+      key: `${key}-remainder`,
+      label,
+      value: `${String(hidden)} further line${hidden === 1 ? "" : "s"} not shown`,
+      provenance: "RECORDED",
+      unsettledBecause: null,
+    });
+  }
+  return rows;
+}
+
+/**
+ * Why the goods are coming back: the selection's answer, else the associate's.
+ *
+ * Ranked, because `return_reason` is a configured fact -- so it sorts where the
+ * release put it rather than in the unranked tail, whichever source supplied it.
+ */
+function reasonBlock(
+  captured: readonly CapturedFact[],
+  projection: CaseProjection | null,
+  facts: readonly CaseFactProjection[] | null,
+): FactBlock | null {
+  const recorded = selectionRows(projection, "reason", "Return reason", (item) => item.reason);
+  if (recorded.length > 0) {
+    return { factName: REASON_FACT, label: "Return reason", rows: recorded };
+  }
+  return block(conversationalField(REASON_FACT, captured, facts), REASON_FACT);
+}
+
+/**
+ * What state the goods are in, as the associate recorded it against each line.
+ *
+ * Unranked: no `clarification_policy` field names a product condition, because
+ * it is not something the agent asks for in discovery -- it is chosen in the
+ * item pane from the released condition catalogue. Tail-placed by the same rule
+ * as quantity.
+ */
+function conditionBlock(projection: CaseProjection | null): FactBlock | null {
+  const rows = selectionRows(projection, "condition", "Product condition", (item) => item.condition);
+  if (rows.length === 0) return null;
+  return { factName: null, label: "Product condition", rows };
+}
+
+/**
+ * The branch associate a carrier can reach about this return.
+ *
+ * Recorded on the case fact log by `POST /selected-items`, and until now
+ * invisible: no `clarification_policy` field names these three, so the panel's
+ * configured-plus-captured union never asked for them and the values reached a
+ * database and not a screen. They are exactly what this panel is for -- a value
+ * the platform wrote against the case, shown as `RECORDED` -- and every one of
+ * them is optional, so an absent one is simply no row.
+ */
+const CONTACT_FACTS: readonly (readonly [string, string])[] = [
+  ["branch_associate_name", "Branch associate"],
+  ["branch_associate_email", "Branch associate email"],
+  ["branch_associate_phone", "Branch associate phone"],
+];
+
+function contactBlocks(facts: readonly CaseFactProjection[] | null): readonly FactBlock[] {
+  return CONTACT_FACTS.flatMap(([name, label]) => {
+    const value = text(factByName(facts, name)?.value);
+    if (value === null) return [];
+    return [
+      {
+        factName: null,
+        label,
+        rows: [
+          {
+            key: name,
+            label,
+            value,
+            provenance: "RECORDED" as const,
+            unsettledBecause: null,
+          },
+        ],
+      },
+    ];
+  });
+}
+
+/**
  * The branch, when the case has one.
  *
  * Optional by operator instruction, and absent whenever the principal is scoped
@@ -424,12 +548,17 @@ export function extractedReturnFields(input: {
   const names = new Set<string>([...factOrder, ...captured.map((fact) => fact.name)]);
 
   const blocks = [
-    ...[...names].map((name) =>
-      name === ORDER_FACT
-        ? block(orderField(captured, projection), ORDER_FACT)
-        : block(conversationalField(name, captured, facts), name),
-    ),
+    ...[...names].map((name) => {
+      if (name === ORDER_FACT) return block(orderField(captured, projection), ORDER_FACT);
+      // Two configured names whose value the *selection* carries. Routed here
+      // rather than emitted as extra blocks so a case that has both a recorded
+      // and a spoken copy shows one row, at the rank the release gave the name.
+      if (name === REASON_FACT) return reasonBlock(captured, projection, facts);
+      return block(conversationalField(name, captured, facts), name);
+    }),
     quantityBlock(projection),
+    conditionBlock(projection),
+    ...contactBlocks(facts),
     branchBlock(projection),
   ].flatMap((entry) => (entry === null ? [] : [entry]));
 

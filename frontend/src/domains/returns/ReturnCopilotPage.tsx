@@ -1009,6 +1009,18 @@ export function ReturnCopilotPage() {
             {activeMode === "RETURN_EVALUATION" && (
               <ReturnEvaluationMode
                 evaluation={projection?.policyEvaluation ?? null}
+                // A gate the deployment has suspended produces no evaluation to
+                // project, and the pane read that absence as "Pending" -- a
+                // verdict on its way when none is coming. The state is on the
+                // fact log because that is where the activity records it.
+                policyEvaluationState={projectedFactString(
+                  projection?.facts,
+                  "policy_evaluation_state",
+                )}
+                policySkipReason={projectedFactString(
+                  projection?.facts,
+                  "policy_evaluation_skip_reason",
+                )}
                 awaiting={projection?.awaiting ?? []}
                 support={projection?.support ?? null}
                 // No `onIssueRma`. It submitted the words "authorize rma" into

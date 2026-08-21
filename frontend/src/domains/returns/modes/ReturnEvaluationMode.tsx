@@ -44,6 +44,19 @@ import type {
 
 export type ReturnEvaluationModeProps = {
   evaluation?: PolicyEvaluationProjection | null;
+  /**
+   * `policy_evaluation_state` off the case, for the one state that has no
+   * `PolicyEvaluationProjection` and is not pending either.
+   *
+   * A deployment can suspend the gate through `policy_evaluation.enabled`. The
+   * evaluator then never runs, so there is no route and no decision to project
+   * -- and this pane read that absence as "Pending", which tells an associate a
+   * verdict is on its way when none is coming. It is reported as skipped
+   * instead, with the operator's stated reason, which is what the Support
+   * handoff says about the same case.
+   */
+  policyEvaluationState?: string | null;
+  policySkipReason?: string | null;
   /** What the platform is still waiting for. Drives the verification hand-off text. */
   awaiting?: readonly AwaitingDimension[];
   support?: SupportProjection | null;
@@ -53,27 +66,44 @@ export type ReturnEvaluationModeProps = {
 
 const PENDING = "Pending";
 
+/** The gate did not run, and will not. Distinct from "has not run yet". */
+const SKIPPED_BY_CONFIGURATION = "SKIPPED_BY_CONFIGURATION";
+const NOT_EVALUATED = "Not evaluated";
+
 /** Applicability, which is knowable. Never a rate the contract does not carry. */
-function restockingFee(evaluation: PolicyEvaluationProjection | null): string {
+function restockingFee(
+  evaluation: PolicyEvaluationProjection | null,
+  skipped: boolean,
+): string {
   const conditions = evaluation?.conditions ?? [];
   if (conditions.includes("RESTOCKING_FEE_WAIVED")) return "Waived";
   if (conditions.includes("RESTOCKING_FEE_APPLIES")) {
     return "Applies · rate set by seller configuration";
   }
-  return PENDING;
+  return skipped ? NOT_EVALUATED : PENDING;
 }
 
 /** The applied policy, as the release that decided it. */
-function appliedPolicy(evaluation: PolicyEvaluationProjection | null): string {
+function appliedPolicy(
+  evaluation: PolicyEvaluationProjection | null,
+  skipped: boolean,
+): string {
   const policyId = evaluation?.policyId ?? null;
   const version = evaluation?.policyVersion ?? null;
-  if (policyId === null) return PENDING;
+  if (policyId === null) return skipped ? NOT_EVALUATED : PENDING;
   return version === null ? policyId : `${policyId} · ${version}`;
 }
 
 function headline(
   evaluation: PolicyEvaluationProjection | null,
+  skipped: boolean,
 ): { title: string; badge: string; tone: "approved" | "review" | "rejected" } {
+  if (skipped) {
+    // Not approved and not pending. The gate was switched off, so no rule was
+    // applied to this return -- which a human downstream has to know, because it
+    // is the check they would otherwise assume had happened.
+    return { title: "Policy Evaluation Skipped", badge: "SKIPPED", tone: "review" };
+  }
   if (evaluation === null) {
     return { title: "Policy Evaluation Pending", badge: PENDING, tone: "review" };
   }
@@ -106,12 +136,18 @@ function headline(
 
 export function ReturnEvaluationMode({
   evaluation = null,
+  policyEvaluationState = null,
+  policySkipReason = null,
   awaiting = [],
   support = null,
   onApproveOverride,
   onRequestException,
 }: ReturnEvaluationModeProps) {
-  const { title, badge, tone } = headline(evaluation);
+  // An evaluation that *did* run wins over the state fact. The fact is how the
+  // one state with no projection is told apart from a case whose evaluation has
+  // simply not happened yet; it must never override a real decision.
+  const skipped = evaluation === null && policyEvaluationState === SKIPPED_BY_CONFIGURATION;
+  const { title, badge, tone } = headline(evaluation, skipped);
   const isApproved = tone === "approved";
   const isRejected = tone === "rejected";
   const overridable =
@@ -143,7 +179,23 @@ export function ReturnEvaluationMode({
             )}
             <div>
               <h3 className="text-sm font-bold text-on-surface">{title}</h3>
-              <span className="text-xs text-outline font-medium">Authoritative Policy Engine</span>
+              {/*
+                Whose authority. On a skipped gate there is none, so the line
+                says what is true of the case rather than naming an engine that
+                did not run.
+              */}
+              <span className="text-xs text-outline font-medium">
+                {skipped ? "No policy was applied to this return" : "Authoritative Policy Engine"}
+              </span>
+              {/*
+                The operator's own words, rendered only when they exist. A
+                default here would be a reason nobody gave -- which is the
+                fabrication `ReturnCopilotFabrication.test.ts` refuses, and it
+                was right to catch the first attempt at this line.
+              */}
+              {skipped && policySkipReason ? (
+                <p className="mt-0.5 text-xs text-outline">{policySkipReason}</p>
+              ) : null}
             </div>
           </div>
 
@@ -171,12 +223,12 @@ export function ReturnEvaluationMode({
         <dl className="flex flex-col gap-2.5 text-xs">
           <div className="flex justify-between border-b border-outline-variant/15 pb-2">
             <dt className="text-outline">Applied Policy Code</dt>
-            <dd className="font-mono font-bold text-on-surface">{appliedPolicy(evaluation)}</dd>
+            <dd className="font-mono font-bold text-on-surface">{appliedPolicy(evaluation, skipped)}</dd>
           </div>
 
           <div className="flex justify-between border-b border-outline-variant/15 pb-2">
             <dt className="text-outline">Restocking Fee</dt>
-            <dd className="font-semibold text-on-surface">{restockingFee(evaluation)}</dd>
+            <dd className="font-semibold text-on-surface">{restockingFee(evaluation, skipped)}</dd>
           </div>
 
           <div className="flex justify-between border-b border-outline-variant/15 pb-2">
