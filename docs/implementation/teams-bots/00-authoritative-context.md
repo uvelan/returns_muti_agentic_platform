@@ -4,7 +4,7 @@
 Immutable after Wave 0 except factual path/hash corrections.
 
 ```
-context_version: 1
+context_version: 2
 contracts_hash: fad9b246a3788aa965585d4143e5973a812efb369871674f675e8bba32891118
 baseline_commit: 47f5abd7fad4e9f0e2c890ef7e762b37e45296e6
 baseline_branch: refactor/unified-return-platform
@@ -14,7 +14,8 @@ authoritative_plan: TEAMS_BOTS_PARALLEL_IMPLEMENTATION_PLAN.md (user-supplied)
 
 The plan document is authoritative for **design**. This file is authoritative for
 **repository facts**. Where they disagree, the decision ledger resolves it — two
-such conflicts are already recorded as D-1 and D-2. Do not rescan the repository
+such conflicts are recorded as D-1 and D-2, and two ownership collisions as
+D-4 and D-5. File ownership is `06-ownership.md`. Do not rescan the repository
 for anything recorded here.
 
 ---

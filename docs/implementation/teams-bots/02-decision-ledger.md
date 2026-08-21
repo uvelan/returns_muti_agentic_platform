@@ -72,3 +72,52 @@ historical pass count. The baseline for commit
 `47f5abd7fad4e9f0e2c890ef7e762b37e45296e6` is measured on a clean tree and
 recorded in `05-verification-ledger.md`. **No agent may quote a pass total from
 chat history or from an earlier draft plan as an acceptance criterion.**
+
+---
+
+## D-4 · `workers/integration_outbox.py` has one writer: Agent B
+
+**Raised by:** coordinator, Gate W0 ownership check. **Affects:** plan §6.
+**Agents:** B, C.
+
+**Conflict.** Plan §6 gives Agent B `workers/integration_outbox.py` (dispatcher
+registration, lines 69-133) and gives Agent C "reconciliation worker logic" — which
+lives in `_reconciliation_sweep` **in that same file** (line 166). Gate W0 requires
+that no two agents share a writable file.
+
+**Decision.** **Agent B owns the file outright.** Agent C ships reconciliation as a
+callable in its own module under the saga package and exposes it as a single entry
+point; Agent B wires that call into `_reconciliation_sweep`. Agent C never edits
+`workers/integration_outbox.py`.
+
+Rationale: the file is the dispatcher registration site, which B edits for both
+topics, and the sweep is a host rather than the logic. One writer, one merge
+target, and the reconciliation logic stays unit-testable without the worker.
+
+---
+
+## D-5 · The support-outcome enqueue belongs to Agent C, not Agent B
+
+**Raised by:** coordinator, Gate W0 ownership check. **Affects:** plan §6.
+**Agents:** B, C.
+
+**Conflict.** Plan §6 makes Agent B responsible for "workflow-opened and
+committed-support-outcome producers", while Agent C owns the Mongo transaction in
+`operations/support_events.py`. The support-outcome outbox row **must be written
+inside that transaction** (C6) — so the producer and the transaction are the same
+edit, in a file only one of them can own.
+
+**Decision.** Split the two producers by where they must live:
+
+| Producer | Owner | File |
+|---|---|---|
+| Channel B opened → workflow card | **B** | `workflows/return_case_activities.py` |
+| Support outcome committed → support card | **C** | `operations/support_events.py`, inside the existing `session.with_transaction(...)` |
+| Both dispatchers (delivery) | **B** | `operations/integrations/` + registration |
+
+Agent B freezes the topic strings and idempotency-key formats in C5; Agent C uses
+them verbatim. `DurableSupportEventStore.outbox_idempotency_key` already exists
+(`support_events.py:266`) and is the pattern to follow.
+
+Rationale: enqueueing outside C's transaction would reopen the dual-write window
+the saga exists to close. Delivery stays entirely with B.

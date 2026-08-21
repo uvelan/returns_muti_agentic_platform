@@ -54,3 +54,20 @@ the Windows final gate.
   accepted as a handoff.
 - Full-repository gates run **once** at the Windows integration gate and **once**
   at the Linux final gate. Implementation tasks run scoped tests only.
+
+---
+
+## Gate W0 — PASSED
+
+| Check | Evidence |
+|---|---|
+| All Wave 0 tasks complete | `03-task-board.md`, W0-1 … W0-7, zero unfinished rows |
+| Every referenced path exists or has a creation target | verified; `services/teams-gateway/`, `teams-apps/`, `docs/implementation/teams-bots/` declared as creation targets |
+| No two agents share a writable file | `06-ownership.md`, 12 declared paths, **0 collisions** after D-4 and D-5 |
+| Contracts define message schemas and error mappings | C1–C8 in `01-frozen-contracts.md`, including the full Bot Connector → outbox status table |
+| Each agent has a scoped test command | `03-task-board.md` § Scoped test commands, 3 commands |
+| Baseline measured on a clean tree | 4025 passed, 3 skipped; 1 known ruff error BF-1 |
+| Integration branch and worktrees from one baseline | `feat/teams-bots-windows-first` @ `56fd1f5`; `task/teams-gateway`, `task/teams-platform-integration`, `task/teams-rma-saga` |
+
+Two conflicts and two ownership collisions were found and resolved **before** any
+agent started, which is what this gate is for. Wave 1 may begin.

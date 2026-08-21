@@ -1,7 +1,7 @@
 # 03 · Task board
 
 **Writer:** coordinator only. Single source for status, owner, dependencies and
-commit hashes. `context_version: 1`.
+commit hashes. `context_version: 2`.
 
 Status values: `NOT_STARTED | IN_PROGRESS | BLOCKED | COMPLETE`.
 A task is `COMPLETE` only with an accepted handoff carrying a commit hash, a file
@@ -18,7 +18,8 @@ list and a scoped test result.
 | W0-3 | Create context directory and seven files | Coordinator | COMPLETE | this directory |
 | W0-4 | Record measured test baseline | Coordinator | COMPLETE | 4025 passed, 3 skipped; 1 known ruff error BF-1 |
 | W0-5 | Compute contracts hash, set `context_version` | Coordinator | COMPLETE | `context_version=1`, hash recorded in 00 |
-| W0-6 | Create integration branch and three worktrees | Coordinator | NOT_STARTED | |
+| W0-6 | Create integration branch and three worktrees | Coordinator | COMPLETE | `feat/teams-bots-windows-first` @ `56fd1f5`; 3 worktrees |
+| W0-7 | Resolve ownership collisions | Coordinator | COMPLETE | D-4, D-5; `06-ownership.md` |
 
 **Gate W0** — all six complete, no overlapping writable files, every contract
 defines its schema and error mapping, every agent has a scoped test command.
