@@ -105,23 +105,53 @@ async def test_the_marker_delete_addresses_generation_id_and_is_status_guarded()
 
 
 @pytest.mark.asyncio
-async def test_the_quarantine_stamp_is_written_once_and_only_while_retired() -> None:
+async def test_the_quarantine_stamp_is_written_once_and_only_in_its_own_status() -> None:
     """Re-stamping on every pass would restart the window each interval.
 
     A generation would then never age out of quarantine: housekeeping would run
     forever and reclaim nothing, which is indistinguishable from working.
+
+    The status is the caller's, not a literal. It was hardcoded to RETIRED, and
+    the moment the reclaimer widened to FAILED and the abandoned build statuses
+    that would have matched zero rows -- the stamp never landing, every later
+    pass reading "quarantine starts now", and the widening silently cancelled by
+    its own guard.
     """
     driver = _Driver()
     adapter = Neo4jGenerationReclamationAdapter(driver)
     observed = datetime.now(UTC)
 
-    await adapter.mark_reclaim_eligible(graph_generation_id="g-1", observed_at=observed)
+    await adapter.mark_reclaim_eligible(
+        graph_generation_id="g-1", status="FAILED", observed_at=observed
+    )
 
     cypher, parameters = driver.statements[0]
     assert "g.reclaim_eligible_since IS NULL" in cypher
     assert "status: $status" in cypher
-    assert parameters["status"] == "RETIRED"
+    assert parameters["status"] == "FAILED"
     assert parameters["observedAt"] == observed
+
+
+@pytest.mark.asyncio
+async def test_the_status_transition_is_a_compare_and_set_on_the_marker() -> None:
+    """A generation that moved under us is left alone, not dragged backwards.
+
+    `generation_id` addresses the marker; `graph_generation_id` addresses its
+    projected nodes. Confusing the two reads as a transition that ran fine and
+    moved nothing.
+    """
+    driver = _Driver([{"moved": 1}])
+    adapter = Neo4jGenerationReclamationAdapter(driver)
+
+    moved = await adapter.transition_generation_status(
+        graph_generation_id="g-1", expected_status="ACTIVE", next_status="DRAINING"
+    )
+
+    cypher, parameters = driver.statements[0]
+    assert "generation_id: $generationId" in cypher
+    assert "status: $expected" in cypher
+    assert parameters == {"generationId": "g-1", "expected": "ACTIVE", "next": "DRAINING"}
+    assert moved is True
 
 
 @pytest.mark.asyncio

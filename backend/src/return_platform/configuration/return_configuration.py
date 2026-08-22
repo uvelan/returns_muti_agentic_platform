@@ -845,6 +845,35 @@ class GraphGenerationReclamationConfiguration(StrictConfigModel):
     #: Nodes per `DETACH DELETE`. A whole generation in one transaction is how a
     #: cleanup runs the page cache out of memory.
     node_delete_batch_size: int = Field(default=1_000, ge=100, le=50_000)
+    #: How long a generation may sit in a pre-ACTIVE build status before it is
+    #: treated as an abandoned build rather than one in progress.
+    #:
+    #: Reclaiming RETIRED alone left the real backlog untouched: this deployment
+    #: carries 218 `PREPARING` and 45 `FAILED` markers against 2 `RETIRED`, so a
+    #: perfectly healthy pass examined two and skipped 263. `PREPARING` through
+    #: `READY_FOR_ACTIVATION` are the states a rebuild that died mid-flight is
+    #: left parked in, and nothing else ever clears them.
+    #:
+    #: Six hours, and the floor matters more than the value: a live rebuild sits
+    #: in exactly these statuses, so this must comfortably exceed the longest
+    #: legitimate build. It is arithmetic rather than a lock -- taking the
+    #: rebuild lease here would block real rebuilds for a whole housekeeping
+    #: pass, and that lease is keyed per snapshot while candidates are per
+    #: generation.
+    abandoned_build_seconds: int = Field(default=21_600, ge=1_800)
+    #: How long an `ACTIVE` marker no `ActiveRuntimeSnapshot` points at may
+    #: persist before it is reconciled back onto the retirement path.
+    #:
+    #: Activation retires its predecessor *outside* the compare-and-swap, and
+    #: that retirement is documented never to raise -- so a crash between the two
+    #: leaves a marker `ACTIVE` forever with nothing to correct it. A marker also
+    #: legitimately carries `ACTIVE` briefly *before* the CAS during cutover, so
+    #: this window is what separates a live cutover from a stranded predecessor.
+    #:
+    #: Twenty-four hours, because being wrong here is worse in one direction:
+    #: reconciling a real cutover early would move a marker out from under a
+    #: generation about to serve.
+    orphaned_active_seconds: int = Field(default=86_400, ge=3_600)
 
 
 class ProbeDatabaseReclamationConfiguration(StrictConfigModel):

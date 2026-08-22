@@ -80,15 +80,27 @@ class Neo4jGenerationReclamationAdapter:
             return await session.execute_read(_list_by_status, status=status, limit=limit)
 
     async def mark_reclaim_eligible(
-        self, *, graph_generation_id: str, observed_at: datetime
+        self, *, graph_generation_id: str, status: str, observed_at: datetime
     ) -> datetime:
         async with self._driver.session(database=self._database) as session:
             await session.execute_write(
                 _mark_eligible,
                 graph_generation_id=graph_generation_id,
+                status=status,
                 observed_at=observed_at,
             )
         return observed_at
+
+    async def transition_generation_status(
+        self, *, graph_generation_id: str, expected_status: str, next_status: str
+    ) -> bool:
+        async with self._driver.session(database=self._database) as session:
+            return await session.execute_write(
+                _transition_status,
+                graph_generation_id=graph_generation_id,
+                expected_status=expected_status,
+                next_status=next_status,
+            )
 
     async def delete_generation_nodes(self, *, graph_generation_id: str, batch_size: int) -> int:
         async with self._driver.session(database=self._database) as session:
@@ -125,22 +137,49 @@ async def _list_by_status(
 
 
 async def _mark_eligible(
-    tx: _Transaction, *, graph_generation_id: str, observed_at: datetime
+    tx: _Transaction, *, graph_generation_id: str, status: str, observed_at: datetime
 ) -> None:
-    # Only when absent, and only while still RETIRED. Overwriting an existing
-    # stamp on every pass would restart the quarantine each interval and the
-    # generation would never age out of it -- a cleanup that runs forever and
-    # reclaims nothing.
+    # Only when absent, and only while still in the status it was assessed
+    # under. Overwriting an existing stamp on every pass would restart the
+    # quarantine each interval and the generation would never age out of it -- a
+    # cleanup that runs forever and reclaims nothing.
+    #
+    # The status is a parameter, not the literal "RETIRED" it used to be. With
+    # the literal, stamping a FAILED or PREPARING candidate matched zero rows:
+    # the stamp never landed, every later pass re-read "quarantine starts now",
+    # and the generation could never become eligible. The guard would have
+    # silently cancelled the widening it is guarding.
     await tx.run(
         "MATCH (g:GraphGeneration {generation_id: $generationId, status: $status}) "
         "WHERE g.reclaim_eligible_since IS NULL "
         "SET g.reclaim_eligible_since = $observedAt",
         {
             "generationId": graph_generation_id,
-            "status": "RETIRED",
+            "status": status,
             "observedAt": observed_at,
         },
     )
+
+
+async def _transition_status(
+    tx: _Transaction, *, graph_generation_id: str, expected_status: str, next_status: str
+) -> bool:
+    # Compare-and-set on the marker, so a generation that moved under us is left
+    # alone rather than dragged backwards. `generation_id` addresses the marker;
+    # `graph_generation_id` addresses its projected nodes, and confusing the two
+    # reads as a transition that ran fine and moved nothing.
+    result = await tx.run(
+        "MATCH (g:GraphGeneration {generation_id: $generationId, status: $expected}) "
+        "SET g.status = $next "
+        "RETURN count(g) AS moved",
+        {
+            "generationId": graph_generation_id,
+            "expected": expected_status,
+            "next": next_status,
+        },
+    )
+    rows = [dict(record) async for record in result]
+    return bool(rows) and int(rows[0]["moved"]) == 1
 
 
 async def _delete_nodes(tx: _Transaction, *, graph_generation_id: str, batch_size: int) -> int:

@@ -216,6 +216,8 @@ def build_housekeeping_cycle(
             retention_seconds=block.retention_seconds,
             batch_limit=block.batch_limit,
             node_delete_batch_size=block.node_delete_batch_size,
+            abandoned_build_seconds=block.abandoned_build_seconds,
+            orphaned_active_seconds=block.orphaned_active_seconds,
         )
 
     def probe_database_factory() -> Reclaimer | None:

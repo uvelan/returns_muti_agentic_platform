@@ -30,6 +30,8 @@ class _Graph:
         self._generations = generations
         self._nodes = dict(nodes or {})
         self.stamped: list[str] = []
+        self.stamped_with_status: list[tuple[str, str]] = []
+        self.transitions: list[tuple[str, str, str]] = []
         self.deleted_markers: list[str] = []
         self.node_delete_calls: list[tuple[str, int]] = []
 
@@ -41,13 +43,32 @@ class _Graph:
         )[:limit]
 
     async def mark_reclaim_eligible(
-        self, *, graph_generation_id: str, observed_at: datetime
+        self, *, graph_generation_id: str, status: str, observed_at: datetime
     ) -> datetime:
+        # The status is recorded, not ignored. The real Cypher guards the stamp
+        # on it, so a double that accepted anything would hide a mismatched
+        # guard -- the exact failure that made the widening a no-op.
         self.stamped.append(graph_generation_id)
+        self.stamped_with_status.append((graph_generation_id, status))
         for generation in self._generations:
             if generation["graph_generation_id"] == graph_generation_id:
+                if generation["status"] != status:
+                    return observed_at
                 generation.setdefault("reclaim_eligible_since", observed_at)
         return observed_at
+
+    async def transition_generation_status(
+        self, *, graph_generation_id: str, expected_status: str, next_status: str
+    ) -> bool:
+        for generation in self._generations:
+            if (
+                generation["graph_generation_id"] == graph_generation_id
+                and generation["status"] == expected_status
+            ):
+                generation["status"] = next_status
+                self.transitions.append((graph_generation_id, expected_status, next_status))
+                return True
+        return False
 
     async def delete_generation_nodes(self, *, graph_generation_id: str, batch_size: int) -> int:
         self.node_delete_calls.append((graph_generation_id, batch_size))
@@ -115,6 +136,8 @@ def _reclaimer(
     retention_seconds: float = 3_600,
     node_delete_batch_size: int = 1_000,
     batch_limit: int = 5,
+    abandoned_build_seconds: float = 21_600,
+    orphaned_active_seconds: float = 86_400,
 ) -> GraphGenerationReclaimer:
     return GraphGenerationReclaimer(
         graph=graph,
@@ -123,7 +146,64 @@ def _reclaimer(
         retention_seconds=retention_seconds,
         batch_limit=batch_limit,
         node_delete_batch_size=node_delete_batch_size,
+        abandoned_build_seconds=abandoned_build_seconds,
+        orphaned_active_seconds=orphaned_active_seconds,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status",
+    [
+        GraphGenerationStatus.ACTIVE,
+        GraphGenerationStatus.DRAINING,
+    ],
+)
+async def test_a_generation_still_in_play_is_never_deleted(
+    status: GraphGenerationStatus,
+) -> None:
+    """DRAINING is the one this matters most for.
+
+    `_retire` leaves a generation parked in DRAINING when its drain times out --
+    "still reachable by someone, left for operator review". Reclaiming it would
+    delete data out from under exactly the reader that caused the timeout.
+
+    ACTIVE is here for a different reason: it is examined, but reconciled onto
+    the retirement path rather than deleted, so no marker and no node of it may
+    be removed by this pass either.
+    """
+    graph = _Graph([_generation("g1", status=status)])
+    outcome = await _reclaimer(graph).reclaim_once()
+
+    assert graph.deleted_markers == []
+    assert graph.node_delete_calls == []
+    assert outcome.reclaimed == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status",
+    [
+        GraphGenerationStatus.RETIRED,
+        GraphGenerationStatus.FAILED,
+    ],
+)
+async def test_a_terminal_generation_past_its_quarantine_is_reclaimed(
+    status: GraphGenerationStatus,
+) -> None:
+    """FAILED joins RETIRED, and that is the point of the widening.
+
+    A rebuild that dies leaves its candidate FAILED, terminal and unreferenced,
+    and nothing else in the platform ever clears one. Reclaiming only RETIRED
+    left 45 of them on this deployment against 2 RETIRED.
+    """
+    stale = datetime.now(UTC) - timedelta(hours=48)
+    graph = _Graph([_generation("g1", status=status, eligible_since=stale)], nodes={"g1": 3})
+
+    outcome = await _reclaimer(graph).reclaim_once()
+
+    assert graph.deleted_markers == ["g1"]
+    assert outcome.reclaimed == 1
 
 
 @pytest.mark.asyncio
@@ -135,27 +215,108 @@ def _reclaimer(
         GraphGenerationStatus.CATCHING_UP,
         GraphGenerationStatus.VALIDATING,
         GraphGenerationStatus.READY_FOR_ACTIVATION,
-        GraphGenerationStatus.ACTIVE,
-        GraphGenerationStatus.DRAINING,
-        GraphGenerationStatus.FAILED,
     ],
 )
-async def test_only_retired_generations_are_even_listed(
+async def test_a_build_status_inside_its_age_floor_is_left_alone(
     status: GraphGenerationStatus,
 ) -> None:
-    """DRAINING is the one this matters most for.
+    """A live rebuild sits in exactly these statuses.
 
-    `_retire` leaves a generation parked in DRAINING when its drain times out --
-    "still reachable by someone, left for operator review". Reclaiming it would
-    delete data out from under exactly the reader that caused the timeout.
+    The floor excludes one arithmetically, in place of a lock this pass has no
+    safe way to take: the rebuild lease is keyed per snapshot while candidates
+    are per generation, and holding it would block real rebuilds for a whole
+    housekeeping pass.
     """
-    graph = _Graph([_generation("g1", status=status)])
-    outcome = await _reclaimer(graph).reclaim_once()
+    recent = datetime.now(UTC) - timedelta(hours=2)
+    graph = _Graph([_generation("g1", status=status, eligible_since=recent)], nodes={"g1": 3})
+
+    outcome = await _reclaimer(graph, abandoned_build_seconds=21_600).reclaim_once()
 
     assert graph.deleted_markers == []
     assert outcome.reclaimed == 0
-    if status is not GraphGenerationStatus.RETIRED:
-        assert outcome.examined == 0
+
+
+@pytest.mark.asyncio
+async def test_an_abandoned_build_past_the_floor_is_reclaimed() -> None:
+    """218 PREPARING markers accumulated on this deployment in eleven days."""
+    stale = datetime.now(UTC) - timedelta(hours=48)
+    graph = _Graph(
+        [_generation("g1", status=GraphGenerationStatus.PREPARING, eligible_since=stale)],
+        nodes={"g1": 2},
+    )
+
+    outcome = await _reclaimer(graph, abandoned_build_seconds=21_600).reclaim_once()
+
+    assert graph.deleted_markers == ["g1"]
+    assert outcome.reclaimed == 1
+
+
+@pytest.mark.asyncio
+async def test_the_quarantine_stamp_carries_the_status_it_was_assessed_under() -> None:
+    """A literal RETIRED here would silently cancel the whole widening.
+
+    The real Cypher guards the stamp on status, so stamping a FAILED candidate
+    as RETIRED matches zero rows: the stamp never lands, every later pass reads
+    "quarantine starts now", and the generation can never become eligible -- a
+    cleanup that runs forever and frees nothing.
+    """
+    graph = _Graph([_generation("g1", status=GraphGenerationStatus.FAILED)])
+
+    await _reclaimer(graph).reclaim_once()
+
+    assert graph.stamped_with_status == [("g1", "FAILED")]
+
+
+@pytest.mark.asyncio
+async def test_an_orphaned_active_marker_is_reconciled_rather_than_deleted() -> None:
+    """Activation retires its predecessor outside the compare-and-swap.
+
+    `_retire` is documented never to raise, so a crash between the two leaves a
+    marker ACTIVE with nothing to correct it -- ten of them on this deployment
+    against one serving generation. It moves to DRAINING, where the ordinary
+    gates then apply; deleting it directly would skip the lease checks.
+    """
+    stale = datetime.now(UTC) - timedelta(days=3)
+    graph = _Graph(
+        [_generation("orphan", status=GraphGenerationStatus.ACTIVE, eligible_since=stale)],
+        nodes={"orphan": 5},
+    )
+
+    outcome = await _reclaimer(graph).reclaim_once()
+
+    assert graph.transitions == [("orphan", "ACTIVE", "DRAINING")]
+    assert graph.deleted_markers == []
+    assert graph.node_delete_calls == []
+    assert outcome.details["orphaned_active_reconciled"] == 1
+
+
+@pytest.mark.asyncio
+async def test_the_serving_generation_is_never_reconciled() -> None:
+    """A marker legitimately carries ACTIVE before the compare-and-swap.
+
+    Reconciling one a snapshot does point at would move the marker out from
+    under a generation that is about to serve.
+    """
+    stale = datetime.now(UTC) - timedelta(days=3)
+    graph = _Graph(
+        [_generation(_ACTIVE_ID, status=GraphGenerationStatus.ACTIVE, eligible_since=stale)]
+    )
+
+    outcome = await _reclaimer(graph).reclaim_once()
+
+    assert graph.transitions == []
+    assert outcome.details["orphaned_active_reconciled"] == 0
+
+
+@pytest.mark.asyncio
+async def test_a_recently_orphaned_active_marker_waits_out_its_window() -> None:
+    """The stamp is what tells a live cutover from a stranded predecessor."""
+    graph = _Graph([_generation("orphan", status=GraphGenerationStatus.ACTIVE)])
+
+    await _reclaimer(graph).reclaim_once()
+
+    assert graph.transitions == []
+    assert graph.stamped_with_status == [("orphan", "ACTIVE")]
 
 
 @pytest.mark.asyncio
