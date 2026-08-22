@@ -6616,6 +6616,8 @@ export interface components {
             failureReason?: string | null;
             /** Graphgenerationid */
             graphGenerationId?: string | null;
+            /** Heartbeatat */
+            heartbeatAt?: string | null;
             /** Id */
             id: string;
             /** Mode */
@@ -6660,7 +6662,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "RUNNING" | "COMPLETED" | "FAILED";
+            status: "RUNNING" | "COMPLETED" | "FAILED" | "STALLED";
         };
         /**
          * GraphSyncScope
@@ -12415,6 +12417,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["APIResponse_GraphSyncRunView_"];
                 };
+            };
+            /** @description A graph sync is already running and still reporting. Declared rather than merely raised: a client cannot handle a status the contract does not mention. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -10,12 +10,13 @@ labels, or write Cypher; see the source-to-graph alignment plan's Step 8.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import uuid
 from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -190,7 +191,18 @@ class SourceWatermarkView(GraphSyncModel):
 class GraphSyncRunView(GraphSyncModel):
     id: str
     mode: str
-    status: Literal["RUNNING", "COMPLETED", "FAILED"]
+    #: `STALLED` is what a run whose process died becomes.
+    #:
+    #: It was RUNNING, COMPLETED or FAILED, and FAILED is only ever reached by
+    #: an exception propagating -- so a worker that was killed mid-run left its
+    #: row RUNNING forever. One had been RUNNING for fifteen hours with zero
+    #: node writes when the audit found it, and the operator's only view of
+    #: graph freshness said the rebuild was in progress.
+    #:
+    #: Distinct from FAILED on purpose: FAILED means the sync ran and did not
+    #: work, STALLED means nobody knows, because the thing that would have
+    #: reported went away. They call for different operator responses.
+    status: Literal["RUNNING", "COMPLETED", "FAILED", "STALLED"]
     schemaVersion: str
     sourceCounts: dict[str, int]
     nodeWrites: int = Field(ge=0)
@@ -201,6 +213,10 @@ class GraphSyncRunView(GraphSyncModel):
     startedBy: str
     startedAt: datetime
     completedAt: datetime | None = None
+    #: Refreshed while the run is working. Absence on a RUNNING row means the
+    #: row predates heartbeating, not that the run is dead -- the reaper treats
+    #: `startedAt` as the fallback so an old row still terminalizes.
+    heartbeatAt: datetime | None = None
     # The generation the run actually wrote into. For a destructive rebuild this
     # is the *new* generation the run built and activated, not the one that was
     # serving when it started -- which is the question an operator reading the
@@ -257,6 +273,20 @@ class GraphSyncRunView(GraphSyncModel):
 
 
 GRAPH_SYNC_RUNS_COLLECTION = "graph_sync_runs"
+
+#: How often a working run says it is still here.
+#:
+#: Short relative to the stall window below, so a run has to miss several beats
+#: before anything concludes it is gone -- a single slow Mongo write must not
+#: terminalize a healthy rebuild.
+SYNC_HEARTBEAT_SECONDS = 15
+
+#: How long a RUNNING row may go unconfirmed before it is treated as stalled.
+#:
+#: Ten missed beats. A full rebuild holds the event loop through long source
+#: scans, so the margin is deliberately generous: reaping a live run is worse
+#: than leaving a dead one a few minutes longer.
+SYNC_STALL_SECONDS = 150
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -588,6 +618,67 @@ class _CountingConnector:
             yield page
 
 
+class MongoSyncRunLedger:
+    """The `graph_sync_runs` collection, as terminalizing a stalled run needs it.
+
+    Separate from `GraphSyncService` so housekeeping does not have to build one.
+    The service needs two Mongo clients, a Neo4j driver and a schema registry --
+    everything required to *perform* a sync -- and a pass that only reads and
+    updates one collection should not construct any of it.
+
+    It lives in this module rather than beside the reclaimer because the
+    collection and the meaning of RUNNING belong here, and a second module
+    holding that filter would be a second opinion about when a run is alive.
+    """
+
+    def __init__(self, collection: Any) -> None:
+        self._runs = collection
+
+    async def list_unconfirmed_running(
+        self, *, cutoff: datetime, limit: int
+    ) -> tuple[dict[str, Any], ...]:
+        """RUNNING rows nothing has confirmed since `cutoff`.
+
+        The `heartbeatAt: None` arm is for rows written before heartbeating
+        existed. Without it they would match nothing and stay RUNNING forever --
+        which is the exact condition being fixed, preserved for every row that
+        already has it.
+        """
+        cursor = self._runs.find(
+            {
+                "status": "RUNNING",
+                "$or": [
+                    {"heartbeatAt": {"$lte": cutoff}},
+                    {"heartbeatAt": None, "startedAt": {"$lte": cutoff}},
+                ],
+            }
+        ).limit(limit)
+        return tuple([document async for document in cursor])
+
+    async def mark_stalled(self, *, run_id: str, observed_at: datetime) -> bool:
+        """Terminalize one unconfirmed run. Guarded, so a live one is safe.
+
+        Still filtered on RUNNING: a run that finished between the listing and
+        this write has already recorded its own outcome, and overwriting it
+        would replace a real result with a guess.
+        """
+        result = await self._runs.update_one(
+            {"_id": run_id, "status": "RUNNING"},
+            {
+                "$set": {
+                    "status": "STALLED",
+                    "errorCode": "SYNC_RUN_STALLED",
+                    "failureReason": (
+                        "The run stopped reporting. Its process most likely went "
+                        "away mid-sync; the graph may hold a partial rebuild."
+                    ),
+                    "completedAt": observed_at,
+                }
+            },
+        )
+        return bool(result.modified_count)
+
+
 class GraphSyncService:
     """Rebuildable graph projection writer. Source systems remain authoritative."""
 
@@ -797,7 +888,9 @@ class GraphSyncService:
             "recordScope": "INCREMENTAL" if request.incremental else "FULL",
             "skippedSources": [],
         }
+        document["heartbeatAt"] = now
         await self._runs.insert_one(document)
+        heartbeat = asyncio.create_task(self._heartbeat(run_id))
         try:
             constraints = await self._apply_constraints() if request.applySchema else []
 
@@ -836,7 +929,7 @@ class GraphSyncService:
             await self._runs.update_one({"_id": run_id}, {"$set": document})
             stored = await self._runs.find_one({"_id": run_id})
             return self._view(stored if stored is not None else document)
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001 - re-raised below, after recording
             document.update(
                 {
                     "status": "FAILED",
@@ -856,6 +949,54 @@ class GraphSyncService:
                 document["cutoverStage"] = error.stage
             await self._runs.update_one({"_id": run_id}, {"$set": document})
             raise
+        finally:
+            heartbeat.cancel()
+
+    async def _heartbeat(self, run_id: str) -> None:
+        """Say the process is still here, until it is not.
+
+        This is what makes a killed run recoverable. The ledger row is written
+        RUNNING and only an exception propagating ever moves it, so a worker
+        that is killed -- rather than one that fails -- leaves a row that claims
+        to be in progress for as long as the collection survives. A heartbeat
+        turns "the row says RUNNING" into "the row said RUNNING and nothing has
+        confirmed it since", which is a question a reaper can answer.
+
+        Cancelled in `finally`, so a completed run stops beating before its
+        terminal status is read rather than racing it.
+        """
+        while True:
+            try:
+                await asyncio.sleep(SYNC_HEARTBEAT_SECONDS)
+                await self._runs.update_one(
+                    {"_id": run_id, "status": "RUNNING"},
+                    {"$set": {"heartbeatAt": _now()}},
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - a missed beat must never fail the run
+                _LOGGER.warning(
+                    "graph_sync_heartbeat_failed", extra={"run_id": run_id}, exc_info=True
+                )
+
+    async def active_run(self) -> dict[str, Any] | None:
+        """The run currently working, or None.
+
+        "Currently" means RUNNING *and* beating. A row whose heartbeat has gone
+        stale is not a reason to refuse a new sync -- that is exactly the state
+        the fifteen-hour row was in, and treating it as active would have made
+        the graph unrebuildable until somebody edited Mongo by hand.
+        """
+        cutoff = _now() - timedelta(seconds=SYNC_STALL_SECONDS)
+        return await self._runs.find_one(
+            {
+                "status": "RUNNING",
+                "$or": [
+                    {"heartbeatAt": {"$gt": cutoff}},
+                    {"heartbeatAt": None, "startedAt": {"$gt": cutoff}},
+                ],
+            }
+        )
 
     async def apply_migration_plan(
         self, plan: MigrationPlan, *, actor_id: str

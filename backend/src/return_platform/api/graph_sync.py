@@ -108,7 +108,19 @@ async def read_run(
     return APIResponse(data=run, meta=_meta(request))
 
 
-@router.post("/runs", response_model=APIResponse[GraphSyncRunView])
+@router.post(
+    "/runs",
+    response_model=APIResponse[GraphSyncRunView],
+    responses={
+        status.HTTP_409_CONFLICT: {
+            "description": (
+                "A graph sync is already running and still reporting. Declared "
+                "rather than merely raised: a client cannot handle a status the "
+                "contract does not mention."
+            )
+        }
+    },
+)
 async def start_run(
     payload: GraphSyncRequest,
     request: Request,
@@ -134,6 +146,27 @@ async def start_run(
     error propagates, so the list is truthful either way.
     """
     service = _service(request)
+
+    # One rebuild at a time, and "at a time" means beating rather than merely
+    # marked RUNNING. The handler had no concurrency guard at all, so a second
+    # "Sync now" started a concurrent full rebuild against a graph already being
+    # rebuilt -- and the screen showed a fifteen-hour-old RUNNING row as the
+    # latest run, which is exactly the state an operator would press it in.
+    #
+    # A stale row is deliberately not a reason to refuse: treating one as active
+    # would have made the graph unrebuildable until somebody edited Mongo by
+    # hand, which is a worse failure than the one being prevented.
+    active = await service.active_run()
+    if active is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "GRAPH_SYNC_ALREADY_RUNNING",
+                "message": "A graph sync is already running.",
+                "runId": str(active.get("_id") or ""),
+            },
+        )
+
     try:
         return APIResponse(data=await service.sync(payload, actor_id=actor_id), meta=_meta(request))
     except Exception as error:

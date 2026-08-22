@@ -27,6 +27,10 @@ from return_platform.configuration.return_configuration import (
     HousekeepingConfiguration,
 )
 from return_platform.configuration.settings import Settings
+from return_platform.data_platform.graph.sync_service import (
+    GRAPH_SYNC_RUNS_COLLECTION,
+    MongoSyncRunLedger,
+)
 from return_platform.dynamic_knowledge.lifecycle.lease_store import (
     GENERATION_LEASES_COLLECTION,
     MongoGenerationLeaseStore,
@@ -58,6 +62,8 @@ from return_platform.housekeeping.probe_databases import (
     RESOURCE_CLASS as PROBE_DATABASE_CLASS,
 )
 from return_platform.housekeeping.probe_databases import ProbeDatabaseReclaimer
+from return_platform.housekeeping.sync_runs import RESOURCE_CLASS as STALLED_SYNC_RUN_CLASS
+from return_platform.housekeeping.sync_runs import StalledSyncRunReclaimer
 from return_platform.housekeeping.temporal_executions import (
     RESOURCE_CLASS as TEMPORAL_EXECUTION_CLASS,
 )
@@ -272,6 +278,22 @@ def build_housekeeping_cycle(
             batch_limit=configuration.ai_interceptions.batch_limit,
         )
 
+    def stalled_sync_run_factory() -> Reclaimer | None:
+        configuration = configuration_provider()
+        if not configuration.enabled or not configuration.stalled_sync_runs.enabled:
+            return None
+        if mongo is None:
+            return None
+        settings = settings_provider()
+        # The ledger: `graph_sync_runs` belongs to it, and a second
+        # reader of that collection here would be a second opinion about what
+        # RUNNING means.
+        return StalledSyncRunReclaimer(
+            ledger=MongoSyncRunLedger(mongo[settings.mongo_database][GRAPH_SYNC_RUNS_COLLECTION]),
+            stall_seconds=configuration.stalled_sync_runs.stall_seconds,
+            batch_limit=configuration.stalled_sync_runs.batch_limit,
+        )
+
     return HousekeepingCycle(
         (
             (TEMPORAL_EXECUTION_CLASS, temporal_factory),
@@ -279,5 +301,6 @@ def build_housekeeping_cycle(
             (PROBE_DATABASE_CLASS, probe_database_factory),
             (ORDER_LINE_RESERVATION_CLASS, order_line_reservation_factory),
             (AI_INTERCEPTION_CLASS, interception_expiry_factory),
+            (STALLED_SYNC_RUN_CLASS, stalled_sync_run_factory),
         )
     )

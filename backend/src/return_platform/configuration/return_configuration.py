@@ -876,6 +876,26 @@ class GraphGenerationReclamationConfiguration(StrictConfigModel):
     orphaned_active_seconds: int = Field(default=86_400, ge=3_600)
 
 
+class StalledSyncRunConfiguration(StrictConfigModel):
+    """When a graph-sync run that stopped reporting is called stalled.
+
+    `GraphSyncService.sync` records COMPLETED on success and FAILED when an
+    exception propagates. Both need the process to still exist, so a worker that
+    is killed mid-rebuild leaves its row RUNNING permanently -- one had been
+    RUNNING for fifteen hours with zero node writes when the audit found it, and
+    the console presented it as the latest run.
+
+    `stall_seconds` is measured against the run's heartbeat, not its age: a full
+    rebuild is legitimately RUNNING for a long time, so elapsed time alone says
+    nothing. Generous by design -- reaping a live rebuild is a worse outcome than
+    leaving a dead one visible for a few more minutes.
+    """
+
+    enabled: bool = True
+    stall_seconds: int = Field(default=150, ge=60)
+    batch_limit: int = Field(default=20, ge=1, le=1_000)
+
+
 class ProbeDatabaseReclamationConfiguration(StrictConfigModel):
     """Which SQL Server databases housekeeping may drop.
 
@@ -963,6 +983,10 @@ class HousekeepingConfiguration(StrictConfigModel):
     )
     graph_generations: GraphGenerationReclamationConfiguration = Field(
         default_factory=GraphGenerationReclamationConfiguration
+    )
+    #: Terminalizing graph-sync runs whose process went away.
+    stalled_sync_runs: StalledSyncRunConfiguration = Field(
+        default_factory=StalledSyncRunConfiguration
     )
     probe_databases: ProbeDatabaseReclamationConfiguration = Field(
         default_factory=ProbeDatabaseReclamationConfiguration

@@ -9243,6 +9243,18 @@
             ],
             "title": "Graphgenerationid"
           },
+          "heartbeatAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heartbeatat"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -9364,7 +9376,8 @@
             "enum": [
               "RUNNING",
               "COMPLETED",
-              "FAILED"
+              "FAILED",
+              "STALLED"
             ],
             "title": "Status",
             "type": "string"
@@ -21893,6 +21906,9 @@
               }
             },
             "description": "Successful Response"
+          },
+          "409": {
+            "description": "A graph sync is already running and still reporting. Declared rather than merely raised: a client cannot handle a status the contract does not mention."
           },
           "422": {
             "content": {

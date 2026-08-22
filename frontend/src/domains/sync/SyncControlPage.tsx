@@ -158,8 +158,16 @@ function Pane({ title, children }: { title: string; children: React.ReactNode })
 }
 
 function StatusPill({ status }: { status: SyncRun["status"] }) {
+  // STALLED reads as a failure, because operationally it is one: the run
+  // stopped reporting and the graph may hold a partial rebuild. It is a
+  // separate status rather than FAILED because the responses differ -- FAILED
+  // points at the source data, STALLED points at the worker -- but neither is
+  // a run an operator should read as still in progress.
+  //
+  // Before this, a run whose process died stayed RUNNING forever and the pill
+  // said so. One had been RUNNING for fifteen hours with zero node writes.
   const tone =
-    status === "FAILED"
+    status === "FAILED" || status === "STALLED"
       ? "border-error text-error"
       : status === "RUNNING"
         ? "border-primary text-primary"

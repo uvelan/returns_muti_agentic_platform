@@ -20,7 +20,18 @@ import { apiClient } from "./client";
 /** Which sources a run covered. `ON_DEMAND` is one record, fetched for an agent. */
 export type SyncRunMode = "FULL" | "SOURCE_MONGODB" | "SQLSERVER" | "ON_DEMAND";
 
-export type SyncRunStatus = "RUNNING" | "COMPLETED" | "FAILED";
+/**
+ * `STALLED` is what a run whose process died becomes.
+ *
+ * The ledger row is written RUNNING and only an exception propagating ever
+ * moved it, so a worker that was killed mid-rebuild left a row claiming to be
+ * in progress indefinitely -- one had been RUNNING for fifteen hours with zero
+ * node writes. A housekeeping pass now terminalizes unconfirmed runs.
+ *
+ * Separate from FAILED because the operator response differs: FAILED means the
+ * sync ran and did not work, STALLED means nobody knows.
+ */
+export type SyncRunStatus = "RUNNING" | "COMPLETED" | "FAILED" | "STALLED";
 
 /**
  * Which *records* a run read, as opposed to which sources it covered.

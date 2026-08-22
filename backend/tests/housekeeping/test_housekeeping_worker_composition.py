@@ -115,6 +115,9 @@ async def test_the_real_composition_root_builds_a_runnable_cycle() -> None:
         "probe-database",
         "order-line-reservation",
         "ai-interception",
+        # Sixth, and a deliberate edit. The ordering is pinned so a new
+        # reclaimer has to be declared here rather than merely appearing.
+        "stalled-sync-run",
     ]
     assert result.reclaimed == 0
     temporal = next(o for o in result.outcomes if o.resource_class == TEMPORAL_CLASS)

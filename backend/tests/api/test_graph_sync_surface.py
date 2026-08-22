@@ -94,6 +94,7 @@ class StubSyncService:
     def __init__(self) -> None:
         self.runs = [_targeted_run(), _scheduled_run()]
         self.started: list[GraphSyncRequest] = []
+        self.active: dict[str, object] | None = None
         self.actors: list[str] = []
         self.fail_with: Exception | None = None
 
@@ -112,6 +113,12 @@ class StubSyncService:
         self.started.append(request)
         self.actors.append(actor_id)
         return _scheduled_run()
+
+    async def active_run(self) -> dict[str, object] | None:
+        # None unless a test says otherwise. "Currently running" means RUNNING
+        # *and* beating: a row whose heartbeat has gone stale must not make the
+        # graph unrebuildable.
+        return self.active
 
 
 @pytest.fixture
@@ -246,3 +253,41 @@ def test_a_platform_without_the_databases_answers_503_rather_than_raising() -> N
 
     assert response.status_code == 503
     assert response.json()["detail"]["code"] == "GRAPH_SYNC_UNAVAILABLE"
+
+
+def test_a_second_sync_is_refused_while_one_is_running(
+    service: StubSyncService, admin_client: TestClient
+) -> None:
+    """The handler had no concurrency guard at all.
+
+    A second "Sync now" started a concurrent full rebuild against a graph
+    already being rebuilt -- and the screen showed a fifteen-hour-old RUNNING
+    row as the latest run, which is exactly the state an operator would press it
+    in.
+    """
+    service.active = {"_id": "run-already-going"}
+
+    response = admin_client.post("/api/graph-sync/runs", json={"mode": "FULL"})
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "GRAPH_SYNC_ALREADY_RUNNING"
+    assert response.json()["detail"]["runId"] == "run-already-going"
+    assert service.started == []
+
+
+def test_a_stale_run_does_not_block_a_new_sync(
+    service: StubSyncService, admin_client: TestClient
+) -> None:
+    """A row nobody has confirmed is not a reason to refuse.
+
+    Treating one as active would have made the graph unrebuildable until
+    somebody edited Mongo by hand -- a worse failure than the one being
+    prevented. `active_run` answers None for a stale row, and this asserts the
+    handler trusts that rather than re-deriving it.
+    """
+    service.active = None
+
+    response = admin_client.post("/api/graph-sync/runs", json={"mode": "FULL"})
+
+    assert response.status_code == 200
+    assert len(service.started) == 1

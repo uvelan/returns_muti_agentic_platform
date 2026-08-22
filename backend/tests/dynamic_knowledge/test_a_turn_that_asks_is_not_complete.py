@@ -29,10 +29,10 @@ import pytest
 from pydantic import ValidationError
 
 from return_platform.dynamic_knowledge.knowledge.evidence import (
+    TERMINAL_STATUSES,
     ResponseStatement,
     StatementType,
     StructuredAgentResponse,
-    TERMINAL_STATUSES,
 )
 
 
