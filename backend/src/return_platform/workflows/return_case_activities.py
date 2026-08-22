@@ -47,7 +47,10 @@ from return_platform.operations.case_projection.assembly import (
 )
 from return_platform.operations.case_projection.completion import ReturnMethodRequirementTable
 from return_platform.operations.case_projection.projection import project_case
-from return_platform.operations.case_projection.vocabulary import SupportOutcome
+from return_platform.operations.case_projection.vocabulary import (
+    ReturnRecordStatus,
+    SupportOutcome,
+)
 from return_platform.operations.errors import ConcurrencyConflictError
 from return_platform.operations.models import FactAcquisition, FactChannel
 from return_platform.operations.order_lines.case_detail import (
@@ -1649,7 +1652,7 @@ class ReturnCaseActivities:
                     return_record_id=plan.record_id,
                     case_id=request.case_id,
                     return_reference=plan.incoming.return_reference,
-                    status="ISSUED",
+                    status=ReturnRecordStatus.ISSUED.value,
                     source_system="RETURN_SUPPORT",
                 )
             except Exception:  # noqa: BLE001 - a replay, or a concurrent writer

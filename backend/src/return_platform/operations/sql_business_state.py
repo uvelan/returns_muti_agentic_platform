@@ -88,6 +88,11 @@ class ReturnRecordWrite:
 
     return_record_id: str
     return_reference: str
+    #: One of `ReturnRecordStatus`, and the same vocabulary the Mongo record
+    #: carries. Spelled as its value rather than typed as the enum because this
+    #: dataclass crosses the activity boundary and is serialized; the constraint
+    #: that actually enforces it is `CK_return_record_status` in
+    #: `sql_migrations/005_case_return_records.sql`, which this default matches.
     record_status: str = "ISSUED"
     source_system: str = "RETURN_SUPPORT"
     label_reference: str | None = None

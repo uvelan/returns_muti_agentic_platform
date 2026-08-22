@@ -46,6 +46,7 @@ __all__ = [
     "NormalizedReturnMethod",
     "ReturnArtifactType",
     "ReturnCaseStatus",
+    "ReturnRecordStatus",
     "SettlementStatus",
     "ShipmentStatus",
     "StageRegressionReason",
@@ -218,6 +219,41 @@ class SettlementStatus(StrEnum):
     NOT_INTEGRATED = "NOT_INTEGRATED"
     PENDING = "PENDING"
     SETTLED = "SETTLED"
+
+
+class ReturnRecordStatus(StrEnum):
+    """Where one issued RMA stands.
+
+    Declared because it was not. `operations/order_lines/availability.py` records
+    rejecting this field as a classification input on exactly that ground -- "a
+    free string written as `DRAFT` by the repository and `ISSUED` by the
+    workflow, with no declared vocabulary and nothing that would fail if a new
+    value appeared" -- and then had to classify on case status instead.
+
+    The members are the SQL CHECK constraint's, verbatim:
+    `CK_return_record_status` in `sql_migrations/005_case_return_records.sql:85`
+    admits `ISSUED`, `CANCELLED` and `CLOSED`. Taking the vocabulary from the
+    constraint rather than inventing one beside it is the point: the two stores
+    that hold this field previously agreed only by coincidence of two separate
+    hardcoded literals -- `return_case_activities.py:1652` for MongoDB and the
+    `ReturnRecordWrite.record_status` default for SQL -- and a value legal in one
+    could have been rejected by the other.
+
+    **`DRAFT` is deliberately absent.** `case_repository.create_return_record`
+    carries it as a parameter default, but its one production caller always
+    passes `ISSUED` explicitly, so no record has ever held it. Admitting a member
+    nothing writes would make the vocabulary describe the code's history rather
+    than its states.
+
+    `CANCELLED` and `CLOSED` are admitted and currently unwritten. That is the
+    opposite case and it is intentional: the constraint already accepts them, so
+    a writer that starts using one must not be rejected by a narrower Python
+    view of the same column.
+    """
+
+    ISSUED = "ISSUED"
+    CANCELLED = "CANCELLED"
+    CLOSED = "CLOSED"
 
 
 class SupportOutcome(StrEnum):
