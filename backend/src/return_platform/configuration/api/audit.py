@@ -9,9 +9,20 @@ from typing import Any, Final, Literal, cast
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from pymongo import DESCENDING, AsyncMongoClient
+from pymongo.errors import PyMongoError
 
 from return_platform.configuration.process_adoption import HEARTBEAT_PROCESS_CLASSES
 from return_platform.configuration.settings import Settings
+from return_platform.data_platform.graph.sync_service import (
+    GRAPH_SYNC_RUNS_COLLECTION,
+    SYNC_STALL_SECONDS,
+)
+from return_platform.dynamic_knowledge.lifecycle.mongo_store import (
+    ACTIVE_RUNTIME_SNAPSHOTS_COLLECTION,
+)
+from return_platform.operations.alerts import OperationalReading
+from return_platform.operations.alerts import evaluate as evaluate_alerts
+from return_platform.operations.integrations.outbox import INTEGRATION_OUTBOX_COLLECTION
 from return_platform.resources import RuntimeResources
 from return_platform.security.authorization import require_read_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
@@ -150,6 +161,49 @@ class AuditService:
             seedVersion=self._settings.seed_version,
         )
 
+    async def _operational_reading(self) -> OperationalReading:
+        """Measure what this process can reach, and say nothing about the rest.
+
+        Every reading is optional and a failure to take one leaves it `None`,
+        which evaluates to `NOT_VALIDATED`. A `try` that turned a broken query
+        into a zero would report the healthiest possible number for the case
+        where the thing measuring is itself broken.
+        """
+        database = (
+            self._resources.mongo[self._settings.mongo_database] if self._resources.mongo else None
+        )
+        if database is None:
+            return OperationalReading()
+
+        outbox_depth: int | None = None
+        try:
+            outbox_depth = await database[INTEGRATION_OUTBOX_COLLECTION].count_documents(
+                {"publishedAt": None}
+            )
+        except PyMongoError:
+            outbox_depth = None
+
+        stalled: int | None = None
+        try:
+            cutoff = datetime.now(UTC) - timedelta(seconds=SYNC_STALL_SECONDS)
+            stalled = await database[GRAPH_SYNC_RUNS_COLLECTION].count_documents(
+                {"status": "RUNNING", "heartbeatAt": {"$lt": cutoff}}
+            )
+        except PyMongoError:
+            stalled = None
+
+        serving: int | None = None
+        try:
+            serving = await database[ACTIVE_RUNTIME_SNAPSHOTS_COLLECTION].count_documents({})
+        except PyMongoError:
+            serving = None
+
+        return OperationalReading(
+            outbox_depth=outbox_depth,
+            stalled_sync_runs=stalled,
+            serving_snapshots=serving,
+        )
+
     async def hardening(self) -> HardeningSummary:
         checks: list[HardeningCheck] = []
         governance = self.governance()
@@ -209,6 +263,20 @@ class AuditService:
                 if not missing_workers
                 else f"Missing heartbeats: {', '.join(missing_workers)}.",
             )
+        )
+        # The six operational conditions, on the surface that already rolls
+        # checks into one status. A second observability authority beside this
+        # one would be the duplicate this programme keeps deleting, and these
+        # are per-condition rather than per-entity, so the check list stays the
+        # same length however bad the day is.
+        checks.extend(
+            HardeningCheck(
+                id=result.id,
+                status=result.status,
+                evidence="operational-reading" if result.value is not None else "not-measured",
+                details=result.details,
+            )
+            for result in evaluate_alerts(await self._operational_reading())
         )
         checks.append(
             HardeningCheck(

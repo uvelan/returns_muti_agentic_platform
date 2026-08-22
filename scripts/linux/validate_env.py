@@ -138,9 +138,29 @@ def _validate_permissions(path: Path) -> None:
                 continue
             principals.add(line.split(":(", 1)[0].casefold())
         if current_identity.casefold() not in principals or not principals.issubset(allowed):
+            # Say which principals are wrong and how to fix it.
+            #
+            # The POSIX branch below ends with "run chmod 600 .env"; this one
+            # ended with the rule and nothing else, so an operator meeting it had
+            # a refusal with no supported way forward. That is where the audit
+            # stopped on Windows: correctly declining to change a security
+            # setting it had not been told to change, and having nothing else to
+            # try.
+            #
+            # The rule is not relaxed -- a broadly readable `.env` holds the
+            # platform's credentials, and the check is right to refuse. What
+            # changes is that the refusal is actionable.
+            unexpected = sorted(principals - allowed)
+            detail = (
+                f"unexpected principals: {', '.join(unexpected)}"
+                if unexpected
+                else f"{current_identity} has no entry of its own"
+            )
             raise ValueError(
                 ".env Windows ACL must grant access only to the current user, "
-                "SYSTEM, and Administrators"
+                f"SYSTEM, and Administrators ({detail}). Tighten it with: "
+                f'icacls "{path}" /inheritance:r '
+                f'/grant:r "{current_identity}:F" "SYSTEM:F" "Administrators:F"'
             )
         return
 

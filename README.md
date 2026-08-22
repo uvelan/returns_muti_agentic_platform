@@ -463,7 +463,7 @@ declares each process:
 
 | Process | Command | Port |
 |---|---|---|
-| backend | `backend/.venv/bin/python -m uvicorn return_platform.main:create_app --factory` | 8000 |
+| backend | `backend/.venv/bin/python -m uvicorn return_platform.asgi:app` | 8000 (`BACKEND_PORT`) |
 | order-discovery-worker | `backend/scripts/run_order_discovery_worker.py` | — |
 | frontend | `npm --prefix frontend run dev -- --port 5273` | **5273** |
 | frontend-mock | `npm --prefix frontend run dev:mock -- --port 5174` | 5174 |
@@ -518,10 +518,23 @@ Individual workers, containerized mode, redeploy and the reference dataset:
 [`docs/operations/startup.md`](docs/operations/startup.md),
 [`docs/operations/reset.md`](docs/operations/reset.md).
 
-Requirements: Python 3.13, Node 24, npm 11, Docker with Compose, `flock`, one of
+Requirements: Python 3.13, Node 24, npm 11, Docker with Compose, one of
 `ss`/`fuser`/`lsof`, and enough RAM for SQL Server, Neo4j, MongoDB, Temporal,
 PostgreSQL and Valkey at once. `scripts/linux/00_validate_prerequisites.sh`
 checks all of it.
+
+`flock` is used where it exists and is no longer required.
+`scripts/prepare_runtime_configuration.sh` falls back to a `mkdir` mutex, which
+is what lets `run_backend_host.sh` and `run_worker_host.sh` start under Git Bash
+on Windows -- they call that script, and it used to refuse outright. Set
+`PLATFORM_PREPARE_LOCK_WAIT_SECONDS` to change how long a run waits for another
+to finish (default 120), or `PLATFORM_SKIP_RUNTIME_PREPARE=true` to skip
+preparation altogether when you know the runtime configuration is current.
+
+**The `.env` ACL check is not optional.** On Windows,
+`scripts/linux/validate_env.py` refuses to proceed unless `.env` grants access
+only to you, SYSTEM and Administrators, and the refusal now prints the `icacls`
+command that fixes it. Tighten the ACL; do not work around the check.
 
 Never commit `.env`, generated tokens, or credentials. `.env` **is** the credential
 store now, so treat it as one: `chmod 600`, and never paste it anywhere.

@@ -53,15 +53,65 @@ if [[ "$refresh_ai_routes" == "true" && "$validate_ai" == "true" ]]; then
   exit 2
 fi
 
-command -v flock >/dev/null || {
-  echo "flock is required to serialize runtime configuration preparation." >&2
-  exit 1
+# ---------------------------------------------------------------------------
+# Serialize preparation, on every host that can run this script.
+#
+# This used to be `command -v flock || exit 1`. Git Bash on Windows ships no
+# `flock`, so `run_backend_host.sh` and `run_worker_host.sh` -- both of which
+# call this -- could not start at all there, while `bootstrap_host.ps1`,
+# `run_backend_host.ps1` and all of `scripts/windows/` advertise Windows
+# support and `run_worker_host.sh` carries a comment specifically handling "Windows
+# under Git Bash" for the venv path. A documented prerequisite that half the
+# repo contradicts is a defect in the repo.
+#
+# `flock` is still preferred where it exists: the kernel releases its lock when
+# the process dies, which no userspace scheme gets for free. The fallback is a
+# `mkdir` mutex, atomic on every filesystem this runs on, with the holder's pid
+# recorded so a crashed run can be detected rather than blocking the next one
+# forever.
+# ---------------------------------------------------------------------------
+mkdir -p "$ROOT/.runtime"
+LOCK_FILE="$ROOT/.runtime/prepare-runtime.lock"
+LOCK_DIR="$ROOT/.runtime/prepare-runtime.lock.d"
+LOCK_WAIT_SECONDS="${PLATFORM_PREPARE_LOCK_WAIT_SECONDS:-120}"
+
+release_lock_dir() {
+  rm -rf "$LOCK_DIR"
 }
 
-LOCK_FILE="$ROOT/.runtime/prepare-runtime.lock"
-mkdir -p "$ROOT/.runtime"
-exec 9>"$LOCK_FILE"
-flock 9
+acquire_lock_without_flock() {
+  local waited=0
+  while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+    local holder=""
+    [[ -f "$LOCK_DIR/pid" ]] && holder="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
+
+    # A pid that no longer exists means the holder died mid-run. Without this
+    # the directory outlives it and every later run blocks until the timeout.
+    if [[ -n "$holder" ]] && ! kill -0 "$holder" 2>/dev/null; then
+      echo "Reclaiming a preparation lock left by pid $holder." >&2
+      rm -rf "$LOCK_DIR"
+      continue
+    fi
+
+    if (( waited >= LOCK_WAIT_SECONDS )); then
+      echo "Timed out after ${LOCK_WAIT_SECONDS}s waiting for runtime configuration preparation" >&2
+      echo "held by pid ${holder:-unknown}. Remove $LOCK_DIR if that process is gone." >&2
+      exit 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  printf '%s' "$$" >"$LOCK_DIR/pid"
+  trap release_lock_dir EXIT
+}
+
+if command -v flock >/dev/null; then
+  exec 9>"$LOCK_FILE"
+  flock 9
+else
+  acquire_lock_without_flock
+fi
 
 if command -v python3.13 >/dev/null; then
   ENV_PYTHON=(python3.13)

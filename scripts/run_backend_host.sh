@@ -45,11 +45,17 @@ fi
 
 cd "$ROOT/backend"
 export PYTHONPATH="$ROOT/backend/src${PYTHONPATH:+:$PYTHONPATH}"
+
+# The configured port, not a literal. `.env` carries `BACKEND_PORT` and the
+# README documents it, while every script hardcoded 8000 -- so setting it moved
+# nothing and cost whoever tried it the time to find out why.
+BACKEND_PORT="${BACKEND_PORT:-8000}"
+
 if command -v poetry >/dev/null; then
-  exec poetry run uvicorn return_platform.asgi:app --host 0.0.0.0 --port 8000
+  exec poetry run uvicorn return_platform.asgi:app --host 0.0.0.0 --port "$BACKEND_PORT"
 fi
 resolved_python="$(venv_python)" || {
   echo "No backend Python environment: install Poetry or run scripts/bootstrap_host.sh." >&2
   exit 1
 }
-exec "$resolved_python" -m uvicorn return_platform.asgi:app --host 0.0.0.0 --port 8000
+exec "$resolved_python" -m uvicorn return_platform.asgi:app --host 0.0.0.0 --port "$BACKEND_PORT"

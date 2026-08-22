@@ -7,8 +7,7 @@
       "runtimeArgs": [
         "-m",
         "uvicorn",
-        "return_platform.main:create_app",
-        "--factory",
+        "return_platform.asgi:app",
         "--host",
         "127.0.0.1",
         "--port",
