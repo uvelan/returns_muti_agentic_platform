@@ -46,14 +46,14 @@ Status: `NOT_STARTED` · `IN_PROGRESS` · `IN_REVIEW` · `ACCEPTED` · `BLOCKED`
 | P00 live-route readiness | SMALL | — | NOT_STARTED | | | L1 | | |
 | T00 control truth | SMALL | — | IN_REVIEW | `04a05fb` | | G0 | | §T00 evidence below |
 | T01a truthful gates | SMALL | T00 | IN_REVIEW | `04a05fb` | | G0 | | §T01a evidence below |
-| T01b live-infra runner | SMALL | T00 | NOT_STARTED | | | G1 | | |
+| T01b live-infra runner | SMALL | T00 | IN_REVIEW | `a894463` | | G1 | | §T01b evidence below |
 | T02 Temporal replay recovery | CRITICAL | T00 | IN_REVIEW (code) / BLOCKED (runtime) | `da04602` | | G1 | live stack needed for runtime closure | §T02 evidence below |
 | T03 issuance seam | CRITICAL | T01a | IN_REVIEW | `ce660bc` | | G1 | | §T03 evidence below |
 | T04 exact-once RMA persistence | CRITICAL | T03 | IN_REVIEW | `9523628` | | G1 | | §T04 evidence below |
 | T05 canonical completeness | NORMAL | T02 | IN_REVIEW | `ae7211f` | | G1 | | §T05 evidence below |
-| T06 status vocabulary | NORMAL | T04 | NOT_STARTED | | | G1 | | |
-| T07 graph evidence gate | CRITICAL analysis | T01a | NOT_STARTED | | | G2 | | |
-| T08 graph lifecycle correction | CRITICAL / conditional | T07 | NOT_STARTED | | | G2 | | outcome: `PENDING` |
+| T06 status vocabulary | NORMAL | T04 | IN_REVIEW | `adfb245` | | G1 | UIAUDIT-020 **reclassified** | §T06 evidence below |
+| T07 graph evidence gate | CRITICAL analysis | T01a | **COMPLETE** | — | — | G2 | UIAUDIT-001 **reclassified** | §T07 evidence below |
+| T08 graph lifecycle correction | CRITICAL / conditional | T07 | NOT_STARTED | | | G2 | | outcome: **debris only, not serving** |
 | T09 durable sync runs | CRITICAL | T07 accepted + T08 outcome | NOT_STARTED | | | G2 | | |
 | T10 durable manual AI operation | CRITICAL | T01a; live validation via L1 | NOT_STARTED | | | G2 | | |
 | T11 interception history | NORMAL | T01a | NOT_STARTED | | | G2 | | |
@@ -371,12 +371,146 @@ Both new tests are genuine regressions: the seeded item carries `returnRecordId:
 `_selected_items` includes it and the old `bool(selected)` would have rendered "Complete"
 against an assertion of "Incomplete".
 
+## T01b evidence
+
+`scripts/dev/run_real_infra_suite.sh` created — `backend/pyproject.toml:118` had named it since
+the marker was introduced and it did not exist. Collection verified: **496 tests**, matching the
+audit's count exactly. Run from the repository root instead of `backend/`, collection fails with
+3 `FileNotFound` errors, which is why the script `cd`s first. Preflight checks host **ports**,
+not container names — Temporal running healthy with no published port is the exact failure the
+audit hit (ENV-ACTION-01). Full run in progress; totals recorded on completion.
+
+## T06 evidence — UIAUDIT-020 reclassified
+
+**The finding's premise is false.** `recordStatus` appears **0 times** in the repository. The
+audit's own probe, `rrprobe.py`, projects `("returnRecordId","caseId",…,"recordStatus",…)`
+against Mongo — a field that does not exist under that name — so `d.get("recordStatus")`
+returned `None` for all five documents and was read as "stored status is null".
+
+The real field is `status`, and it is honestly persisted, not defaulted:
+
+| Claim | Verified |
+|---|---|
+| No defaulting line exists | `assembly.py:762` is a bare `.get("status")`; `_text` returns `None` for `None`, never a literal. `ReturnRecordProjection.status` defaults to `None`, not `"ISSUED"`. |
+| `"ISSUED"` is genuinely written | `return_case_activities.py:1652`, hardcoded, the only production caller of `create_return_record`. |
+| No vocabulary existed | Confirmed — `vocabulary.py` declared nine `StrEnum`s and none for return-record status. |
+
+So there was no defaulting bug to fix. **What was real is the missing vocabulary**, which
+`availability.py:28-33` had already flagged in prose, and that is what T06 delivered. Members
+taken verbatim from `CK_return_record_status` (`005_case_return_records.sql:85`); enum/constraint
+parity asserted `MATCH`.
+
+## PLAN-NEW-002 — RMAs permanently unlinked to their lines
+
+Severity: candidate P2. Traced during T06; **not** the same defect as UIAUDIT-020.
+
+The audit's visible symptom — an RMA rendering "0 lines" beside a shipping label and a tracking
+number — is real, and its cause is not status:
+
+- `api/return_support.py:369` — `orderLineReferences: tuple[str, ...] = Field(default=())`
+- `return_case_activities.py:1822` — `if not plan.incoming.order_line_references: return`, which
+  aborts `_assign_items` before any `assign_return_item_to_record` call
+- `assembly.py:740` — `return tuple(projected) or None`, so no linked items serializes as `null`
+
+A Support outcome POST that omits `orderLineReferences` therefore creates an RMA no item is ever
+linked to. Label and tracking still render because they travel `RETURN_RECORD_MERGED_FIELDS` onto
+the record document and need no item association at all — so "issued, with a label, zero lines"
+is a structurally reachable and internally consistent state.
+
+**Decision needed:** should the API reject an outcome naming no lines, or should the projection
+surface the inconsistency? The first is a contract change. Recorded rather than chosen.
+
+## T07 evidence — UIAUDIT-001 reclassified from P1
+
+**Classification: LIFECYCLE DEBRIS, not a serving defect.** The P1 as written does not stand.
+
+Verified independently against live Neo4j, not taken from the investigation alone:
+
+```
+MATCH (o:SalesOrder {graph_generation_id:'9cf89d56-…'})
+RETURN count(o), count(DISTINCT o.sales_order_number)   ->  9999, 9999
+
+MATCH (n0:SalesOrder {graph_generation_id:'9cf89d56-…'})
+WHERE n0.sales_order_number='CA064360-1'
+RETURN n0.customer_name                                  ->  exactly one row, "LISA BENITEZ"
+```
+
+Within the serving generation `sales_order_number` is **exactly unique**, and the order the audit
+cited resolves to one row with one customer name. The 800 duplicates decompose with zero residual
+into cross-generation copies (`copies == distinct generations` for every group), and reads cannot
+reach them: `cypher_compiler.py:131-141` puts the generation predicate **inside the node pattern**
+so it binds every alias in a traversal, and `neo4j_gateway.py:276` merges the caller's generation
+**last** so a compiled query cannot supply a competing one. `dynamic_knowledge/order_agent/` has
+zero raw driver usage.
+
+The serving pointer is one Mongo `ActiveRuntimeSnapshot` document read by both consumers, and
+`handle.py:342` fails closed rather than degrading to a legacy id.
+
+**An ACTIVE marker is not a serving pointer.** Ten simultaneous ACTIVE markers are alarming to
+look at and operationally inert.
+
+**What is real, and smaller:**
+
+1. **No generation reaper.** Nothing deletes `PREPARING`/`FAILED`/`RETIRED` markers or their
+   nodes — 218 PREPARING, 45 FAILED, 1 CATCHING_UP accumulated in 11 days. Unbounded growth.
+2. **Activation retires the predecessor outside the CAS.** `orchestrator.py:286` calls `_retire`
+   *after* the compare-and-swap, and `_retire` is documented "never raises" (`:390`). A crash
+   between the two leaves the predecessor ACTIVE forever with no reconciler. Five more come from
+   `sync_service.py:1264-1283`, which mints `legacy-live-*` markers ACTIVE directly, bypassing the
+   orchestrator.
+
+Repair targets are enumerated: 9 stale ACTIVE markers (all ≤4 nodes, none referenced by any
+snapshot), and 3 data-bearing non-serving generations holding 13,363 nodes. Deleting those three
+alone takes SalesOrder from 11,299 to 9,999 and eliminates every "duplicate".
+
+## T11 evidence — root cause found, and it is not where the audit looked
+
+Three candidate causes were tested. **Only one is real, and the visible symptom has a separate
+frontend cause.**
+
+| Candidate | Verdict |
+|---|---|
+| Wrong store injected | **Ruled out.** `main.py:721-725` injects `SystemStoreInterceptionStore`; `runtime_activation.py:662` carries the same object through a release. The only other `list_pending` implementations are test doubles. |
+| Legacy field shape | **Ruled out.** One writer (`store.py:167`), one reader (`store.py:333`), both `expires_at`; `store.py:459` would `KeyError` loudly on drift. |
+| **Housekeeping worker never runs** | **Confirmed, real.** |
+
+`InterceptionExpirySweep` is correct and wired — and its worker is started nowhere.
+`compose.yaml:525` puts it behind `profiles: ["containerized-app"]`, and every host path
+hardcodes five workers: `scripts/linux/09_start_workers.sh:8` and `scripts/run_all_host.ps1:54`
+both iterate `temporal discovery orchestrator outbox integration-outbox`. The audit's own harness
+reproduced it (`start_workers.sh:4`, five worker logs, no housekeeping log). Nothing complains
+because `process_adoption.py:62-70` excludes `housekeeping-worker` from `REQUIRED_PROCESS_CLASSES`,
+so adoption reaches LIVE and `/health/ready` is green with the reaper dead.
+
+**Consequence:** nothing ever performs `PENDING -> EXPIRED`. The `EXPIRED` tile can never be
+non-zero *even after UIAUDIT-009 is fixed*, because no `EXPIRED` documents exist.
+
+**The audit had no database evidence for the expiry claim.** Its `intprobe.py` opens
+`c[env["PLATFORM_MONGO_DATABASE"]]` and projects `expiresAt`, while the collection lives in
+`database="platform"` (`housekeeping/composition.py:161`) under `expires_at`. The observation was
+UI-only — and the UI cause is separate: `main.tsx:34-46` sets `staleTime: 30_000` with
+`refetchOnWindowFocus: false`, `AiControlCenterPage.tsx:442-446` has **no `refetchInterval`**, and
+`:551` gates the action buttons on `status === "PENDING"` alone, never comparing `expiresAt` to
+now. A row fetched at 05:12 keeps offering Respond/Allow/Cancel indefinitely and the presses
+return 409/404.
+
+**So T11 needs two independent fixes**, and the ledger should not treat it as one.
+
+Also confirmed for the same track: `ALLOWED` has no tile at all (`AiControlCenterPage.tsx:485-488`
+renders four; `records.py:88-92` declares five), no store method returns terminal records, and
+`system_store.yaml:51-54` declares only a unique index — a status listing over a never-reaped
+collection needs one. UIAUDIT-015's exact line is `AiControlCenterPage.tsx:666`
+(`key={route.routeId}`), root-caused to `routes.py:243` omitting tier from the id while `:216`
+loops tiers outside it; note `selection.py` keys circuit-breaker health on the same id, so
+changing it there merges or splits circuits as a side effect.
+
 ## T08 terminal outcome
 
 Required before T09 starts. Legal values: `IMPLEMENTED` · `NOT_REQUIRED`.
 
-- Current: `PENDING`
-- Evidence: —
+- Current: **`IMPLEMENTED` required**, scoped to lifecycle debris and a reconciler. The serving
+  invariant holds and needs no change — see §T07.
+- Evidence: §T07 above, verified independently against live Neo4j.
 
 ## Route identity manifest
 
