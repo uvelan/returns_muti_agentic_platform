@@ -49,7 +49,7 @@ Status: `NOT_STARTED` · `IN_PROGRESS` · `IN_REVIEW` · `ACCEPTED` · `BLOCKED`
 | T01b live-infra runner | SMALL | T00 | NOT_STARTED | | | G1 | | |
 | T02 Temporal replay recovery | CRITICAL | T00 | IN_REVIEW (code) / BLOCKED (runtime) | `da04602` | | G1 | live stack needed for runtime closure | §T02 evidence below |
 | T03 issuance seam | CRITICAL | T01a | IN_REVIEW | `ce660bc` | | G1 | | §T03 evidence below |
-| T04 exact-once RMA persistence | CRITICAL | T03 | NOT_STARTED | | | G1 | | |
+| T04 exact-once RMA persistence | CRITICAL | T03 | **BLOCKED** | `893e995` | | G1 | ADR-001 does not settle whether a console RMA ticket *is* a case return record — see §T04 blocker | §T04 blocker below |
 | T05 canonical completeness | NORMAL | T02 | NOT_STARTED | | | G1 | | |
 | T06 status vocabulary | NORMAL | T04 | NOT_STARTED | | | G1 | | |
 | T07 graph evidence gate | CRITICAL analysis | T01a | NOT_STARTED | | | G2 | | |
@@ -241,6 +241,55 @@ connection pool into a sandboxed package.
 | `ruff check` / `ruff format --check` | clean on all four changed files |
 | Partition guard | 5 passed, with the canonical port re-pointed |
 | New datastore writes | none — one `persist_case_return_records` call, as before |
+
+## T04 blocker — needs an owner ruling
+
+**Owner:** platform architecture + fulfilment contract owner. **Blocks:** T04, and therefore G1
+and the P0.
+
+### What T03 uncovered
+
+The seam is built and both callers can reach it. Wiring Support to it is blocked on a fact
+ADR-001 did not settle: **a console-issued RMA ticket has no `ReturnCase` identity at all.**
+
+| Evidence | Finding |
+|---|---|
+| `sql_migrations/001_return_business_state.sql:7` | `dbo.return_requests` is `session_id VARCHAR(36) NOT NULL PRIMARY KEY` — **no case column** |
+| `sql_business_state.py:236` | `CaseReturnRecordsWrite` requires `case_id`, `tenant_id`, `principal_id` |
+| `rma_tickets/service.py:73-84` | `RmaTicketService` holds `sql` plus a Mongo client scoped to the *shipment* collection. No case repository |
+| `repository.py:1845,1847` | The only `supportCaseId` written points at a `support_cases` document, not a `ReturnCase`. Different aggregate |
+
+So calling `persist_case_return_records` from the Support transition means **inventing** a
+`case_id`, `tenant_id` and `principal_id` for a session that has none, and writing a synthetic
+`dbo.return_case` row. That is precisely the second disagreeing source of truth ADR-001 exists
+to prevent, so it is not a call to make inside a task.
+
+### The options
+
+| | Ruling | Cost | Risk |
+|---|---|---|---|
+| **A** | A console ticket **is** a case return record. Establish a case identity for it — resolve one (no link exists) or mint one. | Schema and identity work; a new session→case relationship | Synthetic `dbo.return_case` rows for returns that never had a case |
+| **B** *(recommended)* | A console ticket is a **distinct artifact**. `dbo.return_requests` + `dbo.return_items` are its authoritative home; `dbo.return_record` stays the case workflow's. Correct the screen claim and the README ownership table. | Low — no new write | Requires `/operations/cases` to stop presenting the two as one thing |
+| **C** | Unify upstream: the console path creates a real case first and issues through the workflow. | Largest | Changes the Support console's whole model |
+
+**Why B is recommended.** The audit's own before/after supports it: `integration.return_support_ticket`
+0→1, `dbo.return_requests` 0→1, `dbo.return_items` 0→1 all *did* happen. The Support path does
+write its authoritative rows. What is false is the screen's claim that it also writes
+`dbo.return_record`, `dbo.return_record_item` and `dbo.return_tracking` — and the README
+ownership table that backs the claim. Under B the P0 closes by making the product truthful
+about a store that is already correct, rather than by manufacturing case rows to match a
+sentence.
+
+B also keeps the tracking rule intact: nothing at issuance fabricates an observation.
+
+**If A or C is chosen**, T04 grows a schema change and the seam gains a case-resolution step;
+the estimate-free sequencing in V4.1 still holds but T04 stops being a single commit.
+
+### What is not blocked
+
+T03's seam stands under every option — it is where the shared rules live either way. T05
+(canonical completeness), T07 (graph evidence gate), T10, T11, T12 and T13 have no dependency
+on this ruling and can proceed.
 
 ## T08 terminal outcome
 
