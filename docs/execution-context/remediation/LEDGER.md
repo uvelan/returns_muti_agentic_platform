@@ -47,7 +47,7 @@ Status: `NOT_STARTED` · `IN_PROGRESS` · `IN_REVIEW` · `ACCEPTED` · `BLOCKED`
 | T00 control truth | SMALL | — | IN_REVIEW | `04a05fb` | | G0 | | §T00 evidence below |
 | T01a truthful gates | SMALL | T00 | IN_REVIEW | `04a05fb` | | G0 | | §T01a evidence below |
 | T01b live-infra runner | SMALL | T00 | NOT_STARTED | | | G1 | | |
-| T02 Temporal replay recovery | CRITICAL | T00 | NOT_STARTED | | | G1 | | |
+| T02 Temporal replay recovery | CRITICAL | T00 | IN_REVIEW (code) / BLOCKED (runtime) | `da04602` | | G1 | live stack needed for runtime closure | §T02 evidence below |
 | T03 issuance seam | CRITICAL | T01a | NOT_STARTED | | | G1 | | |
 | T04 exact-once RMA persistence | CRITICAL | T03 | NOT_STARTED | | | G1 | | |
 | T05 canonical completeness | NORMAL | T02 | NOT_STARTED | | | G1 | | |
@@ -125,6 +125,84 @@ scope rather than only in the file that was edited.
 V4.1 § 7 assigns all five lint errors to T01a. The change is a behaviour-preserving refactor of
 one local accumulator with no API, state or render change, so the boundary is safe. T10 retains
 ownership of that file for behavioural work.
+
+## T02 evidence
+
+Closure criteria: *historical replay passes; wedge advances; retry storm stops; no history
+rewrite.* Two of four are met in code; two need the live stack. Recorded honestly below rather
+than claimed.
+
+### Root cause, confirmed at the converter
+
+`eaed61c` changed `draft_support_request` from `-> str` to `-> SupportRequestDraft`. The
+workflow requests the result by type (`result_type=SupportRequestDraft`), so a history holding
+a JSON string cannot decode. Reproduced directly from the data converter:
+
+```
+decode as str       : 'Hello -- we have a return to raise against CQ800002.'
+decode as dataclass : TypeError: Cannot convert to dataclass
+                      <class '...SupportRequestDraft'>, value is <class 'str'> not dict
+```
+
+Byte-identical to `logs/worker-temporal.log`. Replay is deterministic, so this failed on every
+activation forever — five in forty-five minutes, with no alert, metric or terminal state.
+
+### Fix
+
+`workflow.patched(_PATCH_STRUCTURED_SUPPORT_DRAFT)` selects the decode shape. A history
+recorded before the marker existed returns `False` and is decoded as the string it holds; a new
+execution records the marker and takes the typed path. Both arms produce one
+`SupportRequestDraft`, so nothing downstream branches. The legacy arm does **not** synthesise a
+structured payload — a pre-`eaed61c` activity composed none, and inventing one would put facts
+on a Support message that nothing observed.
+
+Repository-first: `workflow.patched` / `get_version` / `deprecate_patch` had **zero** uses
+anywhere before this. The convention starts here.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `pytest tests/test_return_case_workflow_replay_compatibility.py` | 9 passed |
+| `ruff check` + `ruff format --check` on all changed files | clean |
+| Tests fail against pre-patch source (`git show HEAD:...`) | 3 of 9 fail — guard absent, no guarded activities, `draft_support_request` pinned as `{SupportRequestDraft}` only |
+| Full backend suite | **4082 passed, 3 skipped, 496 deselected, 1 warning, exit 0** (baseline 4073 + 9 new) |
+
+The third row is the one that matters: the tests are regression tests, not decoration.
+
+**A regression was introduced and fixed inside this task.** The first full-suite run after the
+patch failed 21 tests in `tests/policy/` with
+`AttributeError: '_Runtime' object has no attribute 'patched'`. Those tests drive the workflow
+through a hand-rolled `temporalio.workflow` double that modelled six functions; the patch made
+it seven. The double was extended rather than the production code weakened — it now answers
+`True` by default, which is what a real `patched` returns for an execution with no history, so
+those tests go on exercising the branch they were written against. A `patches=False`
+constructor argument makes the legacy arm reachable from a test at all.
+
+That extension is what made the fifth test possible: a runtime answering as a pre-`eaed61c`
+history drives the **real `_open_support`** to completion. Before the patch this raised
+`TypeError` at the activity-result decode and the workflow task failed permanently. Now the
+prose is carried through, `open_support_work_item` receives it with an empty
+`business_payload`, and the case reaches `AWAITING_SUPPORT`.
+
+### The forward-looking rule
+
+`ACTIVITY_RESULT_TYPES` in the test pins every activity result type the workflow requests. It is
+a lockfile: changing a type fails the test and forces the author to decide whether in-flight
+histories can decode the new shape. A companion test rejects any `execute_activity` whose
+activity name is computed rather than literal, since the lock cannot see those. This is what
+was missing when `eaed61c` landed.
+
+### Residual — needs the live stack, not more code
+
+| Closure criterion | State |
+|---|---|
+| Historical replay passes | **Partial.** The failing decode step is proven and fixed, and a runtime answering as a pre-`eaed61c` history drives the real `_open_support` to completion. What is *not* done is a `temporalio.worker.Replayer` run against a genuine recorded history — no such fixture exists in the repository, and capturing one requires the live Temporal service. The branch is proven correct and reachable; the specific recorded history is not replayed. |
+| Wedge advances (`case 721fb62e`) | **Not verified.** Requires deploying the patched worker and observing the case leave `AWAITING_SUPPORT`. Belongs with T19a. |
+| Retry storm stops | **Not verified.** Same prerequisite: watch `worker-temporal.log` for the absence of `Failed activation` over a sustained run. |
+| No history rewrite | **Met.** The fix decodes what is recorded; nothing writes to history. |
+
+T02 cannot reach `ACCEPTED` until the three runtime rows are observed against the live stack.
 
 ## T08 terminal outcome
 

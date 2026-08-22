@@ -123,6 +123,30 @@ _DRAFT_RETRY: Final = RetryPolicy(maximum_attempts=2)
 # longer does not make one appear.
 _BEST_EFFORT_RETRY: Final = RetryPolicy(maximum_attempts=2)
 
+#: Guards the `draft_support_request` result-type change made in `eaed61c`.
+#:
+#: That commit changed the activity from returning the handoff prose as a bare
+#: `str` to returning `SupportRequestDraft`, and the workflow asks for the result
+#: by type. A history written before it recorded a JSON string, so replaying one
+#: against the new code raised
+#:
+#:     TypeError: Cannot convert to dataclass ...SupportRequestDraft,
+#:     value is <class 'str'> not dict
+#:
+#: on every workflow task, forever. The activity never got past decoding, the
+#: case stayed in `AWAITING_SUPPORT`, and the worker retried the same failure
+#: indefinitely -- no alert, no terminal state, no operator-visible signal.
+#:
+#: `workflow.patched` is what tells the two apart. A history recorded before the
+#: marker existed returns `False` here and is decoded as the string it actually
+#: holds; a new execution records the marker and takes the typed path. Both
+#: arrive at one `SupportRequestDraft`, so nothing downstream branches.
+#:
+#: **Do not remove this until every pre-`eaed61c` history has aged out of the
+#: retention window.** Removing it early reintroduces the wedge for exactly the
+#: executions that are least able to report it.
+_PATCH_STRUCTURED_SUPPORT_DRAFT: Final = "support-draft-returns-structured-payload"
+
 #: How many `supportEventId`s the workflow remembers, newest last.
 #:
 #: **Bounded on purpose.** An unbounded applied-keys set is workflow state that
@@ -1472,18 +1496,37 @@ class ReturnCaseWorkflow:
         # so a retry of either activity uses the same id and the idempotent open
         # resolves to the same thread.
         intended_work_item_id = str(workflow.uuid4())
+        draft_input = DraftSupportRequestInput(
+            case_id=workflow_input.case_id,
+            configuration_release_id=workflow_input.configuration_release_id,
+            work_item_id=intended_work_item_id,
+        )
         try:
-            draft: SupportRequestDraft = await workflow.execute_activity(
-                "draft_support_request",
-                DraftSupportRequestInput(
-                    case_id=workflow_input.case_id,
-                    configuration_release_id=workflow_input.configuration_release_id,
-                    work_item_id=intended_work_item_id,
-                ),
-                result_type=SupportRequestDraft,
-                start_to_close_timeout=_DRAFT_TIMEOUT,
-                retry_policy=_DRAFT_RETRY,
-            )
+            # See `_PATCH_STRUCTURED_SUPPORT_DRAFT`. The branches differ only in
+            # the shape they decode; both produce a `SupportRequestDraft`, so no
+            # code past this point knows which history it is running on.
+            if workflow.patched(_PATCH_STRUCTURED_SUPPORT_DRAFT):
+                draft: SupportRequestDraft = await workflow.execute_activity(
+                    "draft_support_request",
+                    draft_input,
+                    result_type=SupportRequestDraft,
+                    start_to_close_timeout=_DRAFT_TIMEOUT,
+                    retry_policy=_DRAFT_RETRY,
+                )
+            else:
+                legacy_text: str = await workflow.execute_activity(
+                    "draft_support_request",
+                    draft_input,
+                    result_type=str,
+                    start_to_close_timeout=_DRAFT_TIMEOUT,
+                    retry_policy=_DRAFT_RETRY,
+                )
+                # The prose is all a pre-`eaed61c` history recorded. There is no
+                # structured payload to recover -- the activity did not compose
+                # one -- and inventing one here would put facts on the message
+                # that nothing observed. An empty payload is the truthful
+                # reading, and the subject falls back the same way it did then.
+                draft = SupportRequestDraft(text=legacy_text)
         except ActivityError:
             # Composition failed. Support still needs asking, and an empty draft
             # is better than a parked case -- the opening activity supplies the

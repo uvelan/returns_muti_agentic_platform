@@ -254,7 +254,7 @@ class _Info:
 
 
 class _Runtime:
-    """The six `temporalio.workflow` functions the run loop actually calls.
+    """The seven `temporalio.workflow` functions the run loop actually calls.
 
     `wait_condition` is the interesting one. A real Temporal timer either fires
     or is cut short by a signal; here, each call first runs the next scheduled
@@ -270,17 +270,35 @@ class _Runtime:
         activities: dict[str, Callable[[Any], Awaitable[Any]]],
         *,
         arrivals: list[Callable[[], None]] | None = None,
+        patches: bool = True,
     ) -> None:
         self._activities = activities
         self._arrivals = list(arrivals or [])
         self._uuid = 0
+        self._patches = patches
         self.calls: list[str] = []
+        self.patched_ids: list[str] = []
         self.instant = NOW
         self.logger = logging.getLogger("tests.policy.gate")
 
     async def execute_activity(self, name: str, argument: Any, **_options: Any) -> Any:
         self.calls.append(name)
         return await self._activities[name](argument)
+
+    def patched(self, patch_id: str) -> bool:
+        """Answer as a *new* execution does, which is what these tests are.
+
+        A real `workflow.patched` returns True on an execution with no history
+        -- it writes the marker and takes the new path -- and False when
+        replaying a history recorded before the marker existed. These tests all
+        start from nothing, so True is the faithful answer and they go on
+        exercising the same branch they were written against.
+
+        `patches=False` builds a runtime that answers as an *old* history
+        instead, which is how the legacy arm is reachable from a test at all.
+        """
+        self.patched_ids.append(patch_id)
+        return self._patches
 
     def now(self) -> datetime:
         return self.instant
