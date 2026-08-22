@@ -14,7 +14,11 @@ export const COPILOT_TOKENS = {
     grid: "grid h-full grid-cols-1 gap-3 lg:grid-cols-[minmax(0,40fr)_minmax(0,24fr)_minmax(0,36fr)]",
     shell: "grid h-full grid-cols-1 gap-3 lg:grid-cols-[minmax(0,40fr)_minmax(0,24fr)_minmax(0,36fr)]",
     pane: "flex min-h-0 flex-col overflow-hidden rounded-xl border border-outline-variant/30 bg-surface-container-lowest shadow-[0_4px_24px_rgba(0,0,0,0.03)]",
-    paneBody: "flex-1 overflow-y-auto p-5 space-y-4",
+    // A pane body scrolls and often holds nothing focusable, so each one
+    // carries `tabIndex={0}` and a name at its call site; the ring is here
+    // so they cannot disagree about how focus looks.
+    paneBody:
+      "flex-1 overflow-y-auto p-5 space-y-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary",
     paneBodyNoPadding: "flex-1 overflow-y-auto",
     messageStream: "flex-1 overflow-y-auto p-5 flex flex-col justify-between",
   },

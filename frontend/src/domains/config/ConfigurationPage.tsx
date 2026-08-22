@@ -83,7 +83,7 @@ export function ConfigurationPage() {
   return (
     <div className="flex flex-col gap-4">
       <header>
-        <h1 className="text-2xl font-semibold text-slate-900">Configuration</h1>
+        <h2 className="text-2xl font-semibold text-on-surface">Configuration</h2>
         <p className="mt-1 text-sm text-slate-600">
           Sources, integrations, business rules, runtime, and releases.
         </p>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Braces, CheckCircle2, Columns3, ListTree, Minus, Plus, RotateCcw } from "lucide-react";
 import { Link } from "wouter";
@@ -106,7 +106,10 @@ export function AgentsSection() {
 
 
   return (
-    <div className="grid grid-cols-[20rem_minmax(0,1fr)] gap-5">
+    // The registry track was a hard `20rem`, which needs 320px for itself at
+    // a 320px viewport. The mock never populates agents, so the route sweep
+    // passed this vacuously -- it stacks below `lg` now.
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[20rem_minmax(0,1fr)]">
       <aside className="premium-panel self-start overflow-hidden">
         <header className="border-b border-outline-variant/80 bg-surface-container-low px-4 py-3">
           <p className="premium-kicker">Agent registry</p>
@@ -493,7 +496,7 @@ function DocumentEditor({
         ) : null}
 
         {mode === "json" ? jsonEditor : mode === "form" ? formEditor : (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
             <div>
               <p className="premium-kicker mb-2">Nested key-value</p>
               {formEditor}
@@ -517,7 +520,25 @@ function DocumentEditor({
  * objects, and an editor that stopped at the top level would leave most of the
  * configuration unreachable.
  */
-function Node({ value, onChange }: { value: Json; onChange: (next: Json) => void }) {
+/**
+ * One leaf of the agent document.
+ *
+ * `labelledBy` is the id of the `<span>` that shows this field's name, which
+ * lives in the *parent* object's render rather than here -- the name comes from
+ * the key, and the key is the parent's to know. Every scalar input therefore
+ * looked labelled and was not: `bay_allocation` alone renders fourteen
+ * non-boolean scalar leaves, which is the audit's "14 agent labels" exactly.
+ * Passing the id down is what turns the visible name into a programmatic one.
+ */
+function Node({
+  value,
+  onChange,
+  labelledBy,
+}: {
+  value: Json;
+  onChange: (next: Json) => void;
+  labelledBy?: string;
+}) {
   if (Array.isArray(value)) {
     return (
       <div className="flex flex-col gap-2">
@@ -527,6 +548,7 @@ function Node({ value, onChange }: { value: Json; onChange: (next: Json) => void
             <div className="min-w-0 flex-1">
               <Node
                 value={item}
+                labelledBy={labelledBy}
                 onChange={(next) => {
                   onChange(value.map((existing, at) => (at === index ? next : existing)));
                 }}
@@ -561,36 +583,7 @@ function Node({ value, onChange }: { value: Json; onChange: (next: Json) => void
   }
 
   if (isObject(value)) {
-    return (
-      <div className="flex flex-col gap-2.5 border-l border-outline-variant pl-3">
-        {Object.entries(value).map(([key, child]) => (
-          <div key={key} className="rounded-lg border border-outline-variant/70 bg-surface-container-low p-3">
-            <div className="mb-2 flex items-center gap-2">
-              <span className="text-[11px] font-semibold text-on-surface-variant">{label(key)}</span>
-              <code className="truncate text-[10px] text-outline">{key}</code>
-              <button
-                type="button"
-                aria-label={`Remove property ${key}`}
-                onClick={() => {
-                  onChange(Object.fromEntries(Object.entries(value).filter(([entry]) => entry !== key)));
-                }}
-                className="ml-auto flex size-6 items-center justify-center rounded-md text-outline transition hover:bg-error-container hover:text-error"
-              >
-                <Minus size={12} aria-hidden="true" />
-              </button>
-            </div>
-            <Node
-              value={child}
-              onChange={(next) => { onChange({ ...value, [key]: next }); }}
-            />
-          </div>
-        ))}
-        <NewProperty
-          existing={Object.keys(value)}
-          onAdd={(key, child) => { onChange({ ...value, [key]: child }); }}
-        />
-      </div>
-    );
+    return <ObjectNode value={value} onChange={onChange} />;
   }
 
   if (typeof value === "boolean") {
@@ -599,6 +592,11 @@ function Node({ value, onChange }: { value: Json; onChange: (next: Json) => void
         <input
           type="checkbox"
           checked={value}
+          // The field's name, not "Yes"/"No". A checkbox already announces its
+          // own state, so the visible word is redundant to a screen reader and
+          // was the only accessible name it had -- fourteen inputs on one
+          // screen all called "Yes".
+          aria-labelledby={labelledBy}
           onChange={(event) => { onChange(event.target.checked); }}
           className="size-4 accent-primary"
         />
@@ -612,6 +610,7 @@ function Node({ value, onChange }: { value: Json; onChange: (next: Json) => void
       <input
         type="number"
         value={value}
+        aria-labelledby={labelledBy}
         onChange={(event) => {
           // An empty or half-typed number must not become NaN in the document:
           // it would serialize as null and silently blank the setting.
@@ -627,6 +626,7 @@ function Node({ value, onChange }: { value: Json; onChange: (next: Json) => void
     <input
       type="text"
       value={value ?? ""}
+      aria-labelledby={labelledBy}
       onChange={(event) => { onChange(event.target.value); }}
       className="w-full rounded border border-outline-control bg-surface px-2 py-1 text-sm text-on-surface outline-none focus:border-primary"
     />
@@ -634,6 +634,53 @@ function Node({ value, onChange }: { value: Json; onChange: (next: Json) => void
 }
 
 type JsonKind = "string" | "number" | "boolean" | "object" | "array";
+
+/**
+ * An object's fields, each one named by an element the input can point at.
+ *
+ * Split out of `Node` because it needs `useId`, and `Node` returns early for
+ * arrays and scalars -- a hook above those branches would run for every leaf
+ * and a hook below them would be conditional.
+ */
+function ObjectNode({ value, onChange }: { value: JsonObject; onChange: (next: Json) => void }) {
+  const base = useId();
+  return (
+    <div className="flex flex-col gap-2.5 border-l border-outline-variant pl-3">
+      {Object.entries(value).map(([key, child]) => {
+        const labelId = `${base}-${key}`;
+        return (
+          <div key={key} className="rounded-lg border border-outline-variant/70 bg-surface-container-low p-3">
+            <div className="mb-2 flex items-center gap-2">
+              <span id={labelId} className="text-[11px] font-semibold text-on-surface-variant">
+                {label(key)}
+              </span>
+              <code className="truncate text-[10px] text-outline">{key}</code>
+              <button
+                type="button"
+                aria-label={`Remove property ${key}`}
+                onClick={() => {
+                  onChange(Object.fromEntries(Object.entries(value).filter(([entry]) => entry !== key)));
+                }}
+                className="ml-auto flex size-6 items-center justify-center rounded-md text-outline transition hover:bg-error-container hover:text-error"
+              >
+                <Minus size={12} aria-hidden="true" />
+              </button>
+            </div>
+            <Node
+              value={child}
+              labelledBy={labelId}
+              onChange={(next) => { onChange({ ...value, [key]: next }); }}
+            />
+          </div>
+        );
+      })}
+      <NewProperty
+        existing={Object.keys(value)}
+        onAdd={(key, child) => { onChange({ ...value, [key]: child }); }}
+      />
+    </div>
+  );
+}
 
 function NewProperty({
   existing,

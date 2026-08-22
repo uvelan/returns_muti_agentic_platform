@@ -344,13 +344,17 @@ function DomainFrame({ domain, children }: { domain: DomainDefinition; children:
           // The copilot renders no header -- it needs the height -- so below
           // `lg` it gets the one control it cannot do without. Absent entirely
           // on desktop, where the rail is always on screen.
-          <div className="flex shrink-0 items-center gap-3 border-b border-outline-variant/70 bg-surface/95 px-3 py-2 lg:hidden">
+          // Visible at every width, not just below `lg`. It began as a place to
+          // hang the drawer trigger, but the copilot is also one of the nine
+          // routes that never said what it was, and it has no header to put
+          // that in. Thirty-six pixels is what page identity costs here.
+          <div className="flex shrink-0 items-center gap-3 border-b border-outline-variant/70 bg-surface/95 px-3 py-2">
             <DrawerTrigger
               open={drawer.open}
               onOpen={() => { drawer.setOpen(true); }}
               triggerRef={drawer.triggerRef}
             />
-            <span className="truncate text-sm font-semibold text-on-surface">{domain.name}</span>
+            <h1 className="truncate text-sm font-semibold text-on-surface">{domain.name}</h1>
           </div>
         ) : (
           <header className="sticky top-0 z-20 flex h-[4.5rem] shrink-0 items-center justify-between gap-3 border-b border-outline-variant/70 bg-surface/95 px-4 backdrop-blur sm:gap-6 sm:px-7">
@@ -364,7 +368,22 @@ function DomainFrame({ domain, children }: { domain: DomainDefinition; children:
                 {/* The platform name is the one crumb a 320px reader can spare. */}
                 <span className="hidden sm:inline">Returns Intelligence Platform</span>
                 <ChevronRight size={13} aria-hidden="true" className="hidden sm:inline" />
-                <span className="truncate text-on-surface-variant">{domain.name}</span>
+                {/*
+                  The page's identity, and the shell's job rather than each
+                  screen's. Nine canonical routes rendered no `<h1>` at all and
+                  two more rendered one that disagreed with the name the rail
+                  used for them -- both because identity was left to eight
+                  separate screens to remember. Here it is derived from the
+                  registry, so it cannot drift from the navigation and a new
+                  domain gets it for free.
+
+                  Small type, but a heading is a structural claim rather than a
+                  visual one: the breadcrumb is genuinely where this page says
+                  what it is.
+                */}
+                <h1 className="truncate text-xs font-medium text-on-surface-variant">
+                  {domain.name}
+                </h1>
                 {activeSectionLabel === "" ? null : (
                   <>
                     <ChevronRight size={13} aria-hidden="true" />

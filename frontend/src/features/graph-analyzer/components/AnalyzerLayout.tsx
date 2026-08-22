@@ -26,7 +26,7 @@ export function AnalyzerLayout({ children }: { readonly children: ReactNode }) {
             <span className="grid size-10 place-items-center rounded-xl border border-emerald-700/60 bg-emerald-950 text-emerald-300 shadow-[0_0_25px_rgba(16,185,129,.12)]"><Network size={20} /></span>
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-500">Graph intelligence</p>
-              <h1 className="text-lg font-semibold tracking-tight text-white">Schema Analyzer Agent</h1>
+              <h2 className="text-lg font-semibold tracking-tight text-white">Schema Analyzer Agent</h2>
             </div>
           </div>
           <button type="button" onClick={() => { ui.openChat({ workspace: location.includes("/schema") ? "SCHEMA" : location.includes("/sync") ? "SYNC" : "ANALYZER", selectedSourceId: ui.selectedSourceId ?? undefined, selectedObjectId: ui.selectedObjectId ?? undefined, selectedScope: [...ui.selectedObjectIds] }); }} className="inline-flex items-center gap-2 rounded-lg border border-emerald-700/60 bg-emerald-950/70 px-3 py-2 text-sm font-medium text-emerald-100 transition hover:border-emerald-500 hover:bg-emerald-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">

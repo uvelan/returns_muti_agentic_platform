@@ -69,7 +69,7 @@ export function AiControlCenterPage() {
   return (
     <div className="flex flex-col gap-4">
       <header>
-        <h1 className="text-2xl font-semibold text-slate-900">AI Control Center</h1>
+        <h2 className="text-2xl font-semibold text-on-surface">AI Control Center</h2>
         <p className="mt-1 text-sm text-slate-600">
           Requests, interceptions, metrics, routes, and safety.
         </p>
@@ -219,7 +219,24 @@ function RequestsTab() {
                 onClick={() => { setSelected(attempt); }}
                 className="cursor-pointer border-t border-slate-200 hover:bg-slate-50"
               >
-                <td className="p-2">{attempt.taskId}</td>
+                <td className="p-2">
+                  {/*
+                    A real control, not a bare cell -- the same correction
+                    `ConfigurationPage` already made for its release rows.
+                    Opening a request is the only way to reach the payload pane,
+                    and the row's `onClick` was the only way to open one: a
+                    `<tr>` is not focusable and carries no role, so this table
+                    was mouse-only. The row handler stays for click-anywhere.
+                  */}
+                  <button
+                    type="button"
+                    aria-pressed={selected?.id === attempt.id}
+                    onClick={() => { setSelected(attempt); }}
+                    className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  >
+                    {attempt.taskId}
+                  </button>
+                </td>
                 <td className="p-2">{attempt.provider ?? "-"}</td>
                 <td className="p-2">{attempt.model ?? "-"}</td>
                 <td className="p-2">

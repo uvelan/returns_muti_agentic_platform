@@ -33,7 +33,8 @@ export function SourceTree({ sources, selectedIds, activeId, onSelectionChange, 
   };
 
   return <div className="flex min-h-0 flex-col">
-    <div className="relative"><Search className="absolute left-3 top-2.5 text-slate-400" size={15} /><input value={query} onChange={(event) => { setQuery(event.target.value); }} placeholder="Search source objects" className="w-full rounded-lg border border-emerald-950 bg-[#081511] py-2 pl-9 pr-3 text-sm text-white outline-none placeholder:text-slate-400 focus:border-emerald-600" /></div>
+    <div className="relative"><Search className="absolute left-3 top-2.5 text-slate-400" size={15} /><input value={query} onChange={(event) => { setQuery(event.target.value); }} placeholder="Search source objects"
+      aria-label="Search source objects" className="w-full rounded-lg border border-emerald-950 bg-[#081511] py-2 pl-9 pr-3 text-sm text-white outline-none placeholder:text-slate-400 focus:border-emerald-600" /></div>
     <div className="mt-3 flex items-center justify-between text-xs"><span className="text-slate-400">{selectedIds.size} selected</span><div className="flex gap-3"><button type="button" onClick={() => { setShowSelected((value) => !value); }} className={showSelected ? "text-emerald-300" : "text-slate-400"}>Show selected</button>{selectionEnabled ? <><button type="button" onClick={() => { onSelectionChange(new Set(sources.flatMap((source) => source.objects.flatMap(descendants)))); }} className="text-slate-400 hover:text-white">Select all</button><button type="button" onClick={() => { onSelectionChange(new Set()); }} className="text-slate-400 hover:text-white">Clear</button></> : null}</div></div>
     <div className="mt-3 max-h-[520px] overflow-y-auto pr-1">
       {visibleSources.map((source) => <div key={source.id} className="mb-1">
@@ -66,6 +67,12 @@ function TreeRow({ id, name, kind, depth, expanded, active, checked, partial, re
   return <div data-tree-id={id} className={`group flex items-center gap-1 rounded-lg py-1.5 pr-2 text-sm ${active ? "bg-emerald-950 text-emerald-100" : "text-slate-400 hover:bg-white/[.035] hover:text-slate-200"}`} style={{ paddingLeft: 4 + depth * 16 }}>
     <button type="button" className={`grid size-5 place-items-center ${hasChildren ? "visible" : "invisible"}`} onClick={onExpand} aria-label={`${expanded ? "Collapse" : "Expand"} ${name}`}><ChevronRight size={14} className={`transition-transform ${expanded ? "rotate-90" : ""}`} /></button>
     {selectionEnabled ? <button type="button" role="checkbox" aria-label={`Select ${name}`} aria-checked={partial ? "mixed" : checked} onClick={onToggle} className={`grid size-4 shrink-0 place-items-center rounded border text-[10px] ${checked || partial ? "border-emerald-400 bg-emerald-400 text-emerald-950" : "border-slate-700"}`}>{checked ? "✓" : partial ? "−" : ""}</button> : null}
-    <button type="button" onClick={onActivate} className="flex min-w-0 flex-1 items-center gap-2 text-left"><Icon size={14} className={kind === "source" ? "text-emerald-400" : "text-slate-400"} /><span className="truncate">{name}</span>{kind === "source" ? <><span className="ml-auto rounded border border-emerald-900 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-400">READ ONLY</span><span className={`size-1.5 rounded-full ${readOnlyStatus === "CONNECTED" ? "bg-emerald-400" : "bg-amber-400"}`} /></> : null}</button>
+    <button type="button" onClick={onActivate} className="flex min-w-0 flex-1 items-center gap-2 text-left"><Icon size={14} className={kind === "source" ? "text-emerald-400" : "text-slate-400"} /><span className="truncate">{name}</span>{kind === "source" ? <><span className="ml-auto rounded border border-emerald-900 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-400">READ ONLY</span><span
+      // Hue alone said whether the source was reachable, which is nothing to
+      // a screen reader and nothing to a red-green colour-blind operator.
+      // The dot stays; the word rides along in the accessible name.
+      title={readOnlyStatus === "CONNECTED" ? "Connected" : "Not connected"}
+      className={`size-1.5 shrink-0 rounded-full ${readOnlyStatus === "CONNECTED" ? "bg-emerald-400" : "bg-amber-400"}`}
+    ><span className="sr-only">{readOnlyStatus === "CONNECTED" ? "Connected" : "Not connected"}</span></span></> : null}</button>
   </div>;
 }

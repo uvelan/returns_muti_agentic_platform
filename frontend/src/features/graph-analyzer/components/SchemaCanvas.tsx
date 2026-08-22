@@ -36,6 +36,8 @@ type EntityNodeData = {
   [key: string]: unknown;
   readonly entity: GraphEntity;
   readonly dimmed: boolean;
+  /** Selecting the entity. On the data because a node type takes no props. */
+  readonly onActivate: (entityId: string) => void;
 };
 
 type EntityNode = Node<EntityNodeData, "analyzerEntity">;
@@ -47,13 +49,30 @@ const CHANGE_STYLES: Record<GraphEntity["change"], string> = {
   UNCHANGED: "border-emerald-950",
 };
 
+/**
+ * One entity on the canvas, as a control rather than a decorated `<div>`.
+ *
+ * React Flow makes its node wrapper a tab stop, and its keydown handler
+ * responds to arrow keys and Escape only -- there is no Enter. So an entity
+ * could be focused and never selected, and the inspector beside the canvas was
+ * unreachable without a mouse. The library also declares
+ * `.react-flow__node:focus-visible { outline: none }`, which out-specifies the
+ * app's global focus ring, so the focus was invisible as well as inert.
+ *
+ * `nodesFocusable={false}` on the canvas hands the tab stop to this button
+ * instead: one stop per entity, with Enter and Space for free and a focus ring
+ * that nothing overrides.
+ */
 function EntityNodeView({ data, selected }: NodeProps<EntityNode>) {
-  const { entity, dimmed } = data;
+  const { entity, dimmed, onActivate } = data;
   const identifiers = entity.properties.filter((property) => property.identifier).length;
   const indexes = entity.properties.filter((property) => property.indexed).length;
   return (
-    <div
-      className={`w-52 overflow-hidden rounded-xl border bg-[#0b1b16] shadow-xl transition ${CHANGE_STYLES[entity.change]} ${
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={() => { onActivate(entity.id); }}
+      className={`block w-52 overflow-hidden rounded-xl border bg-[#0b1b16] text-left shadow-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#050c0a] ${CHANGE_STYLES[entity.change]} ${
         selected ? "ring-2 ring-emerald-400 ring-offset-2 ring-offset-[#050c0a]" : ""
       } ${dimmed ? "opacity-25" : "opacity-100"}`}
     >
@@ -89,7 +108,7 @@ function EntityNodeView({ data, selected }: NodeProps<EntityNode>) {
         </div>
       </div>
       <Handle type="source" position={Position.Right} isConnectable={false} className="!bg-emerald-700" />
-    </div>
+    </button>
   );
 }
 
@@ -127,10 +146,10 @@ export function SchemaCanvas({
         // `x`/`y` are percentages of the canvas from the backend; React Flow works
         // in absolute units, so they are scaled once here rather than persisted.
         position: { x: entity.x * 9, y: entity.y * 6 },
-        data: { entity, dimmed: normalized.length > 0 && !matches.has(entity.id) },
+        data: { entity, dimmed: normalized.length > 0 && !matches.has(entity.id), onActivate: onSelect },
         selected: entity.id === selectedId,
       })),
-    [schema.entities, matches, normalized, selectedId],
+    [schema.entities, matches, normalized, selectedId, onSelect],
   );
 
   const edges = useMemo<Edge[]>(
@@ -175,6 +194,10 @@ export function SchemaCanvas({
           minZoom={0.2}
           maxZoom={1.8}
           nodesConnectable={false}
+          // The tab stop belongs to the button inside each node. Left on, React
+          // Flow adds its own wrapper stop that responds to arrows and Escape
+          // but not Enter -- focusable and unselectable, twice per entity.
+          nodesFocusable={false}
           edgesReconnectable={false}
           deleteKeyCode={null}
           onNodeClick={(_event, node) => {

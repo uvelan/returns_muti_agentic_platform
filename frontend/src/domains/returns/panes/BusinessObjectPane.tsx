@@ -67,7 +67,14 @@ export function BusinessObjectPane({ activeMode, candidateCount, children }: Bus
       </header>
 
       {/* 2. Top-aligned Authoritative Content */}
-      <div className={COPILOT_TOKENS.layout.paneBody}>
+      <div
+        // The authoritative record scrolls and its content is text, so without
+        // this a keyboard user reads the top of the return and reaches none of
+        // the rest (WCAG 2.1.1).
+        tabIndex={0}
+        aria-label={title}
+        className={COPILOT_TOKENS.layout.paneBody}
+      >
         {children}
       </div>
     </section>

@@ -56,47 +56,32 @@ export type CanonicalRoute = {
 };
 
 /**
- * The routes the audit found rendering no `<h1>`.
+ * The routes the audit found rendering no `<h1>` -- now empty, and kept.
  *
- * Listed as paths rather than as a rule, because there is no rule -- it is nine
- * specific screens that were built before the shell had a heading convention.
- * Every entry here is a T16 deliverable and a G3b blocker.
+ * There were nine, and the cause was that identity was left to eight separate
+ * screens to remember. `DomainShell` derives it from the registry instead, so a
+ * route cannot be built without one and a new domain gets it for free. The list
+ * stays because the release gate reads it: an empty array is a claim the gate
+ * can check, where a deleted concept is one it cannot.
  */
-const PENDING_IDENTITY: readonly string[] = [
-  ROOT_PATH,
-  "/returns",
-  "/support",
-  "/support/work-queue",
-  "/support/rma-tickets",
-  "/approvals",
-  "/sync",
-  "/operations",
-  "/operations/cases",
-];
+const PENDING_IDENTITY: readonly string[] = [];
 
 function identityOf(path: string): RouteIdentity {
   return PENDING_IDENTITY.includes(path) ? "pending" : "implemented";
 }
 
 /**
- * Routes whose heading disagrees with the name the navigation uses for them.
+ * Routes whose heading disagreed with the name the navigation used for them --
+ * also now empty.
  *
- * Measured in the browser across all thirty-six routes, not transcribed. A
- * section route inherits its domain's heading -- `/config/agents` renders
- * "Configuration" -- and that is deliberate, so only the two genuine
- * disagreements are listed.
+ * Six of them: the analyzer called itself "Schema Analyzer Agent" under a rail
+ * entry reading "Graph Schema Analyzer", and return sessions called itself
+ * "Returns Operations" under "Operations". Neither was in the audit, because
+ * the audit asked whether a heading existed rather than whether it agreed.
+ * Deriving the heading from the registry removes the class of defect, not just
+ * these six.
  */
-// A `Map`, not a record. Indexing a `Record<string, string>` is typed as
-// returning `string`, so the `undefined` check below reads as dead code to the
-// compiler even though a lookup obviously can miss. `Map.get` says so honestly.
-const HEADING_MISMATCH = new Map<string, string>(Object.entries({
-  "/graph-schema": "Schema Analyzer Agent",
-  "/graph-schema/data-sources": "Schema Analyzer Agent",
-  "/graph-schema/graph-analyzer": "Schema Analyzer Agent",
-  "/graph-schema/schema": "Schema Analyzer Agent",
-  "/graph-schema/sync": "Schema Analyzer Agent",
-  "/operations/return-sessions": "Returns Operations",
-}));
+const HEADING_MISMATCH = new Map<string, string>();
 
 function build(): readonly CanonicalRoute[] {
   const routes: CanonicalRoute[] = [

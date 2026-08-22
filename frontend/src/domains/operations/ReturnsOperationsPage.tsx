@@ -58,7 +58,7 @@ export function ReturnsOperationsPage() {
   return (
     <div className="flex flex-col gap-4">
       <header>
-        <h1 className="text-2xl font-semibold text-slate-900">Returns Operations</h1>
+        <h2 className="text-2xl font-semibold text-on-surface">Returns Operations</h2>
         <p className="mt-1 text-sm text-slate-600">
           Queues, timelines, and the one event endpoint every action goes through.
         </p>
