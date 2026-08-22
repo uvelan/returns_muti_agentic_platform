@@ -33,6 +33,23 @@ export type ConversationPaneProps = {
    * the spinner, `disabled` only takes the composer away.
    */
   disabled?: boolean;
+  /**
+   * Seconds the in-flight turn has been waiting.
+   *
+   * The screen had exactly two states -- "searching" and a terminal error -- so
+   * a nine-minute wait and a nine-second one looked identical while they were
+   * happening. An associate on a call had no signal and no estimate.
+   */
+  waitingSeconds?: number;
+  /**
+   * Withdraws from the wait. Absent when there is nothing to withdraw from.
+   *
+   * Client-side: the server keeps working on the turn it accepted. The control
+   * says "Stop waiting" rather than "Cancel" because that is what it does, and
+   * claiming to have cancelled server work this cannot reach would be the same
+   * class of fabrication as the spinner that ran under a configuration error.
+   */
+  onStopWaiting?: () => void;
   error: Error | null;
   conversations: readonly ConversationSummary[];
   openCases: readonly CaseSummary[];
@@ -78,6 +95,8 @@ export function ConversationPane({
   onSubmit,
   onReset,
   isPending,
+  waitingSeconds,
+  onStopWaiting,
   disabled = false,
   error,
   conversations,
@@ -336,7 +355,21 @@ export function ConversationPane({
                       <Bot size={16} />
                     </div>
                     <div className="rounded-2xl rounded-tl-sm border border-outline-variant/20 bg-surface-container-low px-4 py-2.5 text-xs text-outline">
-                      Searching order graph...
+                      <span aria-live="polite">
+                        Searching order graph
+                        {typeof waitingSeconds === "number" && waitingSeconds > 0
+                          ? ` -- ${String(waitingSeconds)}s`
+                          : "..."}
+                      </span>
+                      {onStopWaiting ? (
+                        <button
+                          type="button"
+                          onClick={onStopWaiting}
+                          className="ml-3 rounded border border-outline-variant px-2 py-0.5 text-[11px] text-on-surface hover:bg-surface-container"
+                        >
+                          Stop waiting
+                        </button>
+                      ) : null}
                     </div>
                   </li>
                 ) : null}

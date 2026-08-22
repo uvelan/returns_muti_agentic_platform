@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
@@ -29,6 +30,7 @@ from return_platform.configuration.runtime_integrations import (
 from return_platform.configuration.settings import Settings
 from return_platform.dynamic_knowledge.integration.model_gateway import (
     RoutePoolReasoningModelGateway,
+    StandardReasoningUnavailable,
 )
 from return_platform.dynamic_knowledge.order_agent.contracts import AgentTurnContext
 
@@ -48,6 +50,27 @@ class FailingProvider:
         del request
         self._calls.append(self.name)
         raise ProviderError("PROVIDER_UNAVAILABLE")
+
+
+class HangingProvider:
+    """Accepts the call and never answers in time.
+
+    A MANUAL route is exactly this when nobody is at the console: the request is
+    held for a human and the deadline arrives first.
+    """
+
+    configured = True
+
+    def __init__(self, name: str, model: str, calls: list[str]) -> None:
+        self.name = name
+        self.model = model
+        self._calls = calls
+
+    async def generate(self, request: object) -> ProviderResponse:
+        del request
+        self._calls.append(self.name)
+        await asyncio.sleep(30)
+        raise AssertionError("the deadline should have fired first")
 
 
 class SuccessfulProvider:
@@ -473,3 +496,77 @@ async def test_order_agent_escalates_to_lightweight_tier_when_standard_exhausted
     assert result.model == "google-lite"
     assert "order_agent_tier_escalation_started" in caplog.messages
     assert "order_agent_model_attempt_succeeded" in caplog.messages
+
+
+@pytest.mark.asyncio
+async def test_a_timed_out_route_is_not_re_queued_by_the_tier_escalation(
+    test_settings: Settings,
+) -> None:
+    """One provider offered at both tiers must not be asked twice for silence.
+
+    `route_id` is provider/model/credential and the tier loop sits outside it,
+    so a provider offering one model at both tiers -- which MANUAL does,
+    unconditionally -- yields two routes with one identity. Escalating onto the
+    second paid the full per-attempt timeout again against a respondent that had
+    just failed to answer the identical question.
+
+    That is how one Order Discovery turn reached roughly fourteen minutes: three
+    serial 280-second waits, on one provider, with nothing about the second or
+    third ask different from the first. The associate saw "Searching order
+    graph..." for nine and a half minutes and then an error.
+
+    Only timeouts are suppressed. A *rejected* answer still escalates onto the
+    same route, because on a keyless deployment that second hold is how the
+    operator is told what was wrong with the first answer --
+    `test_keyless_reasoning_is_held_for_a_human` holds that shut.
+    """
+    loaded = load_ai_gateway_configuration(CONFIG)
+    calls: list[str] = []
+    # One identity, two tiers: same provider, same model, same credential.
+    routes = tuple(
+        _route(
+            provider=HangingProvider("MANUAL", "manual-human-v1", calls),
+            provider_name="MANUAL",
+            model="manual-human-v1",
+            credential_id="manual-local",
+            provider_priority=0,
+            model_priority=0,
+            tier=tier,
+        )
+        for tier in (ModelTier.STANDARD, ModelTier.LIGHTWEIGHT)
+    )
+    assert routes[0].route_id == routes[1].route_id, "the test needs one identity"
+
+    gateway = RoutePoolReasoningModelGateway(
+        settings=test_settings.model_copy(
+            update={"ai_timeout_seconds": 0.2, "ai_global_timeout_seconds": 5.0}
+        ),
+        configuration=loaded.configuration,
+        route_pool=AIRoutePool(routes, loaded.configuration),
+    )
+    context = AgentTurnContext(
+        conversation_id="conversation-1",
+        client_turn_id="turn-1",
+        agent_id="agent_a",
+        user_message="Find order ORD-10001",
+        as_of=datetime(2026, 8, 13, 9, 30, tzinfo=UTC),
+        session_timezone="UTC",
+        schema_version="1",
+        graph_generation_id="generation-1",
+        configuration_release_id="release-1",
+        policy_version="policy-1",
+        prompt_version="prompt-1",
+        compact_schema={},
+        conversation_state={},
+    )
+
+    with pytest.raises(StandardReasoningUnavailable):
+        await gateway.decide(context)
+
+    # The route is attempted under its own tier and not re-queued under the
+    # other. `maximumAttemptsPerRoute` may allow more than one try of the same
+    # route within a pass; what must not happen is the escalation adding a
+    # second pass over the identity that just timed out.
+    assert len(calls) <= loaded.configuration.retry.maximumAttemptsPerRoute, (
+        f"the timed-out identity was re-queued by the escalation: {len(calls)} calls"
+    )

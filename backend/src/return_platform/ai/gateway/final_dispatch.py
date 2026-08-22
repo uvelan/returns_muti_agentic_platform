@@ -707,6 +707,34 @@ class FinalDispatcher:
 
         if request.allow_tier_escalation:
             escalated = await self._candidates(request, tier=ModelTier.LIGHTWEIGHT)
+            # After a timeout, do not re-queue a route that just timed out.
+            #
+            # A tier is a request for a *different* model, not a second go at the
+            # same one. Where both tiers resolve to one route -- which is every
+            # MANUAL deployment, because the manual provider offers its single
+            # model at both -- escalating re-queued the identical route and paid
+            # the full per-attempt timeout again. That is how one Order Discovery
+            # turn reached roughly fourteen minutes: three serial 280-second
+            # waits on one provider, and nothing about the second or third ask
+            # differed from the first.
+            #
+            # **Only for timeouts, and the distinction is the whole point.** A
+            # timeout means nobody answered, so asking the same route again is
+            # asking an unchanged question of a silent respondent. A rejected
+            # answer is the opposite: on a keyless deployment the "next route"
+            # is the same person, and the second hold is how they are told what
+            # was wrong with the first answer -- `validationError` is carried
+            # into it. Suppressing that would trade a long wait for an operator
+            # who cannot learn why their answer was refused, which is the defect
+            # `test_the_retry_after_a_bad_answer_tells_the_operator_what_was_wrong`
+            # exists to hold shut.
+            #
+            # Compared by `route_id` -- provider/model/credential, the identity
+            # of the thing that would be called. Comparing by tier would be
+            # circular, since the tier is what changed.
+            if state.last_error == "TIMEOUT":
+                attempted = {route.route_id for route in candidates}
+                escalated = tuple(route for route in escalated if route.route_id not in attempted)
             if escalated:
                 await watcher.on_tier_escalation(
                     attempts=state.attempts, last_error=state.last_error

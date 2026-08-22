@@ -694,17 +694,43 @@ export function ReturnCopilotPage() {
     },
   });
 
+  // Held so the Cancel control can reach the in-flight request. Cleared when a
+  // turn settles, so cancelling can never abort a later one.
+  const abortRef = useRef<AbortController | null>(null);
+  // Seconds the current turn has been waiting. The screen showed exactly two
+  // states -- "searching" and a terminal error -- so a nine-minute wait and a
+  // nine-second one were indistinguishable while they were happening.
+  const [waitingSeconds, setWaitingSeconds] = useState(0);
+
+  /** Withdraw from the wait. The server keeps the turn it accepted. */
+  function stopWaiting(): void {
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }
+
   const send = useMutation({
     mutationFn: (message: string) => {
       // Fail closed. `submit` already refuses, so reaching here means a caller
       // bypassed it -- and sending a guessed id would spend a real turn to
       // learn what this branch already knows.
       if (agentId === null) return Promise.reject(agentConfigurationError);
+      // One controller per submission. A turn used to hold the connection with
+      // nothing able to stop it: the reasoning routes are tried in series and
+      // each carries its own timeout, so an associate could sit through
+      // roughly fourteen minutes of "Searching order graph..." with no signal,
+      // no estimate and no way out.
+      const controller = new AbortController();
+      abortRef.current = controller;
+      // Reset here rather than in the effect: zeroing it there is a synchronous
+      // setState during render's commit, and the counter belongs to the turn
+      // being started rather than to a render that noticed one.
+      setWaitingSeconds(0);
       return orderAgentApi.sendTurn({
         conversationId,
         expectedConversationVersion: versionRef.current,
         message,
         agentId,
+        signal: controller.signal,
       });
     },
     onSuccess: (result) => {
@@ -737,6 +763,20 @@ export function ReturnCopilotPage() {
       ]);
     },
   });
+
+  // Counts only while a turn is in flight, and resets when one starts. Reading
+  // the clock during render would be impure and would not re-render on its own,
+  // so the elapsed value is state driven by an interval.
+  useEffect(() => {
+    if (!send.isPending) return;
+    const started = Date.now();
+    const tick = setInterval(() => {
+      setWaitingSeconds(Math.floor((Date.now() - started) / 1000));
+    }, 1000);
+    return () => {
+      clearInterval(tick);
+    };
+  }, [send.isPending]);
 
   /**
    * Resume a conversation, and the return it raised.
@@ -919,6 +959,8 @@ export function ReturnCopilotPage() {
             onSubmit={submit}
             onReset={resetToFreshReturn}
             isPending={send.isPending}
+            waitingSeconds={waitingSeconds}
+            onStopWaiting={send.isPending ? stopWaiting : undefined}
             // No agent id, no composer -- but no spinner either. Folding this
             // into `isPending` disabled the box correctly and simultaneously
             // claimed a search was running, next to an alert saying nothing

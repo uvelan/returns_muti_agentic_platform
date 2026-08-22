@@ -180,6 +180,19 @@ export type SendTurnInput = {
   expectedConversationVersion: number;
   message: string;
   agentId: string;
+  /**
+   * Aborts the request, and with it the wait.
+   *
+   * There was no signal anywhere in this module or in `client.ts`, so a turn
+   * held the connection until the server answered -- up to roughly fourteen
+   * minutes when every configured route timed out in series, with no way for an
+   * associate on a call to stop it.
+   *
+   * Aborting is a client-side withdrawal: the server keeps working on the turn
+   * it accepted. That is the honest scope of this control, and the screen says
+   * so rather than implying the work was undone.
+   */
+  signal?: AbortSignal;
 };
 
 export const orderAgentApi = {
@@ -191,6 +204,7 @@ export const orderAgentApi = {
       `/api/v2/order-agent/conversations/${encodeURIComponent(input.conversationId)}/turns`,
       {
         method: "POST",
+        ...(input.signal ? { signal: input.signal } : {}),
         // `createHeaders` sets Accept but not Content-Type, so every JSON POST
         // in this codebase declares its own -- omitting it makes FastAPI reject
         // the body as a missing field rather than as a bad content type.
