@@ -181,8 +181,9 @@ export function RmaTicketsPage() {
           <h2 className="text-lg font-semibold text-on-surface">RMA tickets</h2>
           <p className="mt-1 max-w-2xl text-sm text-on-surface-variant">
             Turn the workflow agent&apos;s assessment into an RMA the platform owns. The ticket,
-            the return record, its items and its tracking are written to the platform tables; the
-            source shipment document is annotated afterwards and reports what it did.
+            the return request and its items are written to the platform tables. Tracking is
+            recorded separately, when a carrier actually files one; the source shipment document
+            is annotated afterwards and reports what it did.
           </p>
         </div>
         <div className="flex gap-2">

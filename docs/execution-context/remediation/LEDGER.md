@@ -49,7 +49,7 @@ Status: `NOT_STARTED` · `IN_PROGRESS` · `IN_REVIEW` · `ACCEPTED` · `BLOCKED`
 | T01b live-infra runner | SMALL | T00 | NOT_STARTED | | | G1 | | |
 | T02 Temporal replay recovery | CRITICAL | T00 | IN_REVIEW (code) / BLOCKED (runtime) | `da04602` | | G1 | live stack needed for runtime closure | §T02 evidence below |
 | T03 issuance seam | CRITICAL | T01a | IN_REVIEW | `ce660bc` | | G1 | | §T03 evidence below |
-| T04 exact-once RMA persistence | CRITICAL | T03 | **BLOCKED** | `893e995` | | G1 | ADR-001 does not settle whether a console RMA ticket *is* a case return record — see §T04 blocker | §T04 blocker below |
+| T04 exact-once RMA persistence | CRITICAL | T03 | IN_REVIEW | `9523628` | | G1 | | §T04 evidence below |
 | T05 canonical completeness | NORMAL | T02 | NOT_STARTED | | | G1 | | |
 | T06 status vocabulary | NORMAL | T04 | NOT_STARTED | | | G1 | | |
 | T07 graph evidence gate | CRITICAL analysis | T01a | NOT_STARTED | | | G2 | | |
@@ -242,10 +242,17 @@ connection pool into a sandboxed package.
 | Partition guard | 5 passed, with the canonical port re-pointed |
 | New datastore writes | none — one `persist_case_return_records` call, as before |
 
-## T04 blocker — needs an owner ruling
+## T04 evidence — ADR-001 resolved as option B
 
-**Owner:** platform architecture + fulfilment contract owner. **Blocks:** T04, and therefore G1
-and the P0.
+**Ruling (owner, 2026-08-22): option B.** A console-issued RMA ticket is a **distinct
+artifact** from a case return record. Its authoritative home is
+`integration.return_support_ticket` plus `dbo.return_requests` and `dbo.return_items`;
+`dbo.return_case` / `dbo.return_record` / `dbo.return_record_item` remain the case workflow's.
+The P0 closes by making the product truthful about stores that were already correct, not by
+manufacturing case rows to match a sentence.
+
+This supersedes the blocker recorded at `9523628`. The evidence that produced it is kept below,
+because it is the justification for the ruling.
 
 ### What T03 uncovered
 
@@ -282,14 +289,48 @@ sentence.
 
 B also keeps the tracking rule intact: nothing at issuance fabricates an observation.
 
-**If A or C is chosen**, T04 grows a schema change and the seam gains a case-resolution step;
-the estimate-free sequencing in V4.1 still holds but T04 stops being a single commit.
+### What shipped under B
 
-### What is not blocked
+| Change | Where |
+|---|---|
+| The false claim corrected | `RmaTicketsPage.tsx:184`. Was *"The ticket, the return record, its items and its tracking are written to the platform tables"*. Now names what this path actually writes — the ticket, the return request and its items — and says tracking is recorded separately, when a carrier files one. |
+| The partition made **structural** | `test_the_canonical_writer_is_reached_only_through_the_issuance_seam` pins `persist_case_return_records` to exactly one caller, the issuance seam. A Support-path call fails the test with the reason. |
+| The partition made **behavioural** | `test_issuing_the_return_touches_only_the_tickets_own_store` drives `set_status("RETURN_CREATED")` and asserts only the ticket row moves. `FakeSql` has no `persist_case_return_records`, so a service that grew one fails here rather than in production. |
 
-T03's seam stands under every option — it is where the shared rules live either way. T05
-(canonical completeness), T07 (graph evidence gate), T10, T11, T12 and T13 have no dependency
-on this ruling and can proceed.
+**No README change was needed.** The canonical-flow line (`README.md:40`,
+*"Case → N RMAs → N items, persisted to SQL"*) describes the case workflow, which does write
+those tables — true under B. The ownership table (`:86`) says the platform owns all of these
+tables, also true. Only the screen was wrong.
+
+### Exact-once, and where it already lived
+
+The Support path's own authoritative rows were never the defect — the audit's own before/after
+shows `dbo.return_requests` 0→1 and `dbo.return_items` 0→1. Its exact-once property is
+pre-existing and tested: `create_rma_ticket` is idempotent on a `request_digest`
+(`test_a_repeated_submit_reports_duplicate_rather_than_creating_a_second`), and item ids are
+derived so a retry matches (`test_the_return_reference_is_derived_so_a_retry_matches`).
+
+| Check | Result |
+|---|---|
+| `tests/test_rma_tickets.py` + partition guard | 22 passed |
+| Frontend `npm run lint` | exit 0 |
+| Frontend `vitest run` | 482 passed / 30 files |
+| Full backend suite | see status below |
+
+### Residual
+
+`dbo.return_tracking` is still written only by `record_tracking`, from a real observation.
+Nothing at issuance fabricates one, and the seam cannot express one — that rule is unchanged
+and now stated on the screen.
+
+**Not verified against live SQL.** All six datastores are up, so a behavioural run against real
+SQL is possible and would strengthen this; the structural and service-level pins are what
+landed. Recorded so the gap is visible rather than implied.
+
+### What was never blocked
+
+T03's seam stands under every option — it is where the shared rules live either way. T05, T07,
+T10, T11, T12 and T13 had no dependency on the ruling.
 
 ## T08 terminal outcome
 

@@ -65,6 +65,39 @@ _LEGACY_WRITER_DECLARATIONS: frozenset[str] = frozenset(
 _LEGACY_WRITER = "persist_support_result"
 _CANONICAL_WRITER = "persist_case_return_records"
 
+#: The exact modules permitted to call the canonical multi-RMA writer.
+#:
+#: One entry, and that is the point. Both RMA-issuing paths reach the authoritative
+#: store through `operations/return_issuance.py` or not at all, so the mapping,
+#: the item-id derivation and the refusal to fabricate tracking cannot diverge
+#: between them.
+#:
+#: **The Support RMA-ticket path is deliberately absent.** A console-issued ticket
+#: has no `ReturnCase` identity: `dbo.return_requests` is session-keyed with no
+#: case column, `CaseReturnRecordsWrite` needs `case_id`/`tenant_id`/`principal_id`,
+#: and the only `supportCaseId` in the codebase points at a `support_cases`
+#: document, which is a different aggregate. Calling this writer from that path
+#: would mean inventing a case and writing a synthetic `dbo.return_case` row.
+#:
+#: So the two are different artifacts, and each has its own authoritative home:
+#: a console ticket lives in `integration.return_support_ticket` plus
+#: `dbo.return_requests` and `dbo.return_items`; a case return record lives in
+#: `dbo.return_case`, `dbo.return_record` and `dbo.return_record_item`. That is
+#: the resolution of UIAUDIT-010 -- the stores were already correct and the
+#: screen's claim was not.
+_CANONICAL_WRITER_CALLERS: frozenset[str] = frozenset(
+    {
+        "return_platform/operations/return_issuance.py",
+    }
+)
+
+#: Where the canonical writer is *declared*, which is not a call.
+_CANONICAL_WRITER_DECLARATIONS: frozenset[str] = frozenset(
+    {
+        "return_platform/operations/sql_business_state.py",
+    }
+)
+
 
 def _modules() -> list[Path]:
     return [path for path in _PACKAGE.rglob("*.py") if "__pycache__" not in path.parts]
@@ -116,6 +149,42 @@ def test_the_legacy_single_session_writer_has_exactly_its_known_callers() -> Non
         f"{_LEGACY_WRITER} lost callers {removed} -- if that was a deliberate "
         f"migration, shrink the expected set here in the same change so the "
         f"removal is reviewed rather than absorbed silently."
+    )
+
+
+def test_the_canonical_writer_is_reached_only_through_the_issuance_seam() -> None:
+    """Both RMA paths share one seam, and the Support path does not bypass it.
+
+    If a new caller appears here it is almost certainly the Support RMA-ticket
+    service reaching for the case store. That path has no `ReturnCase` identity
+    to write under -- see `_CANONICAL_WRITER_CALLERS` -- so the write would have
+    to invent one, and a synthetic `dbo.return_case` row is exactly the second
+    disagreeing source of truth this partition exists to prevent.
+
+    A console ticket's authoritative home is `dbo.return_requests` and
+    `dbo.return_items`, which its own path already writes correctly.
+    """
+    actual = {
+        _key(path)
+        for path in _modules()
+        if _key(path) not in _CANONICAL_WRITER_DECLARATIONS
+        and _awaited_attribute_calls(path, _CANONICAL_WRITER)
+    }
+
+    added = sorted(actual - _CANONICAL_WRITER_CALLERS)
+    assert not added, (
+        f"{_CANONICAL_WRITER} gained a caller outside the issuance seam: {added}. "
+        f"Reach it through `operations/return_issuance.py`, and if the caller is "
+        f"the Support RMA-ticket path, note that a console ticket has no "
+        f"ReturnCase identity to write under -- its authoritative rows are "
+        f"dbo.return_requests and dbo.return_items."
+    )
+
+    removed = sorted(_CANONICAL_WRITER_CALLERS - actual)
+    assert not removed, (
+        f"{_CANONICAL_WRITER} lost callers {removed}. If the seam was moved or "
+        f"renamed, update the expected set in the same change so the move is "
+        f"reviewed rather than absorbed silently."
     )
 
 

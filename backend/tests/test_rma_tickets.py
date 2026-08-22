@@ -332,6 +332,36 @@ async def test_a_repeated_submit_reports_duplicate_rather_than_creating_a_second
 
 
 @pytest.mark.asyncio
+async def test_issuing_the_return_touches_only_the_tickets_own_store() -> None:
+    """A console ticket is not a case return record, and must not write like one.
+
+    Its authoritative rows are `integration.return_support_ticket`,
+    `dbo.return_requests` and `dbo.return_items` -- all written on create. The
+    `RETURN_CREATED` transition moves the ticket and nothing else.
+
+    It cannot write `dbo.return_record` even if someone tried: a console ticket
+    has no `ReturnCase` identity to write under. `dbo.return_requests` is
+    session-keyed with no case column, and `CaseReturnRecordsWrite` requires a
+    case, a tenant and a principal that this path never has. Reaching for the
+    case store from here would mean inventing all three and writing a synthetic
+    `dbo.return_case` row.
+
+    `FakeSql` deliberately has no `persist_case_return_records`, so a service
+    that grew one of those calls would fail here rather than in production.
+    `test_return_persistence_paths_stay_partitioned` pins the same rule
+    structurally.
+    """
+    sql = FakeSql()
+
+    await service(sql).set_status("session-1", "RETURN_CREATED", None, actor_id="support-1")
+
+    assert sql.statuses == [("session-1", "RETURN_CREATED", None)]
+    assert sql.created == []
+    assert sql.tracking == []
+    assert not hasattr(sql, "persist_case_return_records")
+
+
+@pytest.mark.asyncio
 async def test_tracking_writes_the_platform_row_before_touching_the_source() -> None:
     """Ordering is the guarantee: the source annotation is a projection of a row
     that is already authoritative, so it can never be why the platform has no
