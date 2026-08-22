@@ -50,7 +50,7 @@ Status: `NOT_STARTED` · `IN_PROGRESS` · `IN_REVIEW` · `ACCEPTED` · `BLOCKED`
 | T02 Temporal replay recovery | CRITICAL | T00 | IN_REVIEW (code) / BLOCKED (runtime) | `da04602` | | G1 | live stack needed for runtime closure | §T02 evidence below |
 | T03 issuance seam | CRITICAL | T01a | IN_REVIEW | `ce660bc` | | G1 | | §T03 evidence below |
 | T04 exact-once RMA persistence | CRITICAL | T03 | IN_REVIEW | `9523628` | | G1 | | §T04 evidence below |
-| T05 canonical completeness | NORMAL | T02 | NOT_STARTED | | | G1 | | |
+| T05 canonical completeness | NORMAL | T02 | IN_REVIEW | `ae7211f` | | G1 | | §T05 evidence below |
 | T06 status vocabulary | NORMAL | T04 | NOT_STARTED | | | G1 | | |
 | T07 graph evidence gate | CRITICAL analysis | T01a | NOT_STARTED | | | G2 | | |
 | T08 graph lifecycle correction | CRITICAL / conditional | T07 | NOT_STARTED | | | G2 | | outcome: `PENDING` |
@@ -331,6 +331,45 @@ landed. Recorded so the gap is visible rather than implied.
 
 T03's seam stands under every option — it is where the shared rules live either way. T05, T07,
 T10, T11, T12 and T13 had no dependency on the ruling.
+
+## T05 evidence
+
+Closure criterion: *selected item plus missing return method reads incomplete on every
+surface.* Met.
+
+`required_details_complete` was `bool(selected)` — true the moment any line was picked. So a
+case the platform itself recorded as `awaiting: ["RETURN_METHOD"], businessComplete: false`
+handed Support a message reading **"Required Return Information: Complete"** and asked them to
+issue or decline the RMA on that basis, while the case pane beside it said
+*"Waiting on RETURN_METHOD"*. Three surfaces, two answers.
+
+It now comes from `_assess_completion`, the same helper the run loop uses — a set difference
+over the requirement table, the policy decision and every child collection:
+
+```
+known, _business_complete, awaiting, _revision = await self._assess_completion(case_id)
+required_details_complete = known and not awaiting
+```
+
+**Why `not awaiting` is the right reading.** At handoff the case has no return records yet, so
+the completion profile is unresolved and `awaiting` holds exactly the *unresolved* dimensions —
+`POLICY`, `RETURN_METHOD`, the verification pair — the facts nobody has established. The
+*required* dimensions (`RMA`, `LABEL`, `TRACKING`…) only enter once a profile resolves, which
+is after Support has done the work being asked for. So an empty set is the only honest reading
+of complete, and `RETURN_METHOD` outstanding correctly reads incomplete.
+
+`known` is false when the projection cannot be assembled at all. That renders **Incomplete**,
+never Complete: "we cannot tell" and "the facts are in" send Support to opposite actions.
+
+| Check | Result |
+|---|---|
+| Full backend suite | **4098 passed, 3 skipped, 496 deselected, exit 0** (4096 + 2 new) |
+| `ruff check` / `format` | clean |
+| Prose and payload | both render from one value (`support_handoff.py:367` and `:417`), so they cannot disagree |
+
+Both new tests are genuine regressions: the seeded item carries `returnRecordId: None`, so
+`_selected_items` includes it and the old `bool(selected)` would have rendered "Complete"
+against an assertion of "Incomplete".
 
 ## T08 terminal outcome
 

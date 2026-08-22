@@ -1113,6 +1113,30 @@ class ReturnCaseActivities:
         )
         details = await self._order_line_details(order_reference)
 
+        # Completeness comes from the same assessment that produces `awaiting`,
+        # never from whether a line happens to be selected.
+        #
+        # It used to read `bool(selected)`, which is true the moment any item is
+        # picked. So a case the platform itself recorded as
+        # `awaiting: ["RETURN_METHOD"], businessComplete: false` handed Support a
+        # message saying "Required Return Information: Complete" and asked them to
+        # issue or decline the RMA on that basis -- while the case pane beside it
+        # said "Waiting on RETURN_METHOD". Three surfaces, two answers.
+        #
+        # At handoff the case has no return records yet, so the completion
+        # profile is unresolved and `awaiting` holds exactly the *unresolved*
+        # dimensions: the facts nobody has established. That is what "required
+        # return information" means here, and an empty set is the only honest
+        # reading of complete.
+        #
+        # `known` is false when the projection cannot be assembled at all -- an
+        # activity double, a narrower port. Reported as incomplete rather than
+        # guessed, because "we cannot tell" must never render as "Complete".
+        known, _business_complete, awaiting, _revision = await self._assess_completion(
+            request.case_id
+        )
+        required_details_complete = known and not awaiting
+
         handoff = compose_support_handoff(
             case_id=request.case_id,
             work_item_id=request.work_item_id,
@@ -1153,7 +1177,7 @@ class ReturnCaseActivities:
                 decision=_stated(facts, "policy_decision"),
             ),
             order_confirmed=order_reference is not None,
-            required_details_complete=bool(selected),
+            required_details_complete=required_details_complete,
         )
         return SupportRequestDraft(
             text=handoff.text + await self._drafted_note(request.case_id, facts),

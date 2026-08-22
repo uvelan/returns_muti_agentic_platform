@@ -78,6 +78,7 @@ from return_platform.workflows.return_case_activities import (
 )
 from return_platform.workflows.return_case_workflow import (
     CaseTerminalCommand,
+    DraftSupportRequestInput,
     RecordSupportOutcomeInput,
     ReturnCaseOutcome,
     ReturnCaseStatus,
@@ -1981,3 +1982,85 @@ async def test_the_graph_sync_failure_still_parks_before_reporting_rma_received(
 
     assert outcome.parked_reason == "RETURN_GRAPH_SYNC_FAILED"
     assert outcome.status != ReturnCaseStatus.RMA_RECEIVED.value
+
+
+# ---------------------------------------------------------------------------
+# The handoff's completeness claim (UIAUDIT-004)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_selected_item_alone_does_not_make_the_handoff_claim_completeness() -> None:
+    """Support must not be told the required facts are in when they are not.
+
+    The claim used to read `bool(selected)` -- true the moment any line was
+    picked. So a case the platform itself recorded as
+    `awaiting: ["RETURN_METHOD"], businessComplete: false` handed Support a
+    message saying "Required Return Information: Complete", and asked them to
+    issue or decline the RMA on that basis. The case pane beside it said
+    "Waiting on RETURN_METHOD".
+
+    This is that case: an item is selected and no return method has been
+    established. Both halves of the handoff must say Incomplete, and the
+    projection is asserted alongside them so the test fails if the two ever
+    stop agreeing.
+    """
+    fixture = _fixture()
+    fixture.repository.items.append(
+        {
+            "caseId": CASE_ID,
+            "returnItemId": "item-1",
+            "orderLineId": "1",
+            "productId": "4000096",
+            "quantity": 1,
+            "reasonCode": "ORDERED_IN_ERROR",
+            "returnRecordId": None,
+            "version": 1,
+        }
+    )
+
+    projection = await fixture.repository.projection()
+    assert "RETURN_METHOD" in [str(dimension) for dimension in projection.awaiting]
+    assert projection.businessComplete is False
+
+    draft = await fixture.activities.draft_support_request(
+        DraftSupportRequestInput(
+            case_id=CASE_ID,
+            configuration_release_id="release-1",
+            work_item_id="work-item-1",
+        )
+    )
+
+    assert "Required Return Information: Incomplete" in draft.text
+    assert draft.payload["verification"]["requiredReturnInformationComplete"] is False
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_projection_is_reported_incomplete_never_complete() -> None:
+    """ "We cannot tell" and "complete" send Support to opposite actions."""
+    fixture = _fixture()
+    fixture.repository.items.append(
+        {
+            "caseId": CASE_ID,
+            "returnItemId": "item-1",
+            "orderLineId": "1",
+            "productId": "4000096",
+            "quantity": 1,
+            "reasonCode": "ORDERED_IN_ERROR",
+            "returnRecordId": None,
+            "version": 1,
+        }
+    )
+    # No projection loader at all: the narrower port an activity double presents.
+    fixture.repository.load_case_projection_state = None  # type: ignore[method-assign]
+
+    draft = await fixture.activities.draft_support_request(
+        DraftSupportRequestInput(
+            case_id=CASE_ID,
+            configuration_release_id="release-1",
+            work_item_id="work-item-1",
+        )
+    )
+
+    assert "Required Return Information: Incomplete" in draft.text
+    assert draft.payload["verification"]["requiredReturnInformationComplete"] is False
