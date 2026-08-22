@@ -989,16 +989,20 @@ export const canonicalHandlers = [
       envelope(
         [
           {
-            release_id: "rel-mock-1",
+            releaseId: "rel-mock-1",
             status: "RELEASED",
-            checksum: "9f2c1a",
-            created_at: "2026-08-01T09:00:00Z",
+            checksumSha256: "9f2c1a",
+            createdAt: "2026-08-01T09:00:00Z",
+            createdBy: "operator",
+            metadata: {},
           },
           {
-            release_id: "rel-mock-2",
+            releaseId: "rel-mock-2",
             status: "VALIDATED",
-            checksum: "3b7d02",
-            created_at: "2026-08-09T09:00:00Z",
+            checksumSha256: "3b7d02",
+            createdAt: "2026-08-09T09:00:00Z",
+            createdBy: "operator",
+            metadata: {},
           },
         ],
         "releases",
@@ -1011,10 +1015,12 @@ export const canonicalHandlers = [
     return HttpResponse.json(
       envelope(
         {
-          release_id: releaseId,
+          releaseId,
           status: releaseId === "rel-mock-1" ? "RELEASED" : "VALIDATED",
-          checksum: releaseId === "rel-mock-1" ? "9f2c1a" : "3b7d02",
-          created_at: "2026-08-09T09:00:00Z",
+          checksumSha256: releaseId === "rel-mock-1" ? "9f2c1a" : "3b7d02",
+          createdAt: "2026-08-09T09:00:00Z",
+          createdBy: "operator",
+          metadata: {},
           domains: { return_platform: { workflow: { version: "2.1" } } },
         },
         "release",

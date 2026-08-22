@@ -49,21 +49,29 @@ export const ALLOWED_PROMOTIONS: Readonly<Record<string, readonly PromotionTarge
 };
 
 /**
- * `/releases` is typed `list[dict[str, Any]]` on the backend, so these mirror
- * `ConfigurationRelease` without claiming a guarantee the route does not make.
- * Lifecycle timestamps are nullable until their transition occurs.
+ * `/releases` is typed on the backend now, so these are guarantees rather than
+ * hopes: `ConfigurationReleaseView` names exactly the six fields
+ * `ConfigurationReleaseNode` persists, and the drift gate can see the shape.
+ *
+ * Six fields are gone from this type, and they were the reason it existed in
+ * this shape: `updated_at`, `validated_at`, `approved_at`, `approved_by`,
+ * `activated_at` and `superseded_by` have no writer anywhere in the platform.
+ * Declaring them optional meant TypeScript could not object, so the governance
+ * screen rendered permanent dashes for "who approved this" and "when did it go
+ * live" -- reading as missing data rather than as an absent feature. A field
+ * comes back here only once something persists it.
+ *
+ * `checksum` is `checksumSha256`. The old spelling never matched the wire, so
+ * the one value that makes a release verifiable rendered as "-" while the API
+ * was returning it.
  */
 export type ConfigurationRelease = {
-  readonly release_id?: string;
-  readonly status?: ReleaseStatus;
-  readonly checksum?: string;
-  readonly created_at?: string;
-  readonly updated_at?: string;
-  readonly validated_at?: string | null;
-  readonly approved_at?: string | null;
-  readonly approved_by?: string | null;
-  readonly activated_at?: string | null;
-  readonly superseded_by?: string | null;
+  readonly releaseId: string;
+  readonly status: ReleaseStatus;
+  readonly createdAt: string;
+  readonly createdBy: string;
+  readonly checksumSha256: string;
+  readonly metadata?: Readonly<Record<string, unknown>>;
   readonly domains?: Readonly<Record<string, unknown>>;
 };
 

@@ -1858,6 +1858,39 @@
         "title": "APIResponse[CaseRecoveryView]",
         "type": "object"
       },
+      "APIResponse_ConfigurationReleaseDetailView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConfigurationReleaseDetailView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ConfigurationReleaseDetailView]",
+        "type": "object"
+      },
       "APIResponse_ConversationTranscript_": {
         "additionalProperties": false,
         "properties": {
@@ -3689,6 +3722,43 @@
           "meta"
         ],
         "title": "APIResponse[list[CaseSummary]]",
+        "type": "object"
+      },
+      "APIResponse_list_ConfigurationReleaseView__": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ConfigurationReleaseView"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[list[ConfigurationReleaseView]]",
         "type": "object"
       },
       "APIResponse_list_ConversationSummary__": {
@@ -7230,6 +7300,91 @@
           "answered_by"
         ],
         "title": "ClarificationView",
+        "type": "object"
+      },
+      "ConfigurationReleaseDetailView": {
+        "additionalProperties": false,
+        "description": "A release plus the domain payloads it carries.",
+        "properties": {
+          "checksumSha256": {
+            "title": "Checksumsha256",
+            "type": "string"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "createdBy": {
+            "title": "Createdby",
+            "type": "string"
+          },
+          "domains": {
+            "additionalProperties": true,
+            "title": "Domains",
+            "type": "object"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "releaseId": {
+            "title": "Releaseid",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "releaseId",
+          "status",
+          "createdAt",
+          "createdBy",
+          "checksumSha256"
+        ],
+        "title": "ConfigurationReleaseDetailView",
+        "type": "object"
+      },
+      "ConfigurationReleaseView": {
+        "additionalProperties": false,
+        "description": "One configuration release, as the console reads it.\n\nTyped because it was not, and the cost of that was invisible. The route\nanswered `list[dict[str, Any]]`, so the OpenAPI drift gate had no shape to\ncompare and reported `diffs: []` while the console read three fields the\nendpoint has never served -- `approved_by`, `activated_at` and a `checksum`\nthat is spelled `checksum_sha256`. A gate that cannot fail on an untyped\nendpoint reports coverage it does not have.\n\n**Every field here is persisted.** `ConfigurationReleaseNode`\n(`configuration/graph_repository.py:86-94`) holds exactly six, and this is\nthose six. The console previously declared eleven: `updated_at`,\n`validated_at`, `approved_at`, `approved_by`, `activated_at` and\n`superseded_by` have no writer anywhere and rendered as permanent dashes on\nthe one screen that answers \"who released this, and when\". They are gone\nrather than nulled, because a column that can never be filled is worse than\nan absent one -- it reads as missing data instead of an absent feature.\nAdding one back means persisting it first.\n\n**Not `ReleaseRowView`.** That name belongs to `api/schema_releases.py:34`\nand describes a *graph-schema* release, which is a different artifact with a\ndifferent lifecycle. Reusing it here would merge two contracts that only\nlook alike.\n\ncamelCase on the wire, matching every other endpoint. This route was the one\naudited surface answering snake_case, which is how a console reading\n`caseId` and `slaDueAt` everywhere else came to read `release_id` here.",
+        "properties": {
+          "checksumSha256": {
+            "title": "Checksumsha256",
+            "type": "string"
+          },
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "createdBy": {
+            "title": "Createdby",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
+          "releaseId": {
+            "title": "Releaseid",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "releaseId",
+          "status",
+          "createdAt",
+          "createdBy",
+          "checksumSha256"
+        ],
+        "title": "ConfigurationReleaseView",
         "type": "object"
       },
       "ConfirmDiscoveryRequest": {
@@ -19570,6 +19725,7 @@
     },
     "/api/config/releases": {
       "get": {
+        "description": "The release lifecycle, typed.\n\nThis answered `list[dict[str, Any]]` until now, and that is why the console\ncould read three fields the endpoint has never served without anything\nobjecting: with no declared shape, `scripts/check_openapi_drift.py` had\nnothing to compare and reported `diffs: []` on a contract that did not hold.",
         "operationId": "list_releases_api_config_releases_get",
         "parameters": [
           {
@@ -19590,7 +19746,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse_list_dict_str__Any___"
+                  "$ref": "#/components/schemas/APIResponse_list_ConfigurationReleaseView__"
                 }
               }
             },
@@ -19672,7 +19828,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                  "$ref": "#/components/schemas/APIResponse_ConfigurationReleaseDetailView_"
                 }
               }
             },

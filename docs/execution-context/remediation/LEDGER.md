@@ -57,7 +57,7 @@ Status: `NOT_STARTED` · `IN_PROGRESS` · `IN_REVIEW` · `ACCEPTED` · `BLOCKED`
 | T09 durable sync runs | CRITICAL | T07 accepted + T08 outcome | NOT_STARTED | | | G2 | | |
 | T10 durable manual AI operation | CRITICAL | T01a; live validation via L1 | NOT_STARTED | | | G2 | | |
 | T11 interception history | NORMAL | T01a | NOT_STARTED | | | G2 | | |
-| T12 configuration release contract | NORMAL | T01a | NOT_STARTED | | | G2 | | |
+| T12 configuration release contract | NORMAL | T01a | IN_REVIEW | `3ce4367` | | G2 | | §T12 evidence below |
 | T13 real-stack browser harness | NORMAL | T01a | NOT_STARTED | | | G3a | | |
 | T14 shared UI foundation | NORMAL | T13 | NOT_STARTED | | | G3a | | |
 | T15 return-critical UX | NORMAL | T04, T05, T06, T10, T13, T14 | NOT_STARTED | | | G3a | | |
@@ -503,6 +503,56 @@ collection needs one. UIAUDIT-015's exact line is `AiControlCenterPage.tsx:666`
 (`key={route.routeId}`), root-caused to `routes.py:243` omitting tier from the id while `:216`
 loops tiers outside it; note `selection.py` keys circuit-breaker health on the same id, so
 changing it there merges or splits circuits as a side effect.
+
+## T12 evidence
+
+Closure criteria: *OpenAPI exposes concrete schemas; every displayed field is sourced and
+tested; the drift gate catches regressions.* All three met, and the third was demonstrated
+rather than asserted.
+
+**The drift gate was proven to work, in both directions.** After typing the endpoint and before
+regenerating, `check_openapi_drift.py` reported 5 `DRIFT` entries and `exit_code: 1`. The same
+class of change on the *untyped* endpoint had previously produced `diffs: []`. That is
+UIAUDIT-007's real cause — not a missing field, but a gate with no shape to compare.
+
+**Two mistakes I made and corrected, both caught by tooling rather than review:**
+
+1. I first typed the routes in `configuration/api/releases.py`. The drift gate then reported no
+   change at all — because that router's prefix is `/data-console/v1/configuration` and **no
+   `/data-console` path exists in the spec**. It is not mounted. The live routes are
+   `configuration/api/router.py:149,160`, which re-declare the reads rather than delegating
+   (unlike the mutations, which do delegate). The dead-route edits were reverted; the DTOs stayed
+   where they are, and `router.py` imports them.
+2. I used Pydantic `alias`, and the regenerated spec came back **snake_case** — FastAPI
+   serializes response models with `by_alias=True`, so the wire kept `release_id` while the
+   console now read `releaseId`. That is precisely the client/server disagreement this task
+   exists to end. Switched to `validation_alias`, which accepts the persisted snake_case in and
+   serializes the field name out.
+
+**What the contract now declares** (`openapi.json`, regenerated):
+
+```
+ConfigurationReleaseView       -> checksumSha256, createdAt, createdBy, metadata, releaseId, status
+ConfigurationReleaseDetailView -> …the same, plus domains
+required: checksumSha256, createdAt, createdBy, releaseId, status
+```
+
+Six fields removed from the console type — `updated_at`, `validated_at`, `approved_at`,
+`approved_by`, `activated_at`, `superseded_by`. None has a writer anywhere in the platform.
+`createdBy` was served the whole time and never rendered, so the governance screen now answers
+"who released this and when" with data instead of dashes.
+
+**A false-confidence test, fixed.** `ConfigurationPage.test.tsx` mocked `checksum: "abc123"` — a
+field the API has never returned — so the test passed while the panel rendered "-" for the one
+value that makes a release verifiable. The MSW handler did the same, and passed the contract test
+only because an untyped endpoint accepts any shape. Both now carry the wire shape.
+
+| Check | Result |
+|---|---|
+| Backend suite | 4098 passed, exit 0 |
+| Frontend lint / typecheck / vitest | clean · clean · 482 passed |
+| Drift gate | detects the change (exit 1) before regen; `PASS` after |
+| Check mode non-mutating | receipt sha256 byte-identical before and after a check run |
 
 ## T08 terminal outcome
 

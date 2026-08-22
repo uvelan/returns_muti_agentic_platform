@@ -48,6 +48,60 @@ def _response_meta(request: Request) -> ResponseMeta:
     return ResponseMeta(request_id=request_id if isinstance(request_id, str) else "unknown")
 
 
+class ConfigurationReleaseView(BaseModel):
+    """One configuration release, as the console reads it.
+
+    Typed because it was not, and the cost of that was invisible. The route
+    answered `list[dict[str, Any]]`, so the OpenAPI drift gate had no shape to
+    compare and reported `diffs: []` while the console read three fields the
+    endpoint has never served -- `approved_by`, `activated_at` and a `checksum`
+    that is spelled `checksum_sha256`. A gate that cannot fail on an untyped
+    endpoint reports coverage it does not have.
+
+    **Every field here is persisted.** `ConfigurationReleaseNode`
+    (`configuration/graph_repository.py:86-94`) holds exactly six, and this is
+    those six. The console previously declared eleven: `updated_at`,
+    `validated_at`, `approved_at`, `approved_by`, `activated_at` and
+    `superseded_by` have no writer anywhere and rendered as permanent dashes on
+    the one screen that answers "who released this, and when". They are gone
+    rather than nulled, because a column that can never be filled is worse than
+    an absent one -- it reads as missing data instead of an absent feature.
+    Adding one back means persisting it first.
+
+    **Not `ReleaseRowView`.** That name belongs to `api/schema_releases.py:34`
+    and describes a *graph-schema* release, which is a different artifact with a
+    different lifecycle. Reusing it here would merge two contracts that only
+    look alike.
+
+    camelCase on the wire, matching every other endpoint. This route was the one
+    audited surface answering snake_case, which is how a console reading
+    `caseId` and `slaDueAt` everywhere else came to read `release_id` here.
+    """
+
+    # `validation_alias`, not `alias`. FastAPI serializes response models with
+    # `by_alias=True`, so a plain `alias` would have put snake_case back on the
+    # wire while this model read camelCase -- the same client/server disagreement
+    # this type exists to end. `validation_alias` accepts the persisted
+    # snake_case in, and serialization falls back to the field name out.
+    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
+
+    releaseId: str = Field(validation_alias="release_id")
+    status: str
+    createdAt: str = Field(validation_alias="created_at")
+    #: Served since the endpoint existed and never rendered. The governance
+    #: question the screen exists to answer is "who released this and when", and
+    #: both halves were on the wire the whole time.
+    createdBy: str = Field(validation_alias="created_by")
+    checksumSha256: str = Field(validation_alias="checksum_sha256")
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConfigurationReleaseDetailView(ConfigurationReleaseView):
+    """A release plus the domain payloads it carries."""
+
+    domains: dict[str, Any] = Field(default_factory=dict)
+
+
 @router.get("/active-snapshot", response_model=APIResponse[dict[str, Any]])
 async def get_active_snapshot(
     request: Request,

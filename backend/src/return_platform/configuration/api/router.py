@@ -34,6 +34,8 @@ from return_platform.configuration.api.audit import AuditLog
 from return_platform.configuration.api.audit import get_audit_log as console_get_audit_log
 from return_platform.configuration.api.audit import list_audit_logs as console_list_audit_logs
 from return_platform.configuration.api.releases import (
+    ConfigurationReleaseDetailView,
+    ConfigurationReleaseView,
     CreateReleasePayload,
     PatchDomainPayload,
     PromoteReleasePayload,
@@ -146,18 +148,31 @@ async def get_release_adoption(
 # --- releases ---------------------------------------------------------------
 
 
-@router.get("/releases", response_model=APIResponse[list[dict[str, Any]]])
+@router.get("/releases", response_model=APIResponse[list[ConfigurationReleaseView]])
 async def list_releases(
     request: Request,
     limit: int = Query(default=20, ge=1, le=100),
     _user_id: str = Depends(require_read_roles),
 ) -> APIResponse[Any]:
+    """The release lifecycle, typed.
+
+    This answered `list[dict[str, Any]]` until now, and that is why the console
+    could read three fields the endpoint has never served without anything
+    objecting: with no declared shape, `scripts/check_openapi_drift.py` had
+    nothing to compare and reported `diffs: []` on a contract that did not hold.
+    """
     repository = resolve_configuration_repository(request)
     releases = await repository.list_releases(limit=limit)
-    return _ok(request, [release.model_dump(mode="json") for release in releases])
+    return _ok(
+        request,
+        [
+            ConfigurationReleaseView.model_validate(release.model_dump(mode="json"))
+            for release in releases
+        ],
+    )
 
 
-@router.get("/releases/{release_id}", response_model=APIResponse[dict[str, Any]])
+@router.get("/releases/{release_id}", response_model=APIResponse[ConfigurationReleaseDetailView])
 async def get_release(
     release_id: str,
     request: Request,
@@ -171,7 +186,7 @@ async def get_release(
         )
     data = release.model_dump(mode="json")
     data["domains"] = await repository.get_all_domain_configs(release_id)
-    return _ok(request, data)
+    return _ok(request, ConfigurationReleaseDetailView.model_validate(data))
 
 
 # --- drafting -----------------------------------------------------------------

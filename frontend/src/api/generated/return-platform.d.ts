@@ -770,7 +770,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Releases */
+        /**
+         * List Releases
+         * @description The release lifecycle, typed.
+         *
+         *     This answered `list[dict[str, Any]]` until now, and that is why the console
+         *     could read three fields the endpoint has never served without anything
+         *     objecting: with no declared shape, `scripts/check_openapi_drift.py` had
+         *     nothing to compare and reported `diffs: []` on a contract that did not hold.
+         */
         get: operations["list_releases_api_config_releases_get"];
         put?: never;
         /**
@@ -4170,6 +4178,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[ConfigurationReleaseDetailView] */
+        APIResponse_ConfigurationReleaseDetailView_: {
+            data?: components["schemas"]["ConfigurationReleaseDetailView"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[ConversationTranscript] */
         APIResponse_ConversationTranscript_: {
             data?: components["schemas"]["ConversationTranscript"] | null;
@@ -4518,6 +4532,13 @@ export interface components {
         APIResponse_list_CaseSummary__: {
             /** Data */
             data?: components["schemas"]["CaseSummary"][] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[list[ConfigurationReleaseView]] */
+        APIResponse_list_ConfigurationReleaseView__: {
+            /** Data */
+            data?: components["schemas"]["ConfigurationReleaseView"][] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -5829,6 +5850,76 @@ export interface components {
             /** Question */
             question: string;
             status: components["schemas"]["ClarificationStatus"];
+        };
+        /**
+         * ConfigurationReleaseDetailView
+         * @description A release plus the domain payloads it carries.
+         */
+        ConfigurationReleaseDetailView: {
+            /** Checksumsha256 */
+            checksumSha256: string;
+            /** Createdat */
+            createdAt: string;
+            /** Createdby */
+            createdBy: string;
+            /** Domains */
+            domains?: {
+                [key: string]: unknown;
+            };
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Releaseid */
+            releaseId: string;
+            /** Status */
+            status: string;
+        };
+        /**
+         * ConfigurationReleaseView
+         * @description One configuration release, as the console reads it.
+         *
+         *     Typed because it was not, and the cost of that was invisible. The route
+         *     answered `list[dict[str, Any]]`, so the OpenAPI drift gate had no shape to
+         *     compare and reported `diffs: []` while the console read three fields the
+         *     endpoint has never served -- `approved_by`, `activated_at` and a `checksum`
+         *     that is spelled `checksum_sha256`. A gate that cannot fail on an untyped
+         *     endpoint reports coverage it does not have.
+         *
+         *     **Every field here is persisted.** `ConfigurationReleaseNode`
+         *     (`configuration/graph_repository.py:86-94`) holds exactly six, and this is
+         *     those six. The console previously declared eleven: `updated_at`,
+         *     `validated_at`, `approved_at`, `approved_by`, `activated_at` and
+         *     `superseded_by` have no writer anywhere and rendered as permanent dashes on
+         *     the one screen that answers "who released this, and when". They are gone
+         *     rather than nulled, because a column that can never be filled is worse than
+         *     an absent one -- it reads as missing data instead of an absent feature.
+         *     Adding one back means persisting it first.
+         *
+         *     **Not `ReleaseRowView`.** That name belongs to `api/schema_releases.py:34`
+         *     and describes a *graph-schema* release, which is a different artifact with a
+         *     different lifecycle. Reusing it here would merge two contracts that only
+         *     look alike.
+         *
+         *     camelCase on the wire, matching every other endpoint. This route was the one
+         *     audited surface answering snake_case, which is how a console reading
+         *     `caseId` and `slaDueAt` everywhere else came to read `release_id` here.
+         */
+        ConfigurationReleaseView: {
+            /** Checksumsha256 */
+            checksumSha256: string;
+            /** Createdat */
+            createdAt: string;
+            /** Createdby */
+            createdBy: string;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+            /** Releaseid */
+            releaseId: string;
+            /** Status */
+            status: string;
         };
         /** ConfirmDiscoveryRequest */
         ConfirmDiscoveryRequest: {
@@ -10818,7 +10909,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["APIResponse_list_dict_str__Any___"];
+                    "application/json": components["schemas"]["APIResponse_list_ConfigurationReleaseView__"];
                 };
             };
             /** @description Validation Error */
@@ -10882,7 +10973,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                    "application/json": components["schemas"]["APIResponse_ConfigurationReleaseDetailView_"];
                 };
             };
             /** @description Validation Error */

@@ -166,7 +166,7 @@ function OverviewTab({ canReadReleases }: { canReadReleases: boolean }) {
           {!canReadReleases ? (
             <p className="text-sm text-slate-600">Requires config.release.read.</p>
           ) : active ? (
-            <p className="break-all font-mono text-xs text-slate-800">{active.release_id}</p>
+            <p className="break-all font-mono text-xs text-slate-800">{active.releaseId}</p>
           ) : (
             <p className="text-sm text-slate-600">No RELEASED release found.</p>
           )}
@@ -244,8 +244,8 @@ function ReleasesTab({ canRead }: { canRead: boolean }) {
             <tr>
               <th className="p-2">Release</th>
               <th className="p-2">Status</th>
-              <th className="p-2">Approved by</th>
-              <th className="p-2">Activated</th>
+              <th className="p-2">Created</th>
+              <th className="p-2">Created by</th>
             </tr>
           </thead>
           <tbody>
@@ -254,10 +254,10 @@ function ReleasesTab({ canRead }: { canRead: boolean }) {
                 <td colSpan={4} className="p-3 text-slate-600">No releases.</td>
               </tr>
             ) : null}
-            {rows.map((release, index) => (
+            {rows.map((release) => (
               <tr
-                key={release.release_id ?? String(index)}
-                onClick={() => { setSelectedId(release.release_id ?? null); }}
+                key={release.releaseId}
+                onClick={() => { setSelectedId(release.releaseId); }}
                 className="cursor-pointer border-t border-slate-200 hover:bg-slate-50"
               >
                 <td className="p-2 font-mono text-xs">
@@ -273,20 +273,18 @@ function ReleasesTab({ canRead }: { canRead: boolean }) {
                   */}
                   <button
                     type="button"
-                    aria-pressed={release.release_id === selectedId}
-                    onClick={() => { setSelectedId(release.release_id ?? null); }}
+                    aria-pressed={release.releaseId === selectedId}
+                    onClick={() => { setSelectedId(release.releaseId); }}
                     className="w-full text-left"
                   >
-                    {release.release_id ?? "-"}
+                    {release.releaseId}
                   </button>
                 </td>
                 <td className="p-2">
                   <StatusBadge status={release.status} />
                 </td>
-                <td className="p-2">{release.approved_by ?? "-"}</td>
-                <td className="p-2">
-                  {release.activated_at ? new Date(release.activated_at).toLocaleString() : "-"}
-                </td>
+                <td className="p-2">{format(release.createdAt)}</td>
+                <td className="p-2">{release.createdBy}</td>
               </tr>
             ))}
           </tbody>
@@ -320,7 +318,7 @@ function PromotionControls({ release }: { release: ConfigurationRelease }) {
   const promote = useMutation({
     mutationFn: (status: PromotionTarget) =>
       configApi.promote(
-        release.release_id ?? "",
+        release.releaseId,
         status,
         // Only sent when publishing -- the backend requires it there and
         // ignores it elsewhere. Parsed rather than coerced so a non-numeric
@@ -331,7 +329,7 @@ function PromotionControls({ release }: { release: ConfigurationRelease }) {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["config", "releases"] }),
-        queryClient.invalidateQueries({ queryKey: ["config", "release", release.release_id] }),
+        queryClient.invalidateQueries({ queryKey: ["config", "release", release.releaseId] }),
         // Publishing refreshes the process's active configuration, so the
         // runtime snapshot this screen shows is stale too.
         queryClient.invalidateQueries({ queryKey: ["config", "runtime"] }),
@@ -347,14 +345,14 @@ function PromotionControls({ release }: { release: ConfigurationRelease }) {
     );
   }
 
-  const targets = ALLOWED_PROMOTIONS[release.status ?? ""] ?? [];
+  const targets = ALLOWED_PROMOTIONS[release.status] ?? [];
   if (targets.length === 0) {
     return (
       <p className="mt-3 border-t border-slate-200 pt-3 text-sm text-slate-600">
         {/* RELEASED and ARCHIVED are both ends of the line. A release leaves
             RELEASED by being superseded, which publishing its successor does --
             not by a promotion of its own. */}
-        No promotion is available from {release.status ?? "this status"}.
+        No promotion is available from {release.status}.
       </p>
     );
   }
@@ -419,13 +417,16 @@ function PromotionControls({ release }: { release: ConfigurationRelease }) {
 function ReleaseDetail({ release }: { release: ConfigurationRelease }) {
   return (
     <div className="mt-3 flex flex-col gap-3 text-sm">
-      <Field label="Checksum" value={release.checksum ?? "-"} mono />
-      <Field label="Created" value={format(release.created_at)} />
-      <Field label="Validated" value={format(release.validated_at)} />
-      <Field label="Approved" value={format(release.approved_at)} />
-      <Field label="Approved by" value={release.approved_by ?? "-"} />
-      <Field label="Activated" value={format(release.activated_at)} />
-      <Field label="Superseded by" value={release.superseded_by ?? "-"} mono />
+      {/*
+        Only what is persisted. VALIDATED, APPROVED, APPROVED BY, ACTIVATED and
+        SUPERSEDED BY used to sit here and could never be anything but "-":
+        nothing in the platform writes them. Five dashes on the governance panel
+        read as data that failed to load rather than as lifecycle the platform
+        does not record.
+      */}
+      <Field label="Checksum" value={release.checksumSha256} mono />
+      <Field label="Created" value={format(release.createdAt)} />
+      <Field label="Created by" value={release.createdBy} />
       {release.domains ? (
         <div>
           <p className="text-xs uppercase tracking-wide text-slate-500">Domains</p>

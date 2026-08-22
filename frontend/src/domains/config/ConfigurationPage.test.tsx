@@ -56,11 +56,17 @@ vi.mock("../../hooks/capabilityContext", () => ({
 }));
 
 function release(status: string) {
+  // The wire shape, not the shape the screen wishes for. This fixture used to
+  // say `checksum: "abc123"` -- a field the API has never returned -- so the
+  // test passed while the real panel rendered "-" for the one value that makes
+  // a release verifiable. A fixture that mocks the client's belief cannot catch
+  // the client being wrong.
   return {
-    release_id: "rel-1",
+    releaseId: "rel-1",
     status,
-    checksum: "abc123",
-    created_at: "2026-08-10T10:00:00Z",
+    createdAt: "2026-08-10T10:00:00Z",
+    createdBy: "operator",
+    checksumSha256: "abc123",
   };
 }
 
