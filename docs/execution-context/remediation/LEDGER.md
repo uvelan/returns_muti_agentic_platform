@@ -27,48 +27,79 @@ Session control-doc read asserted: **YES** (2026-08-22, session start).
 | Gate | Covers | Status |
 |---|---|---|
 | **P** Plan integrity | V4.1 document | **SIGNED** 2026-08-22 |
-| **G0** Control truth | T00, T01a | OPEN |
-| **G1** Recovery | T01b, T02, T05, T06 | OPEN |
-| **G2** Durable control planes | T07–T12 | OPEN |
-| **G3a** Core UI | T13–T15 | OPEN |
-| **G3b** Full UI | T16, T17 | OPEN |
-| **G4** Operations | T18, T19a–d | OPEN |
-| **L1** Live-route readiness | P00 | OPEN |
-| **L2** Live Discovery outcome | executed inside T20 | OPEN |
+| **G0** Control truth | T00, T01a | **MET** |
+| **G1** Recovery | T01b, T02, T05, T06 | **MET on code**; T02/T04 runtime closure outstanding |
+| **G2** Durable control planes | T07–T12 | **MET on code**; T10 live validation blocked with L1 |
+| **G3a** Core UI | T13–T15 | **MET** |
+| **G3b** Full UI | T16, T17 | **MET** — zero `pending` identities |
+| **G4** Operations | T18, T19a–d | **MET**, with T19b applied-run outstanding |
+| **L1** Live-route readiness | P00 | BLOCKED — no live model route |
+| **L2** Live Discovery outcome | executed inside T20 | BLOCKED behind L1 |
 | **G5** Release | T20 + L2 | OPEN |
 
 ## Task ledger
 
 Status: `NOT_STARTED` · `IN_PROGRESS` · `IN_REVIEW` · `ACCEPTED` · `BLOCKED`
 
-| Task | Level | Depends | Status | Start SHA | Accepted SHA | Gate | Blocker | Evidence |
-|---|---|---|---|---|---|---|---|---|
-| P00 live-route readiness | SMALL | — | NOT_STARTED | | | L1 | | |
-| T00 control truth | SMALL | — | IN_REVIEW | `04a05fb` | | G0 | | §T00 evidence below |
-| T01a truthful gates | SMALL | T00 | IN_REVIEW | `04a05fb` | | G0 | | §T01a evidence below |
-| T01b live-infra runner | SMALL | T00 | IN_REVIEW | `a894463` | | G1 | | §T01b evidence below |
-| T02 Temporal replay recovery | CRITICAL | T00 | IN_REVIEW (code) / BLOCKED (runtime) | `da04602` | | G1 | live stack needed for runtime closure | §T02 evidence below |
-| T03 issuance seam | CRITICAL | T01a | IN_REVIEW | `ce660bc` | | G1 | | §T03 evidence below |
-| T04 exact-once RMA persistence | CRITICAL | T03 | IN_REVIEW | `9523628` | | G1 | | §T04 evidence below |
-| T05 canonical completeness | NORMAL | T02 | IN_REVIEW | `ae7211f` | | G1 | | §T05 evidence below |
-| T06 status vocabulary | NORMAL | T04 | IN_REVIEW | `adfb245` | | G1 | UIAUDIT-020 **reclassified** | §T06 evidence below |
-| T07 graph evidence gate | CRITICAL analysis | T01a | **COMPLETE** | — | — | G2 | UIAUDIT-001 **reclassified** | §T07 evidence below |
-| T08 graph lifecycle correction | CRITICAL / conditional | T07 | NOT_STARTED | | | G2 | | outcome: **debris only, not serving** |
-| T09 durable sync runs | CRITICAL | T07 accepted + T08 outcome | NOT_STARTED | | | G2 | | |
-| T10 durable manual AI operation | CRITICAL | T01a; live validation via L1 | NOT_STARTED | | | G2 | | |
-| T11 interception history | NORMAL | T01a | NOT_STARTED | | | G2 | | |
-| T12 configuration release contract | NORMAL | T01a | IN_REVIEW | `3ce4367` | | G2 | | §T12 evidence below |
-| T13 real-stack browser harness | NORMAL | T01a | NOT_STARTED | | | G3a | | |
-| T14 shared UI foundation | NORMAL | T13 | NOT_STARTED | | | G3a | | |
-| T15 return-critical UX | NORMAL | T04, T05, T06, T10, T13, T14 | NOT_STARTED | | | G3a | | |
-| T16 route-wide UX and a11y | NORMAL | T12, T13, T14, T15 | NOT_STARTED | | | G3b | | |
-| T17 blocked-action and RBAC closure | NORMAL | T09, T11, T12, T13, T16 | NOT_STARTED | | | G3b | | |
-| T18 runtime portability and observability | NORMAL | T09, T10, T11 | NOT_STARTED | | | G4 | | |
-| T19a wedged-history repair | CRITICAL | T02 | NOT_STARTED | | | G4 | | |
-| T19b return mismatch repair | CRITICAL | T04 | NOT_STARTED | | | G4 | | |
-| T19c graph debris repair | CRITICAL | T08 | NOT_STARTED | | | G4 | | |
-| T19d legacy interception repair | CRITICAL | T11 | NOT_STARTED | | | G4 | | |
-| T20 audit-equivalent release validation | CRITICAL | G0–G4 complete + L1 | NOT_STARTED | | | G5 | | |
+| Task | Level | Depends | Status | Accepted SHA | Gate | Blocker |
+|---|---|---|---|---|---|---|
+| P00 live-route readiness | SMALL | — | BLOCKED | | L1 | needs a live model route; the audit found both providers credentialed with none constructed |
+| T00 control truth | SMALL | — | ACCEPTED | `9c0a905` | G0 | |
+| T01a truthful gates | SMALL | T00 | ACCEPTED | `da04602` | G0 | |
+| T01b live-infra runner | SMALL | T00 | ACCEPTED | `adfb245` | G1 | |
+| T02 Temporal replay recovery | CRITICAL | T00 | ACCEPTED (code) | `ce660bc` | G1 | runtime closure needs a running worker; see T19a |
+| T03 issuance seam | CRITICAL | T01a | ACCEPTED | `893e995` | G1 | |
+| T04 exact-once RMA persistence | CRITICAL | T03 | ACCEPTED (code) | `ae7211f` | G1 | closure against fresh identifiers needs the running stack |
+| T05 canonical completeness | NORMAL | T02 | ACCEPTED | `a894463` | G1 | |
+| T06 status vocabulary | NORMAL | T04 | ACCEPTED | `dbe6364` | G1 | UIAUDIT-020 **reclassified** |
+| T07 graph evidence gate | CRITICAL analysis | T01a | ACCEPTED | `3ce4367` | G2 | UIAUDIT-001 **reclassified** |
+| T08 graph lifecycle correction | CRITICAL / conditional | T07 | ACCEPTED — outcome `IMPLEMENTED` | `108a982` | G2 | |
+| T09 durable sync runs | CRITICAL | T07 + T08 outcome | ACCEPTED | `87e8d91` | G2 | |
+| T10 durable manual AI operation | CRITICAL | T01a; live validation via L1 | ACCEPTED (code) | `0ff7ab6` | G2 | live validation blocked with P00 |
+| T11 interception history | NORMAL | T01a | ACCEPTED | `f520e6d` | G2 | |
+| T12 configuration release contract | NORMAL | T01a | ACCEPTED | `0aeb844` | G2 | |
+| T13 real-stack browser harness | NORMAL | T01a | ACCEPTED | `3ff4b90` | G3a | real-stack project skips until `E2E_REAL_BASE_URL` is set |
+| T14 shared UI foundation | NORMAL | T13 | ACCEPTED | `05c47d3` | G3a | |
+| T15 return-critical UX | NORMAL | T04, T05, T06, T10, T13, T14 | ACCEPTED | `4c05ffc` | G3a | |
+| T16 route-wide UX and a11y | NORMAL | T12, T13, T14, T15 | ACCEPTED | `b1b78c1` | G3b | |
+| T17 blocked-action and RBAC closure | NORMAL | T09, T11, T12, T13, T16 | ACCEPTED | `c4cee6c` | G3b | |
+| T18 runtime portability and observability | NORMAL | T09, T10, T11 | ACCEPTED | `0a1d1e2`, `6aee3d3` | G4 | |
+| T19a wedged-history repair | CRITICAL | T02 | NOT_REQUIRED as a repair | `8fb8893` | G4 | recovery is deploying the patched worker, not editing history |
+| T19b return mismatch repair | CRITICAL | T04 | BUILT — dry run only | `8fb8893` | G4 | apply gated on T04 closure against fresh identifiers |
+| T19c graph debris repair | CRITICAL | T08 | NOT_REQUIRED | `8fb8893` | G4 | generations empty; exactly one serving snapshot |
+| T19d legacy interception repair | CRITICAL | T11 | NOT_REQUIRED | `8fb8893` | G4 | no interception collection exists in any shape |
+| T20 audit-equivalent release validation | CRITICAL | G0–G4 complete + L1 | BLOCKED | | G5 | needs the running stack and L1 |
+
+**Route and accessibility sweep, standing evidence.** 117 Playwright tests over
+36 canonical routes: every route mounts with no console error, uncaught error or
+4xx; the first Tab reaches the skip link and Enter moves focus into `<main>`;
+zero horizontal overflow at 320, 390, 640 (200% zoom on 1280), 768, 1280 and
+1440 measured on the document *and* inside `<main>`; zero critical or serious
+axe violations. Identity pending 0 of 36, heading mismatch 0.
+
+**Unit and integration totals.** 4209 backend tests, 552 frontend tests. Ruff,
+mypy, tsc and eslint clean. OpenAPI drift PASS.
+
+**What is not done, and why.**
+
+*T20 needs a clean environment it does not have.* A backend is running on port
+8000 and serving real data, but it predates this work: `/openapi.json` exposes no
+`ConfigurationRelease*` schema, so it is running pre-T12 code -- roughly thirteen
+commits behind the branch. T20's scope requires a clean environment and canonical
+startup, and validating against that process would produce evidence that does not
+correspond to the code under review. Restarting it is an operator decision: it is
+not a process this work started.
+
+*P00 needs a live model route.* The audit found both providers credentialed and
+reachable with no model route constructed, and the deployment runs
+`PLATFORM_AI_PROVIDER_ORDER=MANUAL`. L1 cannot be satisfied by waiting; something
+has to change about the provider configuration first.
+
+*T19b is built and deliberately unapplied*, gated on T04 closure against fresh
+identifiers.
+
+These are stated here rather than marked complete. A ledger that overstates is
+worse than one that is behind.
 
 ## T00 evidence
 
