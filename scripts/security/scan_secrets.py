@@ -8,10 +8,19 @@ in CI (see .github/workflows/secret-scan.yml); this is the fallback that always
 works, and it is also the tool the SEC-01 purge uses to *verify* that history is
 clean afterwards.
 
-It never prints a secret value. Every finding is reported as
-provider + path + first four characters + length + sha256 prefix, which is
-enough to identify and rotate a credential without copying it into a CI log,
+It never prints a secret value, and it never prints a fragment of one. Every
+finding is reported as rule + path + length + sha256[:16], which is enough to
+identify and rotate a credential without copying any part of it into a CI log,
 a terminal transcript, or an issue tracker.
+
+The report used to include the value's first four characters. That was removed:
+partial credential characters are still credential material, and a four-character
+prefix is enough to narrow a brute force, to confirm a guess, or to correlate one
+leaked value across two systems. The sha256[:16] already identifies a value
+uniquely for allowlisting, so the prefix bought nothing that the digest did not
+already provide. `test_scan_secrets.py` asserts the contract against a
+randomised credential on both stdout and stderr: no value, no first or last four
+characters, and no contiguous eight-character fragment.
 
 Modes
 -----
@@ -163,8 +172,10 @@ class Finding:
         # sha256[:16] is exactly the key `known_exposures.json` is indexed by,
         # so a reviewer can copy it straight out of a CI log into an allowlist
         # entry. 16 hex characters identify a value without revealing it.
-        text = self.value.decode("utf-8", "replace")
-        return f"prefix={text[:4]!r} len={len(text)} sha256[:16]={self.digest[:16]}"
+        #
+        # Length is the byte length of the raw value, computed without decoding
+        # it -- decoding to build the report is how a fragment escapes.
+        return f"len={len(self.value)} sha256[:16]={self.digest[:16]}"
 
     def key(self) -> tuple[str, str]:
         return (self.location, self.digest[:16])

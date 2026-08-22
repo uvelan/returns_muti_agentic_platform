@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import random
 import shutil
 import subprocess
 import sys
@@ -60,6 +61,31 @@ def run_scanner(*args: str) -> tuple[int, str]:
     return result.returncode, result.stdout.decode("utf-8", "replace")
 
 
+def run_scanner_split(*args: str) -> tuple[int, str, str]:
+    """Like `run_scanner`, but keeps the two streams apart.
+
+    The redaction contract is asserted against stdout *and* stderr separately.
+    Merging them, as `run_scanner` does, would still catch a leak -- but it
+    could not tell you which stream leaked, and a contract that only holds when
+    the streams are combined is not the contract that was written down.
+    """
+    result = subprocess.run(
+        [sys.executable, str(SCANNER), *args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return (
+        result.returncode,
+        result.stdout.decode("utf-8", "replace"),
+        result.stderr.decode("utf-8", "replace"),
+    )
+
+
+def fragments(value: str, size: int = 8) -> list[str]:
+    """Every contiguous `size`-character window of `value`."""
+    return [value[i : i + size] for i in range(len(value) - size + 1)]
+
+
 def check(name: str, condition: bool, detail: str = "") -> None:
     if condition:
         print(f"  PASS  {name}")
@@ -77,10 +103,14 @@ def git(repo: Path, *args: str) -> None:
     )
 
 
-def new_repo(root: Path) -> Path:
-    repo = root / "fixture"
+def new_repo(root: Path, name: str = "fixture") -> Path:
+    # Named, because a second fixture cannot reuse the first one's directory.
+    # `shutil.rmtree(..., ignore_errors=True)` does not reliably remove a `.git`
+    # on Windows -- read-only pack files survive it -- and the failure is
+    # swallowed, so the next `mkdir` is what reports it.
+    repo = root / name
     repo.mkdir()
-    git(repo.parent, "init", "-q", "fixture")
+    git(repo.parent, "init", "-q", name)
     git(repo, "config", "user.email", "test@example.invalid")
     git(repo, "config", "user.name", "secret scan test")
     git(repo, "config", "commit.gpgsign", "false")
@@ -320,6 +350,74 @@ def main() -> int:
             "an identifier-shaped .env password is STILL blocked",
             code == 1,
             f"exit={code} -- the source narrowing must not reach .env files",
+        )
+
+        shutil.rmtree(repo, ignore_errors=True)
+
+        # ---------------------------------------------------------------
+        # The redaction contract.
+        #
+        # The report may carry rule, path, value length and sha256[:16]. It may
+        # never carry the value, its first or last four characters, or any
+        # contiguous eight-character window of it.
+        #
+        # The credential is randomised per run rather than reused from the
+        # constants above. A fixed fixture only proves the scanner does not
+        # print *that* string; randomising proves the report is built from the
+        # digest and the length rather than from the value, which is the
+        # property being guaranteed.
+        #
+        # "Emits no substring of the input" would be unsatisfiable -- single
+        # characters recur in any output. Eight contiguous characters is the
+        # line: short enough that no fragment survives, long enough that the
+        # assertion cannot fire on coincidence.
+        # ---------------------------------------------------------------
+        repo = new_repo(root, "redaction-fixture")
+        alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+        planted = "nvapi" + "-" + "".join(random.choices(alphabet, k=32))
+        (repo / "leak.py").write_text(f'NVIDIA_KEY = "{planted}"\n', encoding="utf-8")
+        git(repo, "add", "-A")
+
+        code, out, err = run_scanner_split(
+            "--repo", str(repo), "--mode", "worktree", "--no-allowlist"
+        )
+        check(
+            "a randomised planted credential is blocked",
+            code == 1,
+            f"exit={code} -- the contract test needs a finding to redact",
+        )
+
+        for stream_name, stream in (("stdout", out), ("stderr", err)):
+            check(
+                f"{stream_name} does not contain the planted value",
+                planted not in stream,
+            )
+            check(
+                f"{stream_name} does not contain the first four characters",
+                planted[:4] not in stream,
+            )
+            check(
+                f"{stream_name} does not contain the last four characters",
+                planted[-4:] not in stream,
+            )
+            leaked = [f for f in fragments(planted) if f in stream]
+            check(
+                f"{stream_name} contains no 8-character fragment of the value",
+                not leaked,
+                f"{len(leaked)} fragment(s) leaked, first={leaked[0]!r}" if leaked else "",
+            )
+
+        # The report must still be useful: the digest is what an allowlist entry
+        # is keyed by, so losing it would trade a leak for an unusable gate.
+        digest16 = hashlib.sha256(planted.encode("utf-8")).hexdigest()[:16]
+        check(
+            "the report still carries sha256[:16] for allowlisting",
+            digest16 in out,
+            "without the digest a reviewer cannot allowlist a reviewed exposure",
+        )
+        check(
+            "the report still carries the value length",
+            f"len={len(planted)}" in out,
         )
 
         shutil.rmtree(repo, ignore_errors=True)

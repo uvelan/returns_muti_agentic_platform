@@ -256,20 +256,24 @@ function ordersFromRows(rows: readonly unknown[]): Record<string, unknown>[] {
   }
 
   const merged = [...byOrder.values()].map((group) => {
-    const fields: Record<string, unknown> = {};
+    // A Map rather than a plain object so dropping a contradicted field is
+    // `Map.delete`, not a computed-key `delete` on an object -- which is the
+    // operation `@typescript-eslint/no-dynamic-delete` refuses, and which would
+    // also have mis-handled a field literally named `__proto__`.
+    const fields = new Map<string, unknown>();
     const contradicted = new Set<string>();
     for (const row of group) {
       for (const [field, value] of Object.entries(row)) {
         if (contradicted.has(field)) continue;
-        if (!(field in fields)) {
-          fields[field] = value;
-        } else if (!Object.is(fields[field], value)) {
+        if (!fields.has(field)) {
+          fields.set(field, value);
+        } else if (!Object.is(fields.get(field), value)) {
           contradicted.add(field);
-          delete fields[field];
+          fields.delete(field);
         }
       }
     }
-    return fields;
+    return Object.fromEntries(fields);
   });
 
   // Then only the fields every order could answer.

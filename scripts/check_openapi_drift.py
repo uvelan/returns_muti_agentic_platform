@@ -134,7 +134,6 @@ def main() -> int:
         if args.write:
             COMMITTED_TYPES.write_text(generated, encoding="utf-8")
 
-    EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     receipt = {
         "stage": "4E",
         "gate": "openapi_drift",
@@ -155,11 +154,26 @@ def main() -> int:
         "status": "PASS" if not diffs or args.write else "FAIL",
     }
     receipt["exit_code"] = 0 if receipt["status"] == "PASS" else 1
-    with tempfile.NamedTemporaryFile(
-        "w", encoding="utf-8", delete=False, dir=EVIDENCE_DIR
-    ) as handle:
-        json.dump(receipt, handle, indent=2)
-    Path(handle.name).replace(EVIDENCE_DIR / "openapi_drift_receipt.json")
+
+    # The receipt is written in --write mode only.
+    #
+    # It used to be written unconditionally, which made the docstring above
+    # ("writes nothing") and the comment on `status` ("nothing on disk changed")
+    # both false: anyone running the gate merely to *check* dirtied the working
+    # tree and overwrote the committed receipt -- including one that had
+    # recorded a real drift. A gate that mutates the evidence it is checking
+    # cannot be run safely from CI, a hook, or a review box.
+    #
+    # Check mode still prints the receipt, so the run is fully observable; it
+    # just does not persist it.
+    if args.write:
+        EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", delete=False, dir=EVIDENCE_DIR
+        ) as handle:
+            json.dump(receipt, handle, indent=2)
+        Path(handle.name).replace(EVIDENCE_DIR / "openapi_drift_receipt.json")
+
     print(json.dumps(receipt, indent=2))
     return int(receipt["exit_code"])
 

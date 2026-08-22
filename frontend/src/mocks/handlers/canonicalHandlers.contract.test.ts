@@ -61,7 +61,7 @@ const document = Object.values(
     import: "default",
     eager: true,
   }),
-).map((raw) => JSON.parse(raw as string) as OpenApiDocument)[0];
+).map((raw) => JSON.parse(raw) as OpenApiDocument)[0];
 
 /**
  * One mocked route, and the contract entry it claims to be serving.

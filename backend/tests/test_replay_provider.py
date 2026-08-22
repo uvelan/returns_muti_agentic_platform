@@ -22,7 +22,12 @@ from return_platform.ai.providers.contracts import (
 )
 from return_platform.ai.providers.replay import ReplayProvider, request_digest
 
-pytestmark = pytest.mark.asyncio
+# Marked per test rather than with a module-level `pytestmark`.
+#
+# `asyncio_mode = "strict"` means the marker is required on a coroutine test and
+# meaningless on a synchronous one. A blanket `pytestmark` applied it to all
+# sixteen, so the seven synchronous tests each raised a PytestUnknownMarkWarning
+# and the marker stopped carrying information about which tests are async.
 
 
 class _Real:
@@ -66,6 +71,7 @@ def _request(prompt: str = "find the order", **payload: Any) -> ProviderRequest:
     return ProviderRequest(system_prompt=prompt, user_payload=payload or {"a": 1})
 
 
+@pytest.mark.asyncio
 async def test_a_miss_calls_the_provider_and_records_the_answer() -> None:
     """The corpus builds itself from ordinary runs rather than a capture step."""
     real, store = _Real(), _Store()
@@ -78,6 +84,7 @@ async def test_a_miss_calls_the_provider_and_records_the_answer() -> None:
     assert len(store.data) == 1
 
 
+@pytest.mark.asyncio
 async def test_a_hit_answers_without_touching_the_provider() -> None:
     real, store = _Real(), _Store()
     provider = ReplayProvider(real, store)
@@ -91,6 +98,7 @@ async def test_a_hit_answers_without_touching_the_provider() -> None:
     assert real.calls == 1
 
 
+@pytest.mark.asyncio
 async def test_a_replayed_answer_keeps_the_provider_that_produced_it() -> None:
     """Otherwise recorded runs are incomparable with live ones.
 
@@ -129,6 +137,7 @@ def test_decoding_parameters_are_part_of_the_key() -> None:
     assert request_digest(base) != request_digest(hotter)
 
 
+@pytest.mark.asyncio
 async def test_strict_refuses_a_miss_rather_than_calling_out() -> None:
     """For proving a run reached no provider at all.
 
@@ -145,6 +154,7 @@ async def test_strict_refuses_a_miss_rather_than_calling_out() -> None:
     assert real.calls == 0
 
 
+@pytest.mark.asyncio
 async def test_strict_reports_configured_without_credentials() -> None:
     """Replaying a suite on a machine with no keys is the point.
 
@@ -160,6 +170,7 @@ async def test_strict_reports_configured_without_credentials() -> None:
     assert ReplayProvider(_Unconfigured(), _Store(), strict=True).configured is True
 
 
+@pytest.mark.asyncio
 async def test_an_unreadable_store_degrades_to_a_live_call() -> None:
     """A cache problem must not become an outage.
 
@@ -174,6 +185,7 @@ async def test_an_unreadable_store_degrades_to_a_live_call() -> None:
     assert real.calls == 1
 
 
+@pytest.mark.asyncio
 async def test_an_unwritable_store_does_not_fail_a_good_answer() -> None:
     real = _Real()
     provider = ReplayProvider(real, _BrokenStore())

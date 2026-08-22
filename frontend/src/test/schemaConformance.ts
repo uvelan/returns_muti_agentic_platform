@@ -60,6 +60,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Index a record and admit that the key may be absent.
+ *
+ * `noUncheckedIndexedAccess` is off for this project, so `record[key]` is typed
+ * as present even when it is not. Annotating the receiving variable does not
+ * help -- control-flow analysis narrows it straight back to the initializer's
+ * type, and the guard that follows then reads as an impossible comparison.
+ * Going through a function whose *return type* is `T | undefined` is what
+ * actually carries the possibility to the caller, so a dangling `$ref` or an
+ * unknown path stays a checked error rather than an undefined that travels.
+ */
+function lookup<T>(record: Record<string, T>, key: string): T | undefined {
+  return record[key];
+}
+
 function resolve(schema: JsonSchema, document: OpenApiDocument): JsonSchema {
   const reference = schema.$ref;
   if (typeof reference !== "string") return schema;
@@ -67,14 +82,15 @@ function resolve(schema: JsonSchema, document: OpenApiDocument): JsonSchema {
   if (!reference.startsWith(prefix)) {
     throw new Error(`Unsupported $ref: ${reference}`);
   }
-  const target = document.components.schemas[reference.slice(prefix.length)];
+  const target = lookup(document.components.schemas, reference.slice(prefix.length));
   if (target === undefined) {
     throw new Error(`Dangling $ref: ${reference}`);
   }
   // A `$ref` sibling to other keywords is legal in OpenAPI 3.1; the generator
   // does not emit one, but resolving into the target and keeping the siblings
   // costs nothing and cannot be wrong.
-  const { $ref: _ignored, ...siblings } = schema;
+  const siblings: JsonSchema = { ...schema };
+  delete siblings.$ref;
   return { ...target, ...siblings };
 }
 
@@ -250,7 +266,7 @@ export function responseSchema(
   openApiPath: string,
   status = "200",
 ): JsonSchema | null {
-  const entry = document.paths[openApiPath];
+  const entry = lookup(document.paths, openApiPath);
   if (entry === undefined) return null;
   const operation = entry[method.toLowerCase()];
   if (!isRecord(operation)) return null;
