@@ -14,7 +14,7 @@
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -428,6 +428,61 @@ describe("SupportConsolePage", () => {
       expect(screen.queryByRole("button", { name: /issue rmas/i })).toBeNull();
       expect(screen.queryByRole("button", { name: /send 1 rma/i })).toBeNull();
       expect(mocks.submitReturnOutcome).toHaveBeenCalledTimes(1);
+    });
+
+    it("stops offering to cancel a send that has already started", async () => {
+      /**
+       * The button said "Cancel" the whole time, and pressing it only closed
+       * the form. The POST carried on and `onSuccess` still fired, so an
+       * operator who believed they had stopped the send had in fact issued the
+       * RMAs -- and `support_response` takes the first notice, so there was no
+       * correcting it afterwards.
+       *
+       * There is no cancel to offer instead. Aborting the request would not
+       * un-write what the server had already committed, and calling that
+       * "cancelled" would be the same claim one layer down. So the control is
+       * withdrawn while the send is in flight, and says why.
+       */
+      let release: (() => void) | undefined;
+      mocks.submitReturnOutcome.mockReturnValue(
+        new Promise<void>((resolve) => { release = resolve; }),
+      );
+      await openOutcomeForm();
+
+      fireEvent.change(screen.getByLabelText(/RMA 1 number/), { target: { value: "RMA-7" } });
+      const cancel = screen.getByRole("button", { name: /^cancel$/i });
+      expect(cancel).toBeEnabled();
+
+      fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
+
+      await waitFor(() => { expect(cancel).toBeDisabled(); });
+      expect(cancel).toHaveAttribute("title", expect.stringMatching(/cannot be stopped/i));
+
+      release?.();
+      await waitFor(() => { expect(mocks.submitReturnOutcome).toHaveBeenCalledTimes(1); });
+    });
+
+    it("says how long the send has been running", async () => {
+      // Two states -- idle and "Sending..." -- made a nine-second wait and a
+      // nine-minute one look the same while they were happening.
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        mocks.submitReturnOutcome.mockReturnValue(new Promise<void>(() => { /* never */ }));
+        await openOutcomeForm();
+
+        fireEvent.change(screen.getByLabelText(/RMA 1 number/), { target: { value: "RMA-8" } });
+        fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
+
+        await waitFor(() => {
+          expect(screen.getByRole("button", { name: /sending/i })).toBeTruthy();
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(3_000);
+        });
+        expect(screen.getByRole("button", { name: /sending\.\.\. 3s/i })).toBeTruthy();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("does not fire twice on a double click", async () => {

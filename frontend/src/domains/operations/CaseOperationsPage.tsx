@@ -19,6 +19,9 @@ import {
 import { supportApi, type SupportMessage } from "../../api/support";
 import { useCapabilities } from "../../hooks/capabilityContext";
 import { DomainRail, RailFact, RailNote, RailSection } from "../DomainRail";
+import { formatCompactTimestamp, formatTimestamp } from "../../format/datetime";
+import { readSlaDue } from "../../format/sla";
+import { readReturnStatus } from "../../format/returnStatus";
 
 /**
  * UI-04 -- one case, operationally.
@@ -191,12 +194,25 @@ function Panel({
   );
 }
 
-function Field({ label, value }: { label: string; value: string | number | null }) {
+function Field({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string | number | null;
+  /** Emphasis for a value that is itself the problem, such as a passed SLA. */
+  tone?: "alert";
+}) {
   if (value === null || value === "") return null;
   return (
     <div className="flex min-w-0 gap-1.5">
       <dt className="shrink-0 text-outline">{label}</dt>
-      <dd className="min-w-0 break-all text-on-surface">{String(value)}</dd>
+      <dd
+        className={`min-w-0 break-all ${tone === "alert" ? "font-semibold text-error" : "text-on-surface"}`}
+      >
+        {String(value)}
+      </dd>
     </div>
   );
 }
@@ -284,7 +300,7 @@ function CaseListPane({
                     <span>
                       {entry.returnRecordCount} RMA{entry.returnRecordCount === 1 ? "" : "s"}
                     </span>
-                    <span>{entry.updatedAt}</span>
+                    <span>{formatCompactTimestamp(entry.updatedAt)}</span>
                   </span>
                 </button>
               </li>
@@ -364,7 +380,7 @@ function StatePanel({ detail }: { detail: CaseProjection }) {
         <Field label="Branch" value={detail.customer?.branchReference ?? null} />
         <Field label="Customer" value={detail.customer?.customerReference ?? null} />
         <Field label="Revision" value={detail.revision} />
-        <Field label="Updated" value={detail.updatedAt} />
+        <Field label="Updated" value={formatTimestamp(detail.updatedAt)} />
         <Field label="Confirmation key" value={detail.confirmedOrder?.confirmationKey ?? null} />
         <Field
           label="Bay"
@@ -519,7 +535,7 @@ export function AdoptionDetail({
       <dl className="flex flex-col gap-1">
         <Field label="Activated release" value={adoption.activated_release_id} />
         <Field label="Head revision" value={adoption.activated_head_revision} />
-        <Field label="Evaluated" value={adoption.evaluated_at} />
+        <Field label="Evaluated" value={formatTimestamp(adoption.evaluated_at)} />
       </dl>
       {behind ? (
         <p className="text-on-surface-variant">
@@ -634,7 +650,7 @@ function RmaPanel({ detail }: { detail: CaseProjection }) {
                   <span className="min-w-0 break-all font-mono text-on-surface">
                     {record.returnReference ?? "not yet numbered"}
                   </span>
-                  <span className="text-outline">{record.status}</span>
+                  <span className="text-outline">{readReturnStatus(record.status)}</span>
                   <span className="text-outline">
                     {lines.length} line{lines.length === 1 ? "" : "s"}
                   </span>
@@ -732,7 +748,16 @@ function ChannelBPanel({ detail }: { detail: CaseProjection }) {
           <Field label="Status" value={workItem.data.status} />
           <Field label="Queue" value={workItem.data.queue} />
           <Field label="Assigned" value={workItem.data.assignedTo} />
-          <Field label="Support SLA due" value={workItem.data.slaDueAt} />
+          {(() => {
+            const sla = readSlaDue(workItem.data.slaDueAt);
+            return (
+              <Field
+                label="Support SLA due"
+                value={sla.text}
+                {...(sla.breached ? { tone: "alert" as const } : {})}
+              />
+            );
+          })()}
           <Field label="Version" value={workItem.data.version} />
         </dl>
       )}
@@ -780,7 +805,7 @@ function ReminderSummary({
   return (
     <dl className="flex flex-col gap-1 text-[11px]">
       <Field label="Reminders sent" value={reminders.length} />
-      <Field label="Last reminder" value={last.createdAt} />
+      <Field label="Last reminder" value={formatTimestamp(last.createdAt)} />
     </dl>
   );
 }
@@ -906,7 +931,7 @@ function AuditPanel({ facts }: { facts: readonly CaseFactProjection[] | null }) 
                 <span className="min-w-0 break-all font-mono text-on-surface">
                   {entry.factName}
                 </span>
-                <span className="text-outline">{entry.recordedAt}</span>
+                <span className="text-outline">{formatCompactTimestamp(entry.recordedAt)}</span>
               </span>
               <span className="min-w-0 break-all text-on-surface-variant">
                 {formatValue(entry.value)}

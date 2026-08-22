@@ -26,6 +26,7 @@ import type * as ConfigModule from "../../api/configuration";
 import type { ReleaseAdoptionState } from "../../api/configuration";
 import type { SupportMessage, SupportWorkItem } from "../../api/support";
 import { CaseOperationsPage } from "./CaseOperationsPage";
+import { formatTimestamp } from "../../format/datetime";
 
 const mocks = vi.hoisted(() => ({
   listCases: vi.fn(),
@@ -474,7 +475,13 @@ describe("CaseOperationsPage", () => {
       const channelB = enclosingPanel(await screen.findByText("Channel B"));
       // The third message carries no `reminderKey`, so it is an ordinary reply.
       expect(within(channelB).getByText("Reminders sent").nextSibling).toHaveTextContent("2");
-      expect(within(channelB).getByText("2026-08-13T12:00:00Z")).toBeTruthy();
+      // The formatted value, because the raw ISO string is what this screen used
+      // to show and it named no time zone. Compared through the formatter rather
+      // than against a literal, so the assertion does not depend on the runner's
+      // locale -- what matters is that it is *this* reminder's time.
+      expect(
+        within(channelB).getByText(formatTimestamp("2026-08-13T12:00:00Z")),
+      ).toBeTruthy();
     });
   });
 

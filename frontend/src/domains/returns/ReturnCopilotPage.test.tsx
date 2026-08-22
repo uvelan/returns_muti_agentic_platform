@@ -520,7 +520,7 @@ describe("the discovery copilot", () => {
     const { container } = render(<ReturnCopilotPage />, { wrapper });
     fire(container, "Atlas");
 
-    expect(await screen.findByText("Progress")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Progress" })).toBeInTheDocument();
     expect(screen.queryByText(/No signal on the turn result/)).not.toBeInTheDocument();
     expect(screen.queryByText(/scripted/)).not.toBeInTheDocument();
     expect(screen.queryByText(/generation/)).not.toBeInTheDocument();
@@ -536,7 +536,7 @@ describe("the discovery copilot", () => {
     const { container } = render(<ReturnCopilotPage />, { wrapper });
     fire(container, "Atlas");
 
-    await screen.findByText("Progress");
+    await screen.findByRole("heading", { name: "Progress" });
     expect(screen.getAllByText("Order Discovery")).toHaveLength(2);
     expect(screen.getByText("Return Workflow")).toBeInTheDocument();
     expect(screen.getByText("Return Fulfillment")).toBeInTheDocument();

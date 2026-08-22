@@ -48,6 +48,50 @@ const TRACKING_TYPES: readonly TrackingType[] = [
   "FIELD_SCRAP",
 ];
 
+/**
+ * One pasted item, if it really is one.
+ *
+ * `payload.items as RmaTicketItem[]` was a cast, not a check: any JSON array
+ * became the ticket's items, so a paste of the wrong document filled the form
+ * with objects missing `orderLineId`, `productId` and `reasonCode`, and the
+ * operator learned about it from a 422 after pressing Submit. A cast is a
+ * promise to the compiler about data that came from the clipboard.
+ *
+ * Returns an array so callers can `flatMap`: an item that does not validate is
+ * dropped rather than turned into a half-filled row that looks complete.
+ */
+function asItem(candidate: unknown): RmaTicketItem[] {
+  if (typeof candidate !== "object" || candidate === null) return [];
+  const item = candidate as Record<string, unknown>;
+  const required = ["orderLineId", "productId", "reasonCode"] as const;
+  if (required.some((key) => typeof item[key] !== "string" || item[key] === "")) return [];
+
+  const quantity = item.requestedQuantity;
+  return [
+    {
+      orderLineId: String(item.orderLineId),
+      productId: String(item.productId),
+      reasonCode: String(item.reasonCode),
+      // A missing or non-numeric quantity becomes one rather than `NaN`, which
+      // would serialize as null and be refused by the server.
+      requestedQuantity:
+        typeof quantity === "number" && Number.isFinite(quantity) && quantity > 0
+          ? Math.floor(quantity)
+          : 1,
+      ...(typeof item.conditionCode === "string" ? { conditionCode: item.conditionCode } : {}),
+    },
+  ];
+}
+
+/**
+ * The tone for a status the client knows about.
+ *
+ * Read through `statusTone` below, never indexed directly: a status the server
+ * adds tomorrow is not in this table, and `STATUS_TONE[unknown]` is
+ * `undefined`, which Tailwind renders as the literal class "undefined" -- an
+ * unstyled pill that looks like a rendering bug rather than like a status this
+ * build does not recognise.
+ */
 const STATUS_TONE: Record<TicketStatus, string> = {
   DRAFT: "bg-surface-container text-on-surface-variant",
   SUBMITTED: "bg-sky-100 text-sky-900",
@@ -57,6 +101,14 @@ const STATUS_TONE: Record<TicketStatus, string> = {
   CANCELLED: "bg-surface-container text-on-surface-variant",
   FAILED: "bg-red-100 text-red-900",
 };
+
+/** Falls back to a neutral tone, so an unrecognised status still reads as one. */
+function statusTone(status: string): string {
+  return (
+    Object.entries(STATUS_TONE).find(([known]) => known === status)?.[1] ??
+    "bg-surface-container text-on-surface-variant"
+  );
+}
 
 const EMPTY_ITEM: RmaTicketItem = {
   orderLineId: "",
@@ -138,7 +190,7 @@ export function RmaTicketsPage() {
       const parsed: unknown = JSON.parse(raw);
       if (typeof parsed !== "object" || parsed === null) throw new Error("not an object");
       const payload = parsed as Record<string, unknown>;
-      const items = Array.isArray(payload.items) ? (payload.items as RmaTicketItem[]) : [];
+      const items = Array.isArray(payload.items) ? payload.items.flatMap(asItem) : [];
       setDraft((current) => ({
         ...current,
         sessionId: text(payload.sessionId, current.sessionId),
@@ -324,7 +376,7 @@ function Queue({
                   <span className="truncate font-medium text-on-surface">
                     {item.returnReference ?? item.ticketId}
                   </span>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] ${STATUS_TONE[item.status]}`}>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] ${statusTone(item.status)}`}>
                     {item.status.replaceAll("_", " ")}
                   </span>
                 </div>
@@ -394,7 +446,7 @@ function Detail({
               {ticket.customerReference ?? "—"}
             </p>
           </div>
-          <span className={`rounded-full px-2.5 py-1 text-xs ${STATUS_TONE[ticket.status]}`}>
+          <span className={`rounded-full px-2.5 py-1 text-xs ${statusTone(ticket.status)}`}>
             {ticket.status.replaceAll("_", " ")}
           </span>
         </div>

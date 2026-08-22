@@ -52,10 +52,14 @@ describe("Return Copilot 8-Mode Lifecycle Contract", () => {
       />,
     );
 
-    const root = container.firstElementChild as HTMLElement;
+    // The grid is no longer the root: below `lg` the shell puts a tablist above
+    // it, because three panes sharing one viewport height give each about 231
+    // pixels on a phone. The invariant is that the grid exists and still
+    // declares the frozen tracks, not that it is the outermost element.
+    const root = container.querySelector<HTMLElement>(".grid");
     expect(root).toBeTruthy();
-    expect(root.className).toContain("grid");
-    expect(root.className).toContain("lg:grid-cols-[minmax(0,40fr)_minmax(0,24fr)_minmax(0,36fr)]");
+    expect(root?.className).toContain("grid");
+    expect(root?.className).toContain("lg:grid-cols-[minmax(0,40fr)_minmax(0,24fr)_minmax(0,36fr)]");
     expect(screen.getByTestId("left")).toBeInTheDocument();
     expect(screen.getByTestId("center")).toBeInTheDocument();
     expect(screen.getByTestId("right")).toBeInTheDocument();

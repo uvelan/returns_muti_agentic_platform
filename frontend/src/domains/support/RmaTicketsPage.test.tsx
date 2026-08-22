@@ -147,6 +147,69 @@ describe("the RMA ticket workbench", () => {
     expect(screen.getByLabelText<HTMLInputElement>("Quantity").value).toBe("3");
   });
 
+  it("drops a pasted item that is missing the fields a line needs", async () => {
+    // `payload.items as RmaTicketItem[]` was a cast, not a check, so any array
+    // in the JSON became the ticket's lines. A paste of the wrong document
+    // filled the form with objects that had no `orderLineId`, `productId` or
+    // `reasonCode`, and the associate found out from a 422 after pressing
+    // Submit -- with nothing on screen saying which line was wrong.
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "New RMA ticket" }));
+
+    const payload = screen.getByLabelText(/Workflow agent payload/);
+    fireEvent.change(payload, {
+      target: {
+        value: JSON.stringify({
+          sessionId: "session-9",
+          orderReference: "ORD-9",
+          associateId: "associate-9",
+          recommendedReturnMethod: "OFFSITE_LTL",
+          supportDraft: "Agent narrative.",
+          items: [
+            { orderLineId: "L9", productId: "P9", requestedQuantity: 2, reasonCode: "WRONG_ITEM" },
+            { note: "this is not a return line" },
+            { orderLineId: "L11", productId: "" },
+          ],
+        }),
+      },
+    });
+    fireEvent.blur(payload);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText<HTMLInputElement>("Session id").value).toBe("session-9");
+    });
+    // The good line survives; the two that are not lines do not become rows.
+    expect(screen.getAllByLabelText("Order line")).toHaveLength(1);
+    expect(screen.getByLabelText<HTMLInputElement>("Order line").value).toBe("L9");
+  });
+
+  it("gives a pasted line a usable quantity rather than NaN", async () => {
+    // A missing or non-numeric quantity used to reach the input as `NaN`, which
+    // serializes as null and is refused by the server.
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "New RMA ticket" }));
+
+    const payload = screen.getByLabelText(/Workflow agent payload/);
+    fireEvent.change(payload, {
+      target: {
+        value: JSON.stringify({
+          sessionId: "session-9",
+          orderReference: "ORD-9",
+          associateId: "associate-9",
+          recommendedReturnMethod: "OFFSITE_LTL",
+          supportDraft: "Agent narrative.",
+          items: [{ orderLineId: "L9", productId: "P9", reasonCode: "WRONG_ITEM" }],
+        }),
+      },
+    });
+    fireEvent.blur(payload);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText<HTMLInputElement>("Order line").value).toBe("L9");
+    });
+    expect(screen.getByLabelText<HTMLInputElement>("Quantity").value).toBe("1");
+  });
+
   it("says so when the pasted payload is not an agent payload", async () => {
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: "New RMA ticket" }));

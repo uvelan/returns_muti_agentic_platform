@@ -37,6 +37,10 @@ import {
 } from "../../api/support";
 import { useCapabilities } from "../../hooks/capabilityContext";
 import { DomainRail, RailFact, RailNote, RailSection } from "../DomainRail";
+import { useElapsedSeconds } from "../../hooks/useElapsedSeconds";
+import { formatDuration } from "../../format/datetime";
+import { readSlaDue } from "../../format/sla";
+import { readReturnStatus } from "../../format/returnStatus";
 
 /**
  * UI-03 -- the Support console.
@@ -170,7 +174,7 @@ export function SupportConsolePage() {
               {/* The support SLA, named as that. The workflow's own
                   business-calendar deadline is workflow input and is not
                   published, so this is not relabelled as it. */}
-              <RailFact label="Support SLA due" value={detail.data.slaDueAt} />
+              <RailFact label="Support SLA due" value={readSlaDue(detail.data.slaDueAt).text} />
               <RailFact label="Assigned" value={detail.data.assignedTo} />
               {caseId === null ? (
                 <RailNote>Session-backed, so it has no case and no RMAs.</RailNote>
@@ -720,7 +724,7 @@ function RmaBlock({
           {record.returnReference ?? "RMA not yet numbered"}
         </span>
         <span className="rounded-full bg-surface-container px-2 py-0.5 text-[11px] text-on-surface-variant">
-          {record.status}
+          {readReturnStatus(record.status)}
         </span>
       </div>
       <dl className="flex flex-col gap-1 text-[11px]">
@@ -892,6 +896,7 @@ function ShipmentEditor({
         ...(shipmentDetails.trim() === "" ? {} : { shipmentDetails: shipmentDetails.trim() }),
       }),
   });
+  const recordingElapsed = useElapsedSeconds(update.isPending);
 
   const ready = trackingReference.trim().length > 0 && shipmentStatus.trim().length > 0;
 
@@ -994,12 +999,17 @@ function ShipmentEditor({
           disabled={!ready || update.isPending}
           className="rounded bg-primary px-3 py-1.5 text-xs text-on-primary transition disabled:opacity-40"
         >
-          {update.isPending ? "Recording..." : "Record shipment"}
+          {update.isPending ? `Recording... ${formatDuration(recordingElapsed)}` : "Record shipment"}
         </button>
         <button
           type="button"
+          // Same reason as the outcome form: closing does not stop the write,
+          // and the operator would learn that only from the case changing under
+          // them later.
+          disabled={update.isPending}
           onClick={() => { setOpen(false); }}
-          className="text-xs text-on-surface-variant transition hover:text-on-surface"
+          title={update.isPending ? "The write has started and cannot be stopped." : undefined}
+          className="text-xs text-on-surface-variant transition hover:text-on-surface disabled:cursor-not-allowed disabled:opacity-40"
         >
           Close
         </button>
@@ -1219,6 +1229,7 @@ function IssueOutcomeForm({
       await client.invalidateQueries({ queryKey: ["cases", caseId] });
     },
   });
+  const elapsed = useElapsedSeconds(outcome.isPending);
 
   const complete = drafts.filter((draft) => draft.returnReference.trim().length > 0);
   const duplicateReferences =
@@ -1338,13 +1349,22 @@ function IssueOutcomeForm({
           className="rounded bg-primary px-3 py-1.5 text-xs text-on-primary transition disabled:opacity-40"
         >
           {outcome.isPending
-            ? "Sending..."
+            ? `Sending... ${formatDuration(elapsed)}`
             : `Send ${String(complete.length)} RMA${complete.length === 1 ? "" : "s"}`}
         </button>
         <button
           type="button"
+          // Disabled once the send is in flight, and this is the whole point:
+          // it said "Cancel" throughout, and pressing it only closed the form.
+          // The POST carried on and `onSuccess` still fired, so an operator who
+          // believed they had stopped the send had in fact sent the RMAs. There
+          // is no cancel to offer -- aborting the request would not un-write
+          // what the server had already committed, and calling that "cancelled"
+          // would be the same lie one layer down.
+          disabled={outcome.isPending}
           onClick={() => { setOpen(false); }}
-          className="text-xs text-on-surface-variant transition hover:text-on-surface"
+          title={outcome.isPending ? "The send has started and cannot be stopped." : undefined}
+          className="text-xs text-on-surface-variant transition hover:text-on-surface disabled:cursor-not-allowed disabled:opacity-40"
         >
           Cancel
         </button>
