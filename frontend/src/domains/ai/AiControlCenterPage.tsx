@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import {
@@ -439,10 +439,38 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
   const { can } = useCapabilities();
   const canAct = can("ai.interception.act");
   const [open, setOpen] = useState<InterceptionRow | null>(null);
+  // Ticked on the same cadence the queue is polled, so a row that lapses
+  // between fetches stops offering actions at roughly the moment it stops being
+  // answerable rather than whenever the page next happens to re-render.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const tick = setInterval(() => {
+      setNow(Date.now());
+    }, 15_000);
+    return () => {
+      clearInterval(tick);
+    };
+  }, []);
+  // Polled, because a held request expires on a clock and this screen used to
+  // fetch once per mount and then freeze. `staleTime` is 30s and
+  // `refetchOnWindowFocus` is off, so a queue opened at 05:12 still offered
+  // Respond, Allow and Cancel on a row that lapsed at 05:13 -- and pressing
+  // them returned 409 or 404. The audit recorded that as "expired rows are
+  // never reaped"; the reaper was fine, the page was stale.
   const interceptions = useQuery({
     queryKey: ["ai", "interceptions"],
-    queryFn: aiControlCenterApi.listInterceptions,
+    queryFn: () => aiControlCenterApi.listInterceptions(),
     enabled: canRead,
+    refetchInterval: 15_000,
+  });
+  // Terminal records, for the counts. A separate query so the operator queue
+  // keeps its own meaning: this one is history and is never actionable.
+  const history = useQuery({
+    queryKey: ["ai", "interceptions", "history"],
+    queryFn: () =>
+      aiControlCenterApi.listInterceptions(["ANSWERED", "ALLOWED", "CANCELLED", "EXPIRED"]),
+    enabled: canRead,
+    refetchInterval: 60_000,
   });
   const cancel = useMutation({
     mutationFn: (interceptionId: string) => aiControlCenterApi.cancelInterception(interceptionId),
@@ -470,20 +498,37 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
   }
 
   const rows: readonly InterceptionRow[] = interceptions.data ?? [];
+  // Counted across both queries. The pending queue alone can only ever answer
+  // "how many are pending", which is why three of these tiles read zero in
+  // every deployment.
+  const counted: readonly InterceptionRow[] = [...rows, ...(history.data ?? [])];
   const byStatus = (status: string) =>
-    rows.filter((row) => row.status.toUpperCase() === status).length;
+    counted.filter((row) => row.status.toUpperCase() === status).length;
+  // A row whose deadline has passed is not actionable, whatever its stored
+  // status says. The sweep settles it on an interval and this renders on a
+  // clock, so the two disagree for as long as that interval is -- and the
+  // buttons were gated on status alone.
+  //
+  // Compared against `now` from state rather than `Date.now()` inline: reading
+  // the clock during render is impure, and a value that changes without a
+  // render would leave a lapsed row still offering buttons until something else
+  // happened to re-render the page.
+  const hasLapsed = (row: InterceptionRow) => new Date(row.expiresAt).getTime() <= now;
   const byPoint = (point: InterceptionPoint) =>
     rows.filter((row) => labelsFor(row.point) === POINT_LABELS[point]).length;
 
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-        {/* The four statuses `InterceptionStatus` actually has. This counted
-            CLAIMED and RESPONDED, which the backend never emits -- both tiles
+        {/* The five statuses `InterceptionStatus` actually has. This counted
+            CLAIMED and RESPONDED, which the backend never emits, and then
+            counted four real ones against a pending-only list -- so three still
             read zero in every deployment, which is indistinguishable from a
-            quiet queue. */}
+            quiet queue. `ALLOWED` had no tile at all, so allowing a request
+            removed it from the operator's world entirely. */}
         <Stat label="Pending" value={byStatus("PENDING")} />
         <Stat label="Answered" value={byStatus("ANSWERED")} />
+        <Stat label="Allowed" value={byStatus("ALLOWED")} />
         <Stat label="Cancelled" value={byStatus("CANCELLED")} />
         <Stat label="Expired" value={byStatus("EXPIRED")} />
         {/* One queue, two jobs. The split matters operationally: a held request
@@ -548,7 +593,7 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
                     the operator's own subject, recorded by the backend. */}
                 <td className="p-2">{row.answeredBy ?? "-"}</td>
                 <td className="p-2">
-                  {status === "PENDING" && canAct ? (
+                  {status === "PENDING" && canAct && !hasLapsed(row) ? (
                     <div className="flex gap-1">
                       <button
                         type="button"
@@ -662,8 +707,14 @@ function RoutesTab() {
             </tr>
           </thead>
           <tbody>
+            {/* Keyed on route *and* tier. `route_id` is
+                `provider/model/credential` and the tier loop sits outside it, so
+                a provider offering one model at both tiers -- which MANUAL does,
+                unconditionally -- yields two rows with one id. React warned that
+                children may be duplicated or omitted, on the screen an operator
+                reads to see which provider is live. */}
             {(routes.data ?? []).map((route) => (
-              <tr key={route.routeId} className="border-t border-slate-200">
+              <tr key={`${route.routeId}:${route.tier}`} className="border-t border-slate-200">
                 <td className="p-2 font-mono text-xs">{route.routeId}</td>
                 <td className="p-2">{route.provider}</td>
                 <td className="p-2">{route.model}</td>

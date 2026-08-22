@@ -114,6 +114,7 @@ processes=(
   worker-orchestrator
   worker-outbox
   worker-integration-outbox
+  worker-housekeeping
 )
 while true; do
   for name in "${processes[@]}"; do

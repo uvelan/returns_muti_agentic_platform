@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import asdict
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -156,6 +156,17 @@ async def metrics_summary(
 @router.get("/interceptions", response_model=APIResponse[list[dict[str, Any]]])
 async def list_interceptions(
     request: Request,
+    status_filter: Annotated[
+        list[InterceptionStatus] | None,
+        Query(
+            alias="status",
+            description=(
+                "Statuses to return. Omitted, the answer is the pending operator "
+                "queue with lapsed records excluded, which is what it has always "
+                "been. Named, the answer includes terminal records."
+            ),
+        ),
+    ] = None,
     _actor_id: str = Depends(require_read_roles),
 ) -> APIResponse[list[dict[str, Any]]]:
     """Work currently held waiting on a human -- both kinds, in one queue.
@@ -177,11 +188,27 @@ async def list_interceptions(
     deployment with no interception store has no pending interceptions, which is
     a true answer; failing here would break the AI screen for every environment
     that never uses the manual path.
+
+    **`?status=` is what makes the history readable.** This endpoint took no
+    parameters, so `?status=ALLOWED` was accepted and silently ignored -- and
+    the operator screen, having no other source, computed its Answered,
+    Cancelled and Expired counts by filtering a pending-only list. All three
+    read zero in every deployment, which is indistinguishable from a quiet
+    queue. The default is unchanged, so a caller that passes nothing gets
+    exactly what it got before.
     """
     store = getattr(request.app.state, "ai_interception_store", None)
     if store is None or not hasattr(store, "list_pending"):
         return APIResponse(data=[], meta=_meta(request))
-    pending = await store.list_pending()
+    if status_filter:
+        if not hasattr(store, "list_by_status"):
+            # An older store that predates terminal listing. Answering with the
+            # pending queue would be a lie about a filter the caller named, so
+            # the honest answer to "show me the answered ones" is nothing.
+            return APIResponse(data=[], meta=_meta(request))
+        records = await store.list_by_status(statuses=status_filter)
+    else:
+        records = await store.list_pending()
     return APIResponse(
         data=[
             {
@@ -193,7 +220,7 @@ async def list_interceptions(
                 "expiresAt": record.expires_at.isoformat(),
                 "answeredBy": record.answered_by,
             }
-            for record in pending
+            for record in records
         ],
         meta=_meta(request),
     )

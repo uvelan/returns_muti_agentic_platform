@@ -84,6 +84,15 @@ class _Store:
         del limit
         return [_interception()] if self._pending else []
 
+    async def list_by_status(
+        self, *, statuses: list[InterceptionStatus], limit: int = 100
+    ) -> list[Interception]:
+        del limit
+        # One record per requested status, so a caller asking for terminal
+        # history gets terminal history rather than the pending queue wearing a
+        # different label.
+        return [_interception(status) for status in statuses]
+
     async def request_payload(self, interception_id: str) -> dict[str, Any] | None:
         return self._payload if interception_id == _ID else None
 
@@ -308,3 +317,67 @@ def test_cancelling_needs_the_act_capability() -> None:
 
     assert response.status_code == 403, response.text
     assert store.cancel_calls == 0
+
+
+# ---------------------------------------------------------------------------
+# The queue can be read by status (UIAUDIT-009)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        InterceptionStatus.PENDING,
+        InterceptionStatus.ANSWERED,
+        InterceptionStatus.ALLOWED,
+        InterceptionStatus.CANCELLED,
+        InterceptionStatus.EXPIRED,
+    ],
+)
+def test_every_status_can_be_asked_for_and_answered(status: InterceptionStatus) -> None:
+    """One fixture per tile, and every one of them can be non-zero.
+
+    Three of the operator screen's tiles read zero in every deployment, and not
+    because the queue was quiet: the endpoint took no parameters, so
+    `?status=ALLOWED` was accepted and silently ignored, and the screen had
+    nothing to count but a pending-only list. A tile that is structurally
+    incapable of being non-zero is worse than an absent one -- it reports a fact
+    about the world rather than about itself.
+    """
+    for client in _client(_Store(), r.CONSOLE_ADMIN):
+        response = client.get(f"/api/ai/interceptions?status={status.value}")
+
+        assert response.status_code == 200
+        assert [row["status"] for row in response.json()["data"]] == [status.value]
+
+
+def test_several_statuses_can_be_asked_for_at_once() -> None:
+    """History is one question, not four round trips."""
+    for client in _client(_Store(), r.CONSOLE_ADMIN):
+        response = client.get(
+            "/api/ai/interceptions?status=ANSWERED&status=CANCELLED&status=EXPIRED"
+        )
+
+        assert response.status_code == 200
+        assert [row["status"] for row in response.json()["data"]] == [
+            "ANSWERED",
+            "CANCELLED",
+            "EXPIRED",
+        ]
+
+
+def test_asking_for_nothing_still_answers_the_pending_queue() -> None:
+    """The default is unchanged, so no existing caller moved."""
+    for client in _client(_Store(pending=True), r.CONSOLE_ADMIN):
+        response = client.get("/api/ai/interceptions")
+
+        assert response.status_code == 200
+        assert [row["status"] for row in response.json()["data"]] == ["PENDING"]
+
+
+def test_an_unknown_status_is_refused_rather_than_ignored() -> None:
+    """Silently ignoring the filter is how the tiles came to read zero."""
+    for client in _client(_Store(), r.CONSOLE_ADMIN):
+        response = client.get("/api/ai/interceptions?status=NOT_A_STATUS")
+
+        assert response.status_code == 422

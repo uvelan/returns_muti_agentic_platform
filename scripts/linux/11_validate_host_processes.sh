@@ -4,7 +4,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 # Mirrors 09_start_workers.sh. worker-jobs went with the dead data-job-worker;
 # worker-discovery is required for adoption to reach LIVE.
 for name in backend frontend worker-temporal worker-discovery worker-orchestrator \
-  worker-outbox worker-integration-outbox; do
+  worker-outbox worker-integration-outbox worker-housekeeping; do
   pid_file="$PID_DIR/${name}.pid"
   [[ -s "$pid_file" ]] || {
     echo "Missing PID file for $name." >&2

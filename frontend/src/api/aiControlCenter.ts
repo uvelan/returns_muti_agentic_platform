@@ -169,7 +169,21 @@ export const aiControlCenterApi = {
   listTasks: () => unwrap<AITaskView[]>("/api/ai/tasks"),
   listAttempts: () => unwrap<AIUsageAttemptView[]>("/api/ai/metrics"),
   getSummary: () => unwrap<AIUsageSummaryView>("/api/ai/metrics/summary"),
-  listInterceptions: () => unwrap<InterceptionRow[]>("/api/ai/interceptions"),
+  /**
+   * The pending operator queue, or the statuses asked for.
+   *
+   * With no argument this is what it has always been: what is waiting on a
+   * human, with lapsed records excluded. Naming statuses returns terminal
+   * records too, which is what makes the Answered, Allowed, Cancelled and
+   * Expired counts capable of being non-zero -- the endpoint took no parameters
+   * at all, so `?status=` was accepted and silently ignored.
+   */
+  listInterceptions: (statuses?: readonly string[]) =>
+    unwrap<InterceptionRow[]>(
+      statuses && statuses.length > 0
+        ? `/api/ai/interceptions?${statuses.map((s) => `status=${encodeURIComponent(s)}`).join("&")}`
+        : "/api/ai/interceptions",
+    ),
 
   /**
    * The held prompt, unsealed. A separate call from the queue on purpose: it is

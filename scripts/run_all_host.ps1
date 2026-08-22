@@ -51,7 +51,13 @@ $started += Start-Child -Name "backend" -Arguments @(
 # `order-discovery-worker` is in `REQUIRED_PROCESS_CLASSES`
 # (`configuration/process_adoption.py:66`); without it a release never reaches
 # LIVE and adoption sits at ACTIVATING with nothing to read.
-foreach ($worker in @("temporal", "discovery", "orchestrator", "outbox", "integration-outbox")) {
+# `housekeeping` is here because every reclaimer the platform has lives in it,
+# and it was the one worker no host path started -- so nothing ever expired an
+# interception or reclaimed a spent graph generation. It is deliberately absent
+# from REQUIRED_PROCESS_CLASSES, which means adoption reaches LIVE and
+# /health/ready stays green with the reaper dead: nothing complains, and the
+# only symptom is unbounded growth nobody is watching.
+foreach ($worker in @("temporal", "discovery", "orchestrator", "outbox", "integration-outbox", "housekeeping")) {
   $started += Start-Child -Name "worker-$worker" -Arguments @(
     "-ExecutionPolicy", "Bypass", "-File", (Join-Path $Root "scripts\run_worker_host.ps1"),
     "-Worker", $worker

@@ -25,7 +25,7 @@ work whose caller has already given up.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -100,6 +100,10 @@ class InterceptionStore(Protocol):
     async def cancel(self, *, interception_id: str, status: InterceptionStatus) -> None: ...
 
     async def list_pending(self, *, limit: int = 100) -> list[Interception]: ...
+
+    async def list_by_status(
+        self, *, statuses: Sequence[InterceptionStatus], limit: int = 100
+    ) -> list[Interception]: ...
 
 
 class SystemStoreInterceptionStore:
@@ -334,6 +338,43 @@ class SystemStoreInterceptionStore:
                 }
             )
             .sort("created_at", 1)
+            .limit(limit)
+        )
+        return [_from_document(document) async for document in cursor]
+
+    async def list_by_status(
+        self, *, statuses: Sequence[InterceptionStatus], limit: int = 100
+    ) -> list[Interception]:
+        """The queue by status, newest first, including terminal records.
+
+        `list_pending` answers one question -- what is waiting on a human -- and
+        it is the only question the API could ask. So the operator screen
+        computed its Answered, Cancelled and Expired counts by filtering a
+        pending-only list, and all three read zero in every deployment: not a
+        quiet queue, a queue that cannot be seen. This is what makes a terminal
+        record visible without widening what `list_pending` means.
+
+        Newest first, the opposite of the pending queue and for the opposite
+        reason. Pending is worked oldest-first because the oldest item is
+        closest to expiring; history is read most-recent-first because the
+        question is "what just happened".
+
+        **No expiry filter here.** A lapsed `PENDING` record is excluded from the
+        operator queue because offering it would hand out work whose caller has
+        given up -- but it is exactly what someone auditing the queue needs to
+        see. Actionability is the caller's decision, and the API says so by
+        returning the deadline alongside the status.
+
+        Still no unsealing: status, timestamps and identity are metadata stored
+        outside the sealed envelope, so history needs no decryption key.
+        """
+        wanted = [status.value for status in statuses]
+        if not wanted:
+            return []
+        cursor = (
+            self._store.read_only(AI_INTERCEPTIONS)
+            .find({"status": {"$in": wanted}})
+            .sort("created_at", -1)
             .limit(limit)
         )
         return [_from_document(document) async for document in cursor]

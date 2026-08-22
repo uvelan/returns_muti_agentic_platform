@@ -75,6 +75,14 @@ export interface paths {
          *     deployment with no interception store has no pending interceptions, which is
          *     a true answer; failing here would break the AI screen for every environment
          *     that never uses the manual path.
+         *
+         *     **`?status=` is what makes the history readable.** This endpoint took no
+         *     parameters, so `?status=ALLOWED` was accepted and silently ignored -- and
+         *     the operator screen, having no other source, computed its Answered,
+         *     Cancelled and Expired counts by filtering a pending-only list. All three
+         *     read zero in every deployment, which is indistinguishable from a quiet
+         *     queue. The default is unchanged, so a caller that passes nothing gets
+         *     exactly what it got before.
          */
         get: operations["list_interceptions_api_ai_interceptions_get"];
         put?: never;
@@ -6669,6 +6677,27 @@ export interface components {
             /** Responsetext */
             responseText: string;
         };
+        /**
+         * InterceptionStatus
+         * @description PENDING -> ANSWERED / ALLOWED, or -> CANCELLED / EXPIRED.
+         *
+         *     `EXPIRED` is distinct from `CANCELLED` because they mean different things to
+         *     an operator: expired is "nobody got to it in time", cancelled is "the run
+         *     that needed it went away". Collapsing them would hide a staffing problem
+         *     behind what looks like ordinary churn.
+         *
+         *     `ALLOWED` is distinct from `ANSWERED` for the same reason, and it is the one
+         *     the platform did not model: an operator could substitute a human answer
+         *     (`ANSWERED`) or kill the request (`CANCELLED`), but "I have looked at this
+         *     and the model may proceed unchanged" had no representation at all. Without it
+         *     interception can only ever divert a request, never approve one, and the three
+         *     outcomes C7 requires -- `ALLOW_PROVIDER | HUMAN_RESPONSE | REJECT` -- collapse
+         *     to two. It is also what distinguishes the provider's own output from a
+         *     human's in every downstream record: an `ALLOWED` request is answered by the
+         *     model and reported as the model, an `ANSWERED` one is reported as MANUAL.
+         * @enum {string}
+         */
+        InterceptionStatus: "PENDING" | "ANSWERED" | "ALLOWED" | "CANCELLED" | "EXPIRED";
         /** InventoryDetail */
         InventoryDetail: {
             /** Assetid */
@@ -10253,7 +10282,10 @@ export interface operations {
     };
     list_interceptions_api_ai_interceptions_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Statuses to return. Omitted, the answer is the pending operator queue with lapsed records excluded, which is what it has always been. Named, the answer includes terminal records. */
+                status?: components["schemas"]["InterceptionStatus"][] | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -10267,6 +10299,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_list_dict_str__Any___"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

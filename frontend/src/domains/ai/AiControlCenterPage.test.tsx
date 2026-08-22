@@ -49,13 +49,23 @@ vi.mock("../../hooks/capabilityContext", () => ({
   useCapabilities: () => ({ can: mocks.can }),
 }));
 
+//: A pending interception has not expired -- that is what pending means.
+//:
+//: These fixtures carried a fixed 2026-08-10 deadline, which is in the past
+//: now and will be further past tomorrow. The screen offers Respond, Allow
+//: and Cancel only while a row is still answerable, so a hardcoded deadline
+//: would make every one of these tests assert against a lapsed row.
+const FUTURE = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+//: And one that is definitively past, for the lapsed case.
+const LAPSED = new Date(Date.now() - 60 * 1000).toISOString();
+
 const PENDING = {
   interceptionId: "int-1",
   taskId: "GRAPH_SCHEMA_PROPOSAL_V1",
   status: "PENDING",
   point: "REQUEST" as const,
   createdAt: "2026-08-10T10:00:00Z",
-  expiresAt: "2026-08-10T11:00:00Z",
+  expiresAt: FUTURE,
   answeredBy: null,
 };
 
@@ -66,7 +76,7 @@ const HELD_RESPONSE = {
   status: "PENDING",
   point: "RESPONSE" as const,
   createdAt: "2026-08-10T10:00:00Z",
-  expiresAt: "2026-08-10T11:00:00Z",
+  expiresAt: FUTURE,
   answeredBy: null,
 };
 
@@ -264,6 +274,25 @@ describe("AI Control Center interceptions", () => {
     // And the actions are named for the job, not for the endpoint.
     expect(screen.getByRole("button", { name: "Respond manually" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Review response" })).toBeInTheDocument();
+  });
+
+  it("offers no actions on a row whose deadline has passed", async () => {
+    // The audit saw Respond, Allow and Cancel on interceptions that had expired
+    // minutes earlier, and recorded it as "expired rows are never reaped". The
+    // reaper was fine. This screen fetched once per mount, never polled, and
+    // gated the buttons on status alone -- so a row fetched at 05:12 kept
+    // offering work that lapsed at 05:13, and pressing it returned 409 or 404.
+    //
+    // The stored status is still PENDING here, deliberately: the sweep settles
+    // lapsed records on an interval, so between the deadline and the sweep the
+    // database really does hold a PENDING row that nobody can answer.
+    mocks.listInterceptions.mockResolvedValue([{ ...PENDING, expiresAt: LAPSED }]);
+    await openInterceptionsTab();
+    await screen.findByText("int-1");
+
+    expect(screen.queryByRole("button", { name: "Respond manually" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Allow model" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
   });
 
   it("pre-fills the model's reply when reviewing a response", async () => {

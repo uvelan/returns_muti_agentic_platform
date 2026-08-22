@@ -9424,6 +9424,18 @@
         "title": "InterceptionAnswer",
         "type": "object"
       },
+      "InterceptionStatus": {
+        "description": "PENDING -> ANSWERED / ALLOWED, or -> CANCELLED / EXPIRED.\n\n`EXPIRED` is distinct from `CANCELLED` because they mean different things to\nan operator: expired is \"nobody got to it in time\", cancelled is \"the run\nthat needed it went away\". Collapsing them would hide a staffing problem\nbehind what looks like ordinary churn.\n\n`ALLOWED` is distinct from `ANSWERED` for the same reason, and it is the one\nthe platform did not model: an operator could substitute a human answer\n(`ANSWERED`) or kill the request (`CANCELLED`), but \"I have looked at this\nand the model may proceed unchanged\" had no representation at all. Without it\ninterception can only ever divert a request, never approve one, and the three\noutcomes C7 requires -- `ALLOW_PROVIDER | HUMAN_RESPONSE | REJECT` -- collapse\nto two. It is also what distinguishes the provider's own output from a\nhuman's in every downstream record: an `ALLOWED` request is answered by the\nmodel and reported as the model, an `ANSWERED` one is reported as MANUAL.",
+        "enum": [
+          "PENDING",
+          "ANSWERED",
+          "ALLOWED",
+          "CANCELLED",
+          "EXPIRED"
+        ],
+        "title": "InterceptionStatus",
+        "type": "string"
+      },
       "InventoryDetail": {
         "additionalProperties": false,
         "properties": {
@@ -18795,8 +18807,31 @@
     },
     "/api/ai/interceptions": {
       "get": {
-        "description": "Work currently held waiting on a human -- both kinds, in one queue.\n\n`point` says which: `REQUEST` is a call that has not been made and that a\nhuman may answer in the model's place; `RESPONSE` is a reply that has come\nback and that a human may accept, edit or reject. One queue rather than two\nendpoints because an operator's question is \"what is waiting on me\", not\n\"what is waiting on me of each kind\", and a second list is a second thing to\nforget to open.\n\n**Identifiers and status only.** The held prompt is sealed at rest and is\ndeliberately not on this surface: an operator listing the queue does not\nneed to see every pending prompt, and decrypting them all to render a list\nwould defeat sealing them. Whoever actually answers one fetches its payload\nexplicitly through the store.\n\nReturns an empty list rather than 503 when no store is configured. A\ndeployment with no interception store has no pending interceptions, which is\na true answer; failing here would break the AI screen for every environment\nthat never uses the manual path.",
+        "description": "Work currently held waiting on a human -- both kinds, in one queue.\n\n`point` says which: `REQUEST` is a call that has not been made and that a\nhuman may answer in the model's place; `RESPONSE` is a reply that has come\nback and that a human may accept, edit or reject. One queue rather than two\nendpoints because an operator's question is \"what is waiting on me\", not\n\"what is waiting on me of each kind\", and a second list is a second thing to\nforget to open.\n\n**Identifiers and status only.** The held prompt is sealed at rest and is\ndeliberately not on this surface: an operator listing the queue does not\nneed to see every pending prompt, and decrypting them all to render a list\nwould defeat sealing them. Whoever actually answers one fetches its payload\nexplicitly through the store.\n\nReturns an empty list rather than 503 when no store is configured. A\ndeployment with no interception store has no pending interceptions, which is\na true answer; failing here would break the AI screen for every environment\nthat never uses the manual path.\n\n**`?status=` is what makes the history readable.** This endpoint took no\nparameters, so `?status=ALLOWED` was accepted and silently ignored -- and\nthe operator screen, having no other source, computed its Answered,\nCancelled and Expired counts by filtering a pending-only list. All three\nread zero in every deployment, which is indistinguishable from a quiet\nqueue. The default is unchanged, so a caller that passes nothing gets\nexactly what it got before.",
         "operationId": "list_interceptions_api_ai_interceptions_get",
+        "parameters": [
+          {
+            "description": "Statuses to return. Omitted, the answer is the pending operator queue with lapsed records excluded, which is what it has always been. Named, the answer includes terminal records.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/InterceptionStatus"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Statuses to return. Omitted, the answer is the pending operator queue with lapsed records excluded, which is what it has always been. Named, the answer includes terminal records.",
+              "title": "Status"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -18807,6 +18842,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "List Interceptions",
