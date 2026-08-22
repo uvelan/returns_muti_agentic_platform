@@ -756,7 +756,13 @@ export function ReturnCopilotPage() {
         ...previous,
         {
           role: "agent",
-          id: result.client_turn_id,
+          // Minted here, not taken from `result.client_turn_id`. `id` is only
+          // ever a React key, and the echoed turn id is not guaranteed unique
+          // in the list: an idempotent replay legitimately returns the *prior*
+          // turn's id, and React then drops one of the two messages rather than
+          // rendering both. Position is unique by construction because history
+          // only ever grows.
+          id: `agent-${String(previous.length)}`,
           statements: result.response.statements,
           status: result.response.status,
         },

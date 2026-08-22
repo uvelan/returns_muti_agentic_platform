@@ -199,7 +199,15 @@ export const orderAgentApi = {
   async sendTurn(input: SendTurnInput): Promise<AgentTurnResult> {
     // One id per submission, not per render: retrying *this* send is a no-op,
     // while a deliberate second message is a distinct turn.
-    const turnId = `ui-${input.conversationId}-${String(Date.now())}`;
+    //
+    // Random rather than the clock. This value is the `idempotency_key`, and it
+    // was `ui-${conversationId}-${Date.now()}` -- millisecond resolution. Two
+    // tabs open on one conversation submitting in the same millisecond mint the
+    // same key, and the server is *correct* to answer the second with the
+    // first's result: the second associate's message is dropped and they read a
+    // reply to a question they did not ask. `api/support.ts` already mints its
+    // idempotency key this way.
+    const turnId = `ui-${input.conversationId}-${crypto.randomUUID()}`;
     const response = await apiClient<AgentTurnResult>(
       `/api/v2/order-agent/conversations/${encodeURIComponent(input.conversationId)}/turns`,
       {

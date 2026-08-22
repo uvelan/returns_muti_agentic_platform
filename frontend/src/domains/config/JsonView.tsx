@@ -19,7 +19,7 @@ export function JsonView({ value }: { value: unknown }) {
     // `JSON.stringify(undefined)` returns undefined at runtime even though its
     // type says string, so this is handled before the call rather than with a
     // `??` the type checker considers unreachable.
-    return <p className="text-sm text-slate-600">No value.</p>;
+    return <p className="text-sm text-on-surface-variant">No value.</p>;
   }
 
   let text: string;
@@ -27,7 +27,7 @@ export function JsonView({ value }: { value: unknown }) {
     text = JSON.stringify(value, null, 2);
   } catch {
     // Circular structures cannot round-trip; saying so beats an empty block.
-    return <p className="text-sm text-red-700">This value could not be serialized.</p>;
+    return <p className="text-sm text-error">This value could not be serialized.</p>;
   }
 
   const truncated = text.length > MAX_CHARACTERS;
@@ -35,11 +35,17 @@ export function JsonView({ value }: { value: unknown }) {
 
   return (
     <div>
-      <pre className="max-h-[32rem] overflow-auto rounded-md bg-slate-50 p-3 text-xs text-slate-800">
+      <pre
+        // Focusable because it scrolls and holds nothing focusable: a keyboard
+        // user could not reach the rest of the snapshot otherwise (WCAG 2.1.1).
+        tabIndex={0}
+        aria-label="JSON value"
+        className="max-h-[32rem] overflow-auto rounded-md bg-surface-container-low p-3 text-xs text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+      >
         {shown}
       </pre>
       {truncated ? (
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-on-surface-variant">
           Truncated at {MAX_CHARACTERS.toLocaleString()} characters.
         </p>
       ) : null}

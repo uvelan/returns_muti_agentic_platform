@@ -9,6 +9,7 @@ import {
 } from "../../api/returnsDomain";
 import { useCapabilities } from "../../hooks/capabilityContext";
 import { QUEUES, type QueueId } from "./queues";
+import { formatTimestamp } from "../../format/datetime";
 
 /**
  * The Return Business Copilot (Phase 18).
@@ -183,7 +184,7 @@ function Workspace({ sessionId }: { sessionId: string | null }) {
               <p className="text-xs text-slate-500">
                 {/* Actor type is shown because an event produced by an agent
                     and one produced by a person are different evidence. */}
-                {event.actorType}: {event.actorId} - {new Date(event.occurredAt).toLocaleString()}
+                {event.actorType}: {event.actorId} - {formatTimestamp(event.occurredAt)}
               </p>
             </li>
           ))}
@@ -251,7 +252,9 @@ function ActionPanel({ sessionId }: { sessionId: string }) {
         // The idempotency key. Generated per submission rather than per render,
         // so a retry of *this* click is a no-op while a deliberate second
         // action is a distinct event.
-        eventId: `ui-${sessionId}-${eventType}-${String(Date.now())}`,
+        // Random, not the clock: this is an idempotency key, and millisecond
+        // resolution lets two operators in one session collide and lose an event.
+        eventId: `ui-${sessionId}-${eventType}-${crypto.randomUUID()}`,
         eventType,
         evidenceReference: evidence,
       }),

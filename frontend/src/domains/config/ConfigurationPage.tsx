@@ -12,6 +12,7 @@ import { AgentsSection } from "./AgentsSection";
 import { type CONFIG_SECTIONS, requireDomain } from "../registry";
 import { useDomainSection } from "../useDomainSection";
 import { JsonView } from "./JsonView";
+import { formatTimestamp } from "../../format/datetime";
 
 /**
  * The platform Configuration experience (Phase 19).
@@ -283,7 +284,7 @@ function ReleasesTab({ canRead }: { canRead: boolean }) {
                 <td className="p-2">
                   <StatusBadge status={release.status} />
                 </td>
-                <td className="p-2">{format(release.createdAt)}</td>
+                <td className="p-2">{formatTimestamp(release.createdAt)}</td>
                 <td className="p-2">{release.createdBy}</td>
               </tr>
             ))}
@@ -425,7 +426,7 @@ function ReleaseDetail({ release }: { release: ConfigurationRelease }) {
         does not record.
       */}
       <Field label="Checksum" value={release.checksumSha256} mono />
-      <Field label="Created" value={format(release.createdAt)} />
+      <Field label="Created" value={formatTimestamp(release.createdAt)} />
       <Field label="Created by" value={release.createdBy} />
       {release.domains ? (
         <div>
@@ -437,12 +438,6 @@ function ReleaseDetail({ release }: { release: ConfigurationRelease }) {
       ) : null}
     </div>
   );
-}
-
-function format(value: string | null | undefined): string {
-  // A null lifecycle timestamp means the transition has not happened, which is
-  // different from a missing field; both render as "-" but neither is invented.
-  return value ? new Date(value).toLocaleString() : "-";
 }
 
 function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {

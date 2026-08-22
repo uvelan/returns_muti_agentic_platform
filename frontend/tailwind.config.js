@@ -20,7 +20,6 @@
  */
 export default {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
-  darkMode: "class",
   theme: {
     extend: {
       colors: {
@@ -36,8 +35,26 @@ export default {
         "on-surface-variant": "#3e4947",
         "inverse-surface": "#2d3130",
         "inverse-on-surface": "#eef1ef",
-        outline: "#6e7977",
+        // 5.66:1 on `surface`, 5.13:1 on `surface-container`. It was #6e7977 --
+        // 4.28:1 on surface, and 4.07:1 once a panel darkened the ground under
+        // it. One token, 119 failing nodes across 39 of 40 routes, and every
+        // usage is small secondary text (10-12px), so the large-text exception
+        // never applied anywhere.
+        outline: "#5b6664",
+        // Panel borders and dividers. Deliberately unchanged: 1.4.11 governs the
+        // boundary of a *component*, not a rule between two regions, and
+        // darkening all 183 usages to satisfy 49 form controls would repaint
+        // every panel in the product to fix inputs.
         "outline-variant": "#bec9c6",
+        // The boundary of a form control, which 1.4.11 does govern at 3:1.
+        // 3.43:1 on white, 3.26:1 on `surface`.
+        //
+        // A separate token because an input's fill is `surface` on a page whose
+        // background is also `surface` -- literally 1.00:1 -- and `.premium-field`
+        // is `surface-container-lowest` on a white panel, also 1.00:1. The 1px
+        // border is the only thing that says "this is an input", and at 1.62:1 it
+        // was invisible to anyone who needed it to be visible.
+        "outline-control": "#828d8a",
         "surface-tint": "#066a61",
         primary: "#004e47",
         "on-primary": "#ffffff",

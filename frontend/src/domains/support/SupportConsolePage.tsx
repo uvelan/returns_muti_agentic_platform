@@ -406,7 +406,7 @@ function ThreadPane({
             value={draft}
             onChange={(event) => { onDraftChange(event.target.value); }}
             placeholder="Reply to the agent..."
-            className="w-full rounded-lg border border-outline-variant bg-surface py-2.5 pl-3 pr-11 text-sm text-on-surface outline-none transition placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary"
+            className="w-full rounded-lg border border-outline-control bg-surface py-2.5 pl-3 pr-11 text-sm text-on-surface outline-none transition placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary"
           />
           <button
             type="submit"
@@ -955,7 +955,7 @@ function ShipmentEditor({
           <select
             value={trackingType}
             onChange={(event) => { setTrackingType(event.target.value as TrackingType); }}
-            className="rounded border border-outline-variant bg-surface px-2 py-1.5 text-sm text-on-surface outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
+            className="rounded border border-outline-control bg-surface px-2 py-1.5 text-sm text-on-surface outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
           >
             {TRACKING_TYPES.map((type) => (
               <option key={type} value={type}>
@@ -970,7 +970,7 @@ function ShipmentEditor({
           <input
             value={statusAt}
             onChange={(event) => { setStatusAt(event.target.value); }}
-            className="rounded border border-outline-variant bg-surface px-2 py-1.5 font-mono text-xs text-on-surface outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
+            className="rounded border border-outline-control bg-surface px-2 py-1.5 font-mono text-xs text-on-surface outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
           />
           <span className="text-outline">
             Must carry a timezone offset. This decides whether the update advances the stored
@@ -1097,7 +1097,7 @@ function TextField({
         value={value}
         required={required}
         onChange={(event) => { onChange(event.target.value); }}
-        className="rounded border border-outline-variant bg-surface px-2 py-1.5 text-sm text-on-surface outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
+        className="rounded border border-outline-control bg-surface px-2 py-1.5 text-sm text-on-surface outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
       />
     </label>
   );

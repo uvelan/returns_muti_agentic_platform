@@ -21,6 +21,7 @@ import {
   type TicketStatus,
   type TrackingType,
 } from "../../api/rmaTickets";
+import { formatTimestamp } from "../../format/datetime";
 
 /**
  * Issue the RMA the workflow agent asked for, and keep its tracking current.
@@ -192,7 +193,7 @@ export function RmaTicketsPage() {
             onClick={() => {
               void queue.refetch();
             }}
-            className="inline-flex items-center gap-2 rounded-lg border border-outline-variant px-3 py-2 text-sm text-on-surface"
+            className="inline-flex items-center gap-2 rounded-lg border border-outline-control px-3 py-2 text-sm text-on-surface"
           >
             <RefreshCw size={15} />
             Refresh
@@ -421,7 +422,7 @@ function Detail({
                 onClick={() => {
                   onStatus(next);
                 }}
-                className="rounded-lg border border-outline-variant px-3 py-1.5 text-xs text-on-surface disabled:opacity-40"
+                className="rounded-lg border border-outline-control px-3 py-1.5 text-xs text-on-surface disabled:opacity-40"
               >
                 {next.replaceAll("_", " ")}
               </button>
@@ -521,7 +522,7 @@ function TrackingSection({
                   <td className="py-2">{row.carrierCode ?? "—"}</td>
                   <td className="py-2">{row.trackingStatus}</td>
                   <td className="py-2 text-on-surface-variant">
-                    {row.eventAt === null ? "—" : new Date(row.eventAt).toLocaleString()}
+                    {formatTimestamp(row.eventAt)}
                   </td>
                 </tr>
               ))}

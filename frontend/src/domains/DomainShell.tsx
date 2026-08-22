@@ -1,12 +1,14 @@
 import { Link, Redirect, Route, Router, Switch, useLocation } from "wouter";
-import { Suspense, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   ChevronRight,
   Command,
+  Menu,
   PanelLeftClose,
   PanelLeftOpen,
   ShieldCheck,
+  X,
 } from "lucide-react";
 
 import { useCapabilities } from "../hooks/capabilityContext";
@@ -64,7 +66,13 @@ function RailHeader({ collapsed, onToggle }: { collapsed: boolean; onToggle: () 
         aria-controls="domain-rail"
         title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        className="rounded p-2 text-rail-on-surface/60 transition hover:bg-white/10 hover:text-rail-on-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-inverse-primary"
+        // Desktop only, for two reasons. Collapsing a *drawer* to an icon strip
+        // is meaningless -- the drawer is already off screen when you are not
+        // using it. And below `lg` this button and the drawer trigger would both
+        // claim `aria-controls="domain-rail"` with opposite `aria-expanded`
+        // meanings, leaving a screen reader with two contradictory answers about
+        // one region.
+        className="hidden rounded p-2 text-rail-on-surface/60 transition hover:bg-white/10 hover:text-rail-on-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-inverse-primary lg:block"
       >
         {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
       </button>
@@ -150,8 +158,85 @@ function Forbidden({ domain }: { domain: DomainDefinition }) {
 function LandingFrame({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-surface">
-      <main className="px-10 py-10">{children}</main>
+      <main id={MAIN_CONTENT_ID} tabIndex={-1} className="px-10 py-10 outline-none">
+        {children}
+      </main>
     </div>
+  );
+}
+
+/**
+ * Below `lg` the rail is a drawer; at `lg` and above it is the rail it has
+ * always been and this state is inert.
+ *
+ * The shell used to pin `min-width: 1280px` to `html` and `body`, so every
+ * width under 1280 scrolled sideways -- the exact two-dimensional scrolling
+ * WCAG 1.4.10 exists to prevent, and at 320 the 288px rail left 32px for the
+ * screen itself. Removing the floor is what makes a drawer necessary: without
+ * one the rail simply eats the viewport.
+ */
+function useNavigationDrawer(): {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
+} {
+  const [location] = useLocation();
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  // The route the drawer was opened on is stored with it, so "you have since
+  // navigated" is derived rather than corrected by an effect. An effect that
+  // closed it on `location` change worked, but it rendered the drawer open over
+  // the new route for one frame first -- and the state it wrote was a function
+  // of a value already in scope, which is the definition of derivable.
+  const [opened, setOpened] = useState<string | null>(null);
+  const open = opened === location;
+
+  function setOpen(next: boolean) {
+    setOpened(next ? location : null);
+  }
+
+  // Escape closes it, and focus goes back to the control that opened it --
+  // otherwise focus is left on a now-hidden element and the next Tab starts
+  // over at the top of the document.
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      // `setOpened`, not the `setOpen` wrapper: the wrapper is redeclared each
+      // render, so depending on it would re-bind this listener every time.
+      setOpened(null);
+      triggerRef.current?.focus();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return { open, setOpen, triggerRef };
+}
+
+/** Opens the rail below `lg`. Absent above it, where the rail is always there. */
+function DrawerTrigger({
+  open,
+  onOpen,
+  triggerRef,
+}: {
+  open: boolean;
+  onOpen: () => void;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
+}) {
+  return (
+    <button
+      ref={triggerRef}
+      type="button"
+      onClick={onOpen}
+      aria-expanded={open}
+      aria-controls="domain-rail"
+      className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-outline-control text-on-surface-variant transition hover:bg-surface-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 lg:hidden"
+    >
+      <Menu size={18} aria-hidden="true" />
+      <span className="sr-only">Open navigation</span>
+    </button>
   );
 }
 
@@ -164,25 +249,58 @@ function DomainFrame({ domain, children }: { domain: DomainDefinition; children:
   // element exists: a ref set during commit would leave the first paint empty
   // and never invalidate.
   const [railSlot, setRailSlot] = useState<HTMLElement | null>(null);
+  const drawer = useNavigationDrawer();
+  // The desktop collapse preference must not blank the drawer: a collapsed rail
+  // hides the section links, which are the only reason to open a drawer.
+  const railCollapsed = collapsed && !drawer.open;
   const Icon = domain.icon;
 
   return (
     <div className="flex min-h-screen bg-surface">
+      {/*
+        Closes the drawer by clicking away from it. `aria-hidden` because the
+        Escape key and the close button are the accessible affordances; a
+        screen-reader user should not meet an unlabelled full-screen div.
+      */}
+      {drawer.open ? (
+        <div
+          aria-hidden="true"
+          onClick={() => { drawer.setOpen(false); }}
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+        />
+      ) : null}
       <aside
         id="domain-rail"
-        className={`sticky top-0 flex h-screen shrink-0 flex-col overflow-y-auto border-r border-white/10 bg-rail-surface shadow-2xl shadow-black/10 transition-[width] duration-200 ${collapsed ? "w-16" : "w-72"}`}
+        // `invisible` and not merely translated: an off-canvas element that is
+        // still visible stays in the tab order, so Tab would walk nineteen
+        // links the reader cannot see. `lg:visible` puts it back on desktop,
+        // where it is not a drawer at all.
+        className={`fixed inset-y-0 left-0 z-40 flex h-screen shrink-0 flex-col overflow-y-auto border-r border-white/10 bg-rail-surface shadow-2xl shadow-black/10 transition-[width,transform] duration-200 lg:sticky lg:top-0 lg:visible lg:translate-x-0 ${
+          drawer.open ? "w-72 translate-x-0" : `invisible -translate-x-full ${collapsed ? "lg:w-16" : "lg:w-72"}`
+        }`}
       >
-        <RailHeader collapsed={collapsed} onToggle={toggle} />
+        <button
+          type="button"
+          onClick={() => {
+            drawer.setOpen(false);
+            drawer.triggerRef.current?.focus();
+          }}
+          className="absolute right-3 top-3 flex size-9 items-center justify-center rounded-lg text-rail-on-surface/70 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inverse-primary lg:hidden"
+        >
+          <X size={18} aria-hidden="true" />
+          <span className="sr-only">Close navigation</span>
+        </button>
+        <RailHeader collapsed={railCollapsed} onToggle={toggle} />
         <div
-          className={`flex items-start gap-3 border-y border-white/10 py-5 ${collapsed ? "justify-center px-0" : "px-4"}`}
+          className={`flex items-start gap-3 border-y border-white/10 py-5 ${railCollapsed ? "justify-center px-0" : "px-4"}`}
         >
           <span
             className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/10 text-inverse-primary ring-1 ring-inset ring-white/10"
-            title={collapsed ? domain.name : undefined}
+            title={railCollapsed ? domain.name : undefined}
           >
             <Icon size={19} />
           </span>
-          {collapsed ? null : (
+          {railCollapsed ? null : (
             <span className="min-w-0">
               <span className="block text-sm font-semibold leading-tight text-rail-on-surface">
                 {domain.name}
@@ -204,15 +322,15 @@ function DomainFrame({ domain, children }: { domain: DomainDefinition; children:
           glyphs where there are currently six unambiguous words. Collapsing is
           for reclaiming width on the copilot, which has no sections at all.
         */}
-        {collapsed ? null : <DomainSectionNav domain={domain} />}
+        {railCollapsed ? null : <DomainSectionNav domain={domain} />}
         {/*
           The contextual slot. Filled by the screen through `DomainRail`, which
           is why it carries no fallback: a rail block describing what is on
           screen can only come from the screen, and a shell-authored default
           would be the shared navigation panel this replaced.
         */}
-        {collapsed ? null : <div ref={setRailSlot} className="flex flex-col" />}
-        {collapsed ? null : (
+        {railCollapsed ? null : <div ref={setRailSlot} className="flex flex-col" />}
+        {railCollapsed ? null : (
           <div className="mt-auto border-t border-white/10 px-4 py-4">
             <div className="flex items-center gap-2 text-[11px] leading-relaxed text-rail-on-surface/50">
               <ShieldCheck size={14} className="shrink-0 text-inverse-primary/70" />
@@ -222,12 +340,30 @@ function DomainFrame({ domain, children }: { domain: DomainDefinition; children:
         )}
       </aside>
       <div className="min-w-0 flex-1 flex flex-col h-screen overflow-hidden">
-        {domain.path === "/returns" ? null : (
-          <header className="sticky top-0 z-20 flex h-[4.5rem] shrink-0 items-center justify-between gap-6 border-b border-outline-variant/70 bg-surface/95 px-7 backdrop-blur">
-            <div className="min-w-0">
+        {domain.path === "/returns" ? (
+          // The copilot renders no header -- it needs the height -- so below
+          // `lg` it gets the one control it cannot do without. Absent entirely
+          // on desktop, where the rail is always on screen.
+          <div className="flex shrink-0 items-center gap-3 border-b border-outline-variant/70 bg-surface/95 px-3 py-2 lg:hidden">
+            <DrawerTrigger
+              open={drawer.open}
+              onOpen={() => { drawer.setOpen(true); }}
+              triggerRef={drawer.triggerRef}
+            />
+            <span className="truncate text-sm font-semibold text-on-surface">{domain.name}</span>
+          </div>
+        ) : (
+          <header className="sticky top-0 z-20 flex h-[4.5rem] shrink-0 items-center justify-between gap-3 border-b border-outline-variant/70 bg-surface/95 px-4 backdrop-blur sm:gap-6 sm:px-7">
+            <DrawerTrigger
+              open={drawer.open}
+              onOpen={() => { drawer.setOpen(true); }}
+              triggerRef={drawer.triggerRef}
+            />
+            <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5 text-xs font-medium text-outline">
-                <span>Returns Intelligence Platform</span>
-                <ChevronRight size={13} aria-hidden="true" />
+                {/* The platform name is the one crumb a 320px reader can spare. */}
+                <span className="hidden sm:inline">Returns Intelligence Platform</span>
+                <ChevronRight size={13} aria-hidden="true" className="hidden sm:inline" />
                 <span className="truncate text-on-surface-variant">{domain.name}</span>
                 {activeSectionLabel === "" ? null : (
                   <>
@@ -236,7 +372,9 @@ function DomainFrame({ domain, children }: { domain: DomainDefinition; children:
                   </>
                 )}
               </div>
-              <p className="mt-1 truncate text-sm text-on-surface-variant">{domain.description}</p>
+              <p className="mt-1 hidden truncate text-sm text-on-surface-variant sm:block">
+                {domain.description}
+              </p>
             </div>
             <div className="flex shrink-0 items-center gap-3">
               <span className="hidden items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant xl:flex" title={runtimeConfig?.releaseId}>
@@ -244,14 +382,18 @@ function DomainFrame({ domain, children }: { domain: DomainDefinition; children:
                 {runtimeConfig?.environment ?? "Environment unknown"}
               </span>
               {principal === undefined ? null : (
-                <span className="max-w-64 truncate rounded-full bg-secondary-container px-3 py-1.5 text-xs font-medium text-on-secondary-container" title={principal.subject}>
+                <span className="hidden max-w-64 truncate rounded-full bg-secondary-container px-3 py-1.5 text-xs font-medium text-on-secondary-container sm:block" title={principal.subject}>
                   {principal.subject}
                 </span>
               )}
             </div>
           </header>
         )}
-        <main className={`min-w-0 flex-1 ${domain.path === "/returns" ? "p-3 h-full overflow-hidden" : "overflow-x-auto p-7"}`}>
+        <main
+          id={MAIN_CONTENT_ID}
+          tabIndex={-1}
+          className={`min-w-0 flex-1 outline-none ${domain.path === "/returns" ? "p-3 h-full overflow-hidden" : "overflow-x-auto p-7"}`}
+        >
           <RailSlotProvider value={collapsed ? null : railSlot}>{children}</RailSlotProvider>
         </main>
       </div>
@@ -259,14 +401,50 @@ function DomainFrame({ domain, children }: { domain: DomainDefinition; children:
   );
 }
 
+/**
+ * Where `Skip to main content` lands. Both frames use it, because a keyboard
+ * user on the launcher has the same reason to skip the chrome as one inside a
+ * domain, and a link pointing at an id that only half the routes render is
+ * worse than no link.
+ */
+const MAIN_CONTENT_ID = "main-content";
+
+/**
+ * The first thing Tab reaches, on every route.
+ *
+ * A domain frame puts a rail and a header ahead of the content -- on `/config`
+ * that is nineteen links before the first thing the page is about, and they are
+ * the same nineteen on every route. Off-screen until focused, so it costs
+ * pointer users nothing.
+ *
+ * `tabIndex={-1}` on the target is what makes the jump actually move focus:
+ * without it the browser scrolls to the element and leaves focus on the link,
+ * so the next Tab returns to the second rail item.
+ */
+function SkipToContent() {
+  return (
+    <a
+      href={`#${MAIN_CONTENT_ID}`}
+      className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2.5 focus:text-sm focus:font-semibold focus:text-on-primary focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+    >
+      Skip to main content
+    </a>
+  );
+}
+
 /** Chooses the frame from the URL, so the launcher and a domain differ in chrome. */
 function Frame({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const domain = domainForPath(location);
-  return domain === null ? (
-    <LandingFrame>{children}</LandingFrame>
-  ) : (
-    <DomainFrame domain={domain}>{children}</DomainFrame>
+  return (
+    <>
+      <SkipToContent />
+      {domain === null ? (
+        <LandingFrame>{children}</LandingFrame>
+      ) : (
+        <DomainFrame domain={domain}>{children}</DomainFrame>
+      )}
+    </>
   );
 }
 

@@ -1,5 +1,6 @@
 import { CheckCircle2, Circle, Clock, ExternalLink, Truck } from "lucide-react";
 import type { ShipmentProjection, ShipmentStatus } from "../../../api/cases";
+import { formatTimestamp } from "../../../format/datetime";
 
 /**
  * Where the packages are, from the shipment projection.
@@ -34,11 +35,9 @@ const CHAIN: readonly { readonly status: ShipmentStatus; readonly title: string 
   { status: "RECEIVED", title: "Received" },
 ];
 
-/** An instant as the reader's own clock reads it, or the raw value if it will not parse. */
+/** Null stays null here -- callers branch on it rather than rendering a dash. */
 function instant(value: string | null): string | null {
-  if (value === null) return null;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+  return value === null ? null : formatTimestamp(value);
 }
 
 function ShipmentTransit({
@@ -152,7 +151,7 @@ function ShipmentTransit({
           onClick={() => {
             onOpenTrackingPortal?.(shipment);
           }}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-outline-variant bg-surface-container-lowest py-2 text-xs font-semibold text-on-surface transition hover:bg-surface-container disabled:opacity-40"
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-outline-control bg-surface-container-lowest py-2 text-xs font-semibold text-on-surface transition hover:bg-surface-container disabled:opacity-40"
         >
           <ExternalLink size={13} />
           <span>Carrier Tracking Portal</span>

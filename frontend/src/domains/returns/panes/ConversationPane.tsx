@@ -199,7 +199,7 @@ export function ConversationPane({
                             onOpen(openCase.channelAConversationId, openCase.caseId);
                           }
                         }}
-                        className="flex w-full items-center justify-between rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-3 text-left text-xs transition hover:border-primary hover:bg-surface-container-lowest/90 shadow-xs disabled:opacity-40"
+                        className="flex w-full items-center justify-between rounded-xl border border-outline-control bg-surface-container-lowest p-3 text-left text-xs transition hover:border-primary hover:bg-surface-container-lowest/90 shadow-xs disabled:opacity-40"
                       >
                         <span className="truncate font-semibold text-on-surface text-sm">
                           {openCase.confirmedOrderReference ?? openCase.caseId}
@@ -231,7 +231,7 @@ export function ConversationPane({
                         onClick={() => {
                           onOpen(conversation.conversationId);
                         }}
-                        className="flex w-full items-center justify-between rounded-xl border border-outline-variant/30 bg-surface-container-lowest p-3 text-left text-xs transition hover:border-primary hover:bg-surface-container-lowest/90 shadow-xs"
+                        className="flex w-full items-center justify-between rounded-xl border border-outline-control bg-surface-container-lowest p-3 text-left text-xs transition hover:border-primary hover:bg-surface-container-lowest/90 shadow-xs"
                       >
                         <span className="truncate font-medium text-on-surface text-sm">
                           {conversation.title}
@@ -263,7 +263,7 @@ export function ConversationPane({
                       onClick={() => {
                         onDraftChange(item.query);
                       }}
-                      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-outline-variant/40 bg-surface px-3 py-1 text-xs font-medium text-on-surface-variant transition hover:border-primary hover:bg-surface-variant"
+                      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-outline-control bg-surface px-3 py-1 text-xs font-medium text-on-surface-variant transition hover:border-primary hover:bg-surface-variant"
                     >
                       <item.icon size={13} className="text-secondary" />
                       <span>{item.label}</span>
@@ -365,7 +365,7 @@ export function ConversationPane({
                         <button
                           type="button"
                           onClick={onStopWaiting}
-                          className="ml-3 rounded border border-outline-variant px-2 py-0.5 text-[11px] text-on-surface hover:bg-surface-container"
+                          className="ml-3 rounded border border-outline-control px-2 py-0.5 text-[11px] text-on-surface hover:bg-surface-container"
                         >
                           Stop waiting
                         </button>

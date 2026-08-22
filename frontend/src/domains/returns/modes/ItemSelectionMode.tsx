@@ -674,7 +674,7 @@ export function ItemSelectionMode({
             onClick={() => {
               setVisible((count) => count + LINE_PAGE);
             }}
-            className="rounded-lg border border-outline-variant/60 bg-surface px-3 py-1.5 text-xs font-semibold text-on-surface"
+            className="rounded-lg border border-outline-control bg-surface px-3 py-1.5 text-xs font-semibold text-on-surface"
           >
             Show {String(Math.min(LINE_PAGE, hidden))} more · {String(hidden)} not shown
           </button>

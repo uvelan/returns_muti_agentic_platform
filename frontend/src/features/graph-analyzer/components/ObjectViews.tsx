@@ -130,7 +130,11 @@ export function DataView({
       ) : data === undefined || data.rows.length === 0 ? (
         <p className="text-sm text-slate-500">No accessible records were returned for this page.</p>
       ) : asJson ? (
-        <pre className="max-h-96 overflow-auto rounded-lg bg-[#050c0a] p-4 text-xs leading-5 text-emerald-100">
+        <pre
+          tabIndex={0}
+          aria-label="Raw object"
+          className="max-h-96 overflow-auto rounded-lg bg-[#050c0a] p-4 text-xs leading-5 text-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+        >
           {JSON.stringify(data.rows, null, 2)}
         </pre>
       ) : (
@@ -296,7 +300,11 @@ function RecordDialog({
 
           <details className="mt-5">
             <summary className="cursor-pointer text-xs text-slate-500">Raw document</summary>
-            <pre className="mt-2 overflow-auto rounded-lg bg-[#050c0a] p-4 text-xs leading-5 text-emerald-100">
+            <pre
+              tabIndex={0}
+              aria-label="Raw payload"
+              className="mt-2 overflow-auto rounded-lg bg-[#050c0a] p-4 text-xs leading-5 text-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            >
               {JSON.stringify(row, null, 2)}
             </pre>
           </details>

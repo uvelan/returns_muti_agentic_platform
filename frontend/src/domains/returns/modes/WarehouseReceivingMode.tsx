@@ -120,7 +120,7 @@ export function WarehouseReceivingMode({
           onClick={() => {
             onRouteToQA?.();
           }}
-          className="w-full rounded-lg border border-outline-variant bg-surface-container-lowest py-2.5 text-xs font-semibold text-on-surface transition hover:bg-surface-container disabled:opacity-40"
+          className="w-full rounded-lg border border-outline-control bg-surface-container-lowest py-2.5 text-xs font-semibold text-on-surface transition hover:bg-surface-container disabled:opacity-40"
         >
           Route to QA Testing Disposition
         </button>

@@ -298,7 +298,7 @@ export function ReturnEvaluationMode({
               <button
                 type="button"
                 onClick={onRequestException}
-                className="flex-1 rounded-lg border border-outline-variant bg-surface py-2 text-xs font-medium text-on-surface"
+                className="flex-1 rounded-lg border border-outline-control bg-surface py-2 text-xs font-medium text-on-surface"
               >
                 Escalate Ticket
               </button>

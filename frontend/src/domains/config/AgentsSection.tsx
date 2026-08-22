@@ -447,7 +447,7 @@ function DocumentEditor({
             onDirtyChange(false);
           }}
           disabled={!canWrite || !dirty}
-          className="flex items-center gap-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex items-center gap-1.5 rounded-lg border border-outline-control bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
         >
           <RotateCcw size={13} aria-hidden="true" />
           Reset
@@ -536,7 +536,7 @@ function Node({ value, onChange }: { value: Json; onChange: (next: Json) => void
               type="button"
               aria-label={`Remove item ${String(index)}`}
               onClick={() => { onChange(value.filter((_, at) => at !== index)); }}
-              className="mt-1 flex size-6 shrink-0 items-center justify-center rounded border border-outline-variant text-on-surface-variant transition hover:border-error hover:text-error"
+              className="mt-1 flex size-6 shrink-0 items-center justify-center rounded border border-outline-control text-on-surface-variant transition hover:border-error hover:text-error"
             >
               <Minus size={12} />
             </button>
@@ -551,7 +551,7 @@ function Node({ value, onChange }: { value: Json; onChange: (next: Json) => void
             const template = value.length > 0 ? blank(value[value.length - 1]) : "";
             onChange([...value, template]);
           }}
-          className="flex w-fit items-center gap-1 rounded border border-outline-variant px-2 py-1 text-[11px] text-on-surface-variant transition hover:border-primary hover:text-primary"
+          className="flex w-fit items-center gap-1 rounded border border-outline-control px-2 py-1 text-[11px] text-on-surface-variant transition hover:border-primary hover:text-primary"
         >
           <Plus size={11} />
           Add
@@ -618,7 +618,7 @@ function Node({ value, onChange }: { value: Json; onChange: (next: Json) => void
           const parsed = Number(event.target.value);
           onChange(event.target.value === "" || Number.isNaN(parsed) ? 0 : parsed);
         }}
-        className="w-40 rounded border border-outline-variant bg-surface px-2 py-1 text-sm text-on-surface outline-none focus:border-primary"
+        className="w-40 rounded border border-outline-control bg-surface px-2 py-1 text-sm text-on-surface outline-none focus:border-primary"
       />
     );
   }
@@ -628,7 +628,7 @@ function Node({ value, onChange }: { value: Json; onChange: (next: Json) => void
       type="text"
       value={value ?? ""}
       onChange={(event) => { onChange(event.target.value); }}
-      className="w-full rounded border border-outline-variant bg-surface px-2 py-1 text-sm text-on-surface outline-none focus:border-primary"
+      className="w-full rounded border border-outline-control bg-surface px-2 py-1 text-sm text-on-surface outline-none focus:border-primary"
     />
   );
 }
@@ -687,7 +687,7 @@ function NewProperty({
         onClick={addProperty}
         disabled={normalized === "" || duplicate}
         title={duplicate ? "That key already exists" : undefined}
-        className="flex items-center gap-1 rounded-lg border border-outline-variant bg-surface-container-lowest px-2.5 py-2 text-[11px] font-medium text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex items-center gap-1 rounded-lg border border-outline-control bg-surface-container-lowest px-2.5 py-2 text-[11px] font-medium text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
       >
         <Plus size={12} aria-hidden="true" />
         Add property

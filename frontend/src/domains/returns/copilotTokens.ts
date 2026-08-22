@@ -25,7 +25,7 @@ export const COPILOT_TOKENS = {
   },
   chatDock: {
     container: "shrink-0 border-t border-outline-variant/20 p-4 bg-surface-container-lowest",
-    input: "w-full rounded-xl border border-outline-variant/40 bg-surface py-3 pl-4 pr-12 text-sm text-on-surface placeholder:text-outline outline-none transition focus:border-primary focus:ring-1 focus:ring-primary shadow-sm",
+    input: "w-full rounded-xl border border-outline-control bg-surface py-3 pl-4 pr-12 text-sm text-on-surface placeholder:text-outline outline-none transition focus:border-primary focus:ring-1 focus:ring-primary shadow-sm",
     hint: "mt-2 text-center text-xs text-outline",
   },
   section: {

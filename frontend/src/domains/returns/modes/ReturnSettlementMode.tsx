@@ -150,7 +150,7 @@ export function ReturnSettlementMode({
           onClick={() => {
             onViewCaseAudit?.();
           }}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-outline-variant bg-surface-container-lowest py-2 text-xs font-semibold text-on-surface transition hover:bg-surface-container disabled:opacity-40"
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-outline-control bg-surface-container-lowest py-2 text-xs font-semibold text-on-surface transition hover:bg-surface-container disabled:opacity-40"
         >
           <FileText size={14} />
           <span>View Full Case Audit History</span>

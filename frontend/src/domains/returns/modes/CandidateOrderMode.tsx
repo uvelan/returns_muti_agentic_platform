@@ -148,7 +148,7 @@ export function CandidateOrderMode({
           onClick={() => {
             setVisible((count) => count + ROW_PAGE);
           }}
-          className="self-start rounded-lg border border-outline-variant/60 bg-surface px-3 py-1.5 text-xs font-semibold text-on-surface"
+          className="self-start rounded-lg border border-outline-control bg-surface px-3 py-1.5 text-xs font-semibold text-on-surface"
         >
           Show {String(Math.min(ROW_PAGE, hiddenOnPage))} more · {String(hiddenOnPage)} not shown
         </button>

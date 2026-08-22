@@ -20,14 +20,18 @@
     text-rendering: optimizeLegibility;
   }
 
+  /* No `min-width`. It was 1280px here and on `body`, which guaranteed
+     two-dimensional scrolling at every width below that -- the thing WCAG
+     1.4.10 exists to prevent -- and made 200% zoom on a 1280px display behave
+     like a 640px viewport with a horizontal scrollbar. The rail becomes a
+     drawer below `lg` so removing the floor leaves the shell usable rather
+     than merely narrow. */
   html {
-    min-width: 1280px;
     min-height: 100%;
     background-color: theme("colors.surface");
   }
 
   body {
-    min-width: 1280px;
     min-height: 100vh;
     margin: 0;
 
@@ -66,7 +70,7 @@
   }
 
   .premium-field {
-    @apply rounded-lg border border-outline-variant bg-surface-container-lowest px-3 py-2 text-sm text-on-surface shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15;
+    @apply rounded-lg border border-outline-control bg-surface-container-lowest px-3 py-2 text-sm text-on-surface shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15;
   }
   /* Lift the existing domain panels into one visual system without changing
      their data, state machines, or accessible structure. */
@@ -84,5 +88,40 @@
   }
   .hide-scrollbar::-webkit-scrollbar, .no-scrollbar::-webkit-scrollbar {
     display: none;
+  }
+}
+
+/* Honour the operating-system "reduce motion" setting.
+ *
+ * Nothing here did before, so an operator who had asked their OS to stop
+ * animating still got ten pulsing skeletons and a spinner on every load. The
+ * recipe is the usual one -- collapse transitions and animations to
+ * effectively instant -- with one deliberate carve-out.
+ *
+ * The carve-out is the spinner. "Reduce" means remove motion that is
+ * decorative, not remove the only signal that the application is still
+ * working; a frozen spinner reads as a hung screen. So it keeps turning and
+ * turns slowly, which is what the vestibular guidance actually asks for.
+ * Skeletons get no such exemption: their shape already says "loading", and the
+ * pulse adds nothing a static block does not. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-spin {
+    animation-duration: 2.4s !important;
+    animation-iteration-count: infinite !important;
+  }
+
+  /* Static rather than absent: the skeleton is still the loading affordance. */
+  .animate-pulse {
+    animation: none !important;
+    opacity: 0.55;
   }
 }

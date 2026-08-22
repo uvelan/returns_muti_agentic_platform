@@ -5,6 +5,7 @@ import { Bot, Database, History, Play, UserRound } from "lucide-react";
 import { graphSyncApi, type StartSyncInput, type SyncRun } from "../../api/graphSync";
 import { useCapabilities } from "../../hooks/capabilityContext";
 import { DomainRail, RailFact, RailNote, RailSection } from "../DomainRail";
+import { formatTimestamp } from "../../format/datetime";
 
 /**
  * S6 -- the sync control screen.
@@ -179,12 +180,6 @@ function StatusPill({ status }: { status: SyncRun["status"] }) {
   );
 }
 
-function when(value: string | null): string {
-  if (value === null) return "-";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
-}
-
 function RunListPane({
   filter,
   onFilterChange,
@@ -283,7 +278,7 @@ function RunListPane({
                     ) : null}
                   </span>
                   <span className="flex flex-wrap items-center gap-x-3 text-[11px] text-outline">
-                    <span>{when(run.startedAt)}</span>
+                    <span>{formatTimestamp(run.startedAt)}</span>
                     <span>{run.startedBy}</span>
                     {/*
                       The number that distinguishes a sync that worked from one
@@ -385,7 +380,7 @@ function StartSyncForm({
               setScope(chosen.value);
             }
           }}
-          className="rounded border border-outline-variant bg-surface px-2 py-1.5 text-sm text-on-surface outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
+          className="rounded border border-outline-control bg-surface px-2 py-1.5 text-sm text-on-surface outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
         >
           {SCOPES.map((option) => (
             <option key={option.value} value={option.value}>
@@ -401,7 +396,7 @@ function StartSyncForm({
           onChange={(event) => {
             setIncremental(event.target.value === "incremental");
           }}
-          className="rounded border border-outline-variant bg-surface px-2 py-1.5 text-sm text-on-surface outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
+          className="rounded border border-outline-control bg-surface px-2 py-1.5 text-sm text-on-surface outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
         >
           {READS.map((option) => (
             <option key={option.label} value={option.value ? "incremental" : "full"}>
@@ -418,7 +413,7 @@ function StartSyncForm({
           onChange={(event) => {
             setMaxRecords(event.target.value);
           }}
-          className="rounded border border-outline-variant bg-surface px-2 py-1.5 text-sm text-on-surface outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
+          className="rounded border border-outline-control bg-surface px-2 py-1.5 text-sm text-on-surface outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
         />
       </label>
       <div className="flex items-center gap-2">
@@ -494,8 +489,8 @@ function RunDetailPane({ run, loading }: { run: SyncRun | null; loading: boolean
           </div>
           <Facts
             rows={[
-              ["Started", when(run.startedAt)],
-              ["Finished", when(run.completedAt)],
+              ["Started", formatTimestamp(run.startedAt)],
+              ["Finished", formatTimestamp(run.completedAt)],
               ["Started by", run.startedBy],
               ["Schema", run.schemaVersion],
               ["Read", run.recordScope === "INCREMENTAL" ? "Only what changed" : "Everything"],

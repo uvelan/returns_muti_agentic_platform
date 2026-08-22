@@ -881,7 +881,13 @@ function ManualResponder({
         <p className="text-sm text-red-700">{request.error.message}</p>
       ) : null}
       {request.data ? (
-        <pre className="max-h-64 overflow-auto rounded bg-slate-50 p-3 text-xs">
+        <pre
+          // Focusable because it scrolls and holds nothing focusable: a keyboard
+          // user could not reach the rest of the payload otherwise (WCAG 2.1.1).
+          tabIndex={0}
+          aria-label="Request payload"
+          className="max-h-64 overflow-auto rounded bg-surface-container-low p-3 text-xs text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+        >
           {JSON.stringify(request.data, null, 2)}
         </pre>
       ) : null}

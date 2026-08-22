@@ -13,6 +13,7 @@ import {
 } from "../../api/proposals";
 import { useCapabilities } from "../../hooks/capabilityContext";
 import { DomainRail, RailFact, RailNote, RailSection } from "../DomainRail";
+import { formatTimestamp } from "../../format/datetime";
 
 /**
  * UI-01 -- the Approvals screen.
@@ -246,12 +247,6 @@ function RiskPill({ risk }: { risk: string }) {
   );
 }
 
-function when(value: string | null): string {
-  if (value === null) return "-";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
-}
-
 function FilterRow({
   label,
   options,
@@ -275,7 +270,7 @@ function FilterRow({
           const chosen = options.find((option) => option.value === event.target.value);
           if (chosen !== undefined) onChange(chosen.value);
         }}
-        className="flex-1 rounded border border-outline-variant bg-surface px-2 py-1 text-xs text-on-surface outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
+        className="flex-1 rounded border border-outline-control bg-surface px-2 py-1 text-xs text-on-surface outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -354,7 +349,7 @@ function QueuePane({
                     <span>{proposal.proposalType}</span>
                     <span>{proposal.subjectId}</span>
                     <span>{proposal.proposedBy}</span>
-                    <span>{when(proposal.updatedAt)}</span>
+                    <span>{formatTimestamp(proposal.updatedAt)}</span>
                     {/*
                       How much of the platform this touches. A reviewer sorting
                       a queue by "what could hurt" needs the size of the blast
@@ -501,7 +496,7 @@ function DecisionControls({
             onChange={(event) => {
               setNote(event.target.value);
             }}
-            className="rounded border border-outline-variant bg-surface px-2 py-1.5 text-sm text-on-surface outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
+            className="rounded border border-outline-control bg-surface px-2 py-1.5 text-sm text-on-surface outline-none transition focus:border-primary focus:ring-1 focus:ring-primary"
           />
           <span className="text-outline">
             {/* Optional, because `DecisionRequest.note` is. Requiring one here
@@ -613,8 +608,8 @@ function DetailPane({
               ["Kind", proposal.proposalType],
               ["Subject", proposal.subjectId],
               ["Proposed by", proposal.proposedBy],
-              ["Raised", when(proposal.createdAt)],
-              ["Last change", when(proposal.updatedAt)],
+              ["Raised", formatTimestamp(proposal.createdAt)],
+              ["Last change", formatTimestamp(proposal.updatedAt)],
               ["Decided by", proposal.decidedBy ?? "-"],
               ...(proposal.decisionNote === null
                 ? []
@@ -698,7 +693,7 @@ function DetailPane({
                 >
                   <span className="font-medium">{entry.status}</span>
                   <span className="text-outline">{entry.actor}</span>
-                  <span className="text-outline">{when(entry.occurred_at)}</span>
+                  <span className="text-outline">{formatTimestamp(entry.occurred_at)}</span>
                   {entry.note === null ? null : (
                     <span className="text-on-surface-variant">{entry.note}</span>
                   )}
