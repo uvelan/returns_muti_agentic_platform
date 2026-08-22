@@ -3,60 +3,70 @@
 ## Repository
 
 - Repository: `https://github.com/uvelan/returns_muti_agentic_platform.git`
-- Target branch: `feat/v2-order-discovery-integration`
+- Target branch: `refactor/unified-return-platform`
 - Environment: Windows PowerShell
-- IDE: Antigravity IDE
-- Primary writer: Codex CLI
+- Primary production-code writer: Seat **W** (model-neutral; see `docs/implementation/MASTER_MULTI_AGENT_PROMPT.md` § 7)
 
 ## Current repository state
 
-- Local branch: feat/v2-order-discovery-integration
-- Local HEAD: 0845d3f272d360e908e77705da00e56b4724887e
-- Remote HEAD: 0845d3f272d360e908e77705da00e56b4724887e
-- Working tree: clean
-- Last verified at: 2026-08-04
+- Local branch: `refactor/unified-return-platform`
+- Local HEAD: `04a05fbfa266c689cfce281df6b2b0b83f1121a3`
+- Remote HEAD: `04a05fbfa266c689cfce281df6b2b0b83f1121a3`
+- Working tree: clean at verification
+- Last verified at: 2026-08-22
+
+## Active programme
+
+The prior phase ledger (`P00-S01` … `P00-S05`, last advanced 2026-08-04 on the superseded v2
+order-discovery integration branch) is **closed**. Its task rows described work on a branch
+that is no longer the target; they are history and do not describe work in flight. Nothing in
+this document directs an agent to a branch other than the target branch named above.
+
+The active programme is the **user-authorized remediation overlay, Execution Plan V4.1**,
+which converts the 2026-08-22 deep UI and end-to-end functional audit into dependency-ordered
+tasks.
+
+- Overlay ledger: [`remediation/LEDGER.md`](remediation/LEDGER.md)
+- Audit baseline: 30 findings, release verdict **NO-GO**
+- Authority: `AGENTS.md` § Authorized remediation overlay
+- Rule 4 (`do not create another implementation plan`) remains in force. The overlay is
+  execution state, not a plan. Agents must not author a successor plan or replan during
+  execution.
+
+## Execution topology
+
+One writer at a time. Parallelism is read-only.
+
+| Seat | Writes production code | Responsibility |
+|---|---|---|
+| **W** | Yes — sole writer | Implements the active task and its focused tests |
+| **A1** | No | Prepares the next backend or data task |
+| **A2** | No | Prepares route, accessibility, browser and evidence work |
+| **R/V** | No | Independent review and validation |
+
+The same seat never implements and independently signs off the same task. Reviewers never
+modify production files; corrections return to W.
+
+## Control-document hashes
+
+Read at session start; reread on session restart, context compaction, remote update, or hash
+change — not per task.
+
+| Document | SHA-256 |
+|---|---|
+| `AGENTS.md` | `7344ce7f3ad1e5daeb6f4cbe0d3aa4f44494805238ef26bf6e53f54fac35a7d1` |
+| `docs/implementation/MASTER_MULTI_AGENT_PROMPT.md` | `e47a0a4bdc2cbf17b5ea484870653e1ce3ffeb6ca89116ba2189676ab859c3f8` |
+| `docs/implementation/ROLE_PROMPTS.md` | `15c7a1b6e6f5fcf906cf3e0a3c35fc3825a041237fde6d181b83efbb61cea299` |
+| `docs/execution-context/MASTER_EXECUTION_CONTEXT.md` | recorded in `remediation/LEDGER.md` after this commit |
 
 ## Current execution state
 
-- Active phase: 0
-- Active step: 5
-- Active task ID: P00-S05
-- Task classification: NORMAL
-- Current owner: Gemini 3.1 Pro
+- Active programme: Remediation V4.1
+- Active task: `T00` — control truth
+- Task classification: SMALL
+- Current seat: W
 - Current status: IN_PROGRESS
 - Current blocker: NONE
-
-## Task ledger
-
-| Task ID | Phase | Step | Classification | Owner | Reviewer | Validator | Dependencies | Status | Starting Commit | Pushed Commit | Context |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| P00-S01 | 0 | 1 | NORMAL | Gemini 3.6 Flash | None | Gemini 3.5 Flash | None | COMPLETED | 0845d3f272d360e908e77705da00e56b4724887e | 0845d3f272d360e908e77705da00e56b4724887e | docs/execution-context/phase-00/P00-S01/analysis-agent-context.md |
-| P00-S02 | 0 | 2 | NORMAL | Codex CLI | Sonnet 4.5 | Gemini 3.1 Pro | P00-S01 | COMPLETED | 0845d3f272d360e908e77705da00e56b4724887e | TBD | docs/execution-context/phase-00/P00-S02/STEP_COMPLETION_CONTEXT.md |
-| P00-S03 | 0 | 3 | NORMAL | Gemini 3.1 Pro | None | None | P00-S02 | COMPLETED | 0845d3f272d360e908e77705da00e56b4724887e | TBD | docs/execution-context/working-app/WORKING_APP_BASELINE.md |
-| P00-S04 | 0 | 4 | NORMAL | Gemini 3.1 Pro | None | None | P00-S03 | COMPLETED | 0845d3f272d360e908e77705da00e56b4724887e | f301da6 | docs/execution-context/working-app/WORKING_APP_BASELINE.md |
-| P00-S05 | 0 | 5 | NORMAL | Gemini 3.1 Pro | None | None | P00-S04 | IN_PROGRESS | f301da6 | | |
-
-## Active file ownership
-
-| Task ID | Agent | Writable paths | Read-only paths | Conflict |
-|---|---|---|---|---|
-| P00-S05 | Gemini 3.1 Pro | Repository wide | None | None |
-
-## Active parallel work
-
-| Group | Tasks | Allowed work | Shared dependencies | Status |
-|---|---|---|---|---|
-
-## Verified reusable context
-
-| Subject | Context path | Verified commit | Relevant files unchanged | Reuse allowed |
-|---|---|---|---|---|
-| Bootstrap Control Review | docs/execution-context/bootstrap-control-review.md | 0845d3f272d360e908e77705da00e56b4724887e | YES | YES |
-| Bootstrap Control Validation | docs/execution-context/bootstrap-control-validation.md | 0845d3f272d360e908e77705da00e56b4724887e | YES | YES |
-| P00-S01 Repository Baseline Context | docs/execution-context/phase-00/P00-S01/analysis-agent-context.md | 0845d3f272d360e908e77705da00e56b4724887e | YES | YES |
-| P00-S02 Implementation Context | docs/execution-context/phase-00/P00-S02/implementation-agent-context.md | 0845d3f272d360e908e77705da00e56b4724887e | YES | YES |
-| P00-S02 Validation Context | docs/execution-context/phase-00/P00-S02/validation-agent-context.md | 0845d3f272d360e908e77705da00e56b4724887e | YES | YES |
-| P00-S03 Working App Baseline | docs/execution-context/working-app/WORKING_APP_BASELINE.md | TBD | YES | YES |
 
 ## Outstanding review findings
 
@@ -83,37 +93,13 @@
 | Task ID | Blocker | Evidence path | Required resolution |
 |---|---|---|---|
 
-## Last validation
-
-- Scope: Bootstrap Control
-- Commit: 0845d3f272d360e908e77705da00e56b4724887e
-- Commands: N/A
-- Verdict: VALIDATED
-- Evidence path: docs/execution-context/bootstrap-control-validation.md
-
-## Last successful push
-
-- Task: P00-S04
-- Commit: f301da6
-- Remote branch: feat/v2-order-discovery-integration
-- Local/remote match: YES
-- Time: 2026-08-04
-
 ## Next ready task
 
-- Task ID: P00-S05
-- Reason ready: P00-S04 complete, end-to-end happy path required.
-- Required role: Gemini 3.1 Pro
-- Required files: Repository wide
-- Completion gates: A seeded real scenario reaches the expected terminal state and is displayed successfully in the frontend.
+- Task ID: `T01a` — truthful gates
+- Reason ready: depends on `T00` only
+- Required seat: W
+- Completion gates: lint, typecheck and unit suites pass; OpenAPI check mode leaves a clean
+  tree; the secret scanner satisfies the V4.1 § 11 redaction contract
 
-## Completion metrics
-
-- Total defined tasks: 5
-- Complete: 4
-- In progress: 1
-- Blocked: 0
-- Not started: 0
-- Completion percentage: 80%
-
-The percentage must be calculated from completed tasks, not estimated by an agent.
+`P00` (live-route readiness) and `T01b` (live-infrastructure runner) proceed in parallel and
+block nothing outside gates L1 and G1 respectively.

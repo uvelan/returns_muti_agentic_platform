@@ -1,6 +1,6 @@
 # Repository Agent Instructions
 
-**Current as of 2026-08-14, commit `dcbb7dc`, branch `refactor/unified-return-platform`.**
+**Current as of 2026-08-22, commit `04a05fb`, branch `refactor/unified-return-platform`.**
 
 This file governs how automated agents work in this repository. It describes
 *process*, not platform behaviour — for how the platform works, start at
@@ -21,6 +21,21 @@ This file governs how automated agents work in this repository. It describes
 11. Commit every completed step to `refactor/unified-return-platform`.
 12. Do not create unnecessary branches or ZIP files.
 13. Continue to the next ready task unless a documented blocker prevents safe progress.
+
+### Authorized remediation overlay
+
+Rule 4 stands unchanged: **do not create another implementation plan.** One execution overlay
+is user-authorized and is not a plan — Remediation Execution Plan V4.1, which converts the
+2026-08-22 deep UI audit into dependency-ordered tasks and tracks them in
+[`docs/execution-context/remediation/LEDGER.md`](docs/execution-context/remediation/LEDGER.md).
+It carries execution state only: task order, gates, evidence pointers and closure criteria. It
+does not replace or reinterpret the approved architecture, and where the two appear to differ,
+the architecture and this file win.
+
+While the overlay is active, agents take task rows from V4.1 and governance from here.
+**Do not author a successor plan (V5 or otherwise) and do not replan during execution.** A
+genuine blocker is recorded with evidence, owner and required input in the ledger; it is not
+resolved by writing a new plan.
 
 ## Task execution level
 

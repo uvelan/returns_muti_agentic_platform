@@ -2,7 +2,7 @@
 
 Replace `<TASK_ID>`, `<PHASE>` and `<STEP>` before use.
 
-## Orchestrator — Gemini 3.1 Pro
+## Orchestrator
 
 ```text
 Read:
@@ -37,7 +37,7 @@ Write only:
 Update the master execution context and continue unless blocked.
 ```
 
-## Focused Repository Analysis — Gemini 3.6 Flash
+## Focused Repository Analysis — Seats A1 / A2
 
 ```text
 Act as the Repository Analysis Agent for task <TASK_ID>.
@@ -75,7 +75,7 @@ Include:
 - handoff to Codex
 ```
 
-## Production Implementation — Codex
+## Production Implementation — Seat W
 
 ```text
 Act as the Implementation Agent for task <TASK_ID>.
@@ -109,7 +109,7 @@ docs/execution-context/<PHASE>/<STEP>/implementation-agent-context.md
 Stop after implementation and focused checks so the independent reviewer can inspect the uncommitted diff.
 ```
 
-## Independent Code Review — Sonnet 4.5
+## Independent Code Review — Seat R/V
 
 ```text
 Act as the independent Code Review Agent for task <TASK_ID>.
@@ -157,7 +157,7 @@ CHANGES_REQUIRED
 Every finding must include severity, file/symbol, failure scenario and required correction.
 ```
 
-## Security Review — Sonnet 4.5
+## Security Review — Seat R/V
 
 ```text
 Act as the independent Security Review Agent for task <TASK_ID>.
@@ -190,7 +190,7 @@ APPROVED_WITH_NON_BLOCKING_FINDINGS
 CHANGES_REQUIRED
 ```
 
-## Repair Loop — Codex
+## Repair Loop — Seat W
 
 ```text
 Read the latest review and security-review contexts for task <TASK_ID>.
@@ -207,7 +207,7 @@ Run the narrow failed tests first, then the focused regression set once.
 Return the updated diff to the reviewer.
 ```
 
-## Independent Validation — Gemini 3.6 Flash
+## Independent Validation — Seat R/V
 
 ```text
 Act as the independent Validation Agent for task <TASK_ID>.
@@ -242,7 +242,7 @@ VALIDATED_WITH_ENVIRONMENT_LIMITATION
 VALIDATION_FAILED
 ```
 
-## Integration, Context, Commit and Push — Codex
+## Integration, Context, Commit and Push — Seat W
 
 ```text
 Act as the Integration Agent for task <TASK_ID>.
@@ -253,7 +253,7 @@ Verify:
 - validation verdict is VALIDATED
 - all agent contexts exist
 - only task-related files changed
-- branch is feat/v2-order-discovery-integration
+- branch is refactor/unified-return-platform
 
 Create or update:
 - STEP_COMPLETION_CONTEXT.md

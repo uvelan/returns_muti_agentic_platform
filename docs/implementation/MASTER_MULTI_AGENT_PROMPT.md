@@ -8,19 +8,24 @@ Repository:
 https://github.com/uvelan/returns_muti_agentic_platform.git
 
 Target branch:
-feat/v2-order-discovery-integration
+refactor/unified-return-platform
 
 Primary environment:
 Windows PowerShell
 
-Primary IDE:
-Antigravity IDE
-
 Primary production-code writer:
-Codex CLI
+Agent W — the single writer seat defined in section 7. Model-neutral by design.
 ```
 
 This document is the single implementation and execution source of truth.
+
+**Remediation overlay.** The user has authorized one execution overlay operating *under* this
+document and the approved architecture: Remediation Execution Plan V4.1, which converts the
+2026-08-22 deep UI audit into dependency-ordered tasks. It is execution state, not a
+replacement plan, and it does not reinterpret the architecture. Agents take task rows from
+V4.1 and governance from this document. **Agents must not author a successor plan (V5 or
+otherwise) or replan during execution** — a genuine blocker is recorded with evidence, owner
+and required input instead.
 
 Do not create a replacement implementation plan.  
 Do not create ZIP files.  
@@ -106,13 +111,13 @@ git fetch --all --prune
 git status
 git branch --show-current
 git rev-parse HEAD
-git rev-parse origin/feat/v2-order-discovery-integration
-git pull --ff-only origin feat/v2-order-discovery-integration
+git rev-parse origin/refactor/unified-return-platform
+git pull --ff-only origin refactor/unified-return-platform
 ```
 
 Required conditions:
 
-- Current branch is `feat/v2-order-discovery-integration`.
+- Current branch is `refactor/unified-return-platform`.
 - Local code is updated from the latest remote head.
 - User-owned changes are identified and preserved.
 - Starting commit is recorded in task context.
@@ -140,11 +145,11 @@ git diff --check
 git diff --stat
 git add <explicit-step-files>
 git commit -m "<type>(<scope>): <completed result>"
-git push origin feat/v2-order-discovery-integration
+git push origin refactor/unified-return-platform
 git fetch origin
 
 $local = git rev-parse HEAD
-$remote = git rev-parse origin/feat/v2-order-discovery-integration
+$remote = git rev-parse origin/refactor/unified-return-platform
 
 if ($local -ne $remote) {
     throw "Local and remote branch heads do not match."
@@ -216,23 +221,30 @@ Parallel execution is allowed for non-writing analysis, review planning and test
 
 ---
 
-# 7. Model and role mapping
+# 7. Seat topology
 
-| Role | Primary | Fallback |
+**Model-neutral.** The vendor and version names that used to sit in this table were removed
+rather than updated. Every one of them had already been superseded, and a stale model name
+reads as a requirement — it sends an agent looking for a model it cannot reach. What governs
+is the seat, its write permission, and the validation ladder the task's risk demands.
+
+| Seat | May write production code | Responsibility |
 |---|---|---|
-| Orchestrator and critical architecture | Gemini 3.1 Pro | Sonnet 4.5 |
-| Focused repository analysis | Gemini 3.6 Flash | Gemini 3.1 Pro |
-| Production implementation | Codex CLI | Gemini 3.1 Pro |
-| Data-platform implementation | Codex CLI | Gemini 3.1 Pro |
-| AI-runtime implementation | Codex CLI | Gemini 3.1 Pro |
-| Frontend implementation | Codex CLI | Gemini 3.6 Flash |
-| Independent code review | Sonnet 4.5 | Gemini 3.1 Pro |
-| Security review | Sonnet 4.5 | Gemini 3.1 Pro |
-| Independent validation | Gemini 3.6 Flash | Gemini 3.5 Flash |
-| Low-risk context maintenance | Gemini 3.5 Flash | Gemini 3.6 Flash |
-| Commit and push | Codex CLI | none |
+| **W** — Writer | **Yes — sole writer** | Implements the active task and its focused tests. Stops writing before review. |
+| **A1** — Domain analyst | No | Prepares the next backend or data task: direct callers, contracts, migrations, adversarial cases. |
+| **A2** — UX and test analyst | No | Prepares route, accessibility, browser and evidence work; maintains the route manifest. |
+| **R/V** — Reviewer and validator | No | Reviews the writer's diff; runs independent validation and, for CRITICAL tasks, security and consistency review. |
 
-Do not run every model on every task. Follow `TASK_CLASSIFICATION_AND_MODEL_ROUTING.md`.
+Rules:
+
+- Exactly one seat is in write state at any moment. The other three are read-only.
+- The same seat never implements and independently signs off the same task.
+- R/V may investigate read-only when no diff is ready; a CRITICAL diff takes precedence.
+- Reviewers and validators never silently modify production files. Corrections return to W.
+- Do not staff more seats than the task's risk requires.
+
+Select the validation ladder — SMALL, NORMAL or CRITICAL — per
+`TASK_CLASSIFICATION_AND_MODEL_ROUTING.md`. The ladder is the instruction; the seat count follows from it.
 
 ---
 
