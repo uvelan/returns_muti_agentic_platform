@@ -50,6 +50,26 @@ projections that lost their items and can be rebuilt — they are the only trace
 of returns that were never durably written. That is UIAUDIT-010 seen from the
 other end.
 
+**Which tables count, and why it is not obvious.** ADR-001 resolved as option B:
+a console-issued RMA ticket is a *distinct artifact* whose authoritative home is
+`dbo.return_requests`, `dbo.return_items` and `integration.return_support_ticket`.
+Those three each hold exactly one row, which is the audit's own 0→1 and means the
+console path works. The Mongo collection repaired here is written by
+`case_repository.py` and keyed by `caseId`, so it projects the *case* aggregate,
+whose store is `dbo.return_record` / `dbo.return_record_item` — both empty, as is
+`dbo.return_case`. Comparing against the console path's tables instead would have
+concluded, wrongly, that nothing was missing.
+
+| SQL table | Rows | Whose |
+|---|---|---|
+| `integration.return_support_ticket` | 1 | console RMA ticket (option B) |
+| `dbo.return_requests` | 1 | console RMA ticket (option B) |
+| `dbo.return_items` | 1 | console RMA ticket (option B) |
+| `dbo.return_case` | **0** | case workflow |
+| `dbo.return_record` | **0** | case workflow — the authority for these five |
+| `dbo.return_record_item` | **0** | case workflow |
+| `dbo.return_tracking` | **0** | written only from a real tracking observation |
+
 ### Targets
 
 | `returnRecordId` | `returnReference` | `caseId` | created |

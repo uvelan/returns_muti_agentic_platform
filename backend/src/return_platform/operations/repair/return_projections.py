@@ -3,7 +3,17 @@
 **What was found.** Five documents in Mongo `return_records` read
 `status: "ISSUED"` with an empty `approvedItems`, while `dbo.return_record` and
 `dbo.return_record_item` -- the authoritative store -- hold zero rows between
-them. So these are not projections that lost their items and can be rebuilt.
+them.
+
+Those are the right two tables to compare against, and which tables are right is
+not obvious. ADR-001 was resolved as option B: a console-issued RMA ticket is a
+*distinct artifact* whose authoritative home is `dbo.return_requests`,
+`dbo.return_items` and `integration.return_support_ticket`, while
+`dbo.return_record` and `dbo.return_record_item` remain the case workflow's. The
+Mongo collection this repairs is written by `case_repository.py` and keyed by
+`caseId`, so it projects the *case* aggregate -- and comparing it against the
+console path's tables (which do hold rows) would have concluded, wrongly, that
+nothing was missing. So these are not projections that lost their items and can be rebuilt.
 They are the only trace of returns that were never durably written, which is
 UIAUDIT-010 seen from the other end: the RMA path wrote a projection and no
 record.
