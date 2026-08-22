@@ -68,7 +68,25 @@ Status: `NOT_STARTED` · `IN_PROGRESS` · `IN_REVIEW` · `ACCEPTED` · `BLOCKED`
 | T19b return mismatch repair | CRITICAL | T04 | BUILT — dry run only | `8fb8893` | G4 | apply gated on T04 closure against fresh identifiers |
 | T19c graph debris repair | CRITICAL | T08 | NOT_REQUIRED | `8fb8893` | G4 | generations empty; exactly one serving snapshot |
 | T19d legacy interception repair | CRITICAL | T11 | NOT_REQUIRED | `8fb8893` | G4 | no interception collection exists in any shape |
-| T20 audit-equivalent release validation | CRITICAL | G0–G4 complete + L1 | BLOCKED | | G5 | needs the running stack and L1 |
+| T20 audit-equivalent release validation | CRITICAL | G0–G4 complete + L1 | PARTIAL | `f1c10ba` | G5 | live lane needs a current-code backend and L1 |
+
+### T20 progress
+
+| Component | Status |
+|---|---|
+| Finding closure audit — all 30 re-checked against source | **DONE** — `FINDING_CLOSURE_AUDIT.md` |
+| Route / state / viewport / a11y sweep | **DONE** — 117 Playwright tests, 36 routes, 6 viewports |
+| Discovery deterministic matrix (§13.2, 15 cases) | **DECLARED + 13/15 EXERCISED** — `discovery_matrix.py`; 2 skip naming the missing model route |
+| Datastore and workflow proof | **PARTIAL** — read-only inventory taken; see `T19_STATE_REPAIR_EVIDENCE.md` |
+| Clean-environment canonical startup | **BLOCKED** — the backend on port 8000 is pre-T12 |
+| Live Discovery smoke (L2) | **BLOCKED** behind L1 |
+
+**Finding closure.** All 30 audit findings closed or formally reclassified,
+each re-checked against current source rather than transcribed from a commit
+message — `FINDING_CLOSURE_AUDIT.md`. Two closed by reclassification with their
+corrected premise on the record: UIAUDIT-001 (the serving generation was unique;
+the defect was lifecycle debris) and UIAUDIT-020 (`recordStatus` does not exist;
+the real defect was a null status rendering as an empty pill).
 
 **Route and accessibility sweep, standing evidence.** 117 Playwright tests over
 36 canonical routes: every route mounts with no console error, uncaught error or
