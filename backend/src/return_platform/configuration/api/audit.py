@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from pymongo import DESCENDING, AsyncMongoClient
 
+from return_platform.configuration.process_adoption import HEARTBEAT_PROCESS_CLASSES
 from return_platform.configuration.settings import Settings
 from return_platform.resources import RuntimeResources
 from return_platform.security.authorization import require_read_roles
@@ -195,7 +196,9 @@ class AuditService:
             str(document.get("_id"))
             async for document in self._heartbeats.find({"lastSeenAt": {"$gte": cutoff}})
         }
-        required_workers = {"return-workflow-worker", "return-orchestrator", "outbox-publisher"}
+        # The shared set. This named three of six, so a dead reclaimer or a
+        # dead discovery worker left the hardening report clean.
+        required_workers = set(HEARTBEAT_PROCESS_CLASSES)
         missing_workers = sorted(required_workers - active_workers)
         checks.append(
             HardeningCheck(

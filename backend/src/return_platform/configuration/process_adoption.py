@@ -59,6 +59,30 @@ API_PROCESS_CLASS = "api"
 """The FastAPI process's class, named once so the reporter and the required set
 cannot disagree about what to call it."""
 
+#: Every worker process class that writes a liveness heartbeat.
+#:
+#: One list, because there were three and they disagreed. `/health/ready` checked
+#: three classes, the hardening audit checked the same three and only WARNed on a
+#: miss, and `REQUIRED_PROCESS_CLASSES` below named six -- so
+#: `order-discovery-worker`, `integration-outbox-worker` and
+#: `housekeeping-worker` could all be dead with every surface green.
+#:
+#: Distinct from `REQUIRED_PROCESS_CLASSES`, and the difference is real: that set
+#: governs whether a *release* is live and deliberately excludes housekeeping,
+#: because a reclaimer being down must not hold a release at ACTIVATING. This set
+#: governs whether a *process* is alive, and housekeeping being dead is exactly
+#: what nobody noticed for two days.
+HEARTBEAT_PROCESS_CLASSES: frozenset[str] = frozenset(
+    {
+        "return-workflow-worker",
+        "order-discovery-worker",
+        "return-orchestrator",
+        "outbox-publisher",
+        "integration-outbox-worker",
+        "housekeeping-worker",
+    }
+)
+
 REQUIRED_PROCESS_CLASSES: frozenset[str] = frozenset(
     {
         API_PROCESS_CLASS,

@@ -17,6 +17,7 @@ from return_platform.api.dependency_probes import (
     probe_temporal,
     probe_valkey,
 )
+from return_platform.configuration.process_adoption import HEARTBEAT_PROCESS_CLASSES
 from return_platform.operations.models import normalize_utc_datetime
 from return_platform.operations.repository import resolve_operational_repository
 from return_platform.security.authorization import require_read_roles
@@ -80,11 +81,10 @@ async def _cards(request: Request) -> list[dict[str, Any]]:
     now = datetime.now(UTC)
     cards = await _run_core_probes(request)
 
-    for worker in (
-        "return-workflow-worker",
-        "return-orchestrator",
-        "outbox-publisher",
-    ):
+    # Every worker that beats, not the three this used to name. With three,
+    # order-discovery, integration-outbox and housekeeping could all be dead
+    # and readiness stayed green.
+    for worker in sorted(HEARTBEAT_PROCESS_CLASSES):
         heartbeat = await repository.get_heartbeat(worker)
         last_seen = heartbeat.get("lastSeenAt") if heartbeat else None
         last_seen_utc = (

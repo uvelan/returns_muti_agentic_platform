@@ -34,7 +34,6 @@ from return_platform.dynamic_knowledge.integration.runtime_factory import (
 )
 from return_platform.dynamic_knowledge.release_store import SchemaReleaseStore
 from return_platform.dynamic_knowledge.schema import ActiveSchema
-from return_platform.operations.repository import OperationalRepository
 from return_platform.platform.secrets.envelope import EnvelopeEncryptor
 from return_platform.platform.system_store.repository import SystemStore
 from return_platform.workflows.order_discovery_activities import (
@@ -256,7 +255,6 @@ async def _run() -> None:
         worker = create_order_discovery_worker(
             temporal, activities, task_queue=settings.order_discovery_workflow_task_queue
         )
-        operational_repository = OperationalRepository(platform_mongo, settings)
         instance_id = f"{socket.gethostname()}-{uuid.uuid4().hex[:8]}"
 
         # The same reconciler the FastAPI process runs, driven by a timer
@@ -293,21 +291,12 @@ async def _run() -> None:
                 ),
             ),
         )
-        state = activation.state
-
-        async def heartbeat() -> None:
-            while True:
-                await operational_repository.heartbeat(
-                    _PROCESS_CLASS,
-                    instance_id,
-                    # Read through the activated state rather than off the
-                    # startup settings, so a released TTL change takes effect
-                    # without a restart like everything else here.
-                    ttl_seconds=state.settings.worker_readiness_ttl_seconds,
-                )
-                await asyncio.sleep(max(1.0, state.settings.worker_readiness_ttl_seconds / 3))
-
-        background = (asyncio.create_task(heartbeat()), *activation.start())
+        # Heartbeating moved into `activation.start()`. It was a loop each
+        # worker hand-rolled here, and `integration-outbox-worker` never got
+        # one -- five workers reported adoption while `worker_heartbeats`
+        # held four documents. A signal every process must emit does not
+        # belong in a per-process loop a new worker has to remember to copy.
+        background = activation.start()
         try:
             await worker.run()
         finally:

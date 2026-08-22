@@ -58,11 +58,11 @@ async def _run() -> None:
             # One read per flush: a batch already being published keeps the
             # retention it started under, and the next batch adopts the new one.
             active = state.settings
-            await repository.heartbeat(
-                _PROCESS_CLASS,
-                instance_id,
-                ttl_seconds=active.worker_readiness_ttl_seconds,
-            )
+            # The heartbeat used to be written here, inline in the flush loop --
+            # so a slow flush stalled it and a healthy worker reported stale.
+            # It runs on its own task now, started by `activation.start()`:
+            # liveness must not be hostage to the thing whose liveness it
+            # reports.
             published = await flush_outbox(
                 client,
                 repository,

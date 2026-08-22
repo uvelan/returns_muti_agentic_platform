@@ -35,7 +35,6 @@ from return_platform.configuration.runtime_loader import resolve_process_configu
 from return_platform.configuration.settings import Settings
 from return_platform.housekeeping.composition import build_housekeeping_cycle
 from return_platform.housekeeping.cycle import run_housekeeping_loop
-from return_platform.operations.repository import OperationalRepository
 
 _PROCESS_CLASS = "housekeeping-worker"
 
@@ -55,7 +54,6 @@ async def _run() -> None:
         await neo4j_driver.verify_connectivity()
         temporal = await Client.connect(settings.temporal_target)
 
-        repository = OperationalRepository(mongo, settings)
         instance_id = f"{socket.gethostname()}-{uuid.uuid4().hex[:8]}"
         activation = await build_worker_runtime_activation(
             runtime=runtime,
@@ -84,16 +82,12 @@ async def _run() -> None:
             neo4j_driver=neo4j_driver,
         )
 
-        async def heartbeat() -> None:
-            while True:
-                await repository.heartbeat(
-                    _PROCESS_CLASS,
-                    instance_id,
-                    ttl_seconds=current_settings().worker_readiness_ttl_seconds,
-                )
-                await asyncio.sleep(max(1.0, current_settings().worker_readiness_ttl_seconds / 3))
-
-        background = (asyncio.create_task(heartbeat()), *activation.start())
+        # Heartbeating moved into `activation.start()`. It was a loop each
+        # worker hand-rolled here, and `integration-outbox-worker` never got
+        # one -- five workers reported adoption while `worker_heartbeats`
+        # held four documents. A signal every process must emit does not
+        # belong in a per-process loop a new worker has to remember to copy.
+        background = activation.start()
         try:
             await run_housekeeping_loop(
                 cycle,

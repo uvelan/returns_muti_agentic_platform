@@ -559,6 +559,55 @@ async def run_process_adoption_reporter(
         await asyncio.sleep(interval_seconds)
 
 
+class HeartbeatWriter(Protocol):
+    """The one operation liveness reporting needs.
+
+    Structural so this module does not import the operational repository at
+    module scope -- `operations` already imports `configuration`, and a
+    module-level import back would close the cycle.
+    """
+
+    async def heartbeat(self, worker_name: str, instance_id: str, *, ttl_seconds: int) -> None: ...
+
+
+async def run_worker_heartbeat(
+    writer: HeartbeatWriter,
+    *,
+    process_class: str,
+    instance_id: str,
+    ttl_seconds: int,
+) -> None:
+    """Say this process is alive, on its own task.
+
+    A task rather than a call inside the work loop, which is how
+    `outbox-publisher` writes it: a slow flush there stalls the heartbeat and a
+    healthy worker reports stale. Liveness must not be hostage to the thing
+    whose liveness it reports.
+
+    It also logs, because "silent" and "dead" were indistinguishable. Four of
+    five workers produced no output at all across a ninety-minute run -- their
+    loops emit nothing, and nothing configures a handler -- so a log line here
+    is the cheapest signal that a process is still turning.
+    """
+    interval = max(1.0, ttl_seconds / 3)
+    while True:
+        try:
+            await writer.heartbeat(process_class, instance_id, ttl_seconds=ttl_seconds)
+            logger.info(
+                "worker_heartbeat",
+                extra={"process_class": process_class, "instance_id": instance_id},
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - a missed beat must never kill the worker
+            logger.warning(
+                "worker_heartbeat_failed",
+                extra={"process_class": process_class},
+                exc_info=True,
+            )
+        await asyncio.sleep(interval)
+
+
 @dataclass(frozen=True, slots=True)
 class WorkerRuntimeActivation:
     """A worker's activator, the state it activates into, and its own driver."""
@@ -568,14 +617,27 @@ class WorkerRuntimeActivation:
     owned_driver: AsyncDriver | None
     adoption_store: ProcessAdoptionStore | None = None
     refresh_interval_seconds: float = 5.0
+    #: Writes this process's liveness row. Started here rather than by each
+    #: worker for the reason the adoption reporter is -- see `start`.
+    heartbeat_writer: HeartbeatWriter | None = None
+    heartbeat_ttl_seconds: int = 30
 
     def start(self) -> tuple[asyncio.Task[None], ...]:
-        """Start reconciling and reporting. Both, or the process is half-wired.
+        """Start reconciling, reporting and beating. All three, or half-wired.
 
         A process that adopts without reporting cannot be told apart from one
         that never adopted, and a release would sit at ACTIVATING forever with
         nothing wrong. Started together so a worker cannot wire one and forget
         the other.
+
+        **The heartbeat joined them because exactly that happened.** Adoption
+        was reported through this shared helper and the heartbeat was a loop
+        each worker hand-rolled in its own entrypoint, so
+        `integration-outbox-worker` got one and not the other: five workers
+        reported `1/1 live` while `worker_heartbeats` held four documents, and
+        the audit recorded the disagreement without a cause. A liveness signal
+        every process must emit does not belong in a per-process loop that a new
+        worker has to remember to copy.
         """
 
         tasks: list[asyncio.Task[None]] = [
@@ -592,6 +654,17 @@ class WorkerRuntimeActivation:
                         self.state,
                         self.adoption_store,
                         interval_seconds=self.refresh_interval_seconds,
+                    )
+                )
+            )
+        if self.heartbeat_writer is not None:
+            tasks.append(
+                asyncio.create_task(
+                    run_worker_heartbeat(
+                        self.heartbeat_writer,
+                        process_class=self.state.process_class,
+                        instance_id=self.state.instance_id,
+                        ttl_seconds=self.heartbeat_ttl_seconds,
                     )
                 )
             )
@@ -684,10 +757,21 @@ async def build_worker_runtime_activation(
         refresh_interval_seconds=refresh_interval_seconds,
         participants=participants,
     )
+    heartbeat_writer: HeartbeatWriter | None = None
+    if mongo is not None:
+        # Imported here rather than at module scope: `operations` imports this
+        # package, so a top-level import would be a cycle.
+        from return_platform.operations.repository import (  # noqa: PLC0415
+            OperationalRepository,
+        )
+
+        heartbeat_writer = OperationalRepository(mongo, settings)
     return WorkerRuntimeActivation(
         state=state,
         activator=activator,
         owned_driver=owned_driver,
+        heartbeat_writer=heartbeat_writer,
+        heartbeat_ttl_seconds=settings.worker_readiness_ttl_seconds,
         adoption_store=adoption_store,
         refresh_interval_seconds=refresh_interval_seconds,
     )

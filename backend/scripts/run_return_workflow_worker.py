@@ -220,23 +220,13 @@ async def _run() -> None:
             source_mongo=source_mongo,
             neo4j_driver=neo4j_driver,
         )
-        state = activation.state
-
-        async def heartbeat() -> None:
-            while True:
-                await operational_repository.heartbeat(
-                    _PROCESS_CLASS,
-                    instance_id,
-                    # Through the activated state, not the startup settings: a
-                    # released TTL change has to reach the readiness signal
-                    # without a restart like everything else here.
-                    ttl_seconds=state.settings.worker_readiness_ttl_seconds,
-                )
-                await asyncio.sleep(max(1.0, state.settings.worker_readiness_ttl_seconds / 3))
-
-        heartbeat_task = asyncio.create_task(heartbeat())
+        # Heartbeating moved into `activation.start()`. It was a loop each
+        # worker hand-rolled here, and `integration-outbox-worker` never got
+        # one -- five workers reported adoption while `worker_heartbeats`
+        # held four documents. A signal every process must emit does not
+        # belong in a per-process loop a new worker has to remember to copy.
         recovery_task = asyncio.create_task(case_recovery.run_forever())
-        background = (heartbeat_task, recovery_task, *activation.start())
+        background = (recovery_task, *activation.start())
         try:
             await worker.run()
         finally:
