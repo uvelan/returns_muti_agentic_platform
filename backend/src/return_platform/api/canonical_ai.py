@@ -167,7 +167,13 @@ async def list_interceptions(
             ),
         ),
     ] = None,
-    _actor_id: str = Depends(require_read_roles),
+    # `ai.interception.read`, not `require_read_roles`. Ten roles pass the role
+    # check and four hold the capability, so `return_auditor`,
+    # `return_associate`, `return_support`, `logistics_coordinator`,
+    # `warehouse_associate` and `return_platform_service` could each list the
+    # hold queue the console hides from them. The capability was declared and
+    # enforced nowhere.
+    _actor_id: str = Depends(require_capability(capabilities.AI_INTERCEPTION_READ)),
 ) -> APIResponse[list[dict[str, Any]]]:
     """Work currently held waiting on a human -- both kinds, in one queue.
 

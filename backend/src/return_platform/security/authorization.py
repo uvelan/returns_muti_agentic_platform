@@ -79,6 +79,14 @@ def require_capability(capability: str) -> Callable[[Request], str]:
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         return str(principal.subject)
 
+    # What this guard enforces, readable from the route table.
+    #
+    # Every one of these closures is named `dependency`, so a caller walking the
+    # mounted routes can see that a route is guarded and not by what -- and the
+    # question worth asking about an authorization guard is precisely which one
+    # it is. `functools.wraps` would not help: the capability is the argument,
+    # not the function.
+    dependency.capability = capability  # type: ignore[attr-defined]
     return dependency
 
 

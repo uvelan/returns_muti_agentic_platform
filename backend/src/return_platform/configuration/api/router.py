@@ -286,7 +286,13 @@ async def promote_release(
     release_id: str,
     body: PromoteReleasePayload,
     request: Request,
-    user_id: str = Depends(require_write_roles),
+    # `config.release.promote`, not `require_write_roles`. Seven roles pass the
+    # role check and exactly one holds the capability, so `warehouse_associate`,
+    # `return_associate`, `return_support`, `logistics_coordinator`,
+    # `workspace_editor` and `return_platform_service` were each hidden the
+    # promote control by the console and allowed by the server. Publishing a
+    # configuration release is not a thing a warehouse associate does.
+    user_id: str = Depends(require_capability(capabilities.CONFIG_RELEASE_PROMOTE)),
 ) -> APIResponse[Any]:
     """Move a release along the lifecycle: DRAFT -> VALIDATED -> RELEASED, or ARCHIVED.
 

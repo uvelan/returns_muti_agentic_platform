@@ -58,6 +58,8 @@ from return_platform.security.authorization import require_capability
 from return_platform.security.capabilities import (
     GOVERNANCE_PROPOSAL_ACTIVATE,
     GOVERNANCE_PROPOSAL_APPROVE,
+    GRAPH_SCHEMA_DRAFT_READ,
+    GRAPH_SCHEMA_DRAFT_WRITE,
 )
 
 router = APIRouter(prefix="/api/graph-schema", tags=["Graph Schema Analyzer"])
@@ -148,6 +150,16 @@ _Sources = Annotated[SourceDiscoveryPort, Depends(resolve_source_discovery)]
 #: than `= Depends(...)` because a defaulted parameter cannot come first.
 _Decider = Annotated[str, Depends(require_capability(GOVERNANCE_PROPOSAL_APPROVE))]
 _Publisher = Annotated[str, Depends(require_capability(GOVERNANCE_PROPOSAL_ACTIVATE))]
+
+#: Everything else on this router. Only approve, reject and publish carried a
+#: grant; the eight handlers below declared none at all and the router adds no
+#: `dependencies=`, so creating a draft, rewriting its schema through typed
+#: mutations, reading it, diffing its revisions, re-running analysis and
+#: validating it were all reachable by any authenticated caller. The sibling
+#: analyzer at `/api/graph-analyzer/v1` has required these two capabilities for
+#: the same operations all along.
+_Reader = Annotated[str, Depends(require_capability(GRAPH_SCHEMA_DRAFT_READ))]
+_Writer = Annotated[str, Depends(require_capability(GRAPH_SCHEMA_DRAFT_WRITE))]
 
 
 class ApplyMutationsRequest(BaseModel):
@@ -330,7 +342,12 @@ def _service(
     response_model=DraftView,
     status_code=status.HTTP_201_CREATED,
 )
-async def create_draft(analysis_id: str, persistence: _Persistence, kernel: _Kernel) -> DraftView:
+async def create_draft(
+    analysis_id: str,
+    author: _Writer,
+    persistence: _Persistence,
+    kernel: _Kernel,
+) -> DraftView:
     try:
         await persistence.load_session(analysis_id)
     except UnknownAnalysis as exc:
@@ -355,6 +372,7 @@ async def apply_draft_mutations(
     draft_id: str,
     payload: ApplyMutationsRequest,
     request: Request,
+    author: _Writer,
     persistence: _Persistence,
     kernel: _Kernel,
 ) -> DraftView:
@@ -382,7 +400,11 @@ async def apply_draft_mutations(
 
 
 @router.get("/drafts/{draft_id}", response_model=DraftView)
-async def get_draft(draft_id: str, persistence: _Persistence) -> DraftView:
+async def get_draft(
+    draft_id: str,
+    reader: _Reader,
+    persistence: _Persistence,
+) -> DraftView:
     try:
         return _draft_view(await persistence.load_draft(draft_id))
     except UnknownAnalysis as exc:
@@ -390,7 +412,11 @@ async def get_draft(draft_id: str, persistence: _Persistence) -> DraftView:
 
 
 @router.get("/drafts/{draft_id}/shape", response_model=DraftShapeView)
-async def get_draft_shape(draft_id: str, persistence: _Persistence) -> DraftShapeView:
+async def get_draft_shape(
+    draft_id: str,
+    reader: _Reader,
+    persistence: _Persistence,
+) -> DraftShapeView:
     """The draft's entities and relationships.
 
     **Separate from `GET /drafts/{id}` on purpose.** That view carries
@@ -411,7 +437,11 @@ async def get_draft_shape(draft_id: str, persistence: _Persistence) -> DraftShap
 
 
 @router.get("/drafts/{draft_id}/revisions", response_model=list[RevisionView])
-async def list_revisions(draft_id: str, persistence: _Persistence) -> Sequence[RevisionView]:
+async def list_revisions(
+    draft_id: str,
+    reader: _Reader,
+    persistence: _Persistence,
+) -> Sequence[RevisionView]:
     revisions = await persistence.list_revisions(draft_id)
     return [
         RevisionView(
@@ -427,7 +457,12 @@ async def list_revisions(draft_id: str, persistence: _Persistence) -> Sequence[R
 
 
 @router.get("/drafts/{draft_id}/revisions/{sequence}/diff", response_model=SchemaDiff)
-async def get_revision_diff(draft_id: str, sequence: int, persistence: _Persistence) -> SchemaDiff:
+async def get_revision_diff(
+    draft_id: str,
+    sequence: int,
+    reader: _Reader,
+    persistence: _Persistence,
+) -> SchemaDiff:
     """Diff a revision against its predecessor.
 
     Reconstructed by replaying the recorded commands rather than by storing a
@@ -458,6 +493,7 @@ async def get_revision_diff(draft_id: str, sequence: int, persistence: _Persiste
 
 @router.post("/drafts/{draft_id}/reanalysis", response_model=ReanalysisProposal)
 async def reanalyze_draft(
+    author: _Writer,
     draft_id: str, persistence: _Persistence, sources: _Sources
 ) -> ReanalysisProposal:
     """Re-read the sources and say what the draft would have to change.
@@ -542,6 +578,7 @@ async def reanalyze_draft(
 async def validate_draft(
     draft_id: str,
     request: Request,
+    author: _Writer,
     persistence: _Persistence,
     kernel: _Kernel,
     target: _GraphTarget,

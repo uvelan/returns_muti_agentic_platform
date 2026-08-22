@@ -38,7 +38,8 @@ from return_platform.configuration.application.agent_configuration import (
 from return_platform.platform.governance.errors import GovernanceError
 from return_platform.platform.governance.kernel import ProposalKernel
 from return_platform.platform.governance.proposal import ProposalStatus, ProposalType
-from return_platform.security.authorization import require_read_roles, require_write_roles
+from return_platform.security.authorization import require_capability, require_read_roles
+from return_platform.security.capabilities import GOVERNANCE_PROPOSAL_WRITE
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 router = APIRouter(prefix="/api/agents", tags=["Agents"])
@@ -147,7 +148,12 @@ async def update_agent_configuration(
     manifest_id: str,
     payload: AgentConfigurationUpdate,
     request: Request,
-    user_id: str = Depends(require_write_roles),
+    # `governance.proposal.write`, not `require_write_roles`. Seven roles pass
+    # the role check and two hold the capability, so the server was more
+    # permissive than the editor in front of it -- which disables every field
+    # without this capability and says so. The capability was declared and
+    # enforced nowhere in the backend.
+    user_id: str = Depends(require_capability(GOVERNANCE_PROPOSAL_WRITE)),
 ) -> APIResponse[Any]:
     """Propose a replacement for one agent's document.
 

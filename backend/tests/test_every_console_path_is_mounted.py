@@ -23,6 +23,7 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 
 from return_platform.main import create_app
+from return_platform.security import capabilities
 
 # Paths the console calls, from `frontend/src/api/*.ts`. Templated segments are
 # written the way FastAPI declares them.
@@ -198,15 +199,34 @@ def test_configuration_release_write_routes_are_mounted(
     )
 
 
-def test_configuration_release_writes_require_write_roles(
+#: Configuration write routes whose guard is a capability rather than the role
+#: group, and the capability each one requires.
+#:
+#: `require_write_roles` admits seven roles. `config.release.promote` is held by
+#: one of them, so promotion under the role guard was reachable by a
+#: `warehouse_associate` -- who is not shown the control and has no business
+#: publishing a configuration release. A capability guard is strictly narrower
+#: than the role guard it replaced, which is why this list is an exception to
+#: the assertion below rather than a relaxation of it.
+CONFIGURATION_CAPABILITY_ROUTES: dict[tuple[str, str], str] = {
+    ("post", "/api/config/releases/{release_id}/promote"): capabilities.CONFIG_RELEASE_PROMOTE,
+}
+
+
+def test_configuration_release_writes_are_guarded(
     openapi_document: dict[str, object],
 ) -> None:
     """Reachable is not the goal -- reachable *and still guarded* is.
 
     Mounting a route by relaxing its dependency would satisfy the test above and
-    hand every reader a publish button. `require_write_roles` returns the actor
-    id the repository attributes the change to, so this walks the live route
-    objects rather than the document: the dependency is the assertion.
+    hand every reader a publish button. So this walks the live route objects
+    rather than the document: the dependency is the assertion.
+
+    A route may satisfy it two ways. Most carry `require_write_roles`, which
+    returns the actor id the repository attributes the change to. Promotion
+    carries a capability instead, and `require_capability` returns a closure --
+    so the check is that the route's guard is the one named for it, not that
+    some particular function name appears.
     """
     mounted = _mounted_api_routes(create_app())
     for method, path in CONFIGURATION_WRITE_ROUTES:
@@ -217,8 +237,23 @@ def test_configuration_release_writes_require_write_roles(
             for dependant in route.dependant.dependencies
             if dependant.call is not None
         }
-        assert "require_write_roles" in dependency_names, (
-            f"{method.upper()} {path} does not require write roles: {sorted(dependency_names)}"
+        required = CONFIGURATION_CAPABILITY_ROUTES.get((method, path))
+        if required is None:
+            assert "require_write_roles" in dependency_names, (
+                f"{method.upper()} {path} does not require write roles: "
+                f"{sorted(dependency_names)}"
+            )
+            continue
+        # The guard is a closure, so its identity is checked by asking it what
+        # it enforces rather than by reading its name.
+        guards = [
+            dependant.call
+            for dependant in route.dependant.dependencies
+            if dependant.call is not None and getattr(dependant.call, "capability", None)
+        ]
+        assert required in [getattr(guard, "capability", None) for guard in guards], (
+            f"{method.upper()} {path} does not require {required}: "
+            f"{sorted(dependency_names)}"
         )
 
 
