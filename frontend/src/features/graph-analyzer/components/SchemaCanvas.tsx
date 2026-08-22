@@ -63,7 +63,7 @@ function EntityNodeView({ data, selected }: NodeProps<EntityNode>) {
       <Handle type="target" position={Position.Left} isConnectable={false} className="!bg-emerald-700" />
       <div className="border-b border-emerald-950 bg-emerald-950/40 px-3 py-2">
         <p className="truncate text-sm font-semibold text-emerald-100">{entity.name}</p>
-        <p className="text-[9px] uppercase tracking-wider text-slate-500">{entity.change}</p>
+        <p className="text-[9px] uppercase tracking-wider text-slate-400">{entity.change}</p>
       </div>
       <div className="space-y-1.5 px-3 py-2">
         <p className="text-[11px] text-slate-400">{entity.properties.length} properties</p>
@@ -239,7 +239,7 @@ function CanvasSearch({
 
   return (
     <div className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-lg border border-emerald-950 bg-[#0a1714]/95 p-1.5 shadow-xl">
-      <Search size={14} className="ml-1 text-slate-600" />
+      <Search size={14} className="ml-1 text-slate-400" />
       <input
         value={query}
         onChange={(event) => {
@@ -247,10 +247,10 @@ function CanvasSearch({
         }}
         placeholder="Find entity"
         aria-label="Find entity"
-        className="w-36 bg-transparent px-1 text-xs text-white outline-none placeholder:text-slate-600"
+        className="w-36 bg-transparent px-1 text-xs text-white outline-none placeholder:text-slate-400"
       />
       {query.trim().length > 0 ? (
-        <span className="pr-1 text-[10px] text-slate-500">{matchCount} match</span>
+        <span className="pr-1 text-[10px] text-slate-400">{matchCount} match</span>
       ) : null}
     </div>
   );

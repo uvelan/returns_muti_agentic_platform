@@ -21,7 +21,7 @@ export function StructureView({ object }: { readonly object: SourceObject }) {
   const fields = object.fields ?? [];
   if (fields.length === 0) {
     return (
-      <p className="text-sm text-slate-500">
+      <p className="text-sm text-slate-400">
         No field metadata is available. Refresh the source or revalidate the connection.
       </p>
     );
@@ -29,7 +29,7 @@ export function StructureView({ object }: { readonly object: SourceObject }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="text-xs uppercase tracking-wider text-slate-600">
+        <thead className="text-xs uppercase tracking-wider text-slate-400">
           <tr>
             <th className="pb-3">Field</th>
             <th className="pb-3">Type</th>
@@ -111,7 +111,7 @@ export function DataView({
             </button>
           ))}
         </div>
-        <span className="text-[11px] text-slate-600">
+        <span className="text-[11px] text-slate-400">
           {asJson ? "" : "Select a row to read the whole record. "}Bounded read. Source records are
           never editable here.
         </span>
@@ -128,7 +128,7 @@ export function DataView({
           Data preview failed: {error}
         </p>
       ) : data === undefined || data.rows.length === 0 ? (
-        <p className="text-sm text-slate-500">No accessible records were returned for this page.</p>
+        <p className="text-sm text-slate-400">No accessible records were returned for this page.</p>
       ) : asJson ? (
         <pre
           tabIndex={0}
@@ -140,7 +140,7 @@ export function DataView({
       ) : (
         <div className="overflow-auto">
           <table className="min-w-full text-left text-xs">
-            <thead className="text-slate-500">
+            <thead className="text-slate-400">
               <tr>
                 {data.columns.map((column) => (
                   <th
@@ -195,7 +195,7 @@ export function DataView({
         >
           Previous
         </button>
-        <span className="px-2 py-1 text-xs text-slate-500">Page {page}</span>
+        <span className="px-2 py-1 text-xs text-slate-400">Page {page}</span>
         <button
           type="button"
           disabled={loading || data === undefined || data.rows.length < data.pageSize}
@@ -272,7 +272,7 @@ function RecordDialog({
             <h2 id="analyzer-record-title" className="font-semibold text-white">
               Record
             </h2>
-            <p className="mt-0.5 text-xs text-slate-500">
+            <p className="mt-0.5 text-xs text-slate-400">
               {names.length} field(s) · read-only
             </p>
           </div>
@@ -280,7 +280,7 @@ function RecordDialog({
             type="button"
             onClick={onClose}
             aria-label="Close record"
-            className="rounded-md p-1.5 text-slate-500 hover:bg-white/5 hover:text-white"
+            className="rounded-md p-1.5 text-slate-400 hover:bg-white/5 hover:text-white"
           >
             <X size={16} />
           </button>
@@ -299,7 +299,7 @@ function RecordDialog({
           </dl>
 
           <details className="mt-5">
-            <summary className="cursor-pointer text-xs text-slate-500">Raw document</summary>
+            <summary className="cursor-pointer text-xs text-slate-400">Raw document</summary>
             <pre
               tabIndex={0}
               aria-label="Raw payload"

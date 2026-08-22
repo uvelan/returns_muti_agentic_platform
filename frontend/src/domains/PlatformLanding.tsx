@@ -28,10 +28,13 @@ export function PlatformLanding() {
 
   return (
     <section aria-labelledby="landing-heading" className="mx-auto max-w-7xl">
-      <header className="relative overflow-hidden rounded-3xl bg-rail-surface px-10 py-9 text-rail-on-surface shadow-2xl shadow-primary/10">
+      <header className="relative overflow-hidden rounded-3xl bg-rail-surface px-5 py-7 text-rail-on-surface shadow-2xl shadow-primary/10 sm:px-10 sm:py-9">
         <div className="absolute -right-24 -top-28 size-80 rounded-full bg-primary/25 blur-3xl" aria-hidden="true" />
         <div className="absolute bottom-0 right-64 size-44 rounded-full bg-inverse-primary/10 blur-2xl" aria-hidden="true" />
-        <div className="relative grid grid-cols-[minmax(0,1fr)_22rem] items-end gap-12">
+        {/* The second track was a hard `22rem`, which at 320 needs 352px for
+            itself and overflowed the viewport by 13px with the padding. It
+            stacks below `lg` and keeps its fixed width above. */}
+        <div className="relative grid grid-cols-1 items-end gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-12">
           <div>
             <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-inverse-primary">
               <Sparkles size={13} aria-hidden="true" />
@@ -78,7 +81,7 @@ export function PlatformLanding() {
           administrator to review your roles.
         </div>
       ) : (
-        <ul className="grid grid-cols-4 gap-4">
+        <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {visible.map((domain) => {
             const Icon = domain.icon;
             const pending = domain.status !== undefined;

@@ -325,7 +325,14 @@ export function ProgressTruthPane({
         </header>
 
         {/* Stepper Scroll Container */}
-        <div className="flex-1 overflow-y-auto p-4 hide-scrollbar">
+        <div
+          // Focusable because it scrolls and contains nothing focusable: the
+          // milestones are text, so without this a keyboard user can see the
+          // first few and reach none of the rest (WCAG 2.1.1).
+          tabIndex={0}
+          aria-label="Workflow progress"
+          className="flex-1 overflow-y-auto p-4 hide-scrollbar focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+        >
           <h3 className="text-xs font-semibold uppercase tracking-wider text-outline mb-3">
             Workflow Progress
           </h3>
@@ -431,7 +438,11 @@ export function ProgressTruthPane({
         </header>
 
         {/* Facts Scroll Container */}
-        <div className="flex-1 overflow-y-auto p-4 hide-scrollbar">
+        <div
+          tabIndex={0}
+          aria-label="Extracted and verified facts"
+          className="flex-1 overflow-y-auto p-4 hide-scrollbar focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+        >
           {fields.length > 0 ? (
             <dl className="flex flex-col gap-1.5">
               {fields.map((field) => (

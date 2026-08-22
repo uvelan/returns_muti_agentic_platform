@@ -392,7 +392,7 @@ function DomainFrame({ domain, children }: { domain: DomainDefinition; children:
         <main
           id={MAIN_CONTENT_ID}
           tabIndex={-1}
-          className={`min-w-0 flex-1 outline-none ${domain.path === "/returns" ? "p-3 h-full overflow-hidden" : "overflow-x-auto p-7"}`}
+          className={`min-w-0 flex-1 outline-none ${domain.path === "/returns" ? "p-3 h-full overflow-hidden" : "overflow-x-auto p-4 sm:p-7"}`}
         >
           <RailSlotProvider value={collapsed ? null : railSlot}>{children}</RailSlotProvider>
         </main>

@@ -253,19 +253,19 @@ function Breadcrumb({
       <Crumb label="Connections" active={level === "CONNECTIONS"} onClick={onConnections} />
       {source === null ? null : (
         <>
-          <ChevronRight size={14} className="text-slate-700" />
+          <ChevronRight size={14} className="text-slate-500" />
           <Crumb label={source.name} active={level === "OBJECTS"} onClick={onObjects} />
         </>
       )}
       {object === null ? null : (
         <>
-          <ChevronRight size={14} className="text-slate-700" />
+          <ChevronRight size={14} className="text-slate-500" />
           <Crumb label={object.name} active={level === "SCHEMA"} onClick={onSchema} />
         </>
       )}
       {level === "DATA" ? (
         <>
-          <ChevronRight size={14} className="text-slate-700" />
+          <ChevronRight size={14} className="text-slate-500" />
           <span className="rounded px-2 py-1 font-medium text-emerald-300">Data</span>
         </>
       ) : null}
@@ -309,7 +309,7 @@ function PlatformHealthStrip() {
   return (
     <section className="rounded-xl border border-emerald-950 bg-[#0a1714] px-4 py-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
           Platform dependencies
         </span>
         {items.map((item) => (
@@ -320,7 +320,7 @@ function PlatformHealthStrip() {
               }`}
             />
             <span className="text-slate-300">{item.name}</span>
-            <span className="text-slate-600">{item.health.toLowerCase()}</span>
+            <span className="text-slate-400">{item.health.toLowerCase()}</span>
           </span>
         ))}
       </div>
@@ -379,9 +379,9 @@ function ConnectionsLevel({
   if (sources.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-emerald-900 p-10 text-center">
-        <Database className="mx-auto text-slate-600" />
+        <Database className="mx-auto text-slate-400" />
         <p className="mt-2 font-medium text-slate-300">No sources configured</p>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="mt-1 text-sm text-slate-400">
           Add a read-only connection to begin discovery.
         </p>
       </div>
@@ -453,16 +453,16 @@ function ConnectionCard({
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate font-medium text-white">{source.name}</span>
-          <span className="block truncate text-xs text-slate-500">
+          <span className="block truncate text-xs text-slate-400">
             {source.engine} · {source.database}
           </span>
           <span className="mt-1.5 flex items-center gap-1.5 text-[11px]">
             <span className={`size-1.5 rounded-full ${STATUS_TONE[source.status]}`} />
             <span className="text-slate-400">{source.status.replaceAll("_", " ").toLowerCase()}</span>
-            <span className="text-slate-600">· {source.objectCount} objects</span>
+            <span className="text-slate-400">· {source.objectCount} objects</span>
           </span>
         </span>
-        <ChevronRight size={16} className="mt-1 text-slate-600" />
+        <ChevronRight size={16} className="mt-1 text-slate-400" />
       </button>
       <div className="mt-3 flex items-center justify-between border-t border-emerald-950 pt-3">
         <span className="text-[10px] font-semibold text-emerald-500">READ ONLY</span>
@@ -503,7 +503,7 @@ function IconButton({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="rounded-md p-1.5 text-slate-500 hover:bg-white/5 hover:text-white disabled:opacity-40"
+      className="rounded-md p-1.5 text-slate-400 hover:bg-white/5 hover:text-white disabled:opacity-40"
     >
       {children}
     </button>
@@ -532,13 +532,13 @@ function ObjectsLevel({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="font-semibold text-white">{source.name}</h3>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-slate-400">
             {objects.length} object(s) discovered · {source.engine} · read-only
           </p>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
-            <Search className="absolute left-3 top-2.5 text-slate-600" size={15} />
+            <Search className="absolute left-3 top-2.5 text-slate-400" size={15} />
             <input
               value={query}
               onChange={(event) => {
@@ -546,7 +546,7 @@ function ObjectsLevel({
               }}
               aria-label="Search objects"
               placeholder="Search tables and collections"
-              className="w-64 rounded-lg border border-emerald-950 bg-[#081511] py-2 pl-9 pr-3 text-sm text-white outline-none placeholder:text-slate-600 focus:border-emerald-600"
+              className="w-64 rounded-lg border border-emerald-950 bg-[#081511] py-2 pl-9 pr-3 text-sm text-white outline-none placeholder:text-slate-400 focus:border-emerald-600"
             />
           </div>
           <button
@@ -563,14 +563,14 @@ function ObjectsLevel({
 
       {objects.length === 0 ? (
         <div className="mt-5 rounded-lg border border-dashed border-emerald-900 p-8 text-center">
-          <Layers className="mx-auto text-slate-700" size={24} />
+          <Layers className="mx-auto text-slate-500" size={24} />
           <p className="mt-2 font-medium text-slate-300">Nothing discovered yet</p>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-slate-400">
             Validate the connection to read what this source exposes.
           </p>
         </div>
       ) : visible.length === 0 ? (
-        <p className="mt-5 text-sm text-slate-500">No object matches “{query}”.</p>
+        <p className="mt-5 text-sm text-slate-400">No object matches “{query}”.</p>
       ) : (
         <ul className="mt-4 grid gap-2 md:grid-cols-2">
           {visible.map((item) => (
@@ -586,7 +586,7 @@ function ObjectsLevel({
                 <Table2 size={16} className="shrink-0 text-emerald-400" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium text-white">{item.name}</span>
-                  <span className="block truncate text-xs text-slate-500">
+                  <span className="block truncate text-xs text-slate-400">
                     {item.kind}
                     {item.fields ? ` · ${String(item.fields.length)} fields` : ""}
                     {item.estimatedRows === null || item.estimatedRows === undefined
@@ -594,7 +594,7 @@ function ObjectsLevel({
                       : ` · ~${item.estimatedRows.toLocaleString()} rows`}
                   </span>
                 </span>
-                <ChevronRight size={15} className="shrink-0 text-slate-600" />
+                <ChevronRight size={15} className="shrink-0 text-slate-400" />
               </button>
             </li>
           ))}
@@ -635,7 +635,7 @@ function ObjectLevel({
               {object.kind}
             </span>
           </div>
-          <p className="mt-1 text-xs text-slate-500">{object.path.join(" / ")}</p>
+          <p className="mt-1 text-xs text-slate-400">{object.path.join(" / ")}</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1 rounded-md border border-emerald-900 px-2 py-1 text-[10px] text-emerald-300">

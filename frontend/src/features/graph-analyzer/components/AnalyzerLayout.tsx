@@ -14,7 +14,12 @@ export function AnalyzerLayout({ children }: { readonly children: ReactNode }) {
   const validation = data?.validation?.status ?? "NOT_RUN";
 
   return (
-    <section className="-m-4 min-h-[calc(100vh-2rem)] overflow-hidden rounded-2xl bg-[#07120f] text-slate-100 shadow-2xl sm:-m-6 lg:-m-8" aria-label="Graph Schema Analyzer">
+    // The negative margin cancels `<main>`'s padding so the analyzer can go
+    // edge to edge. `lg:-m-8` is 32px against a `p-7` (28px) main, so it
+    // overshot by 4px a side and the page scrolled sideways at 1280 and
+    // 1440 -- the two widths where nobody looks for a reflow bug. The pair
+    // moves together now: main is `p-4 sm:p-7` and this is its exact negative.
+    <section className="-m-4 min-h-[calc(100vh-2rem)] overflow-hidden rounded-2xl bg-[#07120f] text-slate-100 shadow-2xl sm:-m-7" aria-label="Graph Schema Analyzer">
       <header className="border-b border-emerald-950 bg-[#091814]/95 px-5 py-4 backdrop-blur-xl lg:px-7">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -49,5 +54,5 @@ export function AnalyzerLayout({ children }: { readonly children: ReactNode }) {
 
 function Status({ label, value, state }: { readonly label: string; readonly value: string; readonly state: "complete" | "current" | "attention" }) {
   const Icon = state === "complete" ? Check : state === "attention" ? CircleAlert : ShieldCheck;
-  return <div className="flex min-w-0 items-center gap-2"><Icon size={14} className={state === "complete" ? "text-emerald-400" : state === "attention" ? "text-amber-400" : "text-slate-500"} /><span className="min-w-0"><span className="block text-[10px] uppercase tracking-wider text-slate-500">{label}</span><span className="block truncate font-medium capitalize text-slate-300">{value}</span></span></div>;
+  return <div className="flex min-w-0 items-center gap-2"><Icon size={14} className={state === "complete" ? "text-emerald-400" : state === "attention" ? "text-amber-400" : "text-slate-400"} /><span className="min-w-0"><span className="block text-[10px] uppercase tracking-wider text-slate-400">{label}</span><span className="block truncate font-medium capitalize text-slate-300">{value}</span></span></div>;
 }
