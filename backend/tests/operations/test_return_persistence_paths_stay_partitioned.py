@@ -163,10 +163,13 @@ def test_the_legacy_writer_is_still_reachable_from_a_required_process_class() ->
 #: structural ports so their consumers do not import the SQL package: the legacy
 #: one is on `ReturnSupportRepository`, the canonical one on
 #: `ReturnRecordStorePort`, which is how `workflows` avoids learning what a
-#: connection pool is.
+#: connection pool is. The canonical port moved to `operations/return_issuance.py`
+#: when the Support console and the case workflow were given one issuance seam to
+#: share: issuance is an operations concern the workflow calls, not a workflow
+#: concern the operations layer borrows.
 _WRITER_PORTS: dict[str, str] = {
     _LEGACY_WRITER: "return_platform/operations/return_support/providers/contracts.py",
-    _CANONICAL_WRITER: "return_platform/workflows/return_case_activities.py",
+    _CANONICAL_WRITER: "return_platform/operations/return_issuance.py",
 }
 
 _SQL_REPOSITORY = "return_platform/operations/sql_business_state.py"

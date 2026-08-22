@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import inspect
 import logging
-import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -61,6 +60,7 @@ from return_platform.operations.order_lines.reservations import (
     is_held,
 )
 from return_platform.operations.repository import OperationalRepository
+from return_platform.operations.return_issuance import ReturnRecordStorePort
 from return_platform.operations.support_handoff import (
     SupportHandoffBay,
     SupportHandoffCustomer,
@@ -273,22 +273,6 @@ class ReturnRecordGraphSyncPort(Protocol):
     ) -> ReturnRecordSyncOutcome: ...
 
 
-class ReturnRecordStorePort(Protocol):
-    """The authoritative SQL return store, as this activity needs it (T-14).
-
-    Structural, like `ReturnRecordGraphSyncPort` above, so `workflows` does not
-    learn what a connection pool is; the adapter is
-    `operations/sql_business_state.py::SQLBusinessStateRepository`.
-
-    It must persist every record of one outcome in a single transaction and be
-    idempotent on the supplied ids, because this activity is retried.
-    """
-
-    async def persist_case_return_records(
-        self, write: Any
-    ) -> tuple[str, ...]: ...  # pragma: no cover
-
-
 class CaseBayPlacementPort(Protocol):
     """The one method the bay activity needs from placement.
 
@@ -372,7 +356,9 @@ def _count_of(value: Any) -> int | None:
     return value
 
 
-def _handoff_item(item: Mapping[str, Any], detail: CaseOrderLineDetail | None) -> SupportHandoffItem:
+def _handoff_item(
+    item: Mapping[str, Any], detail: CaseOrderLineDetail | None
+) -> SupportHandoffItem:
     """One selected line joined to what the source calls it.
 
     The selection is the authority for quantity, reason and condition -- they are
@@ -1188,7 +1174,9 @@ class ReturnCaseActivities:
         try:
             drafted = await self._drafter.draft(case_id=case_id, facts=dict(facts))
         except Exception:  # noqa: BLE001 - a note is never worth failing a handoff for
-            logger.warning("support_draft_note_unavailable", extra={"case_id": case_id}, exc_info=True)
+            logger.warning(
+                "support_draft_note_unavailable", extra={"case_id": case_id}, exc_info=True
+            )
             return ""
         if not drafted.strip():
             return ""
@@ -1968,12 +1956,20 @@ class ReturnCaseActivities:
     async def _persist_records_to_return_store(
         self, request: RecordSupportOutcomeInput, plans: list[_RecordPlan]
     ) -> None:
-        """Project the support outcome onto the SQL return store's contract.
+        """Project the support outcome onto the shared issuance seam.
 
-        Item ids are derived with `uuid5` from the record id and the order
-        line, not minted: the workflow supplies stable record ids so a retry
-        must produce the same item ids too, or the second attempt would insert
-        a duplicate item under a new primary key.
+        The mapping onto the SQL store, the `uuid5` derivation of item ids from
+        the record id and the order line, and the rule that issuance writes no
+        `dbo.return_tracking` row all live in
+        `operations/return_issuance.py` now. They moved because this was not the
+        only path that issues an RMA: the Support console issues them too and
+        wrote none of this, so the authoritative store held nothing for a return
+        the screen reported as created. A seam both callers reach is the only
+        arrangement in which the two cannot drift.
+
+        What stays here is what is genuinely the workflow's: reading the case,
+        resolving items from the case aggregate, and the merge plan. Support
+        discovers its records from its own ticket rows and shares none of that.
 
         Items keep their record. Nothing here promotes a label, tracking
         reference or return location onto the case (contract C3).
@@ -2007,10 +2003,11 @@ class ReturnCaseActivities:
         so `workflows` does not pull `pymssql` in just by being imported --
         the workflow module sits next to this one and is sandboxed.
         """
-        from return_platform.operations.sql_business_state import (
-            CaseReturnRecordsWrite,
-            ReturnRecordItemWrite,
-            ReturnRecordWrite,
+        from return_platform.operations.return_issuance import (
+            IssuanceIntent,
+            IssuanceItem,
+            IssuanceRecord,
+            ReturnIssuance,
         )
 
         case = await self._repository.get_case(request.case_id)
@@ -2023,18 +2020,14 @@ class ReturnCaseActivities:
             if item.get("orderLineId") is not None
         }
 
-        records: list[ReturnRecordWrite] = []
+        records: list[IssuanceRecord] = []
         for plan in plans:
             record = plan.incoming
-            record_id = plan.record_id
-            items: list[ReturnRecordItemWrite] = []
+            items: list[IssuanceItem] = []
             for line in record.order_line_references:
                 source = items_by_line.get(str(line), {})
                 items.append(
-                    ReturnRecordItemWrite(
-                        return_item_id=str(
-                            uuid.uuid5(uuid.NAMESPACE_URL, f"return-item:{record_id}:{line}")
-                        ),
+                    IssuanceItem(
                         order_line_id=str(line),
                         quantity=int(source.get("quantity") or 1),
                         product_id=(
@@ -2050,22 +2043,22 @@ class ReturnCaseActivities:
                     )
                 )
             records.append(
-                ReturnRecordWrite(
-                    return_record_id=record_id,
+                IssuanceRecord(
+                    return_record_id=plan.record_id,
                     return_reference=record.return_reference,
+                    items=tuple(items),
                     label_reference=plan.merged.get("labelReference"),
                     tracking_reference=plan.merged.get("trackingReference"),
                     return_location=plan.merged.get("returnLocation"),
                     shipping_instruction_reference=plan.merged.get("shippingInstructionReference"),
                     return_method=plan.merged.get("returnMethod"),
                     carrier=plan.merged.get("carrier"),
-                    items=tuple(items),
                 )
             )
 
         assert self._return_store is not None
-        await self._return_store.persist_case_return_records(
-            CaseReturnRecordsWrite(
+        await ReturnIssuance(self._return_store).issue(
+            IssuanceIntent(
                 case_id=request.case_id,
                 tenant_id=str(case.get("tenantId") or ""),
                 principal_id=str(case.get("principalId") or ""),

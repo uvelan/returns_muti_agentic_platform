@@ -48,7 +48,7 @@ Status: `NOT_STARTED` · `IN_PROGRESS` · `IN_REVIEW` · `ACCEPTED` · `BLOCKED`
 | T01a truthful gates | SMALL | T00 | IN_REVIEW | `04a05fb` | | G0 | | §T01a evidence below |
 | T01b live-infra runner | SMALL | T00 | NOT_STARTED | | | G1 | | |
 | T02 Temporal replay recovery | CRITICAL | T00 | IN_REVIEW (code) / BLOCKED (runtime) | `da04602` | | G1 | live stack needed for runtime closure | §T02 evidence below |
-| T03 issuance seam | CRITICAL | T01a | NOT_STARTED | | | G1 | | |
+| T03 issuance seam | CRITICAL | T01a | IN_REVIEW | `ce660bc` | | G1 | | §T03 evidence below |
 | T04 exact-once RMA persistence | CRITICAL | T03 | NOT_STARTED | | | G1 | | |
 | T05 canonical completeness | NORMAL | T02 | NOT_STARTED | | | G1 | | |
 | T06 status vocabulary | NORMAL | T04 | NOT_STARTED | | | G1 | | |
@@ -203,6 +203,44 @@ was missing when `eaed61c` landed.
 | No history rewrite | **Met.** The fix decodes what is recorded; nothing writes to history. |
 
 T02 cannot reach `ACCEPTED` until the three runtime rows are observed against the live stack.
+
+## T03 evidence
+
+Closure criteria: *existing tests pass unchanged; review confirms a pure move and no new
+datastore write.* Both met.
+
+New module `operations/return_issuance.py` owns the three things that must not differ between
+the two issuance paths: `uuid5` derivation of item ids from (record id, order line), the
+mapping onto `CaseReturnRecordsWrite`, and the rule that issuance writes no
+`dbo.return_tracking` row. It does **not** own record discovery — the workflow reads a Mongo
+case and a merge plan, Support reads its own ticket rows, and forcing one shape on both would
+put the workflow's case model into the Support path.
+
+`ReturnCaseActivities._persist_records_to_return_store` now maps its plans into an
+`IssuanceIntent` and delegates. Same single call to `persist_case_return_records`, same
+transaction, same idempotency — **no new datastore write.**
+
+### The port moved, and that was load-bearing
+
+`test_return_persistence_paths_stay_partitioned` requires `persist_case_return_records` to have
+exactly one implementation and **one** declaring port. Adding a second Protocol in the new
+module broke it — correctly. Rather than relax the guard, `ReturnRecordStorePort` moved out of
+`workflows/return_case_activities.py` into `operations/return_issuance.py`, which is also the
+right dependency direction: issuance is an operations concern the workflow calls, not a
+workflow concern the operations layer borrows.
+
+`sql_business_state.py:17` imports `pymssql` at module scope, so `return_issuance` imports the
+SQL write types under `TYPE_CHECKING` and again inside the one function that constructs them.
+That keeps the module — and therefore the port — importable by `workflows` without dragging a
+connection pool into a sandboxed package.
+
+| Check | Result |
+|---|---|
+| Full backend suite | **4094 passed, 3 skipped, 496 deselected, exit 0** (4082 + 12 new) |
+| Pre-existing tests changed | none — the 12 additions are all new |
+| `ruff check` / `ruff format --check` | clean on all four changed files |
+| Partition guard | 5 passed, with the canonical port re-pointed |
+| New datastore writes | none — one `persist_case_return_records` call, as before |
 
 ## T08 terminal outcome
 
