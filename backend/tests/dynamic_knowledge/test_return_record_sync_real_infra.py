@@ -42,7 +42,10 @@ from return_platform.dynamic_knowledge.integration.return_record_sync import (
     ReturnRecordSyncFailed,
 )
 from return_platform.dynamic_knowledge.integration.targeted_sync import platform_store_source_ids
-from return_platform.dynamic_knowledge.knowledge.cypher_compiler import CypherCompiler
+from return_platform.dynamic_knowledge.knowledge.cypher_compiler import (
+    GENERATION_PARAMETER,
+    CypherCompiler,
+)
 from return_platform.dynamic_knowledge.knowledge.query_plan import (
     LogicalQueryPlan,
     QueryCondition,
@@ -213,7 +216,15 @@ class _Harness:
         )
         compiled = CypherCompiler().compile_read(self.schema, plan)
         async with self.neo4j.session() as session:
-            result = await session.run(compiled.cypher, compiled.parameters)
+            # The compiler pins every node pattern to the serving generation, and
+            # the parameter is bound by the gateway rather than by the compiler
+            # (`neo4j_gateway.py:276`). This runs the cypher straight at a
+            # session, so it binds it the same way -- without this the read fails
+            # on `ParameterMissing` and never reaches the assertion.
+            result = await session.run(
+                compiled.cypher,
+                {**compiled.parameters, GENERATION_PARAMETER: self.generation},
+            )
             return [dict(record) async for record in result]
 
     async def cleanup(self) -> None:

@@ -287,7 +287,7 @@ def _dependencies(schema: ActiveSchema, driver: AsyncDriver) -> GraphDependencie
     )
 
 
-def _search_state(typed_name: str) -> dict[str, Any]:
+def _search_state(typed_name: str, graph_generation_id: str) -> dict[str, Any]:
     action = AgentAction(
         business_capability="order-discovery",
         action_type=ActionType.ORDER_SEARCH,
@@ -299,7 +299,12 @@ def _search_state(typed_name: str) -> dict[str, Any]:
         "client_turn_id": "ct1",
         "run_id": str(uuid.uuid4()),
         "agent_id": "order-discovery-agent",
-        "graph_generation_id": "fulltext-test",
+        # The corpus fixture namespaces its generation per run, and every read
+        # this node compiles is pinned to the generation in the state. A
+        # constant here searched a generation that holds no rows: the two
+        # assertions that require a hit failed, and the two that require an
+        # absence passed without the corpus being consulted at all.
+        "graph_generation_id": graph_generation_id,
         "as_of": datetime(2026, 8, 13, 9, 30, tzinfo=UTC).isoformat(),
         "session_timezone": "UTC",
         "evidence_refs": (),
@@ -310,7 +315,7 @@ def _search_state(typed_name: str) -> dict[str, Any]:
 
 
 async def _run_order_search(
-    schema: ActiveSchema, driver: AsyncDriver, typed_name: str
+    schema: ActiveSchema, driver: AsyncDriver, typed_name: str, graph_generation_id: str
 ) -> tuple[dict[str, Any], _CollectingEvidenceStore]:
     """Drive the production `order_search` node, not a helper beside it.
 
@@ -322,7 +327,7 @@ async def _run_order_search(
     deps = _dependencies(schema, driver)
     node = make_order_search_node(deps)
     runtime = Runtime(context=TurnRuntimeContext(guard_context=_guard_context(schema)))
-    result = await node(_search_state(typed_name), runtime)
+    result = await node(_search_state(typed_name, graph_generation_id), runtime)
     assert isinstance(deps.evidence_store, _CollectingEvidenceStore)
     return result, deps.evidence_store
 
@@ -343,9 +348,9 @@ async def test_the_misspelled_customer_is_found_far_outside_any_window(
     it comes back because the index ranked the whole set, and it ranks first
     because nothing else in a quarter million rows is close.
     """
-    driver, _, _ = corpus
+    driver, _, generation = corpus
 
-    result, store = await _run_order_search(production_schema, driver, TARGET_TYPED)
+    result, store = await _run_order_search(production_schema, driver, TARGET_TYPED, generation)
     candidates = _candidates(result, store)
 
     assert candidates, "the misspelled customer was not recovered at all"
@@ -396,9 +401,9 @@ async def test_the_trade_name_the_removed_scorer_handled_still_resolves(
     matching makes the suffix cost nothing -- but only a real index can show
     that, so it is asserted here rather than assumed.
     """
-    driver, _, _ = corpus
+    driver, _, generation = corpus
 
-    result, store = await _run_order_search(production_schema, driver, TRADE_NAME_TYPED)
+    result, store = await _run_order_search(production_schema, driver, TRADE_NAME_TYPED, generation)
     names = [candidate["data"]["customer_name"] for candidate in _candidates(result, store)]
 
     assert TRADE_NAME in names
@@ -413,9 +418,9 @@ async def test_an_unrelated_name_returns_nothing_rather_than_the_nearest_row(
     customer to confirm, which is worse than "not found" -- confirmation is the
     step that binds a case to an order.
     """
-    driver, _, _ = corpus
+    driver, _, generation = corpus
 
-    result, store = await _run_order_search(production_schema, driver, "Zephyrine Okonkwo")
+    result, store = await _run_order_search(production_schema, driver, "Zephyrine Okonkwo", generation)
 
     assert _candidates(result, store) == []
 
