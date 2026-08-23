@@ -28,7 +28,7 @@ Session control-doc read asserted: **YES** (2026-08-22, session start).
 |---|---|---|
 | **P** Plan integrity | V4.1 document | **SIGNED** 2026-08-22 |
 | **G0** Control truth | T00, T01a | **MET** |
-| **G1** Recovery | T01b, T02, T05, T06 | **MET on code**; T02/T04 runtime closure outstanding |
+| **G1** Recovery | T01b, T02, T05, T06 | **MET on code**; T01b totals never produced, T02/T04 runtime closure outstanding |
 | **G2** Durable control planes | T07–T12 | **MET on code**; T10 live validation blocked with L1 |
 | **G3a** Core UI | T13–T15 | **MET** |
 | **G3b** Full UI | T16, T17 | **MET** — zero `pending` identities |
@@ -46,7 +46,7 @@ Status: `NOT_STARTED` · `IN_PROGRESS` · `IN_REVIEW` · `ACCEPTED` · `BLOCKED`
 | P00 live-route readiness | SMALL | — | BLOCKED | | L1 | needs a live model route; the audit found both providers credentialed with none constructed |
 | T00 control truth | SMALL | — | ACCEPTED | `9c0a905` | G0 | |
 | T01a truthful gates | SMALL | T00 | ACCEPTED | `da04602` | G0 | |
-| T01b live-infra runner | SMALL | T00 | ACCEPTED | `adfb245` | G1 | |
+| T01b live-infra runner | SMALL | T00 | **PARTIAL** | `adfb245` | G1 | runner exists and collects; **totals never produced** — the closure criterion is "reports known totals" |
 | T02 Temporal replay recovery | CRITICAL | T00 | ACCEPTED (code) | `ce660bc` | G1 | runtime closure needs a running worker; see T19a |
 | T03 issuance seam | CRITICAL | T01a | ACCEPTED | `893e995` | G1 | |
 | T04 exact-once RMA persistence | CRITICAL | T03 | ACCEPTED (code) | `ae7211f` | G1 | closure against fresh identifiers needs the running stack |
@@ -427,7 +427,22 @@ the marker was introduced and it did not exist. Collection verified: **496 tests
 audit's count exactly. Run from the repository root instead of `backend/`, collection fails with
 3 `FileNotFound` errors, which is why the script `cd`s first. Preflight checks host **ports**,
 not container names — Temporal running healthy with no published port is the exact failure the
-audit hit (ENV-ACTION-01). Full run in progress; totals recorded on completion.
+audit hit (ENV-ACTION-01).
+
+**Correction, 2026-08-23.** This section has said "full run in progress; totals recorded on
+completion" since it was written, and the totals were never recorded. A background run reported
+*exit code 0* while its output read `exit=127` with a pytest crash — the suite had not executed at
+all — and a second attempt died to an unrecognised `--timeout` flag (`pytest-timeout` is not
+installed). A third reached roughly 91% before the session restarted and produced no summary.
+
+So the closure criterion — *"runner exists and reports known totals"* — is **half met**. The
+runner exists and collects; collection is now **511** tests rather than the audit's 496, the
+difference being tests added by this programme. No pass/fail total has ever been observed, and
+the row above is marked PARTIAL rather than ACCEPTED until one is.
+
+The lesson is worth keeping: a background wrapper's exit code is not the command's exit code, and
+a suite reported green on the strength of one is exactly the "dark test" failure mode UIAUDIT-031
+recorded against migration 008.
 
 ## T06 evidence — UIAUDIT-020 reclassified
 
