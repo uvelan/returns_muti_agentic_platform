@@ -46,7 +46,7 @@ Status: `NOT_STARTED` · `IN_PROGRESS` · `IN_REVIEW` · `ACCEPTED` · `BLOCKED`
 | P00 live-route readiness | SMALL | — | BLOCKED | | L1 | needs a live model route; the audit found both providers credentialed with none constructed |
 | T00 control truth | SMALL | — | ACCEPTED | `9c0a905` | G0 | |
 | T01a truthful gates | SMALL | T00 | ACCEPTED | `da04602` | G0 | |
-| T01b live-infra runner | SMALL | T00 | **PARTIAL** | `adfb245` | G1 | runner exists and collects; **totals never produced** — the closure criterion is "reports known totals" |
+| T01b live-infra runner | SMALL | T00 | **PARTIAL** | `adfb245` | G1 | totals observed at last — 396 passed / 31 failed / 23 errors / 54 skipped; one module hangs and is deselected, and most failures are this session's Temporal port move reaching tests that defaulted to the old port |
 | T02 Temporal replay recovery | CRITICAL | T00 | ACCEPTED (code) | `ce660bc` | G1 | runtime closure needs a running worker; see T19a |
 | T03 issuance seam | CRITICAL | T01a | ACCEPTED | `893e995` | G1 | |
 | T04 exact-once RMA persistence | CRITICAL | T03 | ACCEPTED (code) | `ae7211f` | G1 | closure against fresh identifiers needs the running stack |
@@ -429,8 +429,41 @@ audit's count exactly. Run from the repository root instead of `backend/`, colle
 not container names — Temporal running healthy with no published port is the exact failure the
 audit hit (ENV-ACTION-01).
 
-**Correction, 2026-08-23.** This section has said "full run in progress; totals recorded on
-completion" since it was written, and the totals were never recorded. A background run reported
+**Totals, 2026-08-23 — first ever observed.**
+
+| | |
+|---|---|
+| passed | **396** |
+| failed | 31 |
+| errors | 23 |
+| skipped | 54 |
+| duration | 33m 41s |
+
+Run with `test_integration_outbox_index_plans_real_infra.py` deselected, because
+that module **hangs** — see below. Most of the 31 failures and 23 errors name one
+cause: `tcp connect error 127.0.0.1:7233 ... actively refused`. That is this
+session's Temporal port move landing on tests that had not been told about it.
+`conftest.py:275` reads `PLATFORM_TEST_TEMPORAL_TARGET` but defaults to
+`localhost:7233`, and six real-infra modules do the same — so the default was the
+only thing anyone was using. `.env` now carries the override beside the Neo4j one
+it already had for the identical WinNAT reason, and the suite is being re-run to
+separate genuine failures from that.
+
+**A blocker that is not flakiness.**
+`test_integration_outbox_index_plans_real_infra.py::test_the_union_lands_as_six_indexes_on_the_server`
+wedges: the process stays alive with **one thread and no CPU**, with the machine
+otherwise idle and Mongo answering other queries instantly. Its fixture creates a
+throwaway database and builds six indexes on it — six plain `create_index` calls
+against an empty collection. The test body is three lines of assertion and cannot
+itself hang. Not diagnosed further; recorded so the next run does not rediscover
+it as bad luck.
+
+Related, and cheap to fix later: that fixture leaks its throwaway database when a
+run aborts. Eleven `*_test_*` / `*_probe_*` databases are currently on the server.
+
+**Earlier history, kept because it is the reason this row was wrong.** This
+section said "full run in progress; totals recorded on completion" from the day
+it was written, and the totals were never recorded. A background run reported
 *exit code 0* while its output read `exit=127` with a pytest crash — the suite had not executed at
 all — and a second attempt died to an unrecognised `--timeout` flag (`pytest-timeout` is not
 installed). A third reached roughly 91% before the session restarted and produced no summary.
