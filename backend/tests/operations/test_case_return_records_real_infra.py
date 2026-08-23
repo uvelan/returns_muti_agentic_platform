@@ -42,6 +42,7 @@ from return_platform.operations.sql_business_state import (
     ReturnRecordWrite,
     SQLBusinessStateRepository,
 )
+from tests.sql_migrations import migration_batches
 
 _CONNECT_DEADLINE_SECONDS = 30
 CASE_DATABASE = "return_case_probe"
@@ -55,9 +56,6 @@ CASE_DATABASE = "return_case_probe"
 #: `persist_case_return_records` writes that column on every RMA, so a throwaway
 #: database built from 005 alone would fail every write here on an invalid column
 #: name -- and would be reporting the schema of a release nobody runs.
-_MIGRATIONS = ("005_case_return_records.sql", "007_return_record_method.sql")
-
-
 def _connect(settings: Settings, database: str) -> Any:
     return pymssql.connect(
         server=settings.sqlserver_host,
@@ -104,44 +102,6 @@ def _open_with_retry(settings: Settings, database: str) -> Any:
     raise RuntimeError(f"{database} did not become connectable: {last}")
 
 
-def _migration_batches() -> tuple[str, ...]:
-    """Every migration's own SQL, in order, minus its `USE`.
-
-    Reusing the real files rather than restating their DDL is the point: a test
-    with its own copy of the schema proves the copy works, not the migration.
-
-    The `USE [return_platform]` statement is stripped so the DDL lands in the
-    throwaway database. Stripped by *line*, not by discarding the batch that
-    contains it: the migration opens with a comment block, so `USE` shares its
-    batch with that comment and a batch-level filter silently let it through --
-    which pointed every CREATE at the application's own database and left this
-    suite failing on `Invalid object name 'dbo.return_case'`.
-    """
-    import re
-    from importlib.resources import files
-
-    batches: list[str] = []
-    for migration in _MIGRATIONS:
-        text = (
-            files("return_platform")
-            .joinpath("configuration/sql_migrations")
-            .joinpath(migration)
-            .read_text(encoding="utf-8")
-        )
-        without_use = re.sub(
-            r"^\s*USE\s+\[?[A-Za-z0-9_]+\]?\s*;?\s*$",
-            "",
-            text,
-            flags=re.IGNORECASE | re.MULTILINE,
-        )
-        batches.extend(
-            batch.strip()
-            for batch in re.split(r"^\s*GO\s*$", without_use, flags=re.IGNORECASE | re.MULTILINE)
-            if batch.strip()
-        )
-    return tuple(batches)
-
-
 @pytest.fixture
 def case_settings(test_settings: Settings) -> Iterator[Settings]:
     admin = _connect_within_deadline(test_settings, "master")
@@ -156,7 +116,7 @@ def case_settings(test_settings: Settings) -> Iterator[Settings]:
     owner = _open_with_retry(settings, CASE_DATABASE)
     with owner:
         with owner.cursor() as cursor:
-            for batch in _migration_batches():
+            for batch in migration_batches():
                 cursor.execute(batch)
 
     yield settings

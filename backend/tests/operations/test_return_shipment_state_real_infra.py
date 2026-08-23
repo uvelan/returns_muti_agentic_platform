@@ -15,14 +15,12 @@ Real infrastructure. Not skipped when SQL Server is absent.
 
 from __future__ import annotations
 
-import re
 import time
 import uuid
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from datetime import UTC, datetime
-from importlib.resources import files
 from typing import Any
 
 import pymssql
@@ -36,6 +34,7 @@ from return_platform.operations.sql_business_state import (
     ShipmentUpdate,
     SQLBusinessStateRepository,
 )
+from tests.sql_migrations import migration_batches
 
 _CONNECT_DEADLINE_SECONDS = 30
 SHIPMENT_DATABASE = "return_shipment_probe"
@@ -43,13 +42,6 @@ SHIPMENT_DATABASE = "return_shipment_probe"
 #: `dbo.return_tracking` is created by 002 and extended by 006. Both are applied
 #: here, in order, so this suite proves the migration chain rather than a
 #: hand-copied table definition.
-_MIGRATIONS = (
-    "001_return_business_state.sql",
-    "002_domain_models.sql",
-    "006_return_shipment_state.sql",
-)
-
-
 def _connect(settings: Settings, database: str) -> Any:
     return pymssql.connect(
         server=settings.sqlserver_host,
@@ -89,29 +81,6 @@ def _open_with_retry(settings: Settings, database: str) -> Any:
     raise RuntimeError(f"{database} did not become connectable: {last}")
 
 
-def _batches(migration: str) -> tuple[str, ...]:
-    """The migration's own SQL, with its `USE` stripped by line.
-
-    By line and not by batch: these files open with a comment block, so `USE`
-    shares batch one with it and a batch-level filter silently lets it through
-    -- which points every statement at the application's own database.
-    """
-    text = (
-        files("return_platform")
-        .joinpath("configuration/sql_migrations")
-        .joinpath(migration)
-        .read_text(encoding="utf-8")
-    )
-    without_use = re.sub(
-        r"^\s*USE\s+\[?[A-Za-z0-9_]+\]?\s*;?\s*$", "", text, flags=re.IGNORECASE | re.MULTILINE
-    )
-    return tuple(
-        batch.strip()
-        for batch in re.split(r"^\s*GO\s*$", without_use, flags=re.IGNORECASE | re.MULTILINE)
-        if batch.strip()
-    )
-
-
 @pytest.fixture
 def shipment_settings(test_settings: Settings) -> Iterator[Settings]:
     admin = _connect_within_deadline(test_settings, "master")
@@ -126,9 +95,8 @@ def shipment_settings(test_settings: Settings) -> Iterator[Settings]:
     owner = _open_with_retry(settings, SHIPMENT_DATABASE)
     with owner:
         with owner.cursor() as cursor:
-            for migration in _MIGRATIONS:
-                for batch in _batches(migration):
-                    cursor.execute(batch)
+            for batch in migration_batches():
+                cursor.execute(batch)
 
     yield settings
 

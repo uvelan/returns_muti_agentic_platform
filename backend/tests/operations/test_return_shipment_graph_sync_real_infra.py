@@ -31,14 +31,12 @@ exactly like an accepted one is a log nobody can audit.
 from __future__ import annotations
 
 import os
-import re
 import time
 import uuid
 from collections.abc import AsyncIterator
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from datetime import UTC, datetime
-from importlib.resources import files
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -91,6 +89,7 @@ from return_platform.operations.sql_business_state import (
 from return_platform.source_connectors.mongodb import MongoDBSourceScanConnector
 from return_platform.workflows.fulfillment_tracking import ShipmentEvidence
 from return_platform.workflows.stage_results import FulfillmentTrackingStatus
+from tests.sql_migrations import migration_batches
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -107,13 +106,6 @@ _CONNECT_DEADLINE_SECONDS = 30
 #: and `dbo.return_record` come from 005 and are what makes an RMA resolvable to
 #: a case. All four applied in order, so this suite proves the migration chain
 #: rather than a hand-copied table definition.
-_MIGRATIONS = (
-    "001_return_business_state.sql",
-    "002_domain_models.sql",
-    "005_case_return_records.sql",
-    "006_return_shipment_state.sql",
-)
-
 TENANT = "tenant-a"
 PRINCIPAL = "associate-1"
 
@@ -191,29 +183,6 @@ def _open_with_retry(settings: Settings, database: str) -> Any:
             last = exc
             time.sleep(0.5)
     raise RuntimeError(f"{database} did not become connectable: {last}")
-
-
-def _batches(migration: str) -> tuple[str, ...]:
-    """The migration's own SQL, with its `USE` stripped by line.
-
-    By line and not by batch: these files open with a comment block, so `USE`
-    shares batch one with it and a batch-level filter silently lets it through --
-    which points every statement at the application's own database.
-    """
-    text = (
-        files("return_platform")
-        .joinpath("configuration/sql_migrations")
-        .joinpath(migration)
-        .read_text(encoding="utf-8")
-    )
-    without_use = re.sub(
-        r"^\s*USE\s+\[?[A-Za-z0-9_]+\]?\s*;?\s*$", "", text, flags=re.IGNORECASE | re.MULTILINE
-    )
-    return tuple(
-        batch.strip()
-        for batch in re.split(r"^\s*GO\s*$", without_use, flags=re.IGNORECASE | re.MULTILINE)
-        if batch.strip()
-    )
 
 
 class _Resolver:
@@ -421,9 +390,8 @@ def shipment_settings(test_settings: Settings) -> Settings:
     owner = _open_with_retry(settings, SHIPMENT_DATABASE)
     with owner:
         with owner.cursor() as cursor:
-            for migration in _MIGRATIONS:
-                for batch in _batches(migration):
-                    cursor.execute(batch)
+            for batch in migration_batches():
+                cursor.execute(batch)
     return settings
 
 

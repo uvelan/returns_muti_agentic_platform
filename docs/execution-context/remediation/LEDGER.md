@@ -451,15 +451,46 @@ separate genuine failures from that.
 
 **A blocker that is not flakiness.**
 `test_integration_outbox_index_plans_real_infra.py::test_the_union_lands_as_six_indexes_on_the_server`
-wedges: the process stays alive with **one thread and no CPU**, with the machine
-otherwise idle and Mongo answering other queries instantly. Its fixture creates a
-throwaway database and builds six indexes on it — six plain `create_index` calls
-against an empty collection. The test body is three lines of assertion and cannot
-itself hang. Not diagnosed further; recorded so the next run does not rediscover
-it as bad luck.
+wedges. Its fixture creates a throwaway database, builds six indexes and inserts
+400 commands; the test body is one `index_information()` call and three
+assertions, and cannot itself hang. Still undiagnosed. `pytest -o
+faulthandler_timeout=N` dumps every thread's stack on a hang and is the next
+step — it was not run because it needs the suite to be idle.
+
+**Correction to what this row used to say.** It reported the process as sitting
+at "one thread and no CPU" and treated that as the finding. That reading was
+worthless: `Get-Process` reports 0 CPU and 1 thread for *every* python process
+on this machine, including the uvicorn backend measured moments after it served
+an 89-second live model request. Nothing was learned from it, and it was quoted
+as though something had been.
 
 Related, and cheap to fix later: that fixture leaks its throwaway database when a
 run aborts. Eleven `*_test_*` / `*_probe_*` databases are currently on the server.
+
+**A second wedge, found and fixed — the suite's totals were never blocked by one
+module.** `test_return_case_workflow_real_infra.py::test_reminders_fire_on_the_configured_cadence_and_then_park`
+held a run for ninety minutes. It configures a twenty-second wait and now
+finishes in twenty-four seconds; it was stuck, not slow. It was located by
+counting the progress characters in the log (488 of 504) and indexing that into
+the collection order, then reading the live workflow's history: workflow task
+`SCHEDULED / STARTED / FAILED`, repeating, with the message *"Cannot convert to
+dataclass SupportRequestDraft, value is str not dict"*.
+
+Two doubles had gone stale against the workflow they stand in for — one
+returning `str` where the activity returns `SupportRequestDraft`, one not
+registering `record_case_customer_identity` at all. Neither was new, and neither
+was caused by the port move; both were unreachable while these tests could not
+connect to Temporal, so they errored in collection rather than running. Fixed in
+`5b7d60f`: **21 passed in 99.70s**, previously 3 failed in 233s and before that
+one never returned.
+
+The reason it cost ninety minutes rather than one test now has its own fix.
+`handle.result()` waits forever — correct for a case that may sit for days,
+wrong for a test, because a failing workflow task is retried indefinitely and
+consumes the run instead of failing one assertion. `tests/workflow_result.py`
+bounds the wait and reports the history on expiry. Its diagnosis path is proved
+rather than assumed: a workflow started on a queue with no worker raises
+`AssertionError` naming it, `historyLength: 2`, event types `1, 5`.
 
 **Earlier history, kept because it is the reason this row was wrong.** This
 section said "full run in progress; totals recorded on completion" from the day
