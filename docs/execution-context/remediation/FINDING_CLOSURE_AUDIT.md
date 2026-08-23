@@ -105,7 +105,28 @@ Neither was in the audit.
 | Finding | Status |
 |---|---|
 | **PLAN-NEW-001** `outline-variant` measured 1.62:1 | Closed. Panel dividers identify nothing and stay; boundaries that identify a control moved to `outline-control` at 3.43:1 |
-| **PLAN-NEW-002** `orderLineReferences` defaults to `()`, leaving RMAs unlinked | Recorded, **not fixed** — outside every audit finding's scope. Named here so it is not lost |
+| **PLAN-NEW-002** `orderLineReferences` defaults to `()`, leaving RMAs unlinked | **Closed — and I had misjudged it.** Recorded first as "outside every audit finding's scope"; it is in fact the live producer of UIAUDIT-010's observed damage. See below |
+
+### PLAN-NEW-002, reassessed
+
+Verifying T19b meant asking what produced the five return records reading
+`ISSUED` over an empty item list. The answer was still in the code.
+
+The frozen return-truth decision — *a return cannot present as issued without
+durable items* — was declared and enforced in **no layer at all**: the console's
+submit gate asked only for a non-empty `returnReference`; the wire contract
+defaulted `orderLineReferences` to `()`; the activity builds a record's items by
+iterating that list, so an empty one produced a record covering nothing; and SQL
+cannot express "at least one child row" declaratively.
+
+So T19b would have repaired five records while the mechanism that made them
+stayed open. The rule is now enforced at the wire contract, and the console
+names which RMAs are missing lines rather than only greying the button.
+
+Two things this surfaced that the type system did not catch: the frontend's
+hand-written `ReturnOutcomeRecordInput` declared the field optional while the API
+required it, and `toInput` spread it conditionally — which drops a field rather
+than failing a typecheck. Aligning the type alone would not have closed it.
 
 Also surfaced and fixed while working, unprompted by any finding:
 

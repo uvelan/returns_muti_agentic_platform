@@ -97,6 +97,17 @@ vocabulary's answer for "the platform does not know", and specifically never
 `ISSUED`. Identifiers, case, reference and timestamps are untouched, and each
 document gains a marker naming the repair and its manifest digest.
 
+### The mechanism that made them is now closed
+
+Repairing these would have been treating a symptom. Support could submit an
+outcome with no lines ticked; the activity builds a record's items by iterating
+`order_line_references`; an empty list produced a record covering nothing. The
+invariant that forbids this was declared in the frozen decisions and enforced in
+no layer — not the submit gate, not the wire contract, not the seam, not SQL.
+
+`ReturnOutcomeRecord.orderLineReferences` now requires at least one, and the
+console names the RMAs missing lines. Committed separately at `36a82d0`.
+
 ### Why it has not been applied
 
 The repair rules sequence this explicitly: preserve the audit bundle → inventory
