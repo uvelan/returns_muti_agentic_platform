@@ -45,7 +45,11 @@ from pymongo import AsyncMongoClient
 from return_platform.api.cases import router as cases_router
 from return_platform.api.proposals import resolve_proposal_kernel
 from return_platform.api.proposals import router as proposals_router
-from return_platform.configuration.settings import Settings
+from return_platform.configuration.return_configuration import (
+    LoadedReturnConfiguration,
+    load_return_configuration,
+)
+from return_platform.configuration.settings import DEFAULT_RETURN_CONFIGURATION_PATH, Settings
 from return_platform.operations.repository import OperationalRepository
 from return_platform.platform.governance.errors import UnknownProposal
 from return_platform.resources import RuntimeResources
@@ -170,6 +174,16 @@ async def probe() -> AsyncIterator[tuple[httpx.AsyncClient, _Identity, Operation
 
     app.include_router(cases_router)
     app.include_router(proposals_router)
+    # `/api/cases` resolves the operator's return-method requirement table from
+    # the active release and refuses with 503 rather than answering from a
+    # constant. Without it the control probe -- "the owner can read their own
+    # case" -- fails on service availability, and the three refusals below would
+    # be satisfied by a route that refuses everyone.
+    app.state.return_configuration = LoadedReturnConfiguration(
+        configuration=load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration,
+        path=DEFAULT_RETURN_CONFIGURATION_PATH,
+        sha256="0" * 64,
+    )
     app.dependency_overrides[resolve_proposal_kernel] = lambda: _EmptyKernel()
     app.state.settings = settings
     app.state.resources = RuntimeResources(
@@ -224,7 +238,7 @@ async def test_the_owner_can_read_their_own_case(
     )
     response = await http.get(f"/api/cases/{case_id}")
     assert response.status_code == 200, response.text
-    assert response.json()["data"]["case"]["caseId"] == case_id
+    assert response.json()["data"]["caseId"] == case_id
 
 
 async def test_another_tenant_cannot_read_a_case_by_guessing_its_id(
@@ -397,20 +411,6 @@ async def test_an_unauthenticated_request_is_401_and_an_ungranted_one_is_403(
     assert (await http.get("/api/proposals")).status_code == 403
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "SECV-ORDER-01, reported to the Orchestrator. Every governance route declares "
-        "`kernel: _Kernel` ahead of `Depends(require_capability(...))`, so FastAPI "
-        "resolves `resolve_proposal_kernel` first and its 503 GOVERNANCE_UNAVAILABLE "
-        "pre-empts the 403. An unauthorized caller therefore learns whether the "
-        "proposal kernel is loaded in the process before authorization is consulted. "
-        "Low severity -- it discloses composition state, not data, and does not arise "
-        "when the kernel is wired -- but authorization should be the first gate. "
-        "Application defect; Track I does not fix application logic. Remove this "
-        "marker when the capability dependency is declared first."
-    ),
-)
 async def test_authorization_is_refused_before_service_availability(
     probe: tuple[httpx.AsyncClient, _Identity, OperationalRepository],
 ) -> None:
@@ -420,6 +420,17 @@ async def test_authorization_is_refused_before_service_availability(
     deployment state the ordering actually matters in: a process where
     governance is not composed. The caller holds no governance grant, so the
     only correct answer is 403.
+
+    **SECV-ORDER-01, and it is closed.** This carried a strict `xfail`: every
+    governance route declared `kernel: _Kernel` ahead of its capability
+    dependency, so FastAPI resolved the kernel first and a 503
+    GOVERNANCE_UNAVAILABLE pre-empted the 403 -- telling an unauthorized caller
+    whether governance was composed in the process. `proposals.py:80` now says
+    to declare the capability first and all five routes do: `_Reader` on the
+    list and detail reads, `_Decider` on approve, `_Activator` on activate,
+    each ahead of `_Kernel`. The marker's own instruction was to remove it when
+    that became true, so it is gone and this asserts the fix rather than
+    recording the defect.
     """
     http, identity, _ = probe
     app = http._transport.app  # type: ignore[attr-defined]
