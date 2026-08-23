@@ -505,7 +505,7 @@ Host processes must dial the **published** port, not the container's.
 | SQL Server | 1433 | **14330** |
 | Neo4j Bolt | 7687 | `NEO4J_BOLT_PORT`, **17687** on this dev host |
 | Neo4j HTTP | 7474 | `NEO4J_HTTP_PORT` |
-| Temporal | 7233 | 7233 |
+| Temporal | 7233 | **17233** — 7233 falls inside the WinNAT reserved range |
 | Temporal UI | 8080 | 8080 (`--profile dev-tools`) |
 | Valkey | 6379 | 6379 |
 
@@ -513,6 +513,19 @@ Neo4j is the one that bites: its host port is overridable because WinNAT can res
 7687, so a host process left pointing at 7687 reaches no listener and Order Discovery
 simply finds nothing. `PLATFORM_NEO4J_URI` must carry the same port as
 `NEO4J_BOLT_PORT`; `scripts/linux/validate_env.py` now refuses a mismatch.
+
+**Temporal bit in exactly the same way, and worse.** It published on 7233, which
+falls inside the reserved range 7147-7246, and the failure is silent rather than
+loud: a container that cannot take the bind on restart comes back **healthy with
+no published port at all**, because the healthcheck runs *inside* the container
+against `temporal:7233`. `docker ps` shows `7233/tcp` with no mapping, every
+host process fails to connect, and nothing says why. It publishes 17233 now.
+
+Check the ranges on a host that behaves oddly:
+
+```
+netsh interface ipv4 show excludedportrange protocol=tcp
+```
 
 Individual workers, containerized mode, redeploy and the reference dataset:
 [`docs/operations/startup.md`](docs/operations/startup.md),

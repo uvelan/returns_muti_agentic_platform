@@ -204,7 +204,10 @@ configuration look healthy.
 | Temporal UI | `http://localhost:8080` (dev-tools profile) |
 
 SQL Server is `14330` on the host and `1433` in-network. Temporal is
-`127.0.0.1:7233`, Neo4j `7687`, Valkey `6379`, Mongo `27017`.
+`127.0.0.1:17233` on the host and `temporal:7233` in-network -- 7233 sits inside
+a range WinNAT reserves, and a container that fails that bind comes back
+*healthy with no published port at all*, because its healthcheck runs inside the
+container. Neo4j `17687`, Valkey `6379`, Mongo `27017`.
 
 **On Windows, several of these ports may be unavailable through no fault of the
 platform.** See [`troubleshooting.md`](troubleshooting.md) — Windows dynamically
