@@ -32,6 +32,7 @@ from return_platform.dynamic_knowledge.integration.mongo_store import (
 )
 from return_platform.dynamic_knowledge.knowledge.cypher_compiler import CypherCompiler
 from return_platform.dynamic_knowledge.knowledge.evidence import (
+    EvidenceReference,
     ResponseStatement,
     StatementType,
     StructuredAgentResponse,
@@ -142,15 +143,28 @@ class QueryThenRespondModel:
                 business_capability="order-discovery",
                 action_type=ActionType.RESPOND,
                 decision_summary="The graph evidence supports a final response.",
+                # A cited GRAPH_FACT, which is what this statement is. It read
+                # `CLARIFICATION_QUESTION` with no evidence -- a question that
+                # asks nothing, under a status that declares the exchange over.
+                # `StructuredAgentResponse` now refuses that pair outright,
+                # because a model once did exactly this in production: discovery
+                # closed on an unanswered question, the case was raised, and
+                # policy evaluated a return with no reason and no line chosen.
                 response=StructuredAgentResponse(
                     status="DISCOVERY_COMPLETE",
                     business_capability="order-discovery",
                     statements=(
                         ResponseStatement(
                             statement_id="s1",
-                            statement_type=StatementType.CLARIFICATION_QUESTION,
+                            statement_type=StatementType.GRAPH_FACT,
                             text="One configured record was found.",
-                            evidence_refs=(),
+                            evidence_refs=(
+                                EvidenceReference(
+                                    query_execution_id=context.query_evidence[0].query_execution_id,
+                                    result_path=("rows", "0", "id"),
+                                    expected_value="A-1",
+                                ),
+                            ),
                         ),
                     ),
                 ),
