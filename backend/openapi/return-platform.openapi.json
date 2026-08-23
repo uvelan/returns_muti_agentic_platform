@@ -13631,11 +13631,11 @@
             "title": "Labelreference"
           },
           "orderLineReferences": {
-            "default": [],
             "items": {
               "type": "string"
             },
             "maxItems": 200,
+            "minItems": 1,
             "title": "Orderlinereferences",
             "type": "array"
           },
@@ -13696,7 +13696,8 @@
           }
         },
         "required": [
-          "returnReference"
+          "returnReference",
+          "orderLineReferences"
         ],
         "title": "ReturnOutcomeRecord",
         "type": "object"

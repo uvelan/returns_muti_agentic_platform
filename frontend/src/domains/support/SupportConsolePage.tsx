@@ -1155,9 +1155,10 @@ function toInput(draft: DraftRecord): ReturnOutcomeRecordInput {
     ...(optional(draft.shippingInstructionReference) === undefined
       ? {}
       : { shippingInstructionReference: draft.shippingInstructionReference.trim() }),
-    ...(draft.orderLineReferences.length === 0
-      ? {}
-      : { orderLineReferences: [...draft.orderLineReferences] }),
+    // Always sent, never conditionally omitted. The API requires at least one,
+    // and a conditional spread would drop the field rather than fail -- which is
+    // how an RMA covering nothing used to reach the server.
+    orderLineReferences: [...draft.orderLineReferences],
   };
 }
 
@@ -1231,7 +1232,17 @@ function IssueOutcomeForm({
   });
   const elapsed = useElapsedSeconds(outcome.isPending);
 
-  const complete = drafts.filter((draft) => draft.returnReference.trim().length > 0);
+  // An RMA needs a reference *and* the lines it covers. The gate asked only for
+  // the reference, so an operator could issue a return that covered nothing:
+  // the activity builds the record's items from these lines, and none produced a
+  // record with no items -- a return that cannot be received, credited or
+  // reconciled. Five such records exist in this deployment.
+  const complete = drafts.filter(
+    (draft) => draft.returnReference.trim().length > 0 && draft.orderLineReferences.length > 0,
+  );
+  const missingLines = drafts.filter(
+    (draft) => draft.returnReference.trim().length > 0 && draft.orderLineReferences.length === 0,
+  );
   const duplicateReferences =
     new Set(complete.map((draft) => draft.returnReference.trim())).size !== complete.length;
 
@@ -1369,6 +1380,17 @@ function IssueOutcomeForm({
           Cancel
         </button>
       </div>
+      {missingLines.length === 0 ? null : (
+        // Named, not just disabled. A greyed-out button with no reason is how an
+        // operator concludes the screen is broken and reaches for the API.
+        <p role="alert" className="text-[11px] font-medium text-error">
+          {missingLines.length === 1
+            ? `${missingLines[0].returnReference.trim()} covers no order lines. `
+            : `${String(missingLines.length)} RMAs cover no order lines. `}
+          Tick the lines each RMA is for -- a return that covers nothing cannot be
+          received, credited or reconciled.
+        </p>
+      )}
       <p className="text-[11px] text-outline">
         The workflow acts on the first response only. Send every RMA for this case together.
       </p>

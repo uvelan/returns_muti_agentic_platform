@@ -366,7 +366,20 @@ class ReturnOutcomeRecord(BaseModel):
     #: 64 characters to match `dbo.return_record.carrier`, so a value this model
     #: accepts is a value the authoritative store can hold.
     carrier: str | None = Field(default=None, min_length=1, max_length=64)
-    orderLineReferences: tuple[str, ...] = Field(default=(), max_length=200)
+    #: The order lines this RMA covers. **At least one**, because a return that
+    #: covers nothing cannot be received, credited or reconciled.
+    #:
+    #: This defaulted to `()` and nothing downstream objected: the activity builds
+    #: the record's items by iterating this list, so an empty one produced a
+    #: return record with zero items, and the console's submit gate asked only
+    #: for a non-empty `returnReference`. The frozen return-truth decision -- a
+    #: return cannot present as issued without durable items -- was declared and
+    #: enforced in no layer at all. SQL cannot express "at least one child row"
+    #: declaratively, so the contract is where it has to live.
+    #:
+    #: Five documents in Mongo `return_records` read `ISSUED` with no items, and
+    #: this is the path that made them.
+    orderLineReferences: tuple[str, ...] = Field(min_length=1, max_length=200)
 
 
 class ReturnOutcomeRequest(BaseModel):

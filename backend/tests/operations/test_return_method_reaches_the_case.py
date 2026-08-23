@@ -180,7 +180,17 @@ def _outcome_body(
     **record: Any,
 ) -> dict[str, Any]:
     return {
-        "records": [{"returnReference": reference, "returnMethod": method, **record}],
+        # `orderLineReferences` is required: an RMA covering no lines is a return
+        # that cannot be received, credited or reconciled. Its value is incidental
+        # to what this file asserts, but it has to be there.
+        "records": [
+            {
+                "returnReference": reference,
+                "returnMethod": method,
+                "orderLineReferences": ["LINE-1"],
+                **record,
+            }
+        ],
         "rejected": False,
         "supportEventId": event_id,
     }

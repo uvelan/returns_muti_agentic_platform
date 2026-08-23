@@ -153,7 +153,16 @@ def _body(
     **record: Any,
 ) -> dict[str, Any]:
     return {
-        "records": [{"returnReference": reference, "carrier": carrier, **record}],
+        # Required now; incidental to what this file asserts. See the note in
+        # `test_return_method_reaches_the_case.py`.
+        "records": [
+            {
+                "returnReference": reference,
+                "carrier": carrier,
+                "orderLineReferences": ["LINE-1"],
+                **record,
+            }
+        ],
         "rejected": False,
         "supportEventId": event_id,
     }
@@ -383,8 +392,10 @@ async def test_two_rmas_on_one_reply_keep_their_own_carriers(
         _URL,
         json={
             "records": [
-                {"returnReference": "RMA-1", "carrier": "UPS", "trackingReference": "1Z-1"},
-                {"returnReference": "RMA-2", "carrier": "FEDEX", "trackingReference": "1Z-2"},
+                {"returnReference": "RMA-1", "carrier": "UPS", "trackingReference": "1Z-1",
+                 "orderLineReferences": ["LINE-1"]},
+                {"returnReference": "RMA-2", "carrier": "FEDEX", "trackingReference": "1Z-2",
+                 "orderLineReferences": ["LINE-2"]},
             ],
             "rejected": False,
             "supportEventId": "evt-split",
@@ -430,7 +441,11 @@ def test_a_reply_that_names_no_carrier_is_accepted_and_stores_a_null(
 ) -> None:
     """The common case: most notices say nothing about the carrier."""
     response = client.post(
-        _URL, json={"records": [{"returnReference": "RMA-1"}], "supportEventId": "evt-carrier"}
+        _URL,
+        json={
+            "records": [{"returnReference": "RMA-1", "orderLineReferences": ["LINE-1"]}],
+            "supportEventId": "evt-carrier",
+        },
     )
 
     assert response.status_code == 200, response.text

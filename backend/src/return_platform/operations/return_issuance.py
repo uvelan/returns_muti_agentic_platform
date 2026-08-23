@@ -82,7 +82,19 @@ class IssuanceItem:
 
 @dataclass(frozen=True, slots=True)
 class IssuanceRecord:
-    """One RMA, with the fulfilment identity that belongs to it and not the case."""
+    """One RMA, with the fulfilment identity that belongs to it and not the case.
+
+    **One line comes back on one RMA**, which is the only rule enforced here.
+
+    "An RMA covers at least one line" is enforced at the *edge* instead --
+    `ReturnOutcomeRecord.orderLineReferences` -- and deliberately not here. This
+    type is a data carrier that a dozen tests construct while asserting something
+    else entirely: whether a return method reaches the SQL column, whether a
+    whitespace carrier renders as nothing. Making all of them carry items they do
+    not care about would buy defence in depth at the cost of every fixture in the
+    package, and would put a client-input rule two layers below where the client
+    is.
+    """
 
     return_record_id: str
     return_reference: str
@@ -95,6 +107,14 @@ class IssuanceRecord:
     shipping_instruction_reference: str | None = None
     return_method: str | None = None
     carrier: str | None = None
+
+    def __post_init__(self) -> None:
+        lines = [item.order_line_id for item in self.items]
+        if len(set(lines)) != len(lines):
+            raise ValueError(
+                f"return record {self.return_reference} repeats an order line; "
+                "one line comes back on one RMA"
+            )
 
 
 @dataclass(frozen=True, slots=True)

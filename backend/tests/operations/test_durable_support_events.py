@@ -973,7 +973,13 @@ def _client(
 
 
 _URL = f"/api/v1/return-support/work-items/{WORK_ITEM_ID}/return-outcome"
-_BODY: dict[str, Any] = {"records": [{"returnReference": "RMA-1"}], "rejected": False}
+#: `orderLineReferences` is required -- an RMA covering no lines is a return that
+#: cannot be received, credited or reconciled. Incidental to what this file
+#: asserts, which is idempotency and refusal behaviour, but it has to be present.
+_BODY: dict[str, Any] = {
+    "records": [{"returnReference": "RMA-1", "orderLineReferences": ["LINE-1"]}],
+    "rejected": False,
+}
 
 
 @pytest.fixture
@@ -1056,7 +1062,9 @@ def test_the_same_id_carrying_a_different_reply_is_a_409(
         conflict = client.post(
             _URL,
             json={
-                "records": [{"returnReference": "RMA-DIFFERENT"}],
+                "records": [
+                    {"returnReference": "RMA-DIFFERENT", "orderLineReferences": ["LINE-1"]}
+                ],
                 "rejected": False,
                 "supportEventId": "http-4",
             },

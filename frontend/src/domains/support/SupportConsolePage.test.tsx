@@ -296,6 +296,31 @@ async function openThread() {
   await screen.findByText("Could you raise the RMA?");
 }
 
+/**
+ * Tick one order line per RMA block.
+ *
+ * An RMA has to cover at least one line -- a return covering nothing cannot be
+ * received, credited or reconciled -- so the send button stays disabled until
+ * each block claims one. The fixture's case carries two lines, and a line
+ * belongs to one RMA, so the nth block takes the nth line.
+ */
+function tickLines(blocks = 1) {
+  // One line per RMA *block*, not the first N boxes on the form. A line belongs
+  // to one RMA, so every block lists the same lines until one is claimed --
+  // ticking the first two boxes gives block 1 both lines and block 2 none.
+  //
+  // Idempotent: a block that already has a line is left alone, because several
+  // tests choose their lines deliberately and a helper that clicked blindly
+  // would un-tick them.
+  for (let position = 1; position <= blocks; position += 1) {
+    const block = enclosing(screen.getByText(`RMA ${String(position)}`), "fieldset");
+    const boxes = within(block).queryAllByRole<HTMLInputElement>("checkbox");
+    if (boxes.some((box) => box.checked)) continue;
+    const available = boxes.find((box) => !box.disabled);
+    if (available !== undefined) fireEvent.click(available);
+  }
+}
+
 async function openOutcomeForm() {
   await openThread();
   fireEvent.click(await screen.findByRole("button", { name: /issue rmas/i }));
@@ -326,6 +351,8 @@ describe("SupportConsolePage", () => {
       fireEvent.change(screen.getByLabelText(/RMA 2 number/), { target: { value: "RMA-1002" } });
       fireEvent.change(screen.getByLabelText(/RMA 2 label/), { target: { value: "LBL-B" } });
       fireEvent.click(within(enclosing(screen.getByText("RMA 2"), "fieldset")).getByLabelText(/LINE-2/));
+
+      tickLines(2);
 
       fireEvent.click(screen.getByRole("button", { name: /send 2 rmas/i }));
 
@@ -368,12 +395,52 @@ describe("SupportConsolePage", () => {
       expect(second.getByLabelText(/LINE-2/)).toBeEnabled();
     });
 
+    it("will not send an RMA that covers no order lines, and says which", async () => {
+      /**
+       * The gate asked only for a non-empty reference, so an operator could
+       * issue a return covering nothing: the activity builds the record's items
+       * by iterating the lines, and none produced a record with no items -- a
+       * return that cannot be received, credited or reconciled. Five such
+       * records exist in this deployment, and this is the path that made them.
+       *
+       * The reason is named rather than the button merely being grey. A
+       * disabled control with no explanation is how an operator concludes the
+       * screen is broken and reaches for the API, where the contract now
+       * refuses them anyway.
+       */
+      await openOutcomeForm();
+
+      fireEvent.change(screen.getByLabelText(/RMA 1 number/), { target: { value: "RMA-3003" } });
+
+      expect(screen.getByRole("button", { name: /send 0 rma/i })).toBeDisabled();
+      expect(screen.getByRole("alert")).toHaveTextContent(/covers no order lines/i);
+      expect(mocks.submitReturnOutcome).not.toHaveBeenCalled();
+
+      tickLines(1);
+
+      expect(screen.getByRole("button", { name: /send 1 rma/i })).toBeEnabled();
+      expect(screen.queryByText(/covers no order lines/i)).toBeNull();
+    });
+
+    it("names every RMA that is missing lines, not just the first", async () => {
+      await openOutcomeForm();
+
+      fireEvent.change(screen.getByLabelText(/RMA 1 number/), { target: { value: "RMA-1" } });
+      fireEvent.click(screen.getByRole("button", { name: /add another rma/i }));
+      fireEvent.change(screen.getByLabelText(/RMA 2 number/), { target: { value: "RMA-2" } });
+
+      expect(screen.getByRole("alert")).toHaveTextContent(/2 RMAs cover no order lines/i);
+    });
+
     it("refuses to send two blocks carrying the same RMA number", async () => {
       await openOutcomeForm();
 
       fireEvent.change(screen.getByLabelText(/RMA 1 number/), { target: { value: "RMA-1001" } });
       fireEvent.click(screen.getByRole("button", { name: /add another rma/i }));
       fireEvent.change(screen.getByLabelText(/RMA 2 number/), { target: { value: "RMA-1001" } });
+      // Both blocks claim a line, so the only thing wrong is the duplicate
+      // number -- otherwise the missing-lines alert competes for this query.
+      tickLines(2);
 
       expect(screen.getByRole("alert")).toHaveTextContent(/same RMA number/i);
       expect(screen.getByRole("button", { name: /send 2 rmas/i })).toBeDisabled();
@@ -398,6 +465,7 @@ describe("SupportConsolePage", () => {
       await openOutcomeForm();
 
       fireEvent.change(screen.getByLabelText(/RMA 1 number/), { target: { value: "RMA-2002" } });
+      tickLines(1);
       fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
 
       await waitFor(() => { expect(mocks.submitReturnOutcome).toHaveBeenCalledTimes(1); });
@@ -405,7 +473,13 @@ describe("SupportConsolePage", () => {
         string,
         { records: object[] },
       ];
-      expect(payload.records[0]).toEqual({ returnReference: "RMA-2002" });
+      // `orderLineReferences` is always present -- an RMA covers at least one
+      // line. The point of this test is that the *blank* optional fields are
+      // omitted rather than sent as empty strings.
+      expect(payload.records[0]).toEqual({
+        returnReference: "RMA-2002",
+        orderLineReferences: ["LINE-1"],
+      });
     });
 
     /**
@@ -420,6 +494,7 @@ describe("SupportConsolePage", () => {
       await openOutcomeForm();
 
       fireEvent.change(screen.getByLabelText(/RMA 1 number/), { target: { value: "RMA-1" } });
+      tickLines(1);
       fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
 
       await waitFor(() => { expect(mocks.submitReturnOutcome).toHaveBeenCalledTimes(1); });
@@ -453,6 +528,8 @@ describe("SupportConsolePage", () => {
       const cancel = screen.getByRole("button", { name: /^cancel$/i });
       expect(cancel).toBeEnabled();
 
+      tickLines(1);
+
       fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
 
       await waitFor(() => { expect(cancel).toBeDisabled(); });
@@ -471,6 +548,7 @@ describe("SupportConsolePage", () => {
         await openOutcomeForm();
 
         fireEvent.change(screen.getByLabelText(/RMA 1 number/), { target: { value: "RMA-8" } });
+        tickLines(1);
         fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
 
         await waitFor(() => {
@@ -493,6 +571,7 @@ describe("SupportConsolePage", () => {
       await openOutcomeForm();
 
       fireEvent.change(screen.getByLabelText(/RMA 1 number/), { target: { value: "RMA-9" } });
+      tickLines(1);
       fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
       // The second click lands on the same control once React has flushed the
       // pending state -- which is the real race a hurried operator creates.
@@ -521,6 +600,7 @@ describe("SupportConsolePage", () => {
 
       await openOutcomeForm();
       fireEvent.change(screen.getByLabelText(/RMA 1 number/), { target: { value: "RMA-3003" } });
+      tickLines(1);
       fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
 
       expect(await screen.findByRole("alert")).toHaveTextContent("This return is already closed.");
@@ -543,11 +623,13 @@ describe("SupportConsolePage", () => {
       await openOutcomeForm();
 
       fireEvent.change(screen.getByLabelText(/RMA 1 number/), { target: { value: "RMA-7007" } });
+      tickLines(1);
       fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
       expect(await screen.findByRole("alert")).toHaveTextContent("The connection dropped.");
 
       // The same drafts, the same button, no edit in between: one business act
       // the operator is repeating because they never learned its outcome.
+      tickLines(1);
       fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
       await waitFor(() => { expect(mocks.submitReturnOutcome).toHaveBeenCalledTimes(2); });
 
@@ -563,6 +645,7 @@ describe("SupportConsolePage", () => {
       await openOutcomeForm();
 
       fireEvent.change(screen.getByLabelText(/RMA 1 number/), { target: { value: "RMA-8008" } });
+      tickLines(1);
       fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
       expect(await screen.findByRole("alert")).toHaveTextContent("The connection dropped.");
 
@@ -572,6 +655,7 @@ describe("SupportConsolePage", () => {
       fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
       fireEvent.click(await screen.findByRole("button", { name: /issue rmas/i }));
       fireEvent.change(screen.getByLabelText(/RMA 1 number/), { target: { value: "RMA-9009" } });
+      tickLines(1);
       fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
 
       await waitFor(() => { expect(mocks.submitReturnOutcome).toHaveBeenCalledTimes(2); });
@@ -595,6 +679,7 @@ describe("SupportConsolePage", () => {
       await openOutcomeForm();
 
       fireEvent.change(screen.getByLabelText(/RMA 1 number/), { target: { value: "RMA-5005" } });
+      tickLines(1);
       fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
       expect(await screen.findByRole("alert")).toHaveTextContent("The connection dropped.");
 
@@ -602,6 +687,7 @@ describe("SupportConsolePage", () => {
       fireEvent.change(screen.getByLabelText(/RMA 1 tracking/), { target: { value: "1Z777" } });
       fireEvent.click(screen.getByRole("button", { name: /add another rma/i }));
       fireEvent.click(screen.getByRole("button", { name: /remove rma 2/i }));
+      tickLines(1);
       fireEvent.click(screen.getByRole("button", { name: /send 1 rma/i }));
 
       await waitFor(() => { expect(mocks.submitReturnOutcome).toHaveBeenCalledTimes(2); });

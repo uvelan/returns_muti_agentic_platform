@@ -65,8 +65,15 @@ export type ReturnOutcomeRecordInput = {
   labelReference?: string;
   returnLocation?: string;
   shippingInstructionReference?: string;
-  /** The order lines this RMA covers. The other half of "N RMAs, N items". */
-  orderLineReferences?: string[];
+  /**
+   * The order lines this RMA covers. The other half of "N RMAs, N items".
+   *
+   * Required, matching the API. It was optional here and defaulted to `()`
+   * server-side, so an RMA could be issued covering nothing -- and the record it
+   * produced had no items, which is how five return records came to read
+   * `ISSUED` over an empty item list.
+   */
+  orderLineReferences: string[];
 };
 
 export type ReturnOutcomeInput = {

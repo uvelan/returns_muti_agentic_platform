@@ -8285,10 +8285,7 @@ export interface components {
             carrier?: string | null;
             /** Labelreference */
             labelReference?: string | null;
-            /**
-             * Orderlinereferences
-             * @default []
-             */
+            /** Orderlinereferences */
             orderLineReferences: string[];
             /** Returnlocation */
             returnLocation?: string | null;
