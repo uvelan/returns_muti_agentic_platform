@@ -29,9 +29,35 @@ repair "uses compatible deployed code and supported reset/replay mechanics; it
 does not edit history" — so the action for these 63 is to run the fixed worker
 and let it advance them.
 
-No worker is currently running (`worker_heartbeats` is empty), so this has not
-been executed. It requires the runtime to be started, which is an operator
-action rather than a code change.
+### Executed 2026-08-23 — and there was no wedge left to recover
+
+The patched worker was started and is heartbeating (`worker_heartbeats` holds
+`return-workflow-worker`, which is T18's fix observed live; its log is 0 bytes,
+which is T18's *other* finding — these workers emit nothing).
+
+What the workflows actually show:
+
+| Workflow | Status | Waiting on |
+|---|---|---|
+| `return-case-721fb62e-…` — **the one UIAUDIT-005 named** | **COMPLETED** | — |
+| `return-case-7b216e58-…` | RUNNING | case `AWAITING_SUPPORT` |
+| `return-case-2328a586-…` | RUNNING | case `AWAITING_SUPPORT` |
+| `return-case-e5ce5c59-…` | RUNNING | case `AWAITING_POLICY_REVIEW` |
+
+None of the four has a pending activity in a failing state, and the audit's
+workflow has **zero** workflow-task failures and zero `SupportRequestDraft`
+decode failures across its whole history. The three still running are waiting on
+a human, which is what `RUNNING` correctly means for those two statuses — a case
+awaiting Support is not a wedged case.
+
+**Attribution, stated honestly.** `721fb62e` closed at **2026-08-22 10:37 UTC**,
+which is *before* the worker started here. So it cannot be credited to this run;
+something during the T02 work advanced it. What this run establishes is the
+present state — no wedge remains, and a compatible worker is now live, so any
+future replay is served by patched code.
+
+Sixty-one `order-discovery-v1` workflows are also RUNNING. They belong to a
+different worker and are outside UIAUDIT-005, which named `ReturnCaseWorkflow`.
 
 ---
 

@@ -64,7 +64,7 @@ Status: `NOT_STARTED` · `IN_PROGRESS` · `IN_REVIEW` · `ACCEPTED` · `BLOCKED`
 | T16 route-wide UX and a11y | NORMAL | T12, T13, T14, T15 | ACCEPTED | `b1b78c1` | G3b | |
 | T17 blocked-action and RBAC closure | NORMAL | T09, T11, T12, T13, T16 | ACCEPTED | `c4cee6c` | G3b | |
 | T18 runtime portability and observability | NORMAL | T09, T10, T11 | ACCEPTED | `0a1d1e2`, `6aee3d3` | G4 | |
-| T19a wedged-history repair | CRITICAL | T02 | NOT_REQUIRED as a repair | `8fb8893` | G4 | recovery is deploying the patched worker, not editing history |
+| T19a wedged-history repair | CRITICAL | T02 | **NOT_REQUIRED — verified** | `8fb8893` | G4 | patched worker started and heartbeating; the workflow UIAUDIT-005 named is COMPLETED with zero task failures, and the three still running are awaiting a human |
 | T19b return mismatch repair | CRITICAL | T04 | BUILT — dry run only | `8fb8893` | G4 | apply gated on T04 closure against fresh identifiers |
 | T19c graph debris repair | CRITICAL | T08 | NOT_REQUIRED | `8fb8893` | G4 | generations empty; exactly one serving snapshot |
 | T19d legacy interception repair | CRITICAL | T11 | NOT_REQUIRED | `8fb8893` | G4 | no interception collection exists in any shape |
