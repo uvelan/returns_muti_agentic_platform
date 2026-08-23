@@ -49,7 +49,7 @@ Status: `NOT_STARTED` · `IN_PROGRESS` · `IN_REVIEW` · `ACCEPTED` · `BLOCKED`
 | T01b live-infra runner | SMALL | T00 | **PARTIAL** | `adfb245` | G1 | totals observed at last — 396 passed / 31 failed / 23 errors / 54 skipped; one module hangs and is deselected, and most failures are this session's Temporal port move reaching tests that defaulted to the old port |
 | T02 Temporal replay recovery | CRITICAL | T00 | ACCEPTED (code) | `ce660bc` | G1 | runtime closure needs a running worker; see T19a |
 | T03 issuance seam | CRITICAL | T01a | ACCEPTED | `893e995` | G1 | |
-| T04 exact-once RMA persistence | CRITICAL | T03 | ACCEPTED (code) | `ae7211f` | G1 | closure against fresh identifiers needs the running stack |
+| T04 exact-once RMA persistence | CRITICAL | T03 | **ACCEPTED — closed live** | `ae7211f` | G1 | 4 requests → 1 record, 1 item, 0 fabricated tracking; `dbo.return_record` held no row before this |
 | T05 canonical completeness | NORMAL | T02 | ACCEPTED | `a894463` | G1 | |
 | T06 status vocabulary | NORMAL | T04 | ACCEPTED | `dbe6364` | G1 | UIAUDIT-020 **reclassified** |
 | T07 graph evidence gate | CRITICAL analysis | T01a | ACCEPTED | `3ce4367` | G2 | UIAUDIT-001 **reclassified** |
@@ -65,7 +65,7 @@ Status: `NOT_STARTED` · `IN_PROGRESS` · `IN_REVIEW` · `ACCEPTED` · `BLOCKED`
 | T17 blocked-action and RBAC closure | NORMAL | T09, T11, T12, T13, T16 | ACCEPTED | `c4cee6c` | G3b | |
 | T18 runtime portability and observability | NORMAL | T09, T10, T11 | ACCEPTED | `0a1d1e2`, `6aee3d3` | G4 | |
 | T19a wedged-history repair | CRITICAL | T02 | **NOT_REQUIRED — verified** | `8fb8893` | G4 | patched worker started and heartbeating; the workflow UIAUDIT-005 named is COMPLETED with zero task failures, and the three still running are awaiting a human |
-| T19b return mismatch repair | CRITICAL | T04 | BUILT — dry run only | `8fb8893` | G4 | apply gated on T04 closure against fresh identifiers |
+| T19b return mismatch repair | CRITICAL | T04 | **APPLIED** | `8fb8893` | G4 | T04 closed live first; 5 attempted, 5 reclassified, 0 skipped; the one genuinely issued record untouched |
 | T19c graph debris repair | CRITICAL | T08 | NOT_REQUIRED | `8fb8893` | G4 | generations empty; exactly one serving snapshot |
 | T19d legacy interception repair | CRITICAL | T11 | NOT_REQUIRED | `8fb8893` | G4 | no interception collection exists in any shape |
 | T20 audit-equivalent release validation | CRITICAL | G0–G4 complete + L1 | PARTIAL | `f1c10ba` | G5 | live lane needs a current-code backend and L1 |

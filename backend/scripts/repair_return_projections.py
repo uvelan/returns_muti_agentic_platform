@@ -42,16 +42,11 @@ class MongoProjections:
     def __init__(self, database: Any) -> None:
         self._collection = database[_RETURN_RECORDS]
 
-    async def find_issued_without_items(self) -> list[dict[str, Any]]:
-        query = {
-            "status": "ISSUED",
-            "$or": [
-                {"approvedItems": {"$size": 0}},
-                {"approvedItems": {"$exists": False}},
-                {"approvedItems": None},
-            ],
-        }
-        return [document async for document in self._collection.find(query)]
+    async def find_issued(self) -> list[dict[str, Any]]:
+        # Every ISSUED projection. Which of them is baseless is decided against
+        # the authoritative store, not against a field on the document -- the
+        # items are not stored here.
+        return [document async for document in self._collection.find({"status": "ISSUED"})]
 
     async def reclassify(
         self, return_record_id: str, *, status: str, marker: dict[str, Any]
@@ -95,6 +90,18 @@ class SqlAuthoritative:
                 return int(cursor.fetchone()[0])
         finally:
             connection.close()
+
+    def _record_ids(self) -> frozenset[str]:
+        connection = self._connect()
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT return_record_id FROM dbo.return_record")
+                return frozenset(str(row[0]) for row in cursor.fetchall())
+        finally:
+            connection.close()
+
+    async def record_ids(self) -> frozenset[str]:
+        return await asyncio.to_thread(self._record_ids)
 
     async def count_records(self) -> int:
         return await asyncio.to_thread(self._count, "return_record")

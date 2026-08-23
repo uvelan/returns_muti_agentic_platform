@@ -134,7 +134,44 @@ no layer — not the submit gate, not the wire contract, not the seam, not SQL.
 `ReturnOutcomeRecord.orderLineReferences` now requires at least one, and the
 console names the RMAs missing lines. Committed separately at `36a82d0`.
 
-### Why it has not been applied
+### Applied 2026-08-23, after T04 closed
+
+**T04 closed first, live, which is what the rules gate this on.** One Support
+answer against case `7b216e58` produced exactly one `dbo.return_record`
+(`RMA-T04-C0EB81B235`), exactly one `dbo.return_record_item` (`LINE-1`), and
+**zero** `dbo.return_tracking` rows — from *four* requests: one `RECORDED` and
+three `DUPLICATE`, all sharing one `outboxCommandId`. `dbo.return_record` went
+from having never held a row to holding one. The case advanced
+`AWAITING_SUPPORT → RMA_RECEIVED`.
+
+Then the repair ran: **5 attempted, 5 reclassified, 0 skipped, complete**, digest
+`09d980e757…`. Each document now reads `UNKNOWN` and carries
+`repairedBy: T19b-return-projection-status`. Identifiers, references, cases and
+timestamps are untouched. The one genuinely issued record — the one T04 had just
+written — is **still `ISSUED`**, which is the repair being as selective as it
+claims.
+
+### Two corrections the live run forced
+
+Running this against real data found two defects in the repair itself, both of
+which would have made it wrong:
+
+1. **The detection matched everything.** It looked for an empty `approvedItems`
+   on the Mongo document. That field is not stored there at all — items live in
+   their own collection and the field is assembled at read time — so the query
+   flagged healthy records as well as damaged ones. Detection is now per record:
+   *does the authoritative store hold a row for this id?*
+
+2. **The refusal was too coarse.** It refused whenever SQL held anything, on the
+   reasoning that a non-empty store means these are stale rather than baseless.
+   The first correctly written record — T04's — immediately made the repair
+   unavailable for five projections that still had no row of their own. The
+   question is asked per record now.
+
+Both were caught only because the repair was run against a store that had just
+gained one real row. A dry run against an empty store would have looked correct.
+
+### Original gating rationale, kept
 
 The repair rules sequence this explicitly: preserve the audit bundle → inventory
 whether the records still exist → capture pre-repair snapshots → **run T04

@@ -65,7 +65,7 @@ REPAIR_ID: Final = "T19b-return-projection-status"
 class ProjectionStore(Protocol):
     """The two operations this needs, so the repair is testable without Mongo."""
 
-    async def find_issued_without_items(self) -> Sequence[dict[str, Any]]: ...
+    async def find_issued(self) -> Sequence[dict[str, Any]]: ...
 
     async def reclassify(
         self, return_record_id: str, *, status: str, marker: dict[str, Any]
@@ -82,6 +82,8 @@ class ProjectionStore(Protocol):
 class AuthoritativeStore(Protocol):
     """The authority a projection is supposed to derive from."""
 
+    async def record_ids(self) -> frozenset[str]: ...
+
     async def count_records(self) -> int: ...
 
     async def count_items(self) -> int: ...
@@ -95,6 +97,9 @@ class Target:
     return_reference: str | None
     case_id: str | None
     status: str
+    #: Always zero. Kept in the manifest shape for continuity; the item count
+    #: was never readable from the projection, which is what the first version
+    #: got wrong.
     item_count: int
     created_at: str | None
 
@@ -129,6 +134,10 @@ class RepairPlan:
             "takenAt": self.taken_at,
             "authoritativeRecords": self.authoritative_records,
             "authoritativeItems": self.authoritative_items,
+            # Every target is a projection with *no* row of its own; these two
+            # say how much the store does hold, so a reviewer can see that the
+            # repair is selective rather than sweeping.
+            "targetsAreProjectionsWithNoDurableRow": True,
             "statusAfter": REPAIRED_STATUS,
             "refusal": self.refusal,
             "targets": [target.as_manifest_entry() for target in self.targets],
@@ -170,27 +179,34 @@ async def plan_repair(
     """
     records = await authoritative.count_records()
     items = await authoritative.count_items()
-    documents = await projections.find_issued_without_items()
+    durable = await authoritative.record_ids()
+    documents = await projections.find_issued()
 
+    # **Per record, not per store.** The first version asked two coarser
+    # questions and got both wrong. It looked for an empty `approvedItems` on
+    # the Mongo document -- but that field is not stored there at all; the items
+    # live in their own collection and the field is assembled at read time, so
+    # the query matched every record including healthy ones. And it refused
+    # whenever the authoritative store held *anything*, so the first correctly
+    # written record made the whole repair unavailable for five that were still
+    # baseless.
+    #
+    # The question that is actually being asked of each projection is whether
+    # the authoritative store has a row for *it*.
     targets = tuple(
         Target(
             return_record_id=str(document.get("returnRecordId")),
             return_reference=_optional_str(document.get("returnReference")),
             case_id=_optional_str(document.get("caseId")),
             status=str(document.get("status")),
-            item_count=len(document.get("approvedItems") or []),
+            item_count=0,
             created_at=_optional_str(document.get("createdAt")),
         )
         for document in documents
+        if str(document.get("returnRecordId")) not in durable
     )
 
     refusal: str | None = None
-    if records or items:
-        refusal = (
-            f"The authoritative store holds {records} records and {items} items. "
-            "These projections may be stale rather than baseless, and rebuilding "
-            "them from SQL is a different repair than reclassifying them."
-        )
 
     return RepairPlan(
         targets=targets,

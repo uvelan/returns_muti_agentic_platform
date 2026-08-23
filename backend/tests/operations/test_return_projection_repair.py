@@ -29,11 +29,9 @@ class _Projections:
         self.documents = documents
         self.writes: list[tuple[str, str]] = []
 
-    async def find_issued_without_items(self) -> list[dict[str, Any]]:
+    async def find_issued(self) -> list[dict[str, Any]]:
         return [
-            document
-            for document in self.documents
-            if document.get("status") == "ISSUED" and not document.get("approvedItems")
+            document for document in self.documents if document.get("status") == "ISSUED"
         ]
 
     async def reclassify(
@@ -53,15 +51,25 @@ class _Projections:
 
 
 class _Authoritative:
-    def __init__(self, records: int = 0, items: int = 0) -> None:
-        self._records = records
-        self._items = items
+    """SQL, by the ids it actually holds.
+
+    `durable` is the set of `return_record_id`s with a real row. That -- not a
+    total count -- is what decides whether a given projection is baseless, which
+    is the correction a live run forced: one correctly written record must not
+    make the repair unavailable for five that are still baseless.
+    """
+
+    def __init__(self, durable: set[str] | None = None) -> None:
+        self._durable = frozenset(durable or set())
+
+    async def record_ids(self) -> frozenset[str]:
+        return self._durable
 
     async def count_records(self) -> int:
-        return self._records
+        return len(self._durable)
 
     async def count_items(self) -> int:
-        return self._items
+        return len(self._durable)
 
 
 def _document(identifier: str, **overrides: Any) -> dict[str, Any]:
@@ -81,36 +89,37 @@ async def test_it_finds_only_the_records_that_claim_more_than_the_store_holds() 
     projections = _Projections(
         [
             _document("a"),
-            _document("b", approvedItems=[{"orderLineId": "L1"}]),
+            _document("b"),
             _document("c", status="AWAITING_RECEIPT"),
         ]
     )
 
-    plan = await plan_repair(projections, _Authoritative())
+    plan = await plan_repair(projections, _Authoritative(durable={"b"}))
 
+    # "a" has no durable row; "b" has one; "c" is not ISSUED.
     assert [target.return_record_id for target in plan.targets] == ["a"]
     assert plan.applicable
 
 
 @pytest.mark.asyncio
-async def test_it_refuses_when_the_authoritative_store_is_not_empty() -> None:
-    """Then these are stale projections, and rebuilding them is a different repair.
+async def test_a_projection_with_a_durable_row_is_left_alone() -> None:
+    """It is not baseless, so it is not this repair's business.
 
-    The premise of reclassifying is that SQL says nothing. If SQL says
-    something, the honest repair is to re-project from it -- and quietly
-    reclassifying instead would destroy the distinction between "we lost the
-    projection" and "it was never written".
+    The first version asked whether the store was empty *overall*, and refused
+    everything the moment one record was written correctly. A live run made that
+    concrete: the first genuine `dbo.return_record` row -- the one T04's closure
+    created -- blocked the repair for five projections that still had none.
     """
-    projections = _Projections([_document("a")])
+    projections = _Projections([_document("a"), _document("b")])
 
-    plan = await plan_repair(projections, _Authoritative(records=5, items=12))
+    plan = await plan_repair(projections, _Authoritative(durable={"b"}))
 
-    assert not plan.applicable
-    assert plan.refusal is not None
-    assert "stale" in plan.refusal
+    assert [target.return_record_id for target in plan.targets] == ["a"]
+    assert plan.applicable
 
-    with pytest.raises(ValueError, match="not applicable"):
-        await apply_repair(plan, projections, approved_digest=plan.digest)
+    outcome = await apply_repair(plan, projections, approved_digest=plan.digest)
+    assert outcome.reclassified == 1
+    assert projections.documents[1]["status"] == "ISSUED", "the durable one is untouched"
 
 
 @pytest.mark.asyncio
@@ -250,7 +259,6 @@ async def test_the_manifest_carries_the_counts_the_decision_rested_on() -> None:
     manifest = plan.manifest
 
     assert manifest["authoritativeRecords"] == 0
-    assert manifest["authoritativeItems"] == 0
     assert manifest["statusAfter"] == REPAIRED_STATUS
+    assert manifest["targetsAreProjectionsWithNoDurableRow"] is True
     assert manifest["targets"][0]["statusBefore"] == "ISSUED"
-    assert manifest["targets"][0]["itemCount"] == 0
