@@ -33,8 +33,8 @@ Session control-doc read asserted: **YES** (2026-08-22, session start).
 | **G3a** Core UI | T13–T15 | **MET** |
 | **G3b** Full UI | T16, T17 | **MET** — zero `pending` identities |
 | **G4** Operations | T18, T19a–d | **MET**, with T19b applied-run outstanding |
-| **L1** Live-route readiness | P00 | BLOCKED — no live model route |
-| **L2** Live Discovery outcome | executed inside T20 | BLOCKED behind L1 |
+| **L1** Live-route readiness | P00 | **MET** — 8 of 10 routes answered live (Google + NVIDIA) |
+| **L2** Live Discovery outcome | executed inside T20 | **MET** — one utterance produced exactly one case and one workflow |
 | **G5** Release | T20 + L2 | OPEN |
 
 ## Task ledger
@@ -43,7 +43,7 @@ Status: `NOT_STARTED` · `IN_PROGRESS` · `IN_REVIEW` · `ACCEPTED` · `BLOCKED`
 
 | Task | Level | Depends | Status | Accepted SHA | Gate | Blocker |
 |---|---|---|---|---|---|---|
-| P00 live-route readiness | SMALL | — | BLOCKED | | L1 | needs a live model route; the audit found both providers credentialed with none constructed |
+| P00 live-route readiness | SMALL | — | **ACCEPTED** | `c966b2e` | L1 | provider order was MANUAL; credentials and model lists were already present. 10 routes construct, 8 answer live |
 | T00 control truth | SMALL | — | ACCEPTED | `9c0a905` | G0 | |
 | T01a truthful gates | SMALL | T00 | ACCEPTED | `da04602` | G0 | |
 | T01b live-infra runner | SMALL | T00 | **PARTIAL** | `adfb245` | G1 | totals observed at last — 396 passed / 31 failed / 23 errors / 54 skipped; one module hangs and is deselected, and most failures are this session's Temporal port move reaching tests that defaulted to the old port |
@@ -64,7 +64,7 @@ Status: `NOT_STARTED` · `IN_PROGRESS` · `IN_REVIEW` · `ACCEPTED` · `BLOCKED`
 | T16 route-wide UX and a11y | NORMAL | T12, T13, T14, T15 | ACCEPTED | `b1b78c1` | G3b | |
 | T17 blocked-action and RBAC closure | NORMAL | T09, T11, T12, T13, T16 | ACCEPTED | `c4cee6c` | G3b | |
 | T18 runtime portability and observability | NORMAL | T09, T10, T11 | ACCEPTED | `0a1d1e2`, `6aee3d3` | G4 | |
-| T19a wedged-history repair | CRITICAL | T02 | **NOT_REQUIRED — verified** | `8fb8893` | G4 | patched worker started and heartbeating; the workflow UIAUDIT-005 named is COMPLETED with zero task failures, and the three still running are awaiting a human |
+| T19a wedged-history repair | CRITICAL | T02 | **APPLIED** | `c83789b` | G4 | two wedges found by replaying live histories: one decode bug fixed in code, one nondeterminism reset. All four running workflows replay clean |
 | T19b return mismatch repair | CRITICAL | T04 | **APPLIED** | `8fb8893` | G4 | T04 closed live first; 5 attempted, 5 reclassified, 0 skipped; the one genuinely issued record untouched |
 | T19c graph debris repair | CRITICAL | T08 | NOT_REQUIRED | `8fb8893` | G4 | generations empty; exactly one serving snapshot |
 | T19d legacy interception repair | CRITICAL | T11 | NOT_REQUIRED | `8fb8893` | G4 | no interception collection exists in any shape |
