@@ -18,19 +18,45 @@
     {
       "name": "order-discovery-worker",
       "runtimeExecutable": "backend/.venv/Scripts/python.exe",
-      "runtimeArgs": ["backend/scripts/run_order_discovery_worker.py"],
+      "runtimeArgs": [
+        "backend/scripts/run_order_discovery_worker.py"
+      ],
+      "autoPort": true
+    },
+    {
+      "name": "return-workflow-worker",
+      "runtimeExecutable": "backend/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "backend/scripts/run_return_workflow_worker.py"
+      ],
       "autoPort": true
     },
     {
       "name": "frontend",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "frontend", "run", "dev", "--", "--port", "5273"],
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "5273"
+      ],
       "port": 5273
     },
     {
       "name": "frontend-mock",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "frontend", "run", "dev:mock", "--", "--port", "5174"],
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "dev:mock",
+        "--",
+        "--port",
+        "5174"
+      ],
       "port": 5174
     }
   ]

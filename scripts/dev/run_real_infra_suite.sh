@@ -55,7 +55,9 @@ declare -a required_ports=(
   "Neo4j:17687"
   "SQL Server:14330"
   "Valkey:6379"
-  "Temporal:7233"
+  # 17233: Windows reserves TCP 7147-7246, so the host publish moved. In-container
+  # addressing is still `temporal:7233`.
+  "Temporal:17233"
 )
 
 missing=()
