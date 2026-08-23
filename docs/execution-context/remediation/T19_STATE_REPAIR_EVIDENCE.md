@@ -61,6 +61,35 @@ different worker and are outside UIAUDIT-005, which named `ReturnCaseWorkflow`.
 
 ---
 
+### The second wedge, reset 2026-08-23
+
+`return-case-e5ce5c59` failed replay with `Nondeterminism error: Activity type
+of scheduled event 'record_case_status' does not match activity type of activity
+command 'record_case_customer_identity'` -- `record_case_customer_identity` was
+inserted ahead of an existing `record_case_status` with no guard.
+
+**A `workflow.patched()` guard would have been wrong here**, and that is worth
+stating because it is the obvious fix. Two populations of history carry no
+marker: executions that predate the activity, and executions that ran after it
+was added but before any marker existed. `patched()` returns False for both, so
+a guard fixes the first and *breaks* the second -- and `return-case-7b216e58`
+and `return-case-2328a586` are in that second group and replay clean today.
+
+So the repair is a **reset**, which is the mechanic the rules permit: a new run
+from a chosen point in the existing history, under current code. Nothing is
+rewritten and the original run is preserved and linked.
+
+`repair_wedged_workflows.py` finds its targets by *replaying every running case
+workflow*, not from a list -- so it repairs what is actually broken and names
+the reason. Surveyed 4, wedged 1, reset 1
+(`01a023a6…` → `5b2debd2-6b81-4e1f-9b5e-d51a9e4c776d`).
+
+**Verified after:** all four replay clean, "Nothing wedged" -- and the case moved
+`AWAITING_POLICY_REVIEW → AWAITING_SUPPORT` at 05:47:20, so it did not merely
+become replayable, it resumed.
+
+---
+
 ## T19b — return records that claim ISSUED over nothing · **BUILT, DRY-RUN, NOT APPLIED**
 
 | Store | Reading |
