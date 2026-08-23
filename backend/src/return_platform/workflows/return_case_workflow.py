@@ -147,6 +147,36 @@ _BEST_EFFORT_RETRY: Final = RetryPolicy(maximum_attempts=2)
 #: executions that are least able to report it.
 _PATCH_STRUCTURED_SUPPORT_DRAFT: Final = "support-draft-returns-structured-payload"
 
+def _coerce_support_draft(value: Any) -> SupportRequestDraft:
+    """One `SupportRequestDraft` from whatever the history actually recorded.
+
+    Three shapes have existed on the wire for this activity's result, and a
+    deployment's retention window can hold all three at once:
+
+    * a `SupportRequestDraft`, when the payload converter already typed it;
+    * a `dict`, from an execution after `eaed61c` and before the patch marker;
+    * a `str`, from a pre-`eaed61c` execution, where prose was all there was.
+
+    A `str` carries no structured payload to recover -- the activity did not
+    compose one -- and inventing fields here would put facts on the message that
+    nothing observed. Empty is the truthful reading, and the subject falls back
+    exactly as it did then.
+
+    Anything else raises rather than guessing: a shape nobody has written is a
+    shape nobody should silently accept.
+    """
+    if isinstance(value, SupportRequestDraft):
+        return value
+    if isinstance(value, str):
+        return SupportRequestDraft(text=value)
+    if isinstance(value, dict):
+        return SupportRequestDraft(**value)
+    raise TypeError(
+        f"draft_support_request returned {type(value).__name__}, which is not a shape "
+        f"this workflow has ever recorded"
+    )
+
+
 #: How many `supportEventId`s the workflow remembers, newest last.
 #:
 #: **Bounded on purpose.** An unbounded applied-keys set is workflow state that
@@ -1514,19 +1544,32 @@ class ReturnCaseWorkflow:
                     retry_policy=_DRAFT_RETRY,
                 )
             else:
-                legacy_text: str = await workflow.execute_activity(
+                # **Decoded permissively, and this is the correction.**
+                #
+                # This branch asked for `result_type=str`, on the reasoning that
+                # an unmarked history must predate `eaed61c` and therefore hold
+                # prose. That is not true of every unmarked history. An
+                # execution that ran *after* `eaed61c` and *before* this patch
+                # recorded the typed payload -- a dict -- and carries no marker,
+                # because the marker did not exist yet. Replaying one asked for
+                # `str`, got a dict, and failed with "Expected value to be str,
+                # was <class 'dict'>": the same wedge UIAUDIT-005 reported, on
+                # the population the first fix did not cover.
+                #
+                # Observed on two live histories, `return-case-7b216e58` and
+                # `return-case-2328a586`, which sat RUNNING and healthy-looking
+                # until a support-response signal woke them.
+                #
+                # So the shape is not inferred from the marker at all. Both are
+                # accepted, because both are things this activity has genuinely
+                # returned.
+                legacy: Any = await workflow.execute_activity(
                     "draft_support_request",
                     draft_input,
-                    result_type=str,
                     start_to_close_timeout=_DRAFT_TIMEOUT,
                     retry_policy=_DRAFT_RETRY,
                 )
-                # The prose is all a pre-`eaed61c` history recorded. There is no
-                # structured payload to recover -- the activity did not compose
-                # one -- and inventing one here would put facts on the message
-                # that nothing observed. An empty payload is the truthful
-                # reading, and the subject falls back the same way it did then.
-                draft = SupportRequestDraft(text=legacy_text)
+                draft = _coerce_support_draft(legacy)
         except ActivityError:
             # Composition failed. Support still needs asking, and an empty draft
             # is better than a parked case -- the opening activity supplies the

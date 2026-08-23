@@ -52,12 +52,13 @@ import pytest
 from temporalio.converter import default as default_converter
 
 from return_platform.workflows import return_case_workflow as workflow_module
-from return_platform.workflows.return_case_workflow import (
+from return_platform.workflows.return_case_workflow import (  # noqa: E501
     _PATCH_STRUCTURED_SUPPORT_DRAFT,
     ReturnCaseTimings,
     ReturnCaseWorkflow,
     ReturnCaseWorkflowInput,
     SupportRequestDraft,
+    _coerce_support_draft,
 )
 
 WORKFLOW_SOURCE = pathlib.Path(inspect.getfile(ReturnCaseWorkflow))
@@ -81,7 +82,18 @@ ACTIVITY_RESULT_TYPES: dict[str, set[str]] = {
     "record_case_customer_identity": {"bool"},
     "request_bay_assignment": {"BayResultNotice"},
     "evaluate_case_eligibility": {"CaseEligibilityOutcome"},
-    "draft_support_request": {"SupportRequestDraft", "str"},
+    # `SupportRequestDraft` only. The un-patched branch no longer pins a result
+    # type at all: it decodes whatever the history holds and coerces it through
+    # `_coerce_support_draft`.
+    #
+    # It used to pin `str`, on the reasoning that an unmarked history predates
+    # `eaed61c` and therefore holds prose. Two live histories disproved that --
+    # they ran after `eaed61c`, before the patch marker existed, and recorded a
+    # dict. Asking for `str` failed them with "Expected value to be str, was
+    # <class 'dict'>", which is UIAUDIT-005 on the population the first fix
+    # missed. Pinning a type on that branch is what made the assumption
+    # invisible, so it is deliberately unpinned now.
+    "draft_support_request": {"SupportRequestDraft"},
     "open_support_work_item": {"str"},
     "resolve_business_deadline": {"ResolvedBusinessDeadline"},
     "record_support_outcome": {"_RECEIPT_RESULT_TYPE"},
@@ -350,3 +362,50 @@ async def test_a_legacy_history_opens_support_instead_of_wedging(
     assert runtime.opened_with["support_draft"] == LEGACY_DRAFT_TEXT
     assert runtime.opened_with["business_payload"] == {}
     assert runtime.opened_with["subject"] == ""
+
+
+# ---------------------------------------------------------------------------
+# 5. The shapes a real history actually holds
+# ---------------------------------------------------------------------------
+
+
+class TestTheDraftDecodeAcceptsEveryRecordedShape:
+    """Three shapes have been on the wire, and retention can hold all three.
+
+    The first fix assumed two: marked histories hold a typed payload, unmarked
+    ones hold prose. The third -- unmarked *and* typed -- is what an execution
+    records between the activity changing and the patch marker existing, and it
+    is the one that wedged. Found on two live histories,
+    `return-case-7b216e58` and `return-case-2328a586`, which replayed with
+    "Expected value to be str, was <class 'dict'>" and now replay clean.
+    """
+
+    def test_a_typed_payload_passes_through(self) -> None:
+        draft = SupportRequestDraft(text="Please authorise this return.")
+
+        assert _coerce_support_draft(draft) is draft
+
+    def test_prose_becomes_the_text_and_invents_nothing(self) -> None:
+        """A `str` history has no structured payload to recover.
+
+        The activity did not compose one, so filling the other fields here would
+        put facts on the message that nothing observed.
+        """
+        draft = _coerce_support_draft("Please authorise this return.")
+
+        assert draft.text == "Please authorise this return."
+        assert draft == SupportRequestDraft(text="Please authorise this return.")
+
+    def test_a_dict_is_decoded_rather_than_refused(self) -> None:
+        """The case the first fix missed."""
+        draft = _coerce_support_draft({"text": "Please authorise this return."})
+
+        assert draft.text == "Please authorise this return."
+
+    def test_an_empty_dict_is_an_empty_draft(self) -> None:
+        assert _coerce_support_draft({}) == SupportRequestDraft()
+
+    def test_a_shape_nobody_has_written_raises(self) -> None:
+        """Silently accepting an unknown shape is how the next one hides."""
+        with pytest.raises(TypeError, match=r"not a shape"):
+            _coerce_support_draft(42)

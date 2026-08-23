@@ -32,6 +32,31 @@
       "autoPort": true
     },
     {
+      "name": "return-orchestrator",
+      "runtimeExecutable": "backend/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "backend/scripts/run_return_orchestrator.py"
+      ],
+      "autoPort": true
+    },
+    {
+      "name": "outbox-publisher",
+      "runtimeExecutable": "backend/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "backend/scripts/run_outbox_publisher.py"
+      ],
+      "autoPort": true
+    },
+    {
+      "name": "integration-outbox-worker",
+      "runtimeExecutable": "backend/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "return_platform.workers.integration_outbox"
+      ],
+      "autoPort": true
+    },
+    {
       "name": "frontend",
       "runtimeExecutable": "npm",
       "runtimeArgs": [

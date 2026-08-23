@@ -79,15 +79,22 @@ async def _counts(settings: Settings) -> dict[str, int]:
 
 
 async def _agent_id(client: httpx.AsyncClient) -> str | None:
-    """The configured discovery agent, read rather than guessed."""
+    """The configured discovery agent, read rather than guessed.
+
+    Read from `configuration.copilot.order_discovery_agent_id`, which is where
+    the binding actually lives. Guessing it costs a 422
+    `ORDER_AGENT_OUT_OF_SCOPE` -- the same failure an operator gets when a schema
+    release renames the agent without renaming the mapping, so it is worth
+    reading rather than defaulting.
+    """
     response = await client.get("/api/config/runtime")
     if response.status_code != 200:
         return None
     payload = response.json().get("data") or {}
-    for key in ("orderDiscoveryAgentId", "discoveryAgentId", "agentId"):
-        if isinstance(payload.get(key), str):
-            return str(payload[key])
-    return None
+    configured = (
+        (payload.get("configuration") or {}).get("copilot") or {}
+    ).get("order_discovery_agent_id")
+    return str(configured) if isinstance(configured, str) else None
 
 
 async def main() -> int:
@@ -115,8 +122,15 @@ async def main() -> int:
     async with httpx.AsyncClient(
         base_url=arguments.base_url, timeout=arguments.turn_timeout
     ) as client:
-        agent_id = arguments.agent_id or await _agent_id(client) or "order_discovery"
+        agent_id = arguments.agent_id or await _agent_id(client)
         record["agentId"] = agent_id
+        if agent_id is None:
+            # A guess here produces a 422 that looks like a policy problem
+            # rather than a configuration one, which is a worse answer than
+            # refusing.
+            record["outcome"] = "NO_CONFIGURED_AGENT"
+            print(json.dumps(record, indent=2, default=str))
+            return 2
 
         version = 0
         message = f"I need to return something from order {arguments.order}"
