@@ -70,6 +70,7 @@ from return_platform.workflows.return_case_workflow import (
     PolicyDecisionName,
     PolicyGateState,
     PolicyRouteName,
+    RecordCaseCustomerInput,
     RecordCaseStatusInput,
     RecordSupportOutcomeInput,
     RequestBayAssignmentInput,
@@ -79,10 +80,12 @@ from return_platform.workflows.return_case_workflow import (
     ReturnCaseWorkflow,
     ReturnCaseWorkflowInput,
     SendSupportReminderInput,
+    SupportRequestDraft,
     SupportResponseNotice,
     SupportReturnRecord,
     SynchronizeReturnRecordsInput,
 )
+from tests.workflow_result import result_within
 
 #: Module-scoped loop, so one client can serve every test in the file.
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -131,6 +134,12 @@ class _Probe:
         self._record("record_case_status")
         self.statuses.append(request.status)
 
+    @activity.defn(name="record_case_customer_identity")
+    async def record_case_customer_identity(self, request: RecordCaseCustomerInput) -> bool:
+        del request
+        self._record("record_case_customer_identity")
+        return True
+
     @activity.defn(name="request_bay_assignment")
     async def request_bay_assignment(
         self, request: RequestBayAssignmentInput
@@ -178,10 +187,21 @@ class _Probe:
         return self.eligibility
 
     @activity.defn(name="draft_support_request")
-    async def draft_support_request(self, request: DraftSupportRequestInput) -> str:
+    async def draft_support_request(
+        self, request: DraftSupportRequestInput
+    ) -> SupportRequestDraft:
         del request
         self._record("draft_support_request")
-        return "Hello -- could you raise the RMA for this return?"
+        # Returns what the activity returns. This used to answer `str`, which
+        # the activity stopped doing when the draft grew a payload and a
+        # subject -- and because the workflow decodes the result into
+        # `SupportRequestDraft`, the double wedged every case that reached
+        # Support rather than failing one assertion.
+        return SupportRequestDraft(
+            text="Hello -- could you raise the RMA for this return?",
+            payload={},
+            subject="Return",
+        )
 
     @activity.defn(name="open_support_work_item")
     async def open_support_work_item(self, request: OpenSupportWorkItemInput) -> str:
@@ -229,6 +249,7 @@ class _Probe:
     def all(self) -> tuple[Any, ...]:
         return (
             self.record_case_status,
+            self.record_case_customer_identity,
             self.resolve_business_deadline,
             self.request_bay_assignment,
             self.evaluate_case_eligibility,
@@ -282,7 +303,7 @@ async def client() -> AsyncIterator[Client]:
 async def _terminate_started_executions() -> AsyncIterator[None]:
     """Leave no execution running behind a test.
 
-    The tests that end in `await handle.result()` close their own; the ones
+    The tests that end in `await result_within(handle)` close their own; the ones
     that assert on a *waiting* case do not, and a failing test never reaches
     its assertions at all. Without this each run left orphans on the server,
     and 168 of them were what made this file flaky.
@@ -329,7 +350,7 @@ async def test_the_case_completes_when_support_answers(client: Client) -> None:
                 records=(SupportReturnRecord(return_reference="RMA-1", label_reference="LBL-1"),),
             ),
         )
-        outcome = await handle.result()
+        outcome = await result_within(handle)
 
     assert outcome.status == "RMA_RECEIVED"
     assert outcome.return_references == ("RMA-1",)
@@ -380,7 +401,7 @@ async def test_the_support_wait_survives_a_worker_restart(client: Client) -> Non
                 records=(SupportReturnRecord(return_reference="RMA-AFTER-RESTART"),),
             ),
         )
-        outcome = await handle.result()
+        outcome = await result_within(handle)
 
     assert outcome.return_references == ("RMA-AFTER-RESTART",)
     # The second worker never re-opened the thread: the work item survived.
@@ -403,7 +424,7 @@ async def test_reminders_fire_on_the_configured_cadence_and_then_park(client: Cl
     async with Worker(
         client, task_queue=queue, workflows=(ReturnCaseWorkflow,), activities=probe.all()
     ):
-        outcome = await handle.result()
+        outcome = await result_within(handle)
 
     assert outcome.reminders_sent == 2
     assert outcome.parked_reason == "SUPPORT_REMINDERS_EXHAUSTED"
@@ -429,7 +450,7 @@ async def test_a_bay_failure_does_not_stop_the_return(client: Client) -> None:
                 work_item_id="wi-1", records=(SupportReturnRecord(return_reference="RMA-1"),)
             ),
         )
-        outcome = await handle.result()
+        outcome = await result_within(handle)
 
     assert outcome.status == "RMA_RECEIVED"
     assert outcome.bay_reference is None
@@ -454,7 +475,7 @@ async def test_a_bay_result_arriving_before_the_wait_is_kept(client: Client) -> 
                 work_item_id="wi-1", records=(SupportReturnRecord(return_reference="RMA-1"),)
             ),
         )
-        outcome = await handle.result()
+        outcome = await result_within(handle)
 
     # It did not sit out the 30-second bay wait, and it kept the answer.
     assert outcome.bay_reference == "BAY-7"
@@ -497,7 +518,7 @@ async def test_the_bay_activity_answers_and_no_signal_is_needed(client: Client) 
                 work_item_id="wi-1", records=(SupportReturnRecord(return_reference="RMA-1"),)
             ),
         )
-        outcome = await handle.result()
+        outcome = await result_within(handle)
 
     assert outcome.bay_reference == "BAY-9"
 
@@ -529,7 +550,7 @@ async def test_a_signal_that_won_the_race_is_not_overwritten_by_the_activity(
                 work_item_id="wi-1", records=(SupportReturnRecord(return_reference="RMA-1"),)
             ),
         )
-        outcome = await handle.result()
+        outcome = await result_within(handle)
 
     assert outcome.bay_reference == "BAY-FIRST"
 
@@ -553,7 +574,7 @@ async def test_a_duplicate_support_response_does_not_issue_a_second_set_of_rmas(
         )
         await handle.signal(ReturnCaseWorkflow.support_response, first)
         await handle.signal(ReturnCaseWorkflow.support_response, second)
-        outcome = await handle.result()
+        outcome = await result_within(handle)
 
     assert outcome.return_references == ("RMA-1",)
     assert len(probe.outcomes) == 1
@@ -588,7 +609,7 @@ async def test_the_rma_reaches_the_graph_before_the_case_reports_it_received(
                 ),
             ),
         )
-        outcome = await handle.result()
+        outcome = await result_within(handle)
 
     assert outcome.status == "RMA_RECEIVED"
     assert outcome.graph_generation_id == "gen-under-test"
@@ -624,7 +645,7 @@ async def test_a_graph_sync_failure_parks_the_case_loudly(client: Client) -> Non
                 work_item_id="wi-1", records=(SupportReturnRecord(return_reference="RMA-1"),)
             ),
         )
-        outcome = await handle.result()
+        outcome = await result_within(handle)
 
     assert outcome.parked_reason == "RETURN_GRAPH_SYNC_FAILED"
     assert outcome.graph_generation_id is None
@@ -653,7 +674,7 @@ async def test_a_rejected_return_needs_no_graph_sync(client: Client) -> None:
                 work_item_id="wi-1", records=(), rejected=True, reason="outside the return window"
             ),
         )
-        outcome = await handle.result()
+        outcome = await result_within(handle)
 
     assert outcome.status == "CLOSED"
     assert "synchronize_return_records" not in probe.calls
@@ -670,7 +691,7 @@ async def test_cancelling_stops_the_case_without_asking_support(client: Client) 
         await handle.signal(
             ReturnCaseWorkflow.cancel_case, CancelCaseCommand(reason="customer changed their mind")
         )
-        outcome = await handle.result()
+        outcome = await result_within(handle)
 
     assert outcome.status == "CANCELLED"
     assert "open_support_work_item" not in probe.calls
@@ -716,7 +737,7 @@ async def test_the_wait_counts_business_time_not_wall_clock(client: Client) -> N
                 work_item_id="wi-1", records=(SupportReturnRecord(return_reference="RMA-1"),)
             ),
         )
-        outcome = await handle.result()
+        outcome = await result_within(handle)
 
     assert outcome.reminders_sent == 0
     # The support wait and the reminder cadence both went through the calendar,

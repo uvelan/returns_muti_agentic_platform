@@ -44,6 +44,7 @@ from return_platform.workflows.return_case_workflow import (
     PolicyGateState,
     PolicyOverrideNotice,
     PolicyRouteName,
+    RecordCaseCustomerInput,
     RecordCaseStatusInput,
     RecordSupportOutcomeInput,
     RequestBayAssignmentInput,
@@ -54,10 +55,12 @@ from return_platform.workflows.return_case_workflow import (
     ReturnCaseWorkflow,
     ReturnCaseWorkflowInput,
     SendSupportReminderInput,
+    SupportRequestDraft,
     SupportResponseNotice,
     SupportReturnRecord,
     SynchronizeReturnRecordsInput,
 )
+from tests.workflow_result import result_within
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
@@ -85,6 +88,12 @@ class _Probe:
     async def record_case_status(self, request: RecordCaseStatusInput) -> None:
         self._record("record_case_status")
         self.statuses.append(request.status)
+
+    @activity.defn(name="record_case_customer_identity")
+    async def record_case_customer_identity(self, request: RecordCaseCustomerInput) -> bool:
+        del request
+        self._record("record_case_customer_identity")
+        return True
 
     @activity.defn(name="request_bay_assignment")
     async def request_bay_assignment(
@@ -116,10 +125,21 @@ class _Probe:
         )
 
     @activity.defn(name="draft_support_request")
-    async def draft_support_request(self, request: DraftSupportRequestInput) -> str:
+    async def draft_support_request(
+        self, request: DraftSupportRequestInput
+    ) -> SupportRequestDraft:
         del request
         self._record("draft_support_request")
-        return "Hello -- could you raise the RMA for this return?"
+        # Returns what the activity returns. This used to answer `str`, which
+        # the activity stopped doing when the draft grew a payload and a
+        # subject -- and because the workflow decodes the result into
+        # `SupportRequestDraft`, the double wedged every case that reached
+        # Support rather than failing one assertion.
+        return SupportRequestDraft(
+            text="Hello -- could you raise the RMA for this return?",
+            payload={},
+            subject="Return",
+        )
 
     @activity.defn(name="open_support_work_item")
     async def open_support_work_item(self, request: OpenSupportWorkItemInput) -> str:
@@ -162,6 +182,7 @@ class _Probe:
     def all(self) -> tuple[Any, ...]:
         return (
             self.record_case_status,
+            self.record_case_customer_identity,
             self.request_bay_assignment,
             self.evaluate_case_eligibility,
             self.resolve_business_deadline,
@@ -249,7 +270,7 @@ async def test_a_rejected_return_opens_no_support_work_item(client: Client) -> N
     async with Worker(
         client, task_queue=queue, workflows=(ReturnCaseWorkflow,), activities=probe.all()
     ):
-        outcome = await handle.result()
+        outcome = await result_within(handle)
 
     assert probe.work_items == {}, "a rejected return opened a Support work item"
     assert outcome.status == ReturnCaseStatus.POLICY_REJECTED.value
@@ -272,7 +293,7 @@ async def test_an_approved_return_reaches_support(client: Client) -> None:
                 work_item_id="wi-1", records=(SupportReturnRecord(return_reference="RMA-1"),)
             ),
         )
-        outcome = await handle.result()
+        outcome = await result_within(handle)
 
     assert len(probe.work_items) == 1
     assert ReturnCaseStatus.POLICY_APPROVED.value in probe.statuses
@@ -310,7 +331,7 @@ async def test_a_routed_case_opens_a_work_item_on_its_own_queue(
                 work_item_id="wi-1", records=(SupportReturnRecord(return_reference="RMA-1"),)
             ),
         )
-        await handle.result()
+        await result_within(handle)
 
     (work_item,) = probe.work_items.values()
     assert work_item["queue"] == queue_name
@@ -328,7 +349,7 @@ async def test_an_absent_policy_parks_the_case_and_asks_nobody(client: Client) -
     async with Worker(
         client, task_queue=queue, workflows=(ReturnCaseWorkflow,), activities=probe.all()
     ):
-        outcome = await handle.result()
+        outcome = await result_within(handle)
 
     assert outcome.status == ReturnCaseStatus.RECOVERY_REQUIRED.value
     assert outcome.parked_reason == "RETURN_ELIGIBILITY_POLICY_NOT_PUBLISHED"
@@ -383,7 +404,7 @@ async def test_the_policy_review_wait_survives_a_worker_restart(client: Client) 
                 work_item_id="wi-1", records=(SupportReturnRecord(return_reference="RMA-1"),)
             ),
         )
-        outcome = await handle.result()
+        outcome = await result_within(handle)
 
     assert outcome.policy_overridden is True
     assert len(resumed.work_items) == 1
@@ -406,7 +427,7 @@ async def test_an_unanswered_review_parks_without_asking_support(client: Client)
     async with Worker(
         client, task_queue=queue, workflows=(ReturnCaseWorkflow,), activities=probe.all()
     ):
-        outcome = await handle.result()
+        outcome = await result_within(handle)
 
     assert outcome.status == ReturnCaseStatus.AWAITING_POLICY_REVIEW.value
     assert outcome.parked_reason == "POLICY_REVIEW_UNANSWERED"
@@ -433,7 +454,7 @@ async def test_cancelling_during_review_stops_the_case(client: Client) -> None:
         await handle.signal(
             ReturnCaseWorkflow.cancel_case, CancelCaseCommand(reason="customer changed their mind")
         )
-        outcome = await handle.result()
+        outcome = await result_within(handle)
 
     assert outcome.status == ReturnCaseStatus.CANCELLED.value
     assert probe.work_items == {}
