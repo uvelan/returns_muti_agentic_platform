@@ -284,6 +284,60 @@ entities:
           - '*'
           masking: null
         path_origin: ROOT_DOCUMENT
+      contact_first_name:
+        field_id: contact_first_name
+        description: Given name of the person on the order's contact row.
+        physical_path:
+        - contactFirstName
+        graph_property: contact_first_name
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          - PREFIX
+          - CONTAINS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      contact_last_name:
+        field_id: contact_last_name
+        description: Family name of the person on the order's contact row.
+        physical_path:
+        - contactLastName
+        graph_property: contact_last_name
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          - PREFIX
+          - CONTAINS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
       email:
         field_id: email
         description: Contact email.
@@ -4626,6 +4680,8 @@ graph:
       - customer_id
       - contact_value
       property_fields:
+      - contact_first_name
+      - contact_last_name
       - email
       - phone_number
       - address_line1
@@ -5065,4 +5121,4 @@ agent_policies:
     max_clarifications: 3
     max_replans: 2
     max_targeted_syncs_per_turn: 3
-configuration_checksum: 44421aae31c752b1d76ea7627088acad980a94766070fb0d350d0f648cbdd774
+configuration_checksum: e05adf502510311cb9e06cc2e53685d4c6d2534028e02d92371e5b42c4f81a45

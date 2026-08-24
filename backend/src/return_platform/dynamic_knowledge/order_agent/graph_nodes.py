@@ -937,11 +937,21 @@ def make_order_search_node(deps: GraphDependencies) -> Any:
             "totalFound": ranked["total_found"],
             "candidateSet": candidate_set.model_dump(mode="json"),
         }
-        return {
+        update: dict[str, Any] = {
             "evidence_refs": (*state.get("evidence_refs", ()), page_evidence.query_execution_id),
             "order_search_cache": new_cache,
             "queries_used": queries_used,
         }
+        if not ranked["total_found"]:
+            # A search that matched nothing is the only evidence anyone gets
+            # that the values it searched were not answers. Recording it here
+            # is what stops the dead value anchoring every later turn -- see
+            # `FactCatalogue.demote_unmatched`.
+            demoted = deps.facts.demote_unmatched(
+                _stored_facts(state), tuple(intent.signal_values.values())
+            )
+            update["observed_facts"] = tuple(fact.to_state() for fact in demoted)
+        return update
 
     return order_search
 

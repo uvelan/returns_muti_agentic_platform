@@ -43,7 +43,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -232,6 +232,16 @@ class CapturedFact:
         return described
 
 
+def _flatten(values: Any) -> tuple[Any, ...]:
+    """Search signals arrive as scalars or as lists of them; both are values."""
+    if isinstance(values, (str, bytes)) or not isinstance(values, Iterable):
+        return (values,)
+    flat: list[Any] = []
+    for value in values:
+        flat.extend(_flatten(value) if not isinstance(value, (str, bytes)) else (value,))
+    return tuple(item for item in flat if item is not None)
+
+
 @dataclass(frozen=True, slots=True)
 class FactCatalogue:
     """Every fact the conversation may establish, and the re-ask rule over them."""
@@ -298,6 +308,62 @@ class FactCatalogue:
                 label=definition.label,
             )
         return tuple(merged.values()), tuple(dict.fromkeys(unknown))
+
+    def demote_unmatched(
+        self, facts: Sequence[CapturedFact], searched: Sequence[Any]
+    ) -> tuple[CapturedFact, ...]:
+        """Mark the facts a zero-result search used as the non-answers they are.
+
+        Capture decides status from what the associate said -- conflicts,
+        validation, staleness, confirmation. None of those know whether the
+        value matched anything, so a customer name nobody in the graph is
+        called was recorded `USABLE`, and `USABLE` is neither `REASKABLE` nor
+        `SUPERSEDABLE`. That is a value the conversation can neither use, ask
+        about, nor replace:
+
+          * the agent never raises it again, because it looks answered;
+          * it anchors every later search in the conversation;
+          * a second name stated afterwards merges against it as a rival, so
+            the turn that should have corrected the search reads `CONFLICTING`
+            instead -- and if the model does not restate the name at all, the
+            dead one silently drives the next search. "find order for BLUEFIN"
+            answering "I checked for orders under TAYLOR" is this, exactly.
+
+        `INVALID` is the status the design already has for a value that was
+        never an answer: `SUPERSEDABLE`, so the next name replaces it cleanly,
+        and `REASKABLE`, so the agent raises it rather than searching it again.
+
+        Only values the search actually used are demoted. A fact stated in the
+        same breath but never sent to the graph did not fail to match anything.
+        """
+        used = {
+            text
+            for value in _flatten(searched)
+            if (text := str(value).strip().casefold())
+        }
+        if not used:
+            return tuple(facts)
+        demoted: list[CapturedFact] = []
+        for fact in facts:
+            if FactStatus(fact.status) in REASKABLE or fact.value is None:
+                demoted.append(fact)
+                continue
+            if str(fact.value).strip().casefold() not in used:
+                demoted.append(fact)
+                continue
+            demoted.append(
+                CapturedFact(
+                    name=fact.name,
+                    value=fact.value,
+                    status=FactStatus.INVALID.value,
+                    turn_id=fact.turn_id,
+                    source_message_id=fact.source_message_id,
+                    acquisition=fact.acquisition,
+                    observed_at=fact.observed_at,
+                    label=fact.label,
+                )
+            )
+        return tuple(demoted)
 
     def refresh(
         self, facts: Sequence[CapturedFact], *, as_of: datetime
