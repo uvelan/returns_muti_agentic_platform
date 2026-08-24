@@ -179,7 +179,17 @@ services:
       # check `netsh interface ipv4 show excludedportrange protocol=tcp` before
       # anything else, and compare `docker port <container>` against this file --
       # an empty result there is the whole diagnosis.
-      - "127.0.0.1:11433:1433"
+      #
+      # **Driven by the same variable the application reads, and that is the
+      # point.** Hardcoding 11433 here fixed one Windows host and broke every
+      # Linux one: `.env` is gitignored, so a machine whose
+      # `PLATFORM_SQLSERVER_PORT` still said 14330 kept dialling 14330 while this
+      # file published 11433, and the app died on "SQL Server did not become
+      # reachable" against a container that was healthy and listening. A
+      # published port and the port the client dials cannot be two separate
+      # facts. Containers are unaffected either way -- they reach
+      # `sqlserver:1433` on the compose network, never the host interface.
+      - "127.0.0.1:${PLATFORM_SQLSERVER_PORT:-11433}:1433"
     volumes:
       - sqlserver_data:/var/opt/mssql
     healthcheck:
@@ -236,7 +246,7 @@ services:
         chown 999:999 /data/configdb/keyfile
         exec docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /data/configdb/keyfile --wiredTigerCacheSizeGB 1
     ports:
-      - "127.0.0.1:27017:27017"
+      - "127.0.0.1:${MONGO_PORT:-27017}:27017"
     volumes:
       - mongo_data:/data/db
       - mongo_config:/data/configdb
@@ -320,7 +330,7 @@ services:
     image: valkey/valkey:${VALKEY_VERSION:-8.0.9-alpine}
     command: ["valkey-server", "--requirepass", "${VALKEY_PASSWORD}", "--maxmemory", "256mb", "--maxmemory-policy", "noeviction", "--appendonly", "yes"]
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:${VALKEY_PORT:-6379}:6379"
     volumes:
       - valkey_data:/data
     healthcheck:
@@ -373,7 +383,7 @@ services:
       # Every other service here already publishes on a 1xxxx port for this
       # reason: SQL Server 14330, Neo4j 17474/17687. Temporal was the outlier.
       # In-container addressing is unchanged and stays `temporal:7233`.
-      - "127.0.0.1:17233:7233"
+      - "127.0.0.1:${TEMPORAL_PORT:-17233}:7233"
     healthcheck:
       test: ["CMD-SHELL", "temporal operator cluster health --address temporal:7233 >/dev/null 2>&1 || exit 1"]
       interval: 10s
