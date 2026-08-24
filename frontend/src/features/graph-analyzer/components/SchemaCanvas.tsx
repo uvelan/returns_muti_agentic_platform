@@ -16,6 +16,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { KeyRound, Lock, Search, Zap } from "lucide-react";
 import type { GraphEntity, GraphSchema } from "../../../contracts/graphAnalyzer";
+import { layout } from "./schemaLayout";
 
 /**
  * The system graph canvas.
@@ -41,6 +42,8 @@ type EntityNodeData = {
 };
 
 type EntityNode = Node<EntityNodeData, "analyzerEntity">;
+
+
 
 const CHANGE_STYLES: Record<GraphEntity["change"], string> = {
   ADDED: "border-emerald-500/80",
@@ -138,18 +141,34 @@ export function SchemaCanvas({
     [schema.entities, normalized],
   );
 
-  const nodes = useMemo<EntityNode[]>(
+  // Unpositioned: `layout` below assigns every coordinate from the edges. Split
+  // from the placement so that changing the selection or the filter -- neither
+  // of which moves anything -- does not re-run the layout and shuffle the
+  // diagram under the reader.
+  const unplaced = useMemo<EntityNode[]>(
     () =>
       schema.entities.map((entity) => ({
         id: entity.id,
         type: "analyzerEntity" as const,
-        // `x`/`y` are percentages of the canvas from the backend; React Flow works
-        // in absolute units, so they are scaled once here rather than persisted.
-        position: { x: entity.x * 9, y: entity.y * 6 },
-        data: { entity, dimmed: normalized.length > 0 && !matches.has(entity.id), onActivate: onSelect },
-        selected: entity.id === selectedId,
+        position: { x: 0, y: 0 },
+        data: { entity, dimmed: false, onActivate: onSelect },
       })),
-    [schema.entities, matches, normalized, selectedId, onSelect],
+    [schema.entities, onSelect],
+  );
+
+  // Just the endpoints, which is all the layout needs. Kept apart from `edges`
+  // because that carries selection styling and so changes on every click.
+  const structuralEdges = useMemo<Edge[]>(
+    () =>
+      schema.relationships.map((relationship) => {
+        const forward = relationship.direction === "OUTBOUND";
+        return {
+          id: relationship.id,
+          source: forward ? relationship.fromEntityId : relationship.toEntityId,
+          target: forward ? relationship.toEntityId : relationship.fromEntityId,
+        } satisfies Edge;
+      }),
+    [schema.relationships],
   );
 
   const edges = useMemo<Edge[]>(
@@ -175,6 +194,22 @@ export function SchemaCanvas({
         } satisfies Edge;
       }),
     [schema.relationships, selectedId],
+  );
+
+  // Positions depend only on the shape of the graph, so they survive a search
+  // or a selection unchanged.
+  const placed = useMemo(() => layout(unplaced, structuralEdges), [unplaced, structuralEdges]);
+  const nodes = useMemo<EntityNode[]>(
+    () =>
+      placed.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          dimmed: normalized.length > 0 && !matches.has(node.id),
+        },
+        selected: node.id === selectedId,
+      })),
+    [placed, matches, normalized, selectedId],
   );
 
   return (
