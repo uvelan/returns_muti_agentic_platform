@@ -243,6 +243,18 @@ if ($NoHost -or $KeepVolumes) {
     $env:PLATFORM_GRAPH_SYNC_MAX_RECORDS = "$GraphRecords"
     & $python (Join-Path $Backend "scripts\build_knowledge_graph.py") $GraphRecords
     if ($LASTEXITCODE -ne 0) { Die "Graph build failed. Neo4j is empty; the copilot will find no orders." }
+
+    # Built is not the same as usable, and the difference is invisible in a build
+    # log. A generation can report COMPLETED with order lines that reach no
+    # product, or sit behind a search index that cannot see it -- and an empty
+    # search is what the discovery agent has been observed answering with
+    # invented accounts. Fail here, where the data was produced, rather than in
+    # front of an associate holding a box.
+    Step "      Verifying the graph can answer a discovery turn"
+    & $python (Join-Path $Backend "scripts\verify_graph_ready.py")
+    if ($LASTEXITCODE -ne 0) {
+      Die "The graph was built but cannot serve -- see the reason above. Do not use this load."
+    }
   } finally {
     Pop-Location
   }

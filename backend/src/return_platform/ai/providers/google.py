@@ -25,6 +25,7 @@ class GeminiProvider(HTTPProvider):
         self._api_key = secret_value(settings.google_api_key)
         self._base_url = settings.google_base_url
         self.model = settings.google_model or ""
+        self._thinking_budget = settings.google_thinking_budget
 
     @property
     def configured(self) -> bool:
@@ -60,6 +61,24 @@ class GeminiProvider(HTTPProvider):
                         if request.max_output_tokens is not None
                         else {}
                     ),
+                    # Thinking is drawn from the same allowance as the answer, so
+                    # unbounded it expands to fill whatever room it has and cuts
+                    # the reply mid-string -- the MAX_TOKENS below. Bounding it
+                    # here rather than lowering `maxOutputTokens` is the whole
+                    # point: one budget shared two ways starves the answer first,
+                    # while this took thinking from 7,853 tokens to 1,857 and let
+                    # the answer *grow* from 6,736 to 7,336 on the same prompt.
+                    #
+                    # Sent to every Gemini model, including the lite rungs that
+                    # do not think. They accept the field and ignore it -- checked
+                    # against 3.5-flash-lite and 3.1-flash-lite rather than
+                    # assumed, because a fix that broke two working routes to
+                    # repair a third would not be one.
+                    **(
+                        {"thinkingConfig": {"thinkingBudget": self._thinking_budget}}
+                        if self._thinking_budget is not None
+                        else {}
+                    ),
                 },
             },
         )
@@ -83,6 +102,11 @@ class GeminiProvider(HTTPProvider):
                 extra={
                     "model": self.model,
                     "max_output_tokens": request.max_output_tokens,
+                    # Beside the thinking it actually spent, because the two
+                    # together are the diagnosis: thinking far above the budget
+                    # on a model that honours it is a different problem from a
+                    # budget nobody set.
+                    "thinking_budget": self._thinking_budget,
                     "thoughts_tokens": (
                         usage.get("thoughtsTokenCount") if isinstance(usage, dict) else None
                     ),

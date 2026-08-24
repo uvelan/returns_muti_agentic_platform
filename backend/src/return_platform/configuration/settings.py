@@ -265,6 +265,27 @@ class Settings(BaseSettings):
     google_api_key: SecretStr | None = None
     google_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
     google_model: str | None = None
+    #: How many tokens Gemini may spend thinking before it answers.
+    #:
+    #: Gemini 2.5 and later reason before replying, and the reasoning is drawn
+    #: from the same output allowance as the answer. Left unbounded it expands to
+    #: fill whatever room it is given -- measured on one prompt: 7,853 thinking
+    #: tokens with no ceiling declared, and 20,548 once a 65,536 ceiling was --
+    #: so on a demanding prompt it consumes the allowance and the reply is cut
+    #: mid-string. The gateway sees `finishReason: MAX_TOKENS` and reports
+    #: CONTEXT_LIMIT_EXCEEDED, which is what every ORDER_AGENT_REASONING failure
+    #: in this deployment has been.
+    #:
+    #: Bounding it is not the same as capping output, and capping output is the
+    #: wrong lever: `maximumOutputTokens` is one budget shared by thinking and
+    #: answer, so lowering it starves the answer first. `thinkingBudget` is the
+    #: separate control, and on the same prompt it took thinking to 1,857 while
+    #: the answer *grew* from 6,736 to 7,336 tokens.
+    #:
+    #: Advisory rather than absolute -- the model treats it as guidance and may
+    #: exceed it -- so this bounds the runaway rather than pinning a number.
+    #: `None` sends nothing and restores the old unbounded behaviour.
+    google_thinking_budget: int | None = Field(default=2048, ge=0, le=24576)
 
     nvidia_api_keys: tuple[SecretStr, ...] = ()
     nvidia_lightweight_models: tuple[str, ...] = ()

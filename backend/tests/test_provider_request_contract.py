@@ -237,6 +237,95 @@ async def test_gemini_sends_both() -> None:
 
 
 # --------------------------------------------------------------------------
+# The thinking budget, which is a third output-contract field on Gemini alone
+# --------------------------------------------------------------------------
+#
+# Gemini 2.5 and later reason before replying and draw that reasoning from the
+# same allowance as the answer. Unbounded it expands to fill whatever room it is
+# given -- 7,853 thinking tokens with no ceiling declared, 20,548 once a 65,536
+# ceiling was -- so on a demanding prompt it consumes the allowance and the reply
+# is cut mid-string. Every ORDER_AGENT_REASONING failure in this deployment has
+# been that: `finishReason: MAX_TOKENS`, surfaced as CONTEXT_LIMIT_EXCEEDED.
+#
+# Lowering `maxOutputTokens` is the wrong lever and makes it worse, because the
+# one budget is shared and the answer is starved first. These pin the separate
+# control instead.
+
+
+def _gemini(**overrides: Any) -> GeminiProvider:
+    return GeminiProvider(
+        _settings(google_api_key=SecretStr("test-key"), google_model="gemini-test", **overrides)
+    )
+
+
+def _gemini_post() -> _CapturedPost:
+    return _CapturedPost(
+        {
+            "candidates": [{"content": {"parts": [{"text": '{"action_type":"RESPOND"}'}]}}],
+            "usageMetadata": {},
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_gemini_bounds_thinking_so_the_answer_keeps_its_room() -> None:
+    provider = _gemini()
+    post = _gemini_post()
+    provider._post = post  # type: ignore[method-assign]
+
+    await provider.generate(REQUEST)
+
+    thinking = post.payload["generationConfig"]["thinkingConfig"]
+    assert thinking["thinkingBudget"] == 2048, (
+        "an unbounded thinking budget is what truncates the order agent's JSON; "
+        "the default must reach the wire"
+    )
+
+
+@pytest.mark.asyncio
+async def test_gemini_thinking_budget_is_configurable() -> None:
+    provider = _gemini(google_thinking_budget=512)
+    post = _gemini_post()
+    provider._post = post  # type: ignore[method-assign]
+
+    await provider.generate(REQUEST)
+
+    assert post.payload["generationConfig"]["thinkingConfig"]["thinkingBudget"] == 512
+
+
+@pytest.mark.asyncio
+async def test_gemini_omits_the_field_entirely_when_unset() -> None:
+    # `None` is the escape hatch back to the old behaviour. It has to send *no*
+    # key rather than a null, because Gemini rejects a null `thinkingConfig` and
+    # the failure would look like a bad request rather than a setting.
+    provider = _gemini(google_thinking_budget=None)
+    post = _gemini_post()
+    provider._post = post  # type: ignore[method-assign]
+
+    await provider.generate(REQUEST)
+
+    assert "thinkingConfig" not in post.payload["generationConfig"]
+
+
+@pytest.mark.asyncio
+async def test_gemini_does_not_lower_the_output_budget_to_bound_thinking() -> None:
+    # The regression this guards is the tempting wrong fix: capping
+    # `maxOutputTokens` to stop the overrun. Thinking and answer share that
+    # budget, so it starves the answer first -- measured, the same prompt kept
+    # `finishReason: STOP` uncapped and hit MAX_TOKENS at 8192.
+    provider = _gemini()
+    post = _gemini_post()
+    provider._post = post  # type: ignore[method-assign]
+
+    await provider.generate(REQUEST)
+
+    assert post.payload["generationConfig"]["maxOutputTokens"] == 4096, (
+        "the task's declared output budget must pass through untouched; "
+        "bounding thinking is a separate field"
+    )
+
+
+# --------------------------------------------------------------------------
 # PERF-03: the cache accounting the benefit is measured by
 # --------------------------------------------------------------------------
 #

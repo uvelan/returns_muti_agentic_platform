@@ -98,29 +98,29 @@ else
     fail "No backend Python environment (no backend/.venv and no poetry). Run scripts/bootstrap_host.sh first."
 fi
 
-log "1/5  Stopping host processes"
+log "1/6  Stopping host processes"
 scripts/linux/17_stop_host_processes.sh || true
 
-log "2/5  Resetting and starting infrastructure"
+log "2/6  Resetting and starting infrastructure"
 reset_args=(--no-bootstrap)
 [[ "${KEEP_IMAGES}" == true ]] && reset_args+=(--no-pull)
 scripts/linux/reset_docker_environment.sh "${reset_args[@]}"
 
 
-log "3/5  Loading the reference dataset (drops every database first)"
+log "3/6  Loading the reference dataset (drops every database first)"
 dataset_args=()
 [[ -n "${DATASET}" ]] && dataset_args+=("${DATASET}")
 "${PYTHON[@]}" "${REPO_ROOT}/backend/scripts/load_reference_dataset.py" "${dataset_args[@]}"
 
 if [[ "${START_HOST}" == true ]]; then
-    log "4/5  Starting backend, workers and frontend"
+    log "4/6  Starting backend, workers and frontend"
     # `--no-supervise`, and without it this whole script was broken. The
     # supervising form never returns, so step 6 -- the graph build, the one step
     # this script exists to add -- was unreachable, and the Ctrl-C that ended
     # the apparent hang ran the supervisor's EXIT trap and stopped everything.
     scripts/run_all_host.sh --no-supervise
 else
-    log "4/5  Skipping host start (--no-host)"
+    log "4/6  Skipping host start (--no-host)"
 fi
 
 # Last, and only after the load: the graph is built from the source collections
@@ -131,12 +131,24 @@ fi
 # and MongoDB compares only within BSON type brackets, so a timestamp stored as
 # a STRING matches no date bound at all. Zero records scanned, run status
 # COMPLETED, and a graph holding nothing gets activated.
-log "5/5  Building the knowledge graph (cap ${GRAPH_RECORDS} records per asset)"
+log "5/6  Building the knowledge graph (cap ${GRAPH_RECORDS} records per asset)"
 # The env var raises the second ceiling. `maxRecordsPerAsset` alone cannot get
 # past `PLATFORM_GRAPH_SYNC_MAX_RECORDS`, so passing 30000 without this would
 # still clamp to 10,000.
 PLATFORM_GRAPH_SYNC_MAX_RECORDS="${PLATFORM_GRAPH_SYNC_MAX_RECORDS:-${GRAPH_RECORDS}}" \
     "${PYTHON[@]}" "${REPO_ROOT}/backend/scripts/build_knowledge_graph.py" "${GRAPH_RECORDS}"
+
+
+# Built is not the same as usable, and the difference is invisible in a build
+# log: a generation can report COMPLETED with order lines that reach no product,
+# or sit behind a search index that cannot see it. An empty search is what the
+# discovery agent has been observed answering with invented accounts, so this
+# fails where the data was produced rather than in front of an associate.
+#
+# `set -Eeuo pipefail` at the top of this script is what makes a non-zero exit
+# here stop the run.
+log "6/6  Verifying the graph can answer a discovery turn"
+"${PYTHON[@]}" "${REPO_ROOT}/backend/scripts/verify_graph_ready.py"
 
 if [[ "${START_HOST}" == true ]]; then
     # Verify rather than assume. Running processes are not a working platform:
