@@ -162,6 +162,7 @@ from return_platform.dynamic_knowledge.integration.runtime_factory import (
 from return_platform.dynamic_knowledge.order_agent.conversation_repository import (
     AtomicConversationRepository,
 )
+from return_platform.dynamic_knowledge.release_seed import seed_release_from_file
 from return_platform.dynamic_knowledge.release_store import SchemaReleaseStore
 from return_platform.dynamic_knowledge.source_binding_store import SourceBindingStore
 from return_platform.graph_analyzer.api import router as graph_analyzer_router
@@ -876,6 +877,30 @@ async def lifespan(
                         else SourceBindingStore(resources.mongo, settings.mongo_database)
                     ),
                 )
+            if resources.mongo is not None:
+                # The schema file becomes a published release, so that "what
+                # schema is running" has one answer and the console can show it.
+                # Nothing happens if a release is already active: reverting an
+                # operator's activation on every restart would be a worse failure
+                # than the invisibility this fixes.
+                try:
+                    seed_outcome = await seed_release_from_file(
+                        settings.dynamic_knowledge_schema_path,
+                        SchemaReleaseStore(resources.mongo, settings.mongo_database),
+                    )
+                    logger.info(
+                        "schema_release_seed",
+                        extra={
+                            "status": seed_outcome.status,
+                            "configuration_release_id": seed_outcome.configuration_release_id,
+                            "detail": seed_outcome.detail,
+                        },
+                    )
+                except Exception:  # noqa: BLE001 - the file still resolves
+                    # `resolve_active_schema` falls back to the file, which is the
+                    # schema that was about to be seeded. Degraded here means "the
+                    # store does not name it", not "the platform has none".
+                    logger.exception("schema_release_seed_failed")
             # Reasoning needs no dependency of its own beyond the shared
             # route pool, but an empty pool means no provider credential is
             # configured, and binding the port then would advertise a
