@@ -613,7 +613,7 @@ function TrackingSection({
                 trackingType: event.target.value as TrackingType,
               }));
             }}
-            className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface px-3 py-2 text-sm text-on-surface"
+            className="mt-1.5 w-full rounded-lg border border-outline-control bg-surface px-3 py-2 text-sm text-on-surface"
           >
             {TRACKING_TYPES.map((option) => (
               <option key={option} value={option}>
@@ -645,7 +645,7 @@ function TrackingSection({
               setForm((current) => ({ ...current, shipmentDetails: event.target.value }));
             }}
             rows={2}
-            className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface px-3 py-2 text-sm text-on-surface"
+            className="mt-1.5 w-full rounded-lg border border-outline-control bg-surface px-3 py-2 text-sm text-on-surface"
           />
         </label>
         <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-3">
@@ -766,7 +766,7 @@ function CreateForm({
           }}
           rows={3}
           placeholder='{"sessionId":"…","orderReference":"…","items":[…],"supportDraft":"…"}'
-          className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface px-3 py-2 font-mono text-xs text-on-surface"
+          className="mt-1.5 w-full rounded-lg border border-outline-control bg-surface px-3 py-2 font-mono text-xs text-on-surface"
         />
       </label>
       {pasteError !== null ? (
@@ -830,7 +830,7 @@ function CreateForm({
             onDraft({ ...draft, supportDraft: event.target.value });
           }}
           rows={3}
-          className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface px-3 py-2 text-sm text-on-surface"
+          className="mt-1.5 w-full rounded-lg border border-outline-control bg-surface px-3 py-2 text-sm text-on-surface"
         />
       </label>
 
@@ -940,7 +940,7 @@ function Field({
         onChange={(event) => {
           onChange(event.target.value);
         }}
-        className="mt-1.5 w-full rounded-lg border border-outline-variant bg-surface px-3 py-2 text-sm text-on-surface"
+        className="mt-1.5 w-full rounded-lg border border-outline-control bg-surface px-3 py-2 text-sm text-on-surface"
       />
     </label>
   );

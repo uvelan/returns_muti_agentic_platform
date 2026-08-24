@@ -27,6 +27,7 @@ import { RailSlotProvider } from "./railSlot";
 import { PlatformLanding } from "./PlatformLanding";
 import { useRailCollapsed } from "./useRailCollapsed";
 import { useDomainSection } from "./useDomainSection";
+import { SIGN_IN_TITLE, useDocumentTitle, useRouteDocumentTitle } from "./useDocumentTitle";
 
 
 /**
@@ -130,6 +131,10 @@ function NoDomainsAvailable() {
 }
 
 function SignInRequired() {
+  // Rendered above `Frame`, so the route title never reaches it. Someone who
+  // lands here with several tabs open should be able to tell which one is
+  // asking them to sign in.
+  useDocumentTitle(SIGN_IN_TITLE);
   return (
     <section className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-center">
       <h1 className="text-2xl font-semibold text-on-surface">Sign in required</h1>
@@ -455,6 +460,9 @@ function SkipToContent() {
 function Frame({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const domain = domainForPath(location);
+  // Every route passes through here, including the launcher and the forbidden
+  // screen, so this is the one place a title cannot be forgotten.
+  useRouteDocumentTitle(domain);
   return (
     <>
       <SkipToContent />

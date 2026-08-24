@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useId, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 
 import {
@@ -340,7 +340,7 @@ function ReplayControls({ traceId }: { traceId: string }) {
       </label>
       <select
         id="replay-provider"
-        className="rounded border border-slate-300 p-1 text-sm"
+        className="rounded border border-outline-control p-1 text-sm"
         value={provider}
         onChange={(event) => { setProvider(event.target.value); }}
       >
@@ -855,6 +855,7 @@ function ManualResponder({
   // the model's reply, and the moment you type your text wins.
   const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const errorId = useId();
   const [submitting, setSubmitting] = useState(false);
 
   const request = useQuery({
@@ -912,7 +913,12 @@ function ManualResponder({
       <label className="flex flex-col gap-1 text-sm">
         <span className="font-medium">{isResponse ? "The response" : "Your answer"}</span>
         <textarea
-          className="min-h-24 rounded border border-slate-300 p-2 text-sm"
+          className="min-h-24 rounded border border-outline-control p-2 text-sm"
+          aria-invalid={error !== null}
+          // The submit refusal below described this answer and was attached to
+          // nothing, so it was read out as a loose sentence somewhere on the
+          // page rather than as this field's problem.
+          aria-describedby={error === null ? undefined : errorId}
           value={text}
           onChange={(event) => {
             setText(event.target.value);
@@ -925,7 +931,14 @@ function ManualResponder({
         />
       </label>
 
-      {error ? <p className="text-sm text-red-700">{error}</p> : null}
+      {/* A live region here, unlike the per-keystroke shape checks elsewhere:
+          this is set by a submit that has already come back refused, so it
+          announces once and interrupts nothing. */}
+      {error ? (
+        <p id={errorId} role="alert" className="text-sm text-red-700">
+          {error}
+        </p>
+      ) : null}
 
       <div className="flex items-center gap-2">
         <button

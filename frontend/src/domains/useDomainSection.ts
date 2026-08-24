@@ -16,6 +16,17 @@ import type { DomainDefinition } from "./registry";
  */
 export function useDomainSection(domain: DomainDefinition): string {
   const [location] = useLocation();
+  return sectionLabelFor(domain, location);
+}
+
+/**
+ * The same resolution, without the hook.
+ *
+ * The document title needs this for a domain that may be `null`, and a hook
+ * cannot be called conditionally. Extracted rather than copied so the tab, the
+ * breadcrumb and the sidebar can never name three different sections.
+ */
+export function sectionLabelFor(domain: DomainDefinition, location: string): string {
   if (domain.sections.length === 0) return "";
   const fallback = domain.sections[0];
 

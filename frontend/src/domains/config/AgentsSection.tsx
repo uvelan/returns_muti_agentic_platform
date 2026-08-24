@@ -375,7 +375,7 @@ function DocumentEditor({
       onChange={(event) => { updateText(event.target.value); }}
       readOnly={!canWrite}
       spellCheck={false}
-      className="h-[34rem] min-h-[28rem] w-full resize-none rounded-xl border border-outline-variant bg-rail-surface p-4 font-mono text-xs leading-5 text-rail-on-surface outline-none transition focus:border-inverse-primary focus:ring-2 focus:ring-inverse-primary/20"
+      className="h-[34rem] min-h-[28rem] w-full resize-none rounded-xl border border-outline-control bg-rail-surface p-4 font-mono text-xs leading-5 text-rail-on-surface outline-none transition focus:border-inverse-primary focus:ring-2 focus:ring-inverse-primary/20"
     />
   );
 

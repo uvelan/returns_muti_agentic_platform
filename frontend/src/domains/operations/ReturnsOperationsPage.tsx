@@ -307,7 +307,7 @@ function ActionPanel({ sessionId }: { sessionId: string }) {
             onChange={(changeEvent) => {
               setEventType(changeEvent.target.value as ReturnEventType);
             }}
-            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+            className="rounded-md border border-outline-control px-2 py-1.5 text-sm"
           >
             {RETURN_EVENT_TYPES.map((type) => (
               <option key={type} value={type}>
@@ -326,7 +326,7 @@ function ActionPanel({ sessionId }: { sessionId: string }) {
               setEvidence(changeEvent.target.value);
             }}
             placeholder="scan id, document reference, ticket"
-            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+            className="rounded-md border border-outline-control px-2 py-1.5 text-sm"
           />
         </label>
 

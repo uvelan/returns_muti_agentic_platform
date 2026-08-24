@@ -372,7 +372,7 @@ function PromotionControls({ release }: { release: ConfigurationRelease }) {
             onChange={(event) => {
               setHeadRevision(event.target.value);
             }}
-            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+            className="rounded-md border border-outline-control px-2 py-1.5 text-sm"
           />
           <span className="text-xs text-slate-500">
             Required to publish. An optimistic check on the configuration head, so two

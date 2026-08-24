@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   Camera,
   CheckSquare,
@@ -309,6 +309,7 @@ export function ItemSelectionMode({
   // still standing there to fix, and letting it through produces a Support
   // request addressed to nothing.
   const emailRefused = contactShown.email !== "" && !EMAIL_SHAPE.test(contactShown.email);
+  const emailErrorId = useId();
 
   const submittable =
     onSubmitSelection !== undefined &&
@@ -409,7 +410,7 @@ export function ItemSelectionMode({
               onChange={(event) => {
                 setContactDraft({ ...contactShown, name: event.target.value });
               }}
-              className="rounded-lg border border-outline-variant/60 bg-surface px-2 py-1 text-xs font-medium text-on-surface"
+              className="rounded-lg border border-outline-control bg-surface px-2 py-1 text-xs font-medium text-on-surface"
             />
           </label>
 
@@ -421,14 +422,20 @@ export function ItemSelectionMode({
               autoComplete="off"
               maxLength={320}
               aria-invalid={emailRefused}
+              // The refusal was on screen and not attached to anything, so a
+              // screen reader said "invalid" and never said why. Described-by
+              // rather than a live region on purpose: this recomputes on every
+              // keystroke, and an alert would interrupt on each one while
+              // someone is still halfway through typing the address.
+              aria-describedby={emailRefused ? emailErrorId : undefined}
               value={contactShown.email}
               onChange={(event) => {
                 setContactDraft({ ...contactShown, email: event.target.value });
               }}
-              className="rounded-lg border border-outline-variant/60 bg-surface px-2 py-1 text-xs font-medium text-on-surface aria-[invalid=true]:border-error"
+              className="rounded-lg border border-outline-control bg-surface px-2 py-1 text-xs font-medium text-on-surface aria-[invalid=true]:border-error"
             />
             {emailRefused ? (
-              <span className="text-[10px] text-error">
+              <span id={emailErrorId} className="text-[10px] text-error">
                 Not an address a label could be sent to. Correct it, or leave it empty.
               </span>
             ) : null}
@@ -445,7 +452,7 @@ export function ItemSelectionMode({
               onChange={(event) => {
                 setContactDraft({ ...contactShown, phone: event.target.value });
               }}
-              className="rounded-lg border border-outline-variant/60 bg-surface px-2 py-1 text-xs font-medium text-on-surface"
+              className="rounded-lg border border-outline-control bg-surface px-2 py-1 text-xs font-medium text-on-surface"
             />
             {/* No format is imposed. Branch numbers in the source are written
                 half a dozen ways and a pattern invented here would refuse the
@@ -581,7 +588,7 @@ export function ItemSelectionMode({
                         onChange={(event) => {
                           write(line.lineReference, { ...current, quantity: event.target.value });
                         }}
-                        className="rounded-lg border border-outline-variant/60 bg-surface px-2 py-1 text-xs font-bold text-on-surface"
+                        className="rounded-lg border border-outline-control bg-surface px-2 py-1 text-xs font-bold text-on-surface"
                       />
                       {quantityRefused ? (
                         <span className="text-[10px] text-error">
@@ -600,7 +607,7 @@ export function ItemSelectionMode({
                         onChange={(event) => {
                           write(line.lineReference, { ...current, condition: event.target.value });
                         }}
-                        className="rounded-lg border border-outline-variant/60 bg-surface px-2 py-1 text-xs font-medium text-on-surface disabled:opacity-40"
+                        className="rounded-lg border border-outline-control bg-surface px-2 py-1 text-xs font-medium text-on-surface disabled:opacity-40"
                       >
                         <option value="">Not stated</option>
                         {conditions.map((condition) => (
@@ -627,7 +634,7 @@ export function ItemSelectionMode({
                       onChange={(event) => {
                         write(line.lineReference, { ...current, reason: event.target.value });
                       }}
-                      className="rounded-lg border border-outline-variant/60 bg-surface px-2 py-1 text-xs font-medium text-on-surface disabled:opacity-40"
+                      className="rounded-lg border border-outline-control bg-surface px-2 py-1 text-xs font-medium text-on-surface disabled:opacity-40"
                     >
                       <option value="">Not stated</option>
                       {reasons.map((reason) => (
