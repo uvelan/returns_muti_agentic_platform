@@ -422,6 +422,28 @@ graph**, and then verifies the result rather than assuming it.
 ./scripts/linux/reset_all.sh         # everything else, in the one order that works
 ```
 
+On Windows, the same two steps and the same ordering:
+
+```powershell
+.\scripts\bootstrap_host.ps1
+.\scripts\reset_all.ps1
+```
+
+`reset_all.ps1` prompts before it drops anything; `-Yes` skips the prompt and
+`-NoHost`, `-Dataset` and `-GraphRecords` mirror the Linux flags. It also takes
+**`-KeepVolumes`**, which restarts every process against the data already there:
+
+```powershell
+.\scripts\reset_all.ps1 -KeepVolumes   # restart only -- nothing is dropped
+```
+
+That is the one to reach for after editing `.env`. Every host process reads its
+settings once, when it starts, so edited credentials reach the platform by
+restarting the processes and by nothing else — activating a configuration
+release rebuilds the AI route pool, but from the settings its process started
+with. Confirm with `backend/scripts/validate_ai_gateway_live.py`, which reports
+per route without printing key material.
+
 On a host you do not administer, run the environment report first. Both commands
 above assume a toolchain they are allowed to install and directories they are
 allowed to write; where that does not hold they fail one restriction at a time,

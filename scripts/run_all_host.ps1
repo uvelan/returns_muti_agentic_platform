@@ -1,3 +1,21 @@
+<#
+.SYNOPSIS
+  Start the backend, the six workers and the frontend on this host.
+
+.PARAMETER NoSupervise
+  Start the processes and return, leaving them running.
+
+  The parity this restores is not cosmetic. `run_all_host.sh` has carried
+  `--no-supervise` since `reset_all.sh` needed it: the supervising form never
+  returns, so any script that starts the host and then has more to do -- a data
+  load, a graph build -- hung there forever, and the Ctrl-C that ended the
+  apparent hang ran the cleanup and stopped everything it had just started.
+  Without this switch the same script cannot be written for Windows at all.
+#>
+param(
+  [switch]$NoSupervise
+)
+
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 
@@ -70,6 +88,11 @@ $started += Start-Child -Name "frontend" -Arguments @(
 
 Write-Host "All services started:" -ForegroundColor Green
 foreach ($child in $started) { Write-Host ("  {0,-24} pid {1}" -f $child.Name, $child.Id) }
+
+if ($NoSupervise) {
+  Write-Host "Leaving them running (-NoSupervise)." -ForegroundColor Green
+  return
+}
 
 try {
   while ($true) {
