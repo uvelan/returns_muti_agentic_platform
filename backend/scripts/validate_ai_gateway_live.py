@@ -33,7 +33,39 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 #: Per-route ceiling. A provider that hangs costs one wait, not the run.
-_TIMEOUT_SECONDS = 60
+#
+#: 240s, not 60. NVIDIA's nemotron models answer the platform's real prompts in
+#: 88-226 seconds, so a 60-second ceiling reported a working route as
+#: `TIMEOUT` -- a false failure on the one tool used to decide whether a
+#: credential or model change took. The platform itself allows 280s per attempt
+#: (`PLATFORM_AI_TIMEOUT_SECONDS`), so this sits just under what production
+#: tolerates rather than under what a fast model happens to need.
+_TIMEOUT_SECONDS = 240
+
+#: One retry, for transient capacity only.
+#
+#: `gemini-3.7-flash` returns 503 "experiencing high demand" intermittently --
+#: six of six succeeded on a simple prompt while the same model 503'd twice in a
+#: row on a heavy one. A single attempt therefore reports a healthy model as
+#: broken, which is worse than slow. Retried once and no further: this reports
+#: what the pool can do, and a route that needs three tries is a finding rather
+#: than something to paper over.
+#
+#: Matched on `ProviderError.code`, not on the message. Every provider failure
+#: normalises to a code and carries the same prose -- "AI provider request
+#: failed" -- so this script spent its first version reporting
+#: `ProviderError: AI provider request failed` for a 503, a 500 and a rate
+#: limit alike, and matching on that text retried none of them. The code is the
+#: thing the router itself acts on.
+_RETRY_ONCE_ON = frozenset({"PROVIDER_UNAVAILABLE", "RATE_LIMITED", "TIMEOUT"})
+
+
+def _describe(exc: BaseException) -> str:
+    """The normalized code where there is one, so a failure names its cause."""
+    code = getattr(exc, "code", None)
+    if isinstance(code, str) and code:
+        return code
+    return f"{type(exc).__name__}: {str(exc)[:160]}"
 
 
 async def validate_ai_gateway() -> int:
@@ -61,9 +93,18 @@ async def validate_ai_gateway() -> int:
             "configured": route.provider.configured,
         }
         try:
-            response = await asyncio.wait_for(
-                route.provider.generate(request), timeout=_TIMEOUT_SECONDS
-            )
+            try:
+                response = await asyncio.wait_for(
+                    route.provider.generate(request), timeout=_TIMEOUT_SECONDS
+                )
+            except Exception as first:  # noqa: BLE001 - retried below, or re-raised
+                if getattr(first, "code", None) not in _RETRY_ONCE_ON:
+                    raise
+                entry["retried"] = True
+                await asyncio.sleep(5)
+                response = await asyncio.wait_for(
+                    route.provider.generate(request), timeout=_TIMEOUT_SECONDS
+                )
             text = str(getattr(response, "text", "") or "")
             entry["outcome"] = "OK"
             # The length, not the body: a model reply is customer-adjacent even
@@ -73,7 +114,7 @@ async def validate_ai_gateway() -> int:
         except TimeoutError:
             entry["outcome"] = f"TIMEOUT after {_TIMEOUT_SECONDS}s"
         except Exception as exc:  # noqa: BLE001 - the failure is the finding
-            entry["outcome"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+            entry["outcome"] = _describe(exc)
         results.append(entry)
 
     working = [r for r in results if r["outcome"] == "OK"]
