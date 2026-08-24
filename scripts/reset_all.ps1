@@ -159,6 +159,33 @@ try {
     Start-Sleep -Seconds 5
   }
   Note "all services healthy"
+
+  # The other half, and the half that matters. A healthcheck runs *inside* the
+  # container, so a service whose host bind failed still reports healthy and
+  # `docker compose ps` shows a green stack nothing on the host can reach.
+  # That is not hypothetical: WinNAT reserves blocks of ports, and both Temporal
+  # (7233) and SQL Server (14330) have silently failed to publish because of it.
+  # Comparing what compose declares against what Docker actually published is
+  # the entire diagnosis, so it happens here rather than four steps later as
+  # "SQL Server did not become reachable".
+  Step "      Checking every declared port is actually published"
+  $missing = @()
+  foreach ($name in (docker compose ps --format "{{.Name}}" 2>$null)) {
+    if (-not $name) { continue }
+    $declared = docker inspect --format '{{range $p, $c := .HostConfig.PortBindings}}{{$p}} {{end}}' $name 2>$null
+    if (-not $declared) { continue }
+    $published = docker port $name 2>$null
+    if (-not $published) { $missing += $name }
+  }
+  if ($missing.Count -gt 0) {
+    Write-Host "[reset] ERROR: these containers declare ports and published none:" -ForegroundColor Red
+    foreach ($m in $missing) { Write-Host "          $m" -ForegroundColor Red }
+    Write-Host "        On Windows this is almost always a reserved port range. Check:" -ForegroundColor Yellow
+    Write-Host "          netsh interface ipv4 show excludedportrange protocol=tcp" -ForegroundColor Yellow
+    Write-Host "        then move the host side of the mapping in compose.yaml and .env." -ForegroundColor Yellow
+    exit 1
+  }
+  Note "every declared port is published"
 } finally {
   Pop-Location
 }

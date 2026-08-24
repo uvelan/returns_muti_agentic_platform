@@ -164,7 +164,22 @@ services:
       MSSQL_MEMORY_LIMIT_MB: 3072
       MSSQL_TRACE_FLAGS: "3459"
     ports:
-      - "127.0.0.1:14330:1433"
+      # 11433, not 14330. On Windows, WinNAT reserves blocks of ephemeral ports
+      # and 14330 falls inside 14267-14366 on this host, so Docker's host bind
+      # fails -- silently. The container still reports **healthy**, because its
+      # healthcheck runs inside the container and never touches the host
+      # interface, and `docker compose ps` shows a green stack whose SQL Server
+      # nothing on the host can reach. Every host process then dies on
+      # "SQL Server did not become reachable" and the stack looks broken for a
+      # reason nothing in it reports.
+      #
+      # This is the second time: Temporal moved off 7233 for the identical
+      # reason (7147-7246). Reserved blocks differ per machine and change across
+      # reboots, so if a datastore is unreachable while its container is healthy,
+      # check `netsh interface ipv4 show excludedportrange protocol=tcp` before
+      # anything else, and compare `docker port <container>` against this file --
+      # an empty result there is the whole diagnosis.
+      - "127.0.0.1:11433:1433"
     volumes:
       - sqlserver_data:/var/opt/mssql
     healthcheck:
