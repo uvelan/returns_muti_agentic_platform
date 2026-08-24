@@ -17,7 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 from return_platform.ai.providers.anthropic import AnthropicProvider
 from return_platform.ai.providers.contracts import ProviderError, ProviderRequest
@@ -305,6 +305,26 @@ async def test_gemini_omits_the_field_entirely_when_unset() -> None:
     await provider.generate(REQUEST)
 
     assert "thinkingConfig" not in post.payload["generationConfig"]
+
+
+def test_an_empty_thinking_budget_does_not_kill_every_process() -> None:
+    """`PLATFORM_GOOGLE_THINKING_BUDGET=` with nothing after it must not raise.
+
+    An empty variable is how an operator turns a setting off in a `.env`, and it
+    is what the comment beside the field promises restores the unbounded
+    behaviour. Reaching an `int | None` field as `""` made pydantic refuse, and
+    `Settings()` is constructed at *import*: the backend never binds its port and
+    every worker dies before logging why. A shipped default is no protection --
+    the failure needs the variable to be present and blank, which is exactly what
+    following the documentation produced.
+    """
+    assert Settings(environment="test", google_thinking_budget="").google_thinking_budget is None
+    assert Settings(environment="test", google_thinking_budget="   ").google_thinking_budget is None
+    assert Settings(environment="test").google_thinking_budget == 2048
+    assert Settings(environment="test", google_thinking_budget=512).google_thinking_budget == 512
+
+    with pytest.raises(ValidationError):
+        Settings(environment="test", google_thinking_budget=99_999)
 
 
 @pytest.mark.asyncio

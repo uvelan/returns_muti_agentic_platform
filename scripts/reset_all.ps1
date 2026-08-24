@@ -186,6 +186,14 @@ try {
     exit 1
   }
   Note "every declared port is published"
+
+  # Published is not the same as reachable-by-this-config. A container can
+  # publish 17233 while `PLATFORM_TEMPORAL_TARGET` dials 7233, and every process
+  # then dies on "connection refused" against a container that is healthy and
+  # listening. That has now happened twice, on two datastores.
+  Step "      Checking published ports match what the application dials"
+  & $python (Join-Path $Root "scripts\preflight_ports.py")
+  if ($LASTEXITCODE -ne 0) { Die "Port configuration is inconsistent -- see above." }
 } finally {
   Pop-Location
 }

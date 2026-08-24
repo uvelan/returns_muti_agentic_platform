@@ -107,6 +107,13 @@ reset_args=(--no-bootstrap)
 scripts/linux/reset_docker_environment.sh "${reset_args[@]}"
 
 
+# Published is not the same as reachable-by-this-config. A container can
+# publish 17233 while `PLATFORM_TEMPORAL_TARGET` dials 7233, and every process
+# then dies on "connection refused" against a container that is healthy and
+# listening. That has now happened twice, on two datastores.
+log "2b/6 Checking published ports match what the application dials"
+"${PYTHON[@]}" "${REPO_ROOT}/scripts/preflight_ports.py"
+
 log "3/6  Loading the reference dataset (drops every database first)"
 dataset_args=()
 [[ -n "${DATASET}" ]] && dataset_args+=("${DATASET}")

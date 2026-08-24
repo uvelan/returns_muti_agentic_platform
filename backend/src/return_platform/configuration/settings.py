@@ -473,6 +473,26 @@ class Settings(BaseSettings):
             raise ValueError("Vault reference lists must not contain duplicates.")
         return tuple(values)
 
+    @field_validator("google_thinking_budget", mode="before")
+    @classmethod
+    def parse_optional_thinking_budget(cls, value: object) -> object:
+        """An unset variable and an empty one mean the same thing here.
+
+        `PLATFORM_GOOGLE_THINKING_BUDGET=` with nothing after it is how an
+        operator turns a setting off in a `.env`, and how a generated file
+        represents "no value". Without this it reaches an `int | None` field as
+        the string `""`, pydantic refuses to parse it, and `Settings()` raises --
+        at *import*, in every process, so the backend never binds its port and
+        each worker dies before it logs anything about why. The documentation
+        beside this field promised that empty restores the unbounded behaviour;
+        this is what makes that true rather than fatal.
+        """
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @field_validator("ai_allowed_endpoint_hosts", mode="before")
     @classmethod
     def parse_allowed_ai_hosts(cls, value: object) -> object:
