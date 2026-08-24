@@ -82,7 +82,67 @@ export type SchemaReleaseList = {
 
 const EMPTY: SchemaReleaseList = { releases: [], activeReleaseId: null };
 
+
+/**
+ * The running schema, as a document an operator can edit.
+ *
+ * Changing the schema used to mean editing a YAML file on the server and
+ * restarting, which is not something an operator can do and leaves no record of
+ * who changed what.
+ */
+export type SchemaDocument = {
+  readonly configurationReleaseId: string;
+  readonly configurationChecksum: string;
+  readonly schemaVersion: string;
+  readonly document: Record<string, unknown>;
+  /** True before anything has been published: the file is answering by fallback. */
+  readonly fromFile: boolean;
+};
+
+export type SchemaDocumentEdit = {
+  readonly document: Record<string, unknown>;
+  /**
+   * The checksum the edit started from. The server refuses the write if that is
+   * no longer the active release, so two operators editing at once cannot have
+   * the second silently discard the first.
+   */
+  readonly baseChecksum: string;
+  readonly activate?: boolean;
+};
+
+export type SchemaEditConflict = {
+  readonly code: "SCHEMA_CHANGED_UNDER_EDIT" | "SCHEMA_UNCHANGED" | "SCHEMA_INVALID";
+  readonly message: string;
+};
+
 export const schemaReleasesApi = {
+  /** The schema the runtime is running, as an editable document. */
+  async activeDocument(): Promise<SchemaDocument> {
+    const response = await apiClient<SchemaDocument>("/api/schema-releases/active/document");
+    if (!response.data) {
+      throw new Error("No active schema document was returned.");
+    }
+    return response.data;
+  },
+
+  /**
+   * Publish an edited schema and, unless told otherwise, point the runtime at it.
+   *
+   * The checksum is recomputed server-side, so the document sent here does not
+   * need a correct `configuration_checksum` -- and one it carries is discarded
+   * rather than trusted.
+   */
+  async putActiveDocument(edit: SchemaDocumentEdit): Promise<SchemaDocument> {
+    const response = await apiClient<SchemaDocument>("/api/schema-releases/active/document", {
+      method: "PUT",
+      body: JSON.stringify(edit),
+    });
+    if (!response.data) {
+      throw new Error("The edited schema was not returned.");
+    }
+    return response.data;
+  },
+
   async list(): Promise<SchemaReleaseList> {
     const response = await apiClient<SchemaReleaseList>("/api/schema-releases");
     return response.data ?? EMPTY;

@@ -22,5 +22,10 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "tests"]
+  // `tests` is Playwright, which runs in node and reads `process.env`. It was
+  // included here, where `types` is `vite/client` only, so the browser config
+  // typechecked node code and `npm run build` failed on `process`. Adding node
+  // types here instead would let browser sources reach node globals, which is
+  // the wrong half of the problem to fix.
+  "include": ["src"]
 }

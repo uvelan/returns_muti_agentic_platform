@@ -1,0 +1,30 @@
+{
+  // Playwright specs, which are the only sources here that are *both* node and
+  // browser: the spec body reads `process.env`, and the callbacks handed to
+  // `page.evaluate` run inside the page and touch `document` and `window`.
+  //
+  // They used to sit in `tsconfig.app.json`, whose `types` is `vite/client`
+  // only, so `npm run build` failed on `process` -- and the bundle-size gate
+  // behind it never ran. Giving the app project node types instead would let
+  // browser sources reach node globals, which fixes the error by widening the
+  // thing that should stay narrow.
+  "compilerOptions": {
+    "tsBuildInfoFile": "../.tmp/frontend-tsconfig.e2e.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "skipLibCheck": true,
+    "strict": true,
+
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["tests"]
+}

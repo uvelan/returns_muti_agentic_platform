@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getAnalysis, getAnalyzerBootstrap, getSchemas, getSyncRun } from "../../api/graphAnalyzer";
+import { schemaReleasesApi } from "../../api/schemaReleases";
 
 export const analyzerKeys = {
   all: ["graph-analyzer"] as const,
@@ -7,6 +8,7 @@ export const analyzerKeys = {
   schemas: () => [...analyzerKeys.all, "schemas"] as const,
   analysis: (id: string) => [...analyzerKeys.all, "analysis", id] as const,
   sync: (id: string) => [...analyzerKeys.all, "sync", id] as const,
+  runtimeSchema: () => [...analyzerKeys.all, "runtime-schema"] as const,
 };
 
 export function useAnalyzerBootstrap() {
@@ -32,6 +34,19 @@ export function useSyncRun(runId: string | null) {
     queryFn: ({ signal }) => getSyncRun(runId ?? "", signal),
     enabled: runId !== null,
     refetchInterval: (query) => ["PREPARING", "RUNNING"].includes(query.state.data?.status ?? "") ? 1_500 : false,
+  });
+}
+
+/**
+ * The schema the runtime is actually running, not the analyzer's proposal.
+ *
+ * A separate query from `useSchemas` because it answers a different question:
+ * that one is about the draft being designed, this one about what is live.
+ */
+export function useRuntimeSchema() {
+  return useQuery({
+    queryKey: analyzerKeys.runtimeSchema(),
+    queryFn: () => schemaReleasesApi.activeDocument(),
   });
 }
 
