@@ -44,7 +44,7 @@ from return_platform.dynamic_knowledge.order_agent.conversation_repository impor
     ConversationScope,
 )
 from return_platform.dynamic_knowledge.order_agent.errors import OrderAgentFailure
-from return_platform.dynamic_knowledge.order_agent.facts import FactCatalogue
+from return_platform.dynamic_knowledge.order_agent.facts import FactCatalogue, coerce_fact_status
 from return_platform.dynamic_knowledge.order_agent.graph import build_order_agent_graph
 from return_platform.dynamic_knowledge.order_agent.graph_nodes import (
     CaseStore,
@@ -283,7 +283,7 @@ def _committed_facts(final_state: dict[str, Any]) -> tuple[CapturedTurnFact, ...
             CapturedTurnFact(
                 name=name,
                 value=entry.get("value"),
-                status=str(entry.get("status", "USABLE")),
+                status=coerce_fact_status(entry.get("status")),
                 label=str(entry.get("label", "")),
                 acquisition=str(entry.get("acquisition", "STATED")),
             )

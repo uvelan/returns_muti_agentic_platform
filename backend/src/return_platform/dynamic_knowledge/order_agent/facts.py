@@ -41,12 +41,17 @@ actually stated, or what the confirmation itself establishes, becomes one.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Any
+
+logger = logging.getLogger(
+    "return_platform.dynamic_knowledge.order_agent.facts"
+)
 
 
 class FactStatus(StrEnum):
@@ -58,6 +63,37 @@ class FactStatus(StrEnum):
     AMBIGUOUS = "AMBIGUOUS"
     STALE = "STALE"
     CONFIRMATION_REQUIRED = "CONFIRMATION_REQUIRED"
+
+
+def coerce_fact_status(value: object) -> str:
+    """A model-supplied status, held to the enum that defines it.
+
+    `FactStatus` has six members and both ingestion points used to accept
+    whatever arrived: `status=str(entry.get("status", "USABLE"))`. A model that
+    answered with prose instead of a code got that prose stored verbatim, and the
+    copilot rendered it as the fact's unsettled-reason badge -- immediately after
+    the value, inside a `truncate`, so `TAYLOR` and `Completing observation...`
+    ran together on screen as `TAYLORCompleting ob...` and read like string
+    concatenation rather than a status nobody validated.
+
+    Unrecognised becomes `USABLE`, which is what an absent status already meant,
+    and is logged rather than swallowed: the value itself is still shown, and a
+    badge that says nothing is better than a badge that says a sentence. Case and
+    surrounding space are forgiven first, because `"usable"` is the same answer.
+    """
+    if isinstance(value, FactStatus):
+        return value.value
+    text = str(value).strip().upper() if value is not None else ""
+    if not text:
+        return FactStatus.USABLE.value
+    try:
+        return FactStatus(text).value
+    except ValueError:
+        logger.warning(
+            "captured_fact_status_unrecognised",
+            extra={"status": text[:60], "fell_back_to": FactStatus.USABLE.value},
+        )
+        return FactStatus.USABLE.value
 
 
 #: The statuses whose value a later statement replaces instead of contradicting.
@@ -174,7 +210,7 @@ class CapturedFact:
         return cls(
             name=name,
             value=payload.get("value"),
-            status=str(payload.get("status", FactStatus.USABLE.value)),
+            status=coerce_fact_status(payload.get("status")),
             turn_id=str(payload.get("turnId", "")),
             source_message_id=payload.get("sourceMessageId"),
             acquisition=str(payload.get("acquisition", "STATED")),
