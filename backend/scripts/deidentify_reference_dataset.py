@@ -203,16 +203,111 @@ def _synthetic(key: str, value: Any) -> Any:
         # Emptied, not synthesized. Free text has no shape worth preserving and
         # anything invented here would only be noise in a prompt.
         return ""
+    for marker, fixed in _NON_IDENTITY_NAME_VALUES.items():
+        if marker in lowered:
+            return fixed
     if "name" in lowered:
-        # A trade name where the original looked like one, a person's name
-        # otherwise -- the copilot's disambiguation behaviour depends on the
-        # difference, and collapsing both to one style would hide it.
-        pool = BUSINESS_NAMES if len(value.split()) > 1 and value.isupper() else PERSON_NAMES
-        return _pick(pool, token)
+        return _pick(_name_pool_for(lowered), token)
     # Account numbers, licences, tokens, auth codes: replaced with an opaque
     # marker rather than a plausible-looking value, because nothing should be
     # able to mistake one of these for real.
     return "REDACTED"
+
+
+#: Fields that name a *person*, and fields that name an *organisation*.
+#:
+#: The pool used to be chosen from the shape of the original value --
+#: multi-word and upper case meant a trade name, anything else a person -- which
+#: reads the data instead of the schema and gets it wrong in both directions.
+#: "JOHN SMITH" is two upper-case words, so every `contactFirstName` in the
+#: committed fixture became a company: `CLEARBROOK SUPPLY` as a first name,
+#: `HARBOR POINT SERVICES` as a last name, and neither of them the customer on
+#: the order. "US Dollar" is not upper case, so `transactionCurrencyName` became
+#: `JORDAN REYES` -- a person's name in a currency field.
+#:
+#: A field's meaning is fixed by the schema and known here, so it decides.
+_PERSON_NAME_KEYS = (
+    "contactfirstname",
+    "contactlastname",
+    "empname",
+    "placedbyname",
+    "salesmanname",
+    "shiptoattnname",
+    "attnname",
+    "buyername",
+    "orderedbyname",
+    "receivedbyname",
+    "personfirstname",
+    "personlastname",
+    "personname",
+)
+
+#: Names of the trading party. This extract is B2B (`b2bCustFlag` is true), so a
+#: company here is correct and is what the copilot disambiguates on.
+_ORGANISATION_NAME_KEYS = (
+    "custname",
+    "customername",
+    "shiptoname",
+    "billtoname",
+    "vendorname",
+    "companyname",
+    "accountname",
+    "vendorname",
+    "mainCustsName".lower(),
+    "partyname",
+    "organizationname",
+    "brandname",
+    "manufacturername",
+)
+
+#: Names that identify neither, and must not be replaced with either. A currency
+#: is not a person; a warehouse is not a company. Held as fixed values so the
+#: field keeps a meaning the platform can read.
+#: What a product is called. Neither pool fits: `webDisplayName` is what an
+#: associate reads on the line they are returning, and a person's name there --
+#: `RILEY CHEN` as a product -- is the most visible form of this defect.
+PRODUCT_NAMES = (
+    "3/4 IN COPPER 90 ELBOW",
+    "1/2 IN PEX BALL VALVE",
+    "40 GAL GAS WATER HEATER",
+    "3 TON CONDENSING UNIT",
+    "20X25X1 PLEATED AIR FILTER",
+    "1 IN BRASS GATE VALVE",
+    "4 IN PVC SEWER PIPE",
+    "3/4 HP SUMP PUMP",
+    "24 IN FLEXIBLE DUCT",
+    "1/2 IN COPPER TUBE 10FT",
+)
+
+_PRODUCT_NAME_KEYS = (
+    "webdisplayname",
+    "displayname",
+    "machinename",
+    "productname",
+    "itemname",
+)
+
+_NON_IDENTITY_NAME_VALUES = {
+    "transactioncurrencyname": "US Dollar",
+    "currencyname": "US Dollar",
+    "countryname": "United States",
+    "statename": "Ohio",
+    "unitofmeasurename": "EACH",
+}
+
+
+def _name_pool_for(lowered: str) -> tuple[str, ...]:
+    """The pool a `*name*` field should draw from, decided by the field."""
+    if any(key in lowered for key in _PRODUCT_NAME_KEYS):
+        return PRODUCT_NAMES
+    if any(key in lowered for key in _PERSON_NAME_KEYS):
+        return PERSON_NAMES
+    if any(key in lowered for key in _ORGANISATION_NAME_KEYS):
+        return BUSINESS_NAMES
+    # Unclassified. A person's name is the conservative default: it is the shape
+    # that carries identity, so treating an unknown name field as one keeps the
+    # scrub safe, and `_assert_nothing_leaked` still proves the original is gone.
+    return PERSON_NAMES
 
 
 def _scrub(node: Any, key: str = "") -> Any:
