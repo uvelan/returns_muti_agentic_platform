@@ -131,7 +131,7 @@ export function AgentsSection() {
                   "flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition",
                   agent.manifestId === active
                     ? "border-primary/30 bg-secondary-container shadow-sm"
-                    : "border-transparent hover:border-outline-variant hover:bg-surface-container-low",
+                    : "border-transparent hover:border-outline-control hover:bg-surface-container-low",
                 ].join(" ")}
               >
                 <span aria-hidden="true" className={[

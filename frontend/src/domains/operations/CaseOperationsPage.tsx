@@ -259,7 +259,7 @@ function CaseListPane({
             className={`rounded-full border px-3 py-1 text-xs transition ${
               status === option
                 ? "border-primary text-primary"
-                : "border-outline-variant text-on-surface-variant hover:border-primary hover:text-primary"
+                : "border-outline-control text-on-surface-variant hover:border-primary hover:text-primary"
             }`}
           >
             {option === "All" ? `All (${String(total)})` : option}

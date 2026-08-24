@@ -150,7 +150,7 @@ export function ConversationPane({
               "flex size-8 items-center justify-center rounded-lg border transition",
               showHistory
                 ? "border-primary bg-primary/10 text-primary"
-                : "border-outline-variant/50 text-on-surface-variant hover:border-primary hover:text-primary",
+                : "border-outline-control text-on-surface-variant hover:border-primary hover:text-primary",
             ].join(" ")}
           >
             <History size={15} />

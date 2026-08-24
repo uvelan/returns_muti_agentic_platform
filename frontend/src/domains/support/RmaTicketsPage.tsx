@@ -369,7 +369,7 @@ function Queue({
                 className={`w-full rounded-lg border p-3 text-left transition ${
                   selected === item.sessionId
                     ? "border-primary bg-primary/5"
-                    : "border-outline-variant hover:bg-surface-container"
+                    : "border-outline-control hover:bg-surface-container"
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">

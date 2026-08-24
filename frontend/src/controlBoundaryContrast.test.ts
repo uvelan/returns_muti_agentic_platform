@@ -48,21 +48,32 @@ const TOO_FAINT =
   /\bborder-(?:outline-variant|analyzer-outline-variant|analyzer-outline(?![-a-z])|slate-300|slate-700|gray-300|zinc-300|neutral-300|emerald-950|emerald-900|emerald-800)(?:\/\d{1,3})?\b/;
 
 /**
- * Deliberately not `<button>`.
+ * Buttons are in, under a rule rather than a blanket.
  *
  * An input has no content of its own, so its border is the whole of what says a
- * field is there and 1.4.11 applies without argument. A button is not that
- * clean: an *outlined* one is delimited by its border and belongs here, while a
- * list row or a filter chip rendered as a button is identified by its label and
- * its selected state, with the border acting as a divider between siblings.
+ * field is there. A button is not that clean, and a first pass that simply added
+ * it here produced nineteen findings of which six were wrong. Reading all
+ * nineteen showed the two groups differ by *shape*, not by taste:
  *
- * Adding `button` here finds fifteen sites across eight domains and cannot tell
- * those two apart. The genuine ones -- four in `domains/ai`, five in the
- * analyzer -- were found and fixed by reading them. A guard that fires on
- * arguable cases gets switched off, which is worse than a narrow one that is
- * always right, so this stays narrow and the button audit stays a human pass.
+ *   * A button carrying a **full** `border` is an outlined control -- a filter
+ *     chip, a selectable card, a Cancel beside a filled Confirm. Nothing else
+ *     delimits it, and 1.4.11 applies to it exactly as it does to an input.
+ *   * A button whose only faint border is an **edge** -- `border-b` between list
+ *     rows, `border-x` between segments -- is using it as a divider between
+ *     siblings. The control is identified by its label, its hover and its
+ *     selected background; WCAG does not ask a row separator for 3:1.
+ *   * A **disabled** button is an inactive component, which 1.4.11 exempts in
+ *     so many words.
+ *
+ * Thirteen were fixed. Six stayed, and they are the six this rule lets through,
+ * so the judgement is encoded rather than remembered.
  */
-const CONTROL = /<(input|select|textarea)\b/g;
+const CONTROL = /<(input|select|textarea|button)\b/g;
+
+/** `border-b`, `border-x`, `border-t-2` and friends -- an edge, not a box. */
+const EDGE_ONLY_BORDER = /\bborder-[btlrxy](?:-\d)?\b/;
+/** A full box border: bare `border`, or `border-2`, and not `border-b`. */
+const FULL_BORDER = /\bborder(?:-\d)?(?=\s|$)/;
 const OPENS_ELEMENT = /<[A-Za-z]/;
 const CLASS_NAME = /className=(?:"([^"]*)"|\{`([^`]*)`\}|\{([^}]{0,400}?)\})/s;
 
@@ -90,6 +101,22 @@ function controlClassName(source: string, from: number): string | null {
   return groups.find((group) => group !== undefined) ?? "";
 }
 
+/**
+ * The two cases where a button's faint border is not the thing 1.4.11 governs.
+ *
+ * Both are read off the markup rather than off a list of file names, so they
+ * survive the lines moving.
+ */
+function exemptButton(source: string, from: number, className: string): boolean {
+  // Inactive components are exempt in the text of 1.4.11 itself.
+  const attributes = source.slice(from, from + 2000);
+  const beforeClass = attributes.slice(0, Math.max(0, attributes.indexOf("className=")));
+  if (/\bdisabled\b/.test(beforeClass)) return true;
+
+  // A divider between siblings: an edge, and no box around the control.
+  return EDGE_ONLY_BORDER.test(className) && !FULL_BORDER.test(className);
+}
+
 function offenders(): readonly Offender[] {
   const found: Offender[] = [];
   for (const [rawPath, source] of Object.entries(RAW)) {
@@ -97,10 +124,14 @@ function offenders(): readonly Offender[] {
     if (path.includes(".test.") || path.includes(".a11y.")) continue;
 
     for (const match of source.matchAll(CONTROL)) {
-      const className = controlClassName(source, match.index + match[0].length);
+      const from = match.index + match[0].length;
+      const className = controlClassName(source, from);
       if (className === null) continue;
       const faint = TOO_FAINT.exec(className);
       if (faint === null) continue;
+
+      if (match[1] === "button" && exemptButton(source, from, className)) continue;
+
       found.push({
         path,
         line: String(source.slice(0, match.index).split("\n").length),
@@ -139,6 +170,23 @@ describe("every form control has a boundary someone can see", () => {
       }
     }
     expect(controls).toBeGreaterThan(20);
+  });
+
+  it("exempts a row divider but not an outlined button", () => {
+    // The exemption has to be narrow in both directions. One that let every
+    // button through would make the rule above pass for the wrong reason, and
+    // the first version of this scan reported six false failures for the
+    // opposite reason.
+    const divider = '<button className="flex w-full border-b border-outline-variant px-4 text-left">';
+    const outlined = '<button className="rounded-full border border-outline-variant px-3 py-1">';
+
+    expect(exemptButton(divider, 8, "flex w-full border-b border-outline-variant px-4 text-left")).toBe(true);
+    expect(exemptButton(outlined, 8, "rounded-full border border-outline-variant px-3 py-1")).toBe(false);
+  });
+
+  it("exempts a disabled button, which 1.4.11 exempts in its own text", () => {
+    const source = '<button type="button" disabled className="rounded-lg border border-outline-variant px-3">';
+    expect(exemptButton(source, 8, "rounded-lg border border-outline-variant px-3")).toBe(true);
   });
 
   it("would catch a faint border if one were introduced", () => {

@@ -37,7 +37,7 @@ export function ConfirmationDialog({
           </div>
         </div>
         <div className="mt-6 flex justify-end gap-2">
-          <button type="button" onClick={onCancel} className="rounded-lg border border-analyzer-outline px-3 py-2 text-sm text-analyzer-on-surface hover:bg-white/5">
+          <button type="button" onClick={onCancel} className="rounded-lg border border-analyzer-outline-control-neutral px-3 py-2 text-sm text-analyzer-on-surface hover:bg-white/5">
             Cancel
           </button>
           <button type="button" onClick={onConfirm} className={`rounded-lg px-3 py-2 text-sm font-semibold ${isDestructive ? "bg-red-500 text-white hover:bg-red-400" : "bg-analyzer-primary text-analyzer-on-primary hover:bg-emerald-300"}`}>
