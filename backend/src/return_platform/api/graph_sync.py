@@ -136,14 +136,18 @@ async def start_run(
     # where it already reads.
     actor_id: str = Depends(require_capability(capabilities.CONFIG_SOURCE_WRITE)),
 ) -> APIResponse[GraphSyncRunView]:
-    """Run a sync now and answer with the run it produced.
+    """Start a sync and answer with the run reference.
 
-    Awaited rather than backgrounded, matching `/api/v1/seed-data/apply`: the
-    request is bounded by `maxRecordsPerAsset` and by
-    `settings.graph_sync_max_records`, and a fire-and-forget task would have to
-    invent a way to hand back the run id that `GraphSyncService.sync` mints
-    internally. A failed run is still recorded FAILED in the ledger before the
-    error propagates, so the list is truthful either way.
+    This used to await the whole rebuild, because a backgrounded task "would
+    have to invent a way to hand back the run id that `GraphSyncService.sync`
+    mints internally". `GraphSyncService.begin` is that: it claims the id,
+    writes the PREPARING row, and returns once the row exists, so the caller
+    gets something `GET /runs/{id}` can already answer for.
+
+    Backgrounding matters because a full rebuild reads every configured source.
+    Awaiting it held the request open for the whole rebuild, and any client
+    timeout looked like a failure while the graph writes carried on. A failed
+    run is still recorded FAILED in the ledger, so the list stays truthful.
     """
     service = _service(request)
 
@@ -168,7 +172,9 @@ async def start_run(
         )
 
     try:
-        return APIResponse(data=await service.sync(payload, actor_id=actor_id), meta=_meta(request))
+        return APIResponse(
+            data=await service.begin(payload, actor_id=actor_id), meta=_meta(request)
+        )
     except Exception as error:
         logger.exception(
             "graph_sync_run_failed",

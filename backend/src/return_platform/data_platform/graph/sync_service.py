@@ -18,7 +18,7 @@ from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from neo4j import AsyncDriver
 from pydantic import BaseModel, ConfigDict, Field
@@ -156,6 +156,18 @@ class GraphSyncRequest(GraphSyncModel):
     #: fifth enum member per combination. Defaults to False: a caller that has
     #: not thought about resume semantics gets the full scan it always got.
     incremental: bool = False
+    #: Source assets this run is narrowed to, intersected with what `mode`
+    #: already selected. Empty means "whatever the mode selects", which is what
+    #: every caller before per-object scope existed asked for.
+    #:
+    #: This surface deliberately used to withhold scope from HTTP callers, on
+    #: the grounds that a caller naming arbitrary sources would be choosing
+    #: scope the schema is supposed to derive. That objection is answered by
+    #: validating each id against the configured sources rather than by
+    #: withholding the field: an operator picking three of their own configured
+    #: collections to re-read is not inventing scope, and making them re-read
+    #: all of them instead is how a targeted fix becomes an overnight job.
+    scope: list[str] = Field(default_factory=list, max_length=10_000)
 
 
 class SyncRunRequester(GraphSyncModel):
@@ -202,7 +214,7 @@ class GraphSyncRunView(GraphSyncModel):
     #: Distinct from FAILED on purpose: FAILED means the sync ran and did not
     #: work, STALLED means nobody knows, because the thing that would have
     #: reported went away. They call for different operator responses.
-    status: Literal["RUNNING", "COMPLETED", "FAILED", "STALLED"]
+    status: Literal["PREPARING", "RUNNING", "COMPLETED", "FAILED", "STALLED", "CANCELLED"]
     schemaVersion: str
     sourceCounts: dict[str, int]
     nodeWrites: int = Field(ge=0)
@@ -270,6 +282,17 @@ class GraphSyncRunView(GraphSyncModel):
     #: reconciliation looks identical to one that died mid-scan without these.
     scanCompletedAt: datetime | None = None
     reconciliationCompletedAt: datetime | None = None
+    #: What the run is doing right now. The ledger recorded only totals, which
+    #: are written at the end -- so a run in progress reported zeros for its
+    #: whole duration and an operator watching a long rebuild could not tell a
+    #: working run from a wedged one. The analyzer's sync surface grew its own
+    #: engine partly to have these; they belong on the engine that owns
+    #: generations, not on a second one.
+    scope: list[str] = Field(default_factory=list)
+    currentSource: str | None = None
+    currentObject: str | None = None
+    currentActivity: str = ""
+    itemsRead: int = Field(default=0, ge=0)
 
 
 GRAPH_SYNC_RUNS_COLLECTION = "graph_sync_runs"
@@ -570,6 +593,12 @@ class _ScopedRebuildCoordinator:
         return nodes, relationships
 
 
+class ProgressReporter(Protocol):
+    """Writes the live fields of a run row. Awaited from inside the scan loop."""
+
+    async def __call__(self, **fields: Any) -> None: ...
+
+
 class _CountingConnector:
     """Wraps a connector to record per-source document counts for the run view --
     orchestration-level bookkeeping, not something the generic connectors need
@@ -585,9 +614,18 @@ class _CountingConnector:
     it must not do.
     """
 
-    def __init__(self, inner: SourceScanConnector, counts: dict[str, int]) -> None:
+    def __init__(
+        self,
+        inner: SourceScanConnector,
+        counts: dict[str, int],
+        progress: ProgressReporter | None = None,
+    ) -> None:
         self._inner = inner
         self._counts = counts
+        #: Where the live run view gets `currentSource` and `itemsRead`. This is
+        #: already the one object that sees every source and every page, so
+        #: reporting from here costs a call per page rather than a second pass.
+        self._progress = progress
 
     def capabilities(self) -> SourceConnectorCapabilities:
         return self._inner.capabilities()
@@ -609,12 +647,26 @@ class _CountingConnector:
         through: SourceCursor,
     ) -> AsyncIterator[RawSourcePage]:
         self._counts.setdefault(source_asset_id, 0)
+        if self._progress is not None:
+            await self._progress(
+                currentSource=source_asset_id,
+                currentActivity=f"Reading {source_asset_id}",
+                itemsRead=sum(self._counts.values()),
+            )
         async for page in self._inner.scan(
             schema=schema, source_asset_id=source_asset_id, after=after, through=through
         ):
             self._counts[source_asset_id] = self._counts.get(source_asset_id, 0) + len(
                 page.documents
             )
+            if self._progress is not None:
+                # Per page, not per document: a progress write per row would
+                # cost more than the scan it reports on.
+                await self._progress(
+                    currentSource=source_asset_id,
+                    currentActivity=f"Reading {source_asset_id}",
+                    itemsRead=sum(self._counts.values()),
+                )
             yield page
 
 
@@ -699,6 +751,10 @@ class GraphSyncService:
         self._source_db = source_client[settings.source_mongo_database]
         self._driver = driver
         self._runs = self._platform_db[GRAPH_SYNC_RUNS_COLLECTION]
+        #: Strong references to backgrounded runs started by `begin`. asyncio
+        #: holds only a weak reference to a running task, so a rebuild that
+        #: nobody awaits can be collected mid-write without this.
+        self._background: set[asyncio.Task[None]] = set()
         # The configured schema, not a second one built in code.
         #
         # This used to call `build_interim_active_schema`, whose own docstring
@@ -852,6 +908,7 @@ class GraphSyncService:
         seed_version: str | None = None,
         seed_digest: str | None = None,
         source_asset_ids: frozenset[str] | None = None,
+        run_id: str | None = None,
     ) -> GraphSyncRunView:
         """`source_asset_ids` narrows the run to a subset of what `mode` selects.
 
@@ -863,12 +920,33 @@ class GraphSyncService:
         """
         if (seed_version is None) is not (seed_digest is None):
             raise ValueError("Seed version and digest must be supplied together.")
+        if request.scope:
+            # Validated against the configured sources, which is what keeps an
+            # HTTP caller from naming scope the schema never declared. Reported
+            # as one error listing every unknown id: an operator fixing a scope
+            # selection should not discover it one rejected id per attempt.
+            await self.refresh_schema()
+            unknown = sorted(set(request.scope) - set(self._schema.sources))
+            if unknown:
+                raise ValueError(
+                    f"Not configured sources: {', '.join(unknown)}"
+                )
+            requested = frozenset(request.scope)
+            # Intersected with any scope the caller already passed, for the
+            # reason `_sync_participating_sources` gives: narrowing composes,
+            # widening would let one scope reach past another.
+            source_asset_ids = (
+                requested if source_asset_ids is None else source_asset_ids & requested
+            )
         # Before anything is read or written: a run records the schema version
         # it built under, and picking up a newly activated release halfway
         # through would make that record a lie.
         await self.refresh_schema()
         limit = min(request.maxRecordsPerAsset, self._settings.graph_sync_max_records)
-        run_id = str(uuid.uuid4())
+        # `begin` mints the id before spawning this, so that its caller can be
+        # handed a run reference immediately. Minted here when nobody did.
+        claimed = run_id is not None
+        run_id = run_id or str(uuid.uuid4())
         now = _now()
         document: dict[str, Any] = {
             "_id": run_id,
@@ -887,9 +965,23 @@ class GraphSyncService:
             "graphGenerationId": None,
             "recordScope": "INCREMENTAL" if request.incremental else "FULL",
             "skippedSources": [],
+            "scope": sorted(source_asset_ids) if source_asset_ids is not None else [],
+            "currentSource": None,
+            "currentObject": None,
+            "currentActivity": "Applying schema constraints",
+            "itemsRead": 0,
         }
         document["heartbeatAt"] = now
-        await self._runs.insert_one(document)
+        if claimed:
+            # `begin` already wrote a PREPARING row under this id, and this run
+            # is that row reaching RUNNING rather than a second one. `_id` is
+            # dropped from the update because Mongo refuses to modify it -- it
+            # already holds the value being set.
+            await self._runs.update_one(
+                {"_id": run_id}, {"$set": {k: v for k, v in document.items() if k != "_id"}}
+            )
+        else:
+            await self._runs.insert_one(document)
         heartbeat = asyncio.create_task(self._heartbeat(run_id))
         try:
             constraints = await self._apply_constraints() if request.applySchema else []
@@ -905,6 +997,7 @@ class GraphSyncService:
                 source_counts=source_counts,
                 skipped=skipped,
                 scope=source_asset_ids,
+                progress=self._progress_reporter(run_id),
             )
 
             completed = _now()
@@ -921,6 +1014,10 @@ class GraphSyncService:
                     "cutoverStage": outcome.cutover_stage,
                     "previousGenerationStatus": outcome.previous_generation_status,
                     "completedAt": completed,
+                    "currentSource": None,
+                    "currentObject": None,
+                    "currentActivity": "",
+                    "itemsRead": sum(source_counts.values()),
                 }
             )
             # `$set` would overwrite the watermarks the recorder pushed onto this
@@ -951,6 +1048,102 @@ class GraphSyncService:
             raise
         finally:
             heartbeat.cancel()
+
+    async def begin(
+        self,
+        request: GraphSyncRequest,
+        *,
+        actor_id: str,
+        seed_version: str | None = None,
+        seed_digest: str | None = None,
+        source_asset_ids: frozenset[str] | None = None,
+    ) -> GraphSyncRunView:
+        """Claim a run, start the work, and hand back the reference now.
+
+        The HTTP surface used to await the whole rebuild, on the reasoning that
+        a backgrounded task "would have to invent a way to hand back the run id
+        that `sync` mints internally". Minting it here is that way, and it is
+        worth having: a full rebuild reads every configured source, so awaiting
+        it holds the request open for as long as the rebuild takes and any
+        client timeout looks like a failure while the graph writes carry on.
+
+        The PREPARING row is written *before* returning, so the id handed back
+        is one `get_run` can already answer for, and so `active_run` refuses a
+        second start during the window before the work begins.
+
+        `sync` remains the awaited form. A migration plan and a seeding script
+        want the finished run, not a reference to one.
+        """
+        run_id = str(uuid.uuid4())
+        now = _now()
+        await self._runs.insert_one(
+            {
+                "_id": run_id,
+                "mode": request.mode,
+                "status": "PREPARING",
+                "schemaVersion": self._schema.schema_version,
+                "sourceCounts": {},
+                "nodeWrites": 0,
+                "relationshipWrites": 0,
+                "constraintsApplied": [],
+                "configurationDigest": self._configuration_digest(),
+                "errorCode": None,
+                "startedBy": actor_id,
+                "startedAt": now,
+                "completedAt": None,
+                "heartbeatAt": now,
+                "graphGenerationId": None,
+                "recordScope": "INCREMENTAL" if request.incremental else "FULL",
+                "skippedSources": [],
+                "scope": sorted(request.scope),
+                "currentSource": None,
+                "currentObject": None,
+                "currentActivity": "Preparing",
+                "itemsRead": 0,
+            }
+        )
+
+        async def run() -> None:
+            try:
+                await self.sync(
+                    request,
+                    actor_id=actor_id,
+                    seed_version=seed_version,
+                    seed_digest=seed_digest,
+                    source_asset_ids=source_asset_ids,
+                    run_id=run_id,
+                )
+            except Exception:  # noqa: BLE001 - `sync` already recorded FAILED
+                # Swallowed rather than propagated: nothing awaits this task, so
+                # an exception here would surface only as "task exception was
+                # never retrieved" on stderr. The ledger row is the report.
+                _LOGGER.exception("graph_sync_background_run_failed", extra={"run_id": run_id})
+
+        task = asyncio.create_task(run())
+        # Held so the task is not garbage collected mid-run, and discarded when
+        # it finishes. asyncio keeps only a weak reference to running tasks.
+        self._background.add(task)
+        task.add_done_callback(self._background.discard)
+
+        stored = await self._runs.find_one({"_id": run_id})
+        assert stored is not None
+        return self._view(stored)
+
+    def _progress_reporter(self, run_id: str) -> ProgressReporter:
+        """Update the live fields of one run row, and never fail the run for it.
+
+        A progress write is bookkeeping about work, not the work. A Mongo blip
+        while reporting "reading orders" must not abandon a rebuild that is
+        succeeding, so the write is attempted and its failure is logged.
+        """
+
+        async def report(**fields: Any) -> None:
+            try:
+                await self._runs.update_one({"_id": run_id}, {"$set": fields})
+            except Exception:  # noqa: BLE001 - progress is not worth a failed run
+                _LOGGER.warning("graph_sync_progress_write_failed", extra={"run_id": run_id})
+
+        return report
 
     async def _heartbeat(self, run_id: str) -> None:
         """Say the process is still here, until it is not.
@@ -990,7 +1183,11 @@ class GraphSyncService:
         cutoff = _now() - timedelta(seconds=SYNC_STALL_SECONDS)
         return await self._runs.find_one(
             {
-                "status": "RUNNING",
+                # PREPARING as well as RUNNING: `begin` returns as soon as the
+                # row exists, so there is a window where a run is claimed and
+                # has not started beating. A guard that ignored it would let a
+                # second click through in exactly that window.
+                "status": {"$in": ["PREPARING", "RUNNING"]},
                 "$or": [
                     {"heartbeatAt": {"$gt": cutoff}},
                     {"heartbeatAt": None, "startedAt": {"$gt": cutoff}},
@@ -1062,6 +1259,7 @@ class GraphSyncService:
         source_counts: dict[str, int],
         skipped: list[str],
         scope: frozenset[str] | None = None,
+        progress: ProgressReporter | None = None,
     ) -> _SyncOutcome:
         mongo_source_ids = frozenset(
             source_id
@@ -1113,6 +1311,7 @@ class GraphSyncService:
                 max_records_per_source=limit,
             ),
             source_counts,
+            progress,
         )
         # A second connector, not a second pipeline: the return side lives in the
         # platform's own database, and a connector is bound to one database for
@@ -1125,6 +1324,7 @@ class GraphSyncService:
                 max_records_per_source=limit,
             ),
             source_counts,
+            progress,
         )
         sql_connection = SqlServerConnectionSettings(
             server=self._settings.sqlserver_host,
@@ -1142,6 +1342,7 @@ class GraphSyncService:
                 max_records_per_source=limit,
             ),
             source_counts,
+            progress,
         )
         connectors = scan_connector_registry(
             schema=self._schema,

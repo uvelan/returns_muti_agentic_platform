@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from return_platform.api.dependency_probes import probe_source_mongodb, probe_sqlserver
+from return_platform.data_platform.graph.sync_service import GraphSyncRequest, GraphSyncScope
 from return_platform.graph_analyzer.models import (
     AgentReply,
     AgentRequest,
@@ -93,7 +94,27 @@ async def _ready_service(request: Request) -> GraphAnalyzerService:
 async def bootstrap(
     request: Request, _actor: str = Depends(require_analyzer_read)
 ) -> APIResponse[AnalyzerBootstrap]:
-    return APIResponse(data=await (await _ready_service(request)).bootstrap(), meta=_meta(request))
+    data = await (await _ready_service(request)).bootstrap()
+    # Sync history comes from the engine that now performs the runs, not from
+    # the analyzer's own retired ledger -- which would keep answering with the
+    # runs of an engine that no longer executes anything.
+    service = getattr(request.app.state, "graph_sync", None)
+    if service is not None:
+        runs = await service.list_runs(limit=100)
+        active = await service.active_run()
+        # Re-read through `get_run` rather than viewing the raw document here:
+        # turning a stored row into a view is the service's job, and a second
+        # place doing it is a second thing to keep in step with the schema.
+        active_view = (
+            await service.get_run(str(active["_id"])) if active is not None else None
+        )
+        data = data.model_copy(
+            update={
+                "syncHistory": [_sync_run_of(run) for run in runs],
+                "activeSync": _sync_run_of(active_view) if active_view is not None else None,
+            }
+        )
+    return APIResponse(data=data, meta=_meta(request))
 
 
 @router.post("/sources/test", response_model=APIResponse[dict[str, str]])
@@ -345,14 +366,88 @@ async def review_recommendation(
     return APIResponse(data=result, meta=_meta(request))
 
 
+
+def _graph_sync(request: Request) -> Any:
+    """The one engine that writes the system graph.
+
+    The analyzer used to carry its own: it read source rows and MERGEd nodes
+    with a generated Cypher query, and knew nothing about graph generations. So
+    a sync started here wrote into whatever generation was being *served*, while
+    every discovery read is pinned to `ActiveRuntimeSnapshot` -- two systems
+    writing one graph, one of them outside the invariant the readers depend on.
+
+    This surface stays because the analyzer's workspace is the better operator
+    view -- scope selection, live progress, agent review. It is now a view over
+    the engine that owns generations rather than a second engine.
+    """
+    service = getattr(request.app.state, "graph_sync", None)
+    if service is None:
+        raise HTTPException(
+            status_code=503, detail="Graph synchronization is unavailable."
+        )
+    return service
+
+
+def _sync_run_of(view: Any) -> SyncRun:
+    """`GraphSyncRunView` in the shape the analyzer workspace already reads.
+
+    A translation rather than a contract change, so consolidating the engines
+    did not also mean rewriting the workspace. The fields the analyzer never
+    had -- generation, cutover stage, watermarks -- are additive and surfaced
+    separately rather than squeezed in here.
+    """
+    status_map = {
+        "PREPARING": "PREPARING",
+        "RUNNING": "RUNNING",
+        "COMPLETED": "COMPLETED",
+        "FAILED": "FAILED",
+        "CANCELLED": "CANCELLED",
+        # A run whose process died is not a run that finished. The analyzer
+        # vocabulary has no STALLED, and FAILED is the honest neighbour: it
+        # did not complete, and its failure reason says why.
+        "STALLED": "FAILED",
+    }
+    return SyncRun(
+        id=view.id,
+        mode="FULL" if not view.scope else "PARTIAL",
+        status=status_map.get(view.status, "FAILED"),
+        scope=list(view.scope),
+        currentSource=view.currentSource,
+        currentObject=view.currentObject,
+        currentActivity=view.currentActivity,
+        itemsRead=view.itemsRead,
+        itemsProcessed=sum(view.sourceCounts.values()),
+        nodesWritten=view.nodeWrites,
+        relationshipsWritten=view.relationshipWrites,
+        failedItems=0,
+        startedAt=view.startedAt,
+        completedAt=view.completedAt,
+        error=view.failureReason or view.errorCode,
+    )
+
+
 @router.post(
     "/sync/runs", response_model=APIResponse[SyncRun], status_code=status.HTTP_202_ACCEPTED
 )
 async def start_sync(
     payload: SyncRequest, request: Request, _actor: str = Depends(require_analyzer_write)
 ) -> APIResponse[SyncRun]:
+    service = _graph_sync(request)
+    if await service.active_run() is not None:
+        raise HTTPException(status_code=409, detail="A graph sync is already running.")
     try:
-        result = await (await _ready_service(request)).start_sync(payload)
+        result = _sync_run_of(
+            await service.begin(
+                GraphSyncRequest(
+                    mode=GraphSyncScope.FULL,
+                    # PARTIAL narrows to the selected source assets; FULL sends
+                    # no scope, which is what the engine reads as "everything
+                    # the mode selects".
+                    scope=list(payload.scope) if payload.mode == "PARTIAL" else [],
+                ),
+                actor_id=_actor,
+            )
+        )
     except SyncAlreadyRunningError as error:
         # 409, and named separately from the ValueError below so the message the
         # operator sees is "one is already running" rather than a generic
@@ -371,7 +466,7 @@ async def start_sync(
 async def get_sync_run(
     run_id: str, request: Request, _actor: str = Depends(require_analyzer_read)
 ) -> APIResponse[SyncRun]:
-    result = await (await _ready_service(request)).get_sync(run_id)
-    if result is None:
+    view = await _graph_sync(request).get_run(run_id)
+    if view is None:
         raise HTTPException(status_code=404, detail="Synchronization run not found.")
-    return APIResponse(data=result, meta=_meta(request))
+    return APIResponse(data=_sync_run_of(view), meta=_meta(request))

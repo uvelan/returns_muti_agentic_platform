@@ -114,6 +114,15 @@ class StubSyncService:
         self.actors.append(actor_id)
         return _scheduled_run()
 
+    async def begin(self, request: GraphSyncRequest, *, actor_id: str) -> GraphSyncRunView:
+        """What the surface calls now: claim a run and answer with its reference.
+
+        Records the same way `sync` does, because every assertion here is about
+        what the router forwarded rather than about who executes it. The real
+        service backgrounds the work; the request is what this surface owns.
+        """
+        return await self.sync(request, actor_id=actor_id)
+
     async def active_run(self) -> dict[str, object] | None:
         # None unless a test says otherwise. "Currently running" means RUNNING
         # *and* beating: a row whose heartbeat has gone stale must not make the
