@@ -81,7 +81,7 @@ export function DataSourcesWorkspacePage() {
             <h2 className="mt-1 text-2xl font-semibold text-white">
               Configure sources. Inspect what they hold.
             </h2>
-            <p className="mt-1 max-w-2xl text-sm text-slate-400">
+            <p className="mt-1 max-w-2xl text-sm text-analyzer-on-surface-variant">
               Add, validate and edit read-only connections, then drill in to see what each one
               exposes. Choosing what to analyze happens in Graph Analyzer.
             </p>
@@ -92,7 +92,7 @@ export function DataSourcesWorkspacePage() {
               setEditing(null);
               setDialogOpen(true);
             }}
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-400 px-4 py-2.5 text-sm font-semibold text-emerald-950 shadow-lg shadow-black/20 hover:bg-emerald-300"
+            className="inline-flex items-center gap-2 rounded-lg bg-analyzer-primary px-4 py-2.5 text-sm font-semibold text-analyzer-on-primary shadow-lg shadow-black/20 hover:bg-emerald-300"
           >
             <Plus size={16} />
             Add data source
@@ -248,25 +248,25 @@ function Breadcrumb({
   return (
     <nav
       aria-label="Data source breadcrumb"
-      className="flex flex-wrap items-center gap-1 rounded-lg border border-emerald-950 bg-[#0a1714] px-3 py-2 text-sm"
+      className="flex flex-wrap items-center gap-1 rounded-lg border border-analyzer-outline-variant bg-analyzer-surface-container px-3 py-2 text-sm"
     >
       <Crumb label="Connections" active={level === "CONNECTIONS"} onClick={onConnections} />
       {source === null ? null : (
         <>
-          <ChevronRight size={14} className="text-slate-500" />
+          <ChevronRight size={14} className="text-analyzer-on-surface-variant" />
           <Crumb label={source.name} active={level === "OBJECTS"} onClick={onObjects} />
         </>
       )}
       {object === null ? null : (
         <>
-          <ChevronRight size={14} className="text-slate-500" />
+          <ChevronRight size={14} className="text-analyzer-on-surface-variant" />
           <Crumb label={object.name} active={level === "SCHEMA"} onClick={onSchema} />
         </>
       )}
       {level === "DATA" ? (
         <>
-          <ChevronRight size={14} className="text-slate-500" />
-          <span className="rounded px-2 py-1 font-medium text-emerald-300">Data</span>
+          <ChevronRight size={14} className="text-analyzer-on-surface-variant" />
+          <span className="rounded px-2 py-1 font-medium text-analyzer-accent">Data</span>
         </>
       ) : null}
     </nav>
@@ -288,7 +288,7 @@ function Crumb({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={`max-w-64 truncate rounded px-2 py-1 font-medium ${
-        active ? "text-emerald-300" : "text-slate-400 hover:bg-white/5 hover:text-white"
+        active ? "text-analyzer-accent" : "text-analyzer-on-surface-variant hover:bg-white/5 hover:text-white"
       }`}
     >
       {label}
@@ -307,20 +307,20 @@ function PlatformHealthStrip() {
   const items = health.data ?? [];
   if (items.length === 0) return null;
   return (
-    <section className="rounded-xl border border-emerald-950 bg-[#0a1714] px-4 py-3">
+    <section className="rounded-xl border border-analyzer-outline-variant bg-analyzer-surface-container px-4 py-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-analyzer-on-surface-variant">
           Platform dependencies
         </span>
         {items.map((item) => (
           <span key={item.id} className="inline-flex items-center gap-1.5 text-xs">
             <span
               className={`size-1.5 rounded-full ${
-                item.health === "HEALTHY" ? "bg-emerald-400" : "bg-amber-400"
+                item.health === "HEALTHY" ? "bg-analyzer-primary" : "bg-amber-400"
               }`}
             />
-            <span className="text-slate-300">{item.name}</span>
-            <span className="text-slate-400">{item.health.toLowerCase()}</span>
+            <span className="text-analyzer-on-surface">{item.name}</span>
+            <span className="text-analyzer-on-surface-variant">{item.health.toLowerCase()}</span>
           </span>
         ))}
       </div>
@@ -378,10 +378,10 @@ function ConnectionsLevel({
   }
   if (sources.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-emerald-900 p-10 text-center">
-        <Database className="mx-auto text-slate-400" />
-        <p className="mt-2 font-medium text-slate-300">No sources configured</p>
-        <p className="mt-1 text-sm text-slate-400">
+      <div className="rounded-xl border border-dashed border-analyzer-outline p-10 text-center">
+        <Database className="mx-auto text-analyzer-on-surface-variant" />
+        <p className="mt-2 font-medium text-analyzer-on-surface">No sources configured</p>
+        <p className="mt-1 text-sm text-analyzer-on-surface-variant">
           Add a read-only connection to begin discovery.
         </p>
       </div>
@@ -416,7 +416,7 @@ function ConnectionsLevel({
 }
 
 const STATUS_TONE: Record<AnalyzerSource["status"], string> = {
-  CONNECTED: "bg-emerald-400",
+  CONNECTED: "bg-analyzer-primary",
   NOT_VALIDATED: "bg-slate-500",
   VALIDATION_FAILED: "bg-amber-400",
   AUTHENTICATION_FAILED: "bg-red-400",
@@ -441,30 +441,30 @@ function ConnectionCard({
   readonly onRefresh: () => void;
 }) {
   return (
-    <div className="rounded-xl border border-emerald-950 bg-[#07120f] p-4">
+    <div className="rounded-xl border border-analyzer-outline-variant bg-analyzer-surface-sunken p-4">
       <button
         type="button"
         onClick={onOpen}
         aria-label={`Open ${source.name}`}
         className="flex w-full items-start gap-3 text-left"
       >
-        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-emerald-950 text-emerald-300">
+        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-analyzer-primary-container text-analyzer-accent">
           <Database size={17} />
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate font-medium text-white">{source.name}</span>
-          <span className="block truncate text-xs text-slate-400">
+          <span className="block truncate text-xs text-analyzer-on-surface-variant">
             {source.engine} · {source.database}
           </span>
           <span className="mt-1.5 flex items-center gap-1.5 text-[11px]">
             <span className={`size-1.5 rounded-full ${STATUS_TONE[source.status]}`} />
-            <span className="text-slate-400">{source.status.replaceAll("_", " ").toLowerCase()}</span>
-            <span className="text-slate-400">· {source.objectCount} objects</span>
+            <span className="text-analyzer-on-surface-variant">{source.status.replaceAll("_", " ").toLowerCase()}</span>
+            <span className="text-analyzer-on-surface-variant">· {source.objectCount} objects</span>
           </span>
         </span>
-        <ChevronRight size={16} className="mt-1 text-slate-400" />
+        <ChevronRight size={16} className="mt-1 text-analyzer-on-surface-variant" />
       </button>
-      <div className="mt-3 flex items-center justify-between border-t border-emerald-950 pt-3">
+      <div className="mt-3 flex items-center justify-between border-t border-analyzer-outline-variant pt-3">
         <span className="text-[10px] font-semibold text-emerald-500">READ ONLY</span>
         <div className="flex gap-1">
           <IconButton label="Validate source" disabled={busy} onClick={onValidate}>
@@ -503,7 +503,7 @@ function IconButton({
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="rounded-md p-1.5 text-slate-400 hover:bg-white/5 hover:text-white disabled:opacity-40"
+      className="rounded-md p-1.5 text-analyzer-on-surface-variant hover:bg-white/5 hover:text-white disabled:opacity-40"
     >
       {children}
     </button>
@@ -528,17 +528,17 @@ function ObjectsLevel({
   const visible = objects.filter((item) => item.name.toLowerCase().includes(normalized));
 
   return (
-    <section className="rounded-xl border border-emerald-950 bg-[#0a1714] p-5">
+    <section className="rounded-xl border border-analyzer-outline-variant bg-analyzer-surface-container p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="font-semibold text-white">{source.name}</h3>
-          <p className="mt-1 text-sm text-slate-400">
+          <p className="mt-1 text-sm text-analyzer-on-surface-variant">
             {objects.length} object(s) discovered · {source.engine} · read-only
           </p>
         </div>
         <div className="flex items-center gap-2">
           <div className="relative">
-            <Search className="absolute left-3 top-2.5 text-slate-400" size={15} />
+            <Search className="absolute left-3 top-2.5 text-analyzer-on-surface-variant" size={15} />
             <input
               value={query}
               onChange={(event) => {
@@ -546,7 +546,7 @@ function ObjectsLevel({
               }}
               aria-label="Search objects"
               placeholder="Search tables and collections"
-              className="w-64 rounded-lg border border-emerald-950 bg-[#081511] py-2 pl-9 pr-3 text-sm text-white outline-none placeholder:text-slate-400 focus:border-emerald-600"
+              className="w-64 rounded-lg border border-analyzer-outline-control bg-analyzer-surface-container py-2 pl-9 pr-3 text-sm text-white outline-none placeholder:text-analyzer-on-surface-variant focus:border-emerald-600"
             />
           </div>
           <button
@@ -562,15 +562,15 @@ function ObjectsLevel({
       </div>
 
       {objects.length === 0 ? (
-        <div className="mt-5 rounded-lg border border-dashed border-emerald-900 p-8 text-center">
-          <Layers className="mx-auto text-slate-500" size={24} />
-          <p className="mt-2 font-medium text-slate-300">Nothing discovered yet</p>
-          <p className="mt-1 text-sm text-slate-400">
+        <div className="mt-5 rounded-lg border border-dashed border-analyzer-outline p-8 text-center">
+          <Layers className="mx-auto text-analyzer-on-surface-variant" size={24} />
+          <p className="mt-2 font-medium text-analyzer-on-surface">Nothing discovered yet</p>
+          <p className="mt-1 text-sm text-analyzer-on-surface-variant">
             Validate the connection to read what this source exposes.
           </p>
         </div>
       ) : visible.length === 0 ? (
-        <p className="mt-5 text-sm text-slate-400">No object matches “{query}”.</p>
+        <p className="mt-5 text-sm text-analyzer-on-surface-variant">No object matches “{query}”.</p>
       ) : (
         <ul className="mt-4 grid gap-2 md:grid-cols-2">
           {visible.map((item) => (
@@ -581,12 +581,12 @@ function ObjectsLevel({
                   onOpen(item);
                 }}
                 aria-label={`Open ${item.name}`}
-                className="flex w-full items-center gap-3 rounded-lg border border-emerald-950 bg-[#07120f] px-4 py-3 text-left hover:border-emerald-800"
+                className="flex w-full items-center gap-3 rounded-lg border border-analyzer-outline-variant bg-analyzer-surface-sunken px-4 py-3 text-left hover:border-emerald-800"
               >
-                <Table2 size={16} className="shrink-0 text-emerald-400" />
+                <Table2 size={16} className="shrink-0 text-analyzer-primary" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium text-white">{item.name}</span>
-                  <span className="block truncate text-xs text-slate-400">
+                  <span className="block truncate text-xs text-analyzer-on-surface-variant">
                     {item.kind}
                     {item.fields ? ` · ${String(item.fields.length)} fields` : ""}
                     {item.estimatedRows === null || item.estimatedRows === undefined
@@ -594,7 +594,7 @@ function ObjectsLevel({
                       : ` · ~${item.estimatedRows.toLocaleString()} rows`}
                   </span>
                 </span>
-                <ChevronRight size={15} className="shrink-0 text-slate-400" />
+                <ChevronRight size={15} className="shrink-0 text-analyzer-on-surface-variant" />
               </button>
             </li>
           ))}
@@ -626,19 +626,19 @@ function ObjectLevel({
   });
 
   return (
-    <section className="overflow-hidden rounded-xl border border-emerald-950 bg-[#0a1714]">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-emerald-950 px-5 py-4">
+    <section className="overflow-hidden rounded-xl border border-analyzer-outline-variant bg-analyzer-surface-container">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-analyzer-outline-variant px-5 py-4">
         <div>
           <div className="flex items-center gap-2">
             <h3 className="font-semibold text-white">{object.name}</h3>
-            <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] uppercase text-slate-400">
+            <span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] uppercase text-analyzer-on-surface-variant">
               {object.kind}
             </span>
           </div>
-          <p className="mt-1 text-xs text-slate-400">{object.path.join(" / ")}</p>
+          <p className="mt-1 text-xs text-analyzer-on-surface-variant">{object.path.join(" / ")}</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 rounded-md border border-emerald-900 px-2 py-1 text-[10px] text-emerald-300">
+          <span className="inline-flex items-center gap-1 rounded-md border border-analyzer-outline px-2 py-1 text-[10px] text-analyzer-accent">
             <ShieldCheck size={12} />
             Read-only
           </span>
@@ -655,7 +655,7 @@ function ObjectLevel({
             <button
               type="button"
               onClick={onViewData}
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-400 px-3 py-2 text-sm font-semibold text-emerald-950"
+              className="inline-flex items-center gap-2 rounded-lg bg-analyzer-primary px-3 py-2 text-sm font-semibold text-analyzer-on-primary"
             >
               <Eye size={14} />
               View data

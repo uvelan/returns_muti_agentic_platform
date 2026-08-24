@@ -41,7 +41,7 @@ export function GraphAnalyzerPage() {
             Primary workspace
           </p>
           <h2 className="mt-1 text-2xl font-semibold text-white">Select the scope. Analyze it.</h2>
-          <p className="mt-1 max-w-2xl text-sm text-slate-400">
+          <p className="mt-1 max-w-2xl text-sm text-analyzer-on-surface-variant">
             Tick objects across any of your configured sources. Only what you select is read, and
             only what you select is analyzed.
           </p>
@@ -66,28 +66,28 @@ export function GraphAnalyzerPage() {
         ) : null}
 
         {!bootstrap.isLoading && !bootstrap.isError && sources.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-emerald-900 p-10 text-center">
-            <Database className="mx-auto text-slate-400" />
-            <p className="mt-2 font-medium text-slate-300">No sources configured</p>
-            <p className="mt-1 text-sm text-slate-400">
+          <div className="rounded-xl border border-dashed border-analyzer-outline p-10 text-center">
+            <Database className="mx-auto text-analyzer-on-surface-variant" />
+            <p className="mt-2 font-medium text-analyzer-on-surface">No sources configured</p>
+            <p className="mt-1 text-sm text-analyzer-on-surface-variant">
               Connections are managed in Data Sources. Add one there and it appears here.
             </p>
             <Link
               href="/graph-schema/data-sources"
-              className="mt-3 inline-block rounded-lg bg-emerald-400 px-4 py-2 text-sm font-semibold text-emerald-950"
+              className="mt-3 inline-block rounded-lg bg-analyzer-primary px-4 py-2 text-sm font-semibold text-analyzer-on-primary"
             >
               Go to Data Sources
             </Link>
           </div>
         ) : (
           <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-            <section className="rounded-xl border border-emerald-950 bg-[#0a1714] p-4">
+            <section className="rounded-xl border border-analyzer-outline-variant bg-analyzer-surface-container p-4">
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <h3 className="font-semibold text-white">Source explorer</h3>
-                  <p className="text-xs text-slate-400">Select analysis scope</p>
+                  <p className="text-xs text-analyzer-on-surface-variant">Select analysis scope</p>
                 </div>
-                <span className="rounded-md border border-emerald-900 px-2 py-1 text-[10px] font-semibold text-emerald-400">
+                <span className="rounded-md border border-analyzer-outline px-2 py-1 text-[10px] font-semibold text-analyzer-primary">
                   READ ONLY
                 </span>
               </div>
@@ -194,12 +194,12 @@ function summariseScope(sources: readonly AnalyzerSource[], selected: ReadonlySe
 
 function ScopeSummaryView({ summary }: { readonly summary: ScopeSummary }) {
   if (summary.bySource.length === 0 && summary.unavailable.length === 0) {
-    return <p className="mt-3 text-sm text-slate-400">Nothing is selected yet. Choose source objects in the explorer to define the analysis scope.</p>;
+    return <p className="mt-3 text-sm text-analyzer-on-surface-variant">Nothing is selected yet. Choose source objects in the explorer to define the analysis scope.</p>;
   }
   return <div className="mt-3 space-y-2">
-    {summary.bySource.map((entry) => <div key={entry.sourceId} className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-950 bg-[#07120f] px-3 py-2 text-xs">
-      <span className="font-medium text-slate-200">{entry.sourceName}</span>
-      {[...entry.kinds].sort(([left], [right]) => left.localeCompare(right)).map(([kind, count]) => <span key={kind} className="rounded bg-emerald-950 px-2 py-0.5 text-emerald-300">{count} {kind}{count === 1 ? "" : "s"}</span>)}
+    {summary.bySource.map((entry) => <div key={entry.sourceId} className="flex flex-wrap items-center gap-2 rounded-lg border border-analyzer-outline-variant bg-analyzer-surface-sunken px-3 py-2 text-xs">
+      <span className="font-medium text-analyzer-on-surface-emphasis">{entry.sourceName}</span>
+      {[...entry.kinds].sort(([left], [right]) => left.localeCompare(right)).map(([kind, count]) => <span key={kind} className="rounded bg-analyzer-primary-container px-2 py-0.5 text-analyzer-accent">{count} {kind}{count === 1 ? "" : "s"}</span>)}
     </div>)}
     {summary.unavailable.length > 0 ? <p role="alert" className="rounded-lg border border-amber-800 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
       <CircleAlert className="mr-1 inline" size={12} />{summary.unavailable.length} selected object(s) are no longer available in their source and will be skipped. Refresh the source metadata to resolve this.
@@ -207,5 +207,5 @@ function ScopeSummaryView({ summary }: { readonly summary: ScopeSummary }) {
   </div>;
 }
 
-function AnalysisPanel({ summary, context, running, error, stage, onContextChange, onAnalyze, onChat }: { readonly summary: ScopeSummary; readonly context: string; readonly running: boolean; readonly error: string | null; readonly stage: string | null; readonly onContextChange: (value: string) => void; readonly onAnalyze: () => void; readonly onChat: () => void }) { return <section className="rounded-xl border border-emerald-950 bg-[#0a1714] p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold text-white">Analysis scope & context</h3><p className="mt-1 text-sm text-slate-400">Only {summary.objectCount} explicitly selected source objects across {summary.sourceCount} source(s) will be analyzed.</p></div><button type="button" onClick={onChat} className="inline-flex items-center gap-2 text-sm text-emerald-300"><Bot size={15} />Discuss scope</button></div><ScopeSummaryView summary={summary} /><textarea value={context} aria-label="Analysis context" onChange={(event) => { onContextChange(event.target.value); }} rows={4} maxLength={12_000} placeholder="Add business context, relationship expectations, identifier knowledge, naming guidance, or graph modeling constraints…" className="mt-4 w-full resize-y rounded-lg border border-emerald-950 bg-[#07120f] p-3 text-sm leading-6 text-white outline-none placeholder:text-slate-400 focus:border-emerald-600" /><div className="mt-3 flex flex-wrap items-center justify-between gap-3"><div>{stage !== null ? <span className="inline-flex items-center gap-2 text-xs capitalize text-emerald-300">{running ? <Clock3 size={14} className="animate-pulse" /> : <CheckCircle2 size={14} />}{stage.replaceAll("_", " ").toLowerCase()}</span> : <span className="text-xs text-slate-400">No analysis has been run in this workspace.</span>}{error !== null ? <span role="alert" className="ml-3 inline-flex items-center gap-1 text-xs text-red-300"><CircleAlert size={13} />{error}</span> : null}</div><button type="button" onClick={onAnalyze} disabled={running || summary.objectCount === 0} className="inline-flex items-center gap-2 rounded-lg bg-emerald-400 px-4 py-2.5 text-sm font-semibold text-emerald-950 disabled:cursor-not-allowed disabled:opacity-40"><Network size={16} />{running ? "Analyzing selected scope…" : "Analyze selected sources"}</button></div></section>; }
+function AnalysisPanel({ summary, context, running, error, stage, onContextChange, onAnalyze, onChat }: { readonly summary: ScopeSummary; readonly context: string; readonly running: boolean; readonly error: string | null; readonly stage: string | null; readonly onContextChange: (value: string) => void; readonly onAnalyze: () => void; readonly onChat: () => void }) { return <section className="rounded-xl border border-analyzer-outline-variant bg-analyzer-surface-container p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold text-white">Analysis scope & context</h3><p className="mt-1 text-sm text-analyzer-on-surface-variant">Only {summary.objectCount} explicitly selected source objects across {summary.sourceCount} source(s) will be analyzed.</p></div><button type="button" onClick={onChat} className="inline-flex items-center gap-2 text-sm text-analyzer-accent"><Bot size={15} />Discuss scope</button></div><ScopeSummaryView summary={summary} /><textarea value={context} aria-label="Analysis context" onChange={(event) => { onContextChange(event.target.value); }} rows={4} maxLength={12_000} placeholder="Add business context, relationship expectations, identifier knowledge, naming guidance, or graph modeling constraints…" className="mt-4 w-full resize-y rounded-lg border border-analyzer-outline-control bg-analyzer-surface-sunken p-3 text-sm leading-6 text-white outline-none placeholder:text-analyzer-on-surface-variant focus:border-emerald-600" /><div className="mt-3 flex flex-wrap items-center justify-between gap-3"><div>{stage !== null ? <span className="inline-flex items-center gap-2 text-xs capitalize text-analyzer-accent">{running ? <Clock3 size={14} className="animate-pulse" /> : <CheckCircle2 size={14} />}{stage.replaceAll("_", " ").toLowerCase()}</span> : <span className="text-xs text-analyzer-on-surface-variant">No analysis has been run in this workspace.</span>}{error !== null ? <span role="alert" className="ml-3 inline-flex items-center gap-1 text-xs text-analyzer-error"><CircleAlert size={13} />{error}</span> : null}</div><button type="button" onClick={onAnalyze} disabled={running || summary.objectCount === 0} className="inline-flex items-center gap-2 rounded-lg bg-analyzer-primary px-4 py-2.5 text-sm font-semibold text-analyzer-on-primary disabled:cursor-not-allowed disabled:opacity-40"><Network size={16} />{running ? "Analyzing selected scope…" : "Analyze selected sources"}</button></div></section>; }
 

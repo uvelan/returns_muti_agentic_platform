@@ -19,23 +19,23 @@ export function AnalyzerLayout({ children }: { readonly children: ReactNode }) {
     // overshot by 4px a side and the page scrolled sideways at 1280 and
     // 1440 -- the two widths where nobody looks for a reflow bug. The pair
     // moves together now: main is `p-4 sm:p-7` and this is its exact negative.
-    <section className="-m-4 min-h-[calc(100vh-2rem)] overflow-hidden rounded-2xl bg-[#07120f] text-slate-100 shadow-2xl sm:-m-7" aria-label="Graph Schema Analyzer">
-      <header className="border-b border-emerald-950 bg-[#091814]/95 px-5 py-4 backdrop-blur-xl lg:px-7">
+    <section className="-m-4 min-h-[calc(100vh-2rem)] overflow-hidden rounded-2xl bg-analyzer-surface-sunken text-slate-100 shadow-2xl sm:-m-7" aria-label="Graph Schema Analyzer">
+      <header className="border-b border-analyzer-outline-variant bg-analyzer-surface-container/95 px-5 py-4 backdrop-blur-xl lg:px-7">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <span className="grid size-10 place-items-center rounded-xl border border-emerald-700/60 bg-emerald-950 text-emerald-300 shadow-[0_0_25px_rgba(16,185,129,.12)]"><Network size={20} /></span>
+            <span className="grid size-10 place-items-center rounded-xl border border-emerald-700/60 bg-analyzer-primary-container text-analyzer-accent shadow-[0_0_25px_rgba(16,185,129,.12)]"><Network size={20} /></span>
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-emerald-500">Graph intelligence</p>
               <h2 className="text-lg font-semibold tracking-tight text-white">Schema Analyzer Agent</h2>
             </div>
           </div>
-          <button type="button" onClick={() => { ui.openChat({ workspace: location.includes("/schema") ? "SCHEMA" : location.includes("/sync") ? "SYNC" : "ANALYZER", selectedSourceId: ui.selectedSourceId ?? undefined, selectedObjectId: ui.selectedObjectId ?? undefined, selectedScope: [...ui.selectedObjectIds] }); }} className="inline-flex items-center gap-2 rounded-lg border border-emerald-700/60 bg-emerald-950/70 px-3 py-2 text-sm font-medium text-emerald-100 transition hover:border-emerald-500 hover:bg-emerald-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400">
+          <button type="button" onClick={() => { ui.openChat({ workspace: location.includes("/schema") ? "SCHEMA" : location.includes("/sync") ? "SYNC" : "ANALYZER", selectedSourceId: ui.selectedSourceId ?? undefined, selectedObjectId: ui.selectedObjectId ?? undefined, selectedScope: [...ui.selectedObjectIds] }); }} className="inline-flex items-center gap-2 rounded-lg border border-emerald-700/60 bg-analyzer-primary-container/70 px-3 py-2 text-sm font-medium text-emerald-100 transition hover:border-emerald-500 hover:bg-emerald-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-analyzer-primary">
             <Bot size={16} /> Ask Analyzer
           </button>
         </div>
       </header>
 
-      <div className="border-b border-emerald-950/80 bg-[#0a1714] px-5 py-3 lg:px-7">
+      <div className="border-b border-analyzer-outline-variant/80 bg-analyzer-surface-container px-5 py-3 lg:px-7">
         <div className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-5">
           <Status label="Sources" value={`${String(connected)}/${String(data?.sources.length ?? 0)} connected`} state={connected > 0 ? "complete" : "attention"} />
           <Status label="Selection" value={`${String(ui.selectedObjectIds.size)} objects`} state={ui.selectedObjectIds.size > 0 ? "complete" : "current"} />
@@ -54,5 +54,5 @@ export function AnalyzerLayout({ children }: { readonly children: ReactNode }) {
 
 function Status({ label, value, state }: { readonly label: string; readonly value: string; readonly state: "complete" | "current" | "attention" }) {
   const Icon = state === "complete" ? Check : state === "attention" ? CircleAlert : ShieldCheck;
-  return <div className="flex min-w-0 items-center gap-2"><Icon size={14} className={state === "complete" ? "text-emerald-400" : state === "attention" ? "text-amber-400" : "text-slate-400"} /><span className="min-w-0"><span className="block text-[10px] uppercase tracking-wider text-slate-400">{label}</span><span className="block truncate font-medium capitalize text-slate-300">{value}</span></span></div>;
+  return <div className="flex min-w-0 items-center gap-2"><Icon size={14} className={state === "complete" ? "text-analyzer-primary" : state === "attention" ? "text-amber-400" : "text-analyzer-on-surface-variant"} /><span className="min-w-0"><span className="block text-[10px] uppercase tracking-wider text-analyzer-on-surface-variant">{label}</span><span className="block truncate font-medium capitalize text-analyzer-on-surface">{value}</span></span></div>;
 }

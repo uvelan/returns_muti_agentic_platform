@@ -24,6 +24,15 @@
  * component, and darkening all 183 usages to satisfy 49 inputs would repaint
  * every panel in the product. This bans it on `<input>`, `<select>` and
  * `<textarea>` and nowhere else.
+ *
+ * **It covers the dark side too, and it did not always.** This lived under
+ * `domains/` and globbed from there, so `features/graph-analyzer` -- a separate
+ * emerald world with its own palette -- was never scanned. Ten of its thirteen
+ * controls carried `border-emerald-950` at 1.21:1 against their own ground:
+ * the identical defect, in colours this file had no words for, sitting outside
+ * the directory it was looking at. A guard that only watches where the last bug
+ * happened is not a guard, so it now globs the whole of `src` and knows both
+ * palettes.
  */
 
 import { describe, expect, it } from "vitest";
@@ -35,7 +44,8 @@ const RAW: Record<string, string> = import.meta.glob("./**/*.tsx", {
 });
 
 /** Borders that cannot reach 3:1 against this product's surfaces. */
-const TOO_FAINT = /\bborder-(?:outline-variant|slate-300|gray-300|zinc-300|neutral-300)(?:\/\d{1,3})?\b/;
+const TOO_FAINT =
+  /\bborder-(?:outline-variant|analyzer-outline-variant|analyzer-outline(?![-a-z])|slate-300|slate-700|gray-300|zinc-300|neutral-300|emerald-950|emerald-900|emerald-800)(?:\/\d{1,3})?\b/;
 
 const CONTROL = /<(input|select|textarea)\b/g;
 const OPENS_ELEMENT = /<[A-Za-z]/;
@@ -89,7 +99,15 @@ function offenders(): readonly Offender[] {
 describe("every form control has a boundary someone can see", () => {
   it("uses no border below 3:1 on an input, select or textarea", () => {
     const failing = offenders().map(
-      (row) => `${row.path}:${row.line} uses ${row.token}; use border-outline-control`,
+      // Name the token that belongs to the world the file is in. Telling
+      // someone working in the analyzer to reach for the light shell's token is
+      // worse than saying nothing: they would take a teal edge onto a near-black
+      // panel, and it would still not reach 3:1 there.
+      (row) =>
+        `${row.path}:${row.line} uses ${row.token}; use ` +
+        (row.path.includes("graph-analyzer")
+          ? "border-analyzer-outline-control (or -neutral on an outlined button)"
+          : "border-outline-control"),
     );
     expect(failing).toEqual([]);
   });

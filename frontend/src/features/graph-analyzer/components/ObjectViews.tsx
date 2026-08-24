@@ -21,7 +21,7 @@ export function StructureView({ object }: { readonly object: SourceObject }) {
   const fields = object.fields ?? [];
   if (fields.length === 0) {
     return (
-      <p className="text-sm text-slate-400">
+      <p className="text-sm text-analyzer-on-surface-variant">
         No field metadata is available. Refresh the source or revalidate the connection.
       </p>
     );
@@ -29,7 +29,7 @@ export function StructureView({ object }: { readonly object: SourceObject }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
-        <thead className="text-xs uppercase tracking-wider text-slate-400">
+        <thead className="text-xs uppercase tracking-wider text-analyzer-on-surface-variant">
           <tr>
             <th className="pb-3">Field</th>
             <th className="pb-3">Type</th>
@@ -39,10 +39,10 @@ export function StructureView({ object }: { readonly object: SourceObject }) {
         </thead>
         <tbody>
           {fields.map((field) => (
-            <tr key={field.name} className="border-t border-emerald-950">
+            <tr key={field.name} className="border-t border-analyzer-outline-variant">
               <td className="py-3 font-mono text-emerald-200">{field.name}</td>
-              <td className="py-3 text-slate-400">{field.dataType}</td>
-              <td className="py-3 text-slate-400">{field.nullable ? "Yes" : "Required"}</td>
+              <td className="py-3 text-analyzer-on-surface-variant">{field.dataType}</td>
+              <td className="py-3 text-analyzer-on-surface-variant">{field.nullable ? "Yes" : "Required"}</td>
               <td className="py-3">
                 <div className="flex gap-2">
                   {field.identifier ? (
@@ -94,7 +94,7 @@ export function DataView({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex gap-1 rounded-lg border border-emerald-950 p-1">
+        <div className="flex gap-1 rounded-lg border border-analyzer-outline-variant p-1">
           {([false, true] as const).map((json) => (
             <button
               key={String(json)}
@@ -104,14 +104,14 @@ export function DataView({
               }}
               aria-pressed={asJson === json}
               className={`rounded-md px-3 py-1.5 text-xs font-medium ${
-                asJson === json ? "bg-emerald-400 text-emerald-950" : "text-slate-400 hover:text-white"
+                asJson === json ? "bg-analyzer-primary text-analyzer-on-primary" : "text-analyzer-on-surface-variant hover:text-white"
               }`}
             >
               {json ? "JSON view" : "Table view"}
             </button>
           ))}
         </div>
-        <span className="text-[11px] text-slate-400">
+        <span className="text-[11px] text-analyzer-on-surface-variant">
           {asJson ? "" : "Select a row to read the whole record. "}Bounded read. Source records are
           never editable here.
         </span>
@@ -124,28 +124,28 @@ export function DataView({
           ))}
         </div>
       ) : error !== null ? (
-        <p role="alert" className="text-sm text-red-300">
+        <p role="alert" className="text-sm text-analyzer-error">
           Data preview failed: {error}
         </p>
       ) : data === undefined || data.rows.length === 0 ? (
-        <p className="text-sm text-slate-400">No accessible records were returned for this page.</p>
+        <p className="text-sm text-analyzer-on-surface-variant">No accessible records were returned for this page.</p>
       ) : asJson ? (
         <pre
           tabIndex={0}
           aria-label="Raw object"
-          className="max-h-96 overflow-auto rounded-lg bg-[#050c0a] p-4 text-xs leading-5 text-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+          className="max-h-96 overflow-auto rounded-lg bg-analyzer-surface p-4 text-xs leading-5 text-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
         >
           {JSON.stringify(data.rows, null, 2)}
         </pre>
       ) : (
         <div className="overflow-auto">
           <table className="min-w-full text-left text-xs">
-            <thead className="text-slate-400">
+            <thead className="text-analyzer-on-surface-variant">
               <tr>
                 {data.columns.map((column) => (
                   <th
                     key={column}
-                    className="whitespace-nowrap border-b border-emerald-950 px-3 py-2"
+                    className="whitespace-nowrap border-b border-analyzer-outline-variant px-3 py-2"
                   >
                     {column}
                   </th>
@@ -172,7 +172,7 @@ export function DataView({
                   {data.columns.map((column) => (
                     <td
                       key={column}
-                      className="max-w-56 truncate border-b border-emerald-950/70 px-3 py-2 font-mono text-slate-300"
+                      className="max-w-56 truncate border-b border-analyzer-outline-variant/70 px-3 py-2 font-mono text-analyzer-on-surface"
                     >
                       {formatCell(row[column])}
                     </td>
@@ -191,18 +191,18 @@ export function DataView({
           onClick={() => {
             onPage(page - 1);
           }}
-          className="rounded border border-slate-700 px-2 py-1 text-xs disabled:opacity-30"
+          className="rounded border border-analyzer-outline-control-neutral px-2 py-1 text-xs disabled:opacity-30"
         >
           Previous
         </button>
-        <span className="px-2 py-1 text-xs text-slate-400">Page {page}</span>
+        <span className="px-2 py-1 text-xs text-analyzer-on-surface-variant">Page {page}</span>
         <button
           type="button"
           disabled={loading || data === undefined || data.rows.length < data.pageSize}
           onClick={() => {
             onPage(page + 1);
           }}
-          className="rounded border border-slate-700 px-2 py-1 text-xs disabled:opacity-30"
+          className="rounded border border-analyzer-outline-control-neutral px-2 py-1 text-xs disabled:opacity-30"
         >
           Next
         </button>
@@ -265,14 +265,14 @@ function RecordDialog({
         onClick={(event) => {
           event.stopPropagation();
         }}
-        className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-emerald-900 bg-[#0a1714] shadow-2xl"
+        className="flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-analyzer-outline bg-analyzer-surface-container shadow-2xl"
       >
-        <header className="flex items-start justify-between gap-4 border-b border-emerald-950 px-5 py-4">
+        <header className="flex items-start justify-between gap-4 border-b border-analyzer-outline-variant px-5 py-4">
           <div>
             <h2 id="analyzer-record-title" className="font-semibold text-white">
               Record
             </h2>
-            <p className="mt-0.5 text-xs text-slate-400">
+            <p className="mt-0.5 text-xs text-analyzer-on-surface-variant">
               {names.length} field(s) · read-only
             </p>
           </div>
@@ -280,7 +280,7 @@ function RecordDialog({
             type="button"
             onClick={onClose}
             aria-label="Close record"
-            className="rounded-md p-1.5 text-slate-400 hover:bg-white/5 hover:text-white"
+            className="rounded-md p-1.5 text-analyzer-on-surface-variant hover:bg-white/5 hover:text-white"
           >
             <X size={16} />
           </button>
@@ -290,8 +290,8 @@ function RecordDialog({
           <dl className="space-y-3">
             {names.map((name) => (
               <div key={name} className="grid gap-1 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)]">
-                <dt className="font-mono text-xs text-emerald-300">{name}</dt>
-                <dd className="whitespace-pre-wrap break-words font-mono text-xs text-slate-300">
+                <dt className="font-mono text-xs text-analyzer-accent">{name}</dt>
+                <dd className="whitespace-pre-wrap break-words font-mono text-xs text-analyzer-on-surface">
                   {formatValue(row[name])}
                 </dd>
               </div>
@@ -299,11 +299,11 @@ function RecordDialog({
           </dl>
 
           <details className="mt-5">
-            <summary className="cursor-pointer text-xs text-slate-400">Raw document</summary>
+            <summary className="cursor-pointer text-xs text-analyzer-on-surface-variant">Raw document</summary>
             <pre
               tabIndex={0}
               aria-label="Raw payload"
-              className="mt-2 overflow-auto rounded-lg bg-[#050c0a] p-4 text-xs leading-5 text-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              className="mt-2 overflow-auto rounded-lg bg-analyzer-surface p-4 text-xs leading-5 text-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
             >
               {JSON.stringify(row, null, 2)}
             </pre>

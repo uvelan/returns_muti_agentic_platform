@@ -25,22 +25,22 @@ export function ConfirmationDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="analyzer-confirm-title"
-        className="w-full max-w-md rounded-2xl border border-emerald-900 bg-[#0a1714] p-5 shadow-2xl"
+        className="w-full max-w-md rounded-2xl border border-analyzer-outline bg-analyzer-surface-container p-5 shadow-2xl"
       >
         <div className="flex items-start gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-amber-950 text-amber-300">
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-amber-950 text-analyzer-warning">
             <AlertTriangle size={19} />
           </span>
           <div>
             <h2 id="analyzer-confirm-title" className="font-semibold text-white">{title}</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-400">{description}</p>
+            <p className="mt-2 text-sm leading-6 text-analyzer-on-surface-variant">{description}</p>
           </div>
         </div>
         <div className="mt-6 flex justify-end gap-2">
-          <button type="button" onClick={onCancel} className="rounded-lg border border-emerald-900 px-3 py-2 text-sm text-slate-300 hover:bg-white/5">
+          <button type="button" onClick={onCancel} className="rounded-lg border border-analyzer-outline px-3 py-2 text-sm text-analyzer-on-surface hover:bg-white/5">
             Cancel
           </button>
-          <button type="button" onClick={onConfirm} className={`rounded-lg px-3 py-2 text-sm font-semibold ${isDestructive ? "bg-red-500 text-white hover:bg-red-400" : "bg-emerald-400 text-emerald-950 hover:bg-emerald-300"}`}>
+          <button type="button" onClick={onConfirm} className={`rounded-lg px-3 py-2 text-sm font-semibold ${isDestructive ? "bg-red-500 text-white hover:bg-red-400" : "bg-analyzer-primary text-analyzer-on-primary hover:bg-emerald-300"}`}>
             {confirmText}
           </button>
         </div>

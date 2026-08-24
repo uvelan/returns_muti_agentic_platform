@@ -78,6 +78,83 @@ export default {
         // is rather than mapped onto a role it does not play.
         "rail-surface": "#0b1f1c",
         "rail-on-surface": "#e6efec",
+
+        // --- Graph Schema Analyzer ------------------------------------------
+        //
+        // The analyzer is a dark emerald world while the rest of the platform is
+        // light teal, and it stays that way. The note at the top of this file
+        // says its screens "re-skin by substitution, since the token names they
+        // reference are these ones" -- but they referenced no token at all: 419
+        // literal colour classes and 51 arbitrary hex values across four
+        // screens, which is why substituting anything was never possible.
+        //
+        // These are that world, named. Prefixed rather than folded into the M3
+        // roles above, because those roles describe a light surface and an
+        // analyzer panel is not a dimmer version of a platform panel -- it is a
+        // different ground with its own contrast relationships.
+        //
+        // **Nine near-blacks collapsed to four.** `#0a1714`, `#081511`,
+        // `#091511`, `#091814`, `#0b1b16` and `#0c1915` all sit within 1.03:1
+        // of each other -- indistinguishable, and drift rather than intent. The
+        // four that remain are real steps: the page, its panels, the wells sunk
+        // into them, and the one raised element above them.
+        "analyzer-surface": "#050c0a",
+        "analyzer-surface-container": "#0a1714",
+        "analyzer-surface-sunken": "#07120f",
+        "analyzer-surface-raised": "#101f1b",
+
+        // Boundaries. `outline-variant` is 1.21:1 on its own ground and belongs
+        // between two regions, never around a control -- the same distinction
+        // `outline-variant` and `outline-control` draw on the light side.
+        "analyzer-outline": "#064e3b",
+        "analyzer-outline-variant": "#022c22",
+        // The boundary of a form control, which WCAG 1.4.11 governs at 3:1.
+        // 3.34:1 on panels, 3.47:1 on wells, 3.60:1 on the page. Ten of the
+        // analyzer's thirteen controls were drawn with `outline-variant` at
+        // 1.21:1, so the only thing marking a field was invisible to anyone who
+        // needed it to be visible. This is emerald-700 rather than an invented
+        // colour, so the world is unchanged apart from the edges now being there.
+        "analyzer-outline-control": "#047857",
+        // The same job on the analyzer's outlined secondary buttons, which are
+        // neutral by design and stay neutral: 3.85:1, where `slate-700` was
+        // 1.77:1. Separate from the token above so nobody reaches for a grey
+        // edge on an input, or a green one on a Cancel.
+        "analyzer-outline-control-neutral": "#64748b",
+
+        // Accent. `on-primary` reads 7.88:1 on `primary`.
+        //
+        // `on-primary`, `primary-container` and `outline-variant` share a value
+        // and are three tokens anyway: the first is text on the emerald fill,
+        // the second is the ground under a chip, the third is a divider. They
+        // coincide today and a change to one should not silently move the other
+        // two, which is the whole reason a role is not a colour.
+        "analyzer-primary": "#34d399",
+        "analyzer-on-primary": "#022c22",
+        "analyzer-primary-container": "#022c22",
+        "analyzer-accent": "#6ee7b7",
+
+        // Text, in three steps: emphasis, body, muted. 14.87:1, 12.35:1 and
+        // 7.15:1 on `surface-container`, so all three clear 1.4.3 with room.
+        //
+        // `on-surface` is the *body* weight because that is what 16 uses of it
+        // are -- button labels, names, monospace payloads. Naming the four-use
+        // emphasis colour `on-surface` and leaving body unnamed is how a token
+        // set stops being usable: the next person reaches for the obvious name
+        // and gets the wrong weight.
+        //
+        // The muted step is the 115-use workhorse and passes at 7.15:1, which is
+        // why the grey-on-colour warnings over this feature were false positives.
+        "analyzer-on-surface-emphasis": "#e2e8f0",
+        "analyzer-on-surface": "#cbd5e1",
+        "analyzer-on-surface-variant": "#94a3b8",
+
+        // Status, at the two weights that recur with one intent. The long tail
+        // of red and amber steps stays literal on purpose: a token per value is
+        // not a design system, and those uses are genuinely one-off.
+        "analyzer-error": "#fca5a5",
+        "analyzer-error-container": "#450a0a",
+        "analyzer-warning": "#fcd34d",
+        "analyzer-warning-container": "#451a03",
       },
       fontFamily: {
         sans: [

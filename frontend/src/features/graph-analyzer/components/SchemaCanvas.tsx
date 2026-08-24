@@ -46,7 +46,7 @@ const CHANGE_STYLES: Record<GraphEntity["change"], string> = {
   ADDED: "border-emerald-500/80",
   CHANGED: "border-amber-500/80",
   REMOVED: "border-red-600/80",
-  UNCHANGED: "border-emerald-950",
+  UNCHANGED: "border-analyzer-outline-variant",
 };
 
 /**
@@ -72,20 +72,20 @@ function EntityNodeView({ data, selected }: NodeProps<EntityNode>) {
       type="button"
       aria-pressed={selected}
       onClick={() => { onActivate(entity.id); }}
-      className={`block w-52 overflow-hidden rounded-xl border bg-[#0b1b16] text-left shadow-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-[#050c0a] ${CHANGE_STYLES[entity.change]} ${
-        selected ? "ring-2 ring-emerald-400 ring-offset-2 ring-offset-[#050c0a]" : ""
+      className={`block w-52 overflow-hidden rounded-xl border bg-analyzer-surface-container text-left shadow-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 focus-visible:ring-offset-analyzer-surface ${CHANGE_STYLES[entity.change]} ${
+        selected ? "ring-2 ring-analyzer-primary ring-offset-2 ring-offset-analyzer-surface" : ""
       } ${dimmed ? "opacity-25" : "opacity-100"}`}
     >
       {/* Connectable is off everywhere: relationships are edited in the inspector,
           never by dragging a wire, so a handle that accepts a drag would create a
           relationship no backend call was made for. */}
       <Handle type="target" position={Position.Left} isConnectable={false} className="!bg-emerald-700" />
-      <div className="border-b border-emerald-950 bg-emerald-950/40 px-3 py-2">
+      <div className="border-b border-analyzer-outline-variant bg-analyzer-primary-container/40 px-3 py-2">
         <p className="truncate text-sm font-semibold text-emerald-100">{entity.name}</p>
-        <p className="text-[9px] uppercase tracking-wider text-slate-400">{entity.change}</p>
+        <p className="text-[9px] uppercase tracking-wider text-analyzer-on-surface-variant">{entity.change}</p>
       </div>
       <div className="space-y-1.5 px-3 py-2">
-        <p className="text-[11px] text-slate-400">{entity.properties.length} properties</p>
+        <p className="text-[11px] text-analyzer-on-surface-variant">{entity.properties.length} properties</p>
         <div className="flex flex-wrap gap-1.5 text-[10px]">
           {identifiers > 0 ? (
             <span className="inline-flex items-center gap-1 rounded bg-violet-950 px-1.5 py-0.5 text-violet-300">
@@ -100,7 +100,7 @@ function EntityNodeView({ data, selected }: NodeProps<EntityNode>) {
             </span>
           ) : null}
           {entity.constraints.length > 0 ? (
-            <span className="inline-flex items-center gap-1 rounded bg-emerald-950 px-1.5 py-0.5 text-emerald-300">
+            <span className="inline-flex items-center gap-1 rounded bg-analyzer-primary-container px-1.5 py-0.5 text-analyzer-accent">
               <Lock size={9} />
               {entity.constraints.length}
             </span>
@@ -178,9 +178,9 @@ export function SchemaCanvas({
   );
 
   return (
-    <div className="relative h-[560px] overflow-hidden rounded-xl border border-emerald-950 bg-[#050c0a]">
+    <div className="relative h-[560px] overflow-hidden rounded-xl border border-analyzer-outline-variant bg-analyzer-surface">
       {typeof ResizeObserver === "undefined" ? (
-        <p role="alert" className="m-4 rounded-lg border border-emerald-900 p-4 text-sm text-slate-400">
+        <p role="alert" className="m-4 rounded-lg border border-analyzer-outline p-4 text-sm text-analyzer-on-surface-variant">
           The visual canvas is unavailable in this environment. Use the Changes view for the
           complete schema.
         </p>
@@ -214,9 +214,9 @@ export function SchemaCanvas({
             zoomable
             nodeColor="#134e3a"
             maskColor="rgb(5 12 10 / 0.75)"
-            className="!rounded-lg !border !border-emerald-950 !bg-[#07120f]"
+            className="!rounded-lg !border !border-analyzer-outline-variant !bg-analyzer-surface-sunken"
           />
-          <Controls className="!overflow-hidden !rounded-lg !border-emerald-950" />
+          <Controls className="!overflow-hidden !rounded-lg !border-analyzer-outline-variant" />
           <CanvasSearch
             query={query}
             onQuery={setQuery}
@@ -261,8 +261,8 @@ function CanvasSearch({
   }, [focusId, focusNode]);
 
   return (
-    <div className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-lg border border-emerald-950 bg-[#0a1714]/95 p-1.5 shadow-xl">
-      <Search size={14} className="ml-1 text-slate-400" />
+    <div className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-lg border border-analyzer-outline-variant bg-analyzer-surface-container/95 p-1.5 shadow-xl">
+      <Search size={14} className="ml-1 text-analyzer-on-surface-variant" />
       <input
         value={query}
         onChange={(event) => {
@@ -270,10 +270,10 @@ function CanvasSearch({
         }}
         placeholder="Find entity"
         aria-label="Find entity"
-        className="w-36 bg-transparent px-1 text-xs text-white outline-none placeholder:text-slate-400"
+        className="w-36 bg-transparent px-1 text-xs text-white outline-none placeholder:text-analyzer-on-surface-variant"
       />
       {query.trim().length > 0 ? (
-        <span className="pr-1 text-[10px] text-slate-400">{matchCount} match</span>
+        <span className="pr-1 text-[10px] text-analyzer-on-surface-variant">{matchCount} match</span>
       ) : null}
     </div>
   );
