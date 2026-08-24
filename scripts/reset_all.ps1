@@ -43,6 +43,16 @@
   keeps whatever is in the datastores -- so it is not a reset. Use it when you
   want a clean process restart against existing data.
 
+.PARAMETER DataOnly
+  Reset the data without destroying containers or volumes. Same end state as a
+  full reset -- every store empty, then reloaded -- but SQL Server keeps its
+  system databases instead of initialising them from scratch, which is the slow
+  part of `docker compose down --volumes`.
+
+  The dataset loader already drops every Mongo database it owns and all of
+  Neo4j, so only SQL Server and Temporal need clearing separately, and
+  `reset_transactional_state.py` does exactly that.
+
 .PARAMETER Yes
   Skip the confirmation. This script drops every database; the prompt is there
   on purpose.
@@ -61,6 +71,7 @@ param(
   [string]$Dataset,
   [int]$GraphRecords = 30000,
   [switch]$KeepVolumes,
+  [switch]$DataOnly,
   [switch]$Yes
 )
 
@@ -108,7 +119,7 @@ if (-not ($Yes -or $KeepVolumes)) {
 # Before the stores are dropped, not after: a worker still holding a Temporal
 # poll or a Mongo cursor writes into the database being recreated underneath it.
 
-Step "1/5  Stopping host processes"
+Step "1/6  Stopping host processes"
 $patterns = @(
   "uvicorn", "run_return_workflow_worker", "run_order_discovery_worker",
   "run_return_orchestrator", "run_outbox_publisher", "workers.integration_outbox",
@@ -135,11 +146,11 @@ Note "stopped $stopped process(es)"
 
 Push-Location $Root
 try {
-  if ($KeepVolumes) {
-    Step "2/5  Restarting infrastructure, keeping volumes"
+  if ($KeepVolumes -or $DataOnly) {
+    Step "2/6  Starting infrastructure (containers and volumes kept)"
     docker compose up -d
   } else {
-    Step "2/5  Recreating infrastructure (volumes deleted)"
+    Step "2/6  Recreating infrastructure (volumes deleted)"
     docker compose down --volumes --remove-orphans
     docker compose up -d
   }
@@ -202,8 +213,20 @@ try {
 # Drops every database itself, then loads. Before the host starts, so the
 # bootstrap in step 4 recreates the system store it is about to lose.
 
-if (-not $KeepVolumes) {
-  Step "3/5  Loading the reference dataset"
+# Volumes were kept, so SQL Server and Temporal still hold the previous run.
+# The dataset loader clears Mongo and Neo4j itself and knows nothing about
+# these two -- and a case workflow left running against dropped Mongo state is
+# worse than none: it wakes, cannot find its case, and retries against a world
+# that no longer contains the thing it is about.
+if ($DataOnly) {
+  Step "      Clearing SQL Server and Temporal (containers kept)"
+  & $python (Join-Path $Backend "scripts
+eset_transactional_state.py") --apply
+  if ($LASTEXITCODE -ne 0) { Die "Could not clear the transactional stores." }
+}
+
+if ($DataOnly -or -not $KeepVolumes) {
+  Step "3/6  Loading the reference dataset"
   Push-Location $Backend
   try {
     $env:PYTHONPATH = Join-Path $Backend "src"
@@ -215,7 +238,7 @@ if (-not $KeepVolumes) {
     Pop-Location
   }
 } else {
-  Step "3/5  Skipping dataset load (-KeepVolumes)"
+  Step "3/6  Skipping dataset load (-KeepVolumes)"
 }
 
 # --- 4. Host -----------------------------------------------------------------
@@ -223,9 +246,9 @@ if (-not $KeepVolumes) {
 # Linux one was: the supervising form never returns, so step 5 is unreachable.
 
 if ($NoHost) {
-  Step "4/5  Skipping host start (-NoHost)"
+  Step "4/6  Skipping host start (-NoHost)"
 } else {
-  Step "4/5  Starting backend, workers and frontend"
+  Step "4/6  Starting backend, workers and frontend"
   Note "each process reads .env as it starts"
   & powershell -ExecutionPolicy Bypass -File (Join-Path $Root "scripts\run_all_host.ps1") -NoSupervise
   if ($LASTEXITCODE -ne 0) { Die "Host start failed." }
@@ -240,11 +263,11 @@ if ($NoHost) {
 # clamps to 10,000 -- exactly the `customers` count in the seed manifest, which
 # is no headroom at all.
 
-if ($NoHost -or $KeepVolumes) {
-  Step "5/5  Skipping graph build"
+if ($NoHost -or ($KeepVolumes -and -not $DataOnly)) {
+  Step "5/6  Skipping graph build"
   if ($KeepVolumes) { Note "the existing graph is untouched" }
 } else {
-  Step "5/5  Building the knowledge graph"
+  Step "5/6  Building the knowledge graph"
   Push-Location $Backend
   try {
     $env:PYTHONPATH = Join-Path $Backend "src"

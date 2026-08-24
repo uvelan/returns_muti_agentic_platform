@@ -19,6 +19,10 @@
 #   Usage: ./scripts/linux/reset_all.sh [options]
 #
 #     --keep-images       skip the image pull and prune (faster re-runs)
+#     --data-only         reset the data without destroying containers or
+#                         volumes. Same end state, but SQL Server keeps its
+#                         system databases instead of initialising them from
+#                         scratch -- the slow part of a full reset
 #     --no-host           leave backend, workers and frontend stopped
 #     --dataset DIR       load from a different dataset directory
 #     --graph-records N   per-asset cap for the graph build (default 30000)
@@ -30,6 +34,7 @@ REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
 
 KEEP_IMAGES=false
 START_HOST=true
+DATA_ONLY=false
 DATASET=""
 # 30,000 rather than the script default of 5,000, and it matters.
 # `GraphSyncRequest.maxRecordsPerAsset` defaults to 1,000 and the effective
@@ -46,6 +51,7 @@ fail() { printf '[reset-all] ERROR: %s\n' "$*" >&2; exit 1; }
 while (($# > 0)); do
     case "$1" in
         --keep-images) KEEP_IMAGES=true ;;
+        --data-only) DATA_ONLY=true ;;
         --no-host) START_HOST=false ;;
         --dataset)
             shift || fail "--dataset requires a directory"
@@ -102,10 +108,22 @@ log "1/6  Stopping host processes"
 scripts/linux/17_stop_host_processes.sh || true
 
 log "2/6  Resetting and starting infrastructure"
-reset_args=(--no-bootstrap)
-[[ "${KEEP_IMAGES}" == true ]] && reset_args+=(--no-pull)
-scripts/linux/reset_docker_environment.sh "${reset_args[@]}"
-
+if [[ "${DATA_ONLY}" == true ]]; then
+    # Containers and volumes are kept, so SQL Server does not re-initialise its
+    # system databases -- the slow part of a full reset. Started first because
+    # --data-only must work from a cold machine too, not only from a running one.
+    docker compose up -d
+    # The dataset loader clears Mongo and Neo4j itself and knows nothing about
+    # SQL Server or Temporal, so those two are cleared here instead of by
+    # destroying the volumes. A case workflow left running against dropped Mongo
+    # state is worse than none: it wakes, cannot find its case, and retries
+    # against a world that no longer contains the thing it is about.
+    "${PYTHON[@]}" "${REPO_ROOT}/backend/scripts/reset_transactional_state.py" --apply
+else
+    reset_args=(--no-bootstrap)
+    [[ "${KEEP_IMAGES}" == true ]] && reset_args+=(--no-pull)
+    scripts/linux/reset_docker_environment.sh "${reset_args[@]}"
+fi
 
 # Published is not the same as reachable-by-this-config. A container can
 # publish 17233 while `PLATFORM_TEMPORAL_TARGET` dials 7233, and every process
