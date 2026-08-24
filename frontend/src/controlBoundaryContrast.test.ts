@@ -47,6 +47,21 @@ const RAW: Record<string, string> = import.meta.glob("./**/*.tsx", {
 const TOO_FAINT =
   /\bborder-(?:outline-variant|analyzer-outline-variant|analyzer-outline(?![-a-z])|slate-300|slate-700|gray-300|zinc-300|neutral-300|emerald-950|emerald-900|emerald-800)(?:\/\d{1,3})?\b/;
 
+/**
+ * Deliberately not `<button>`.
+ *
+ * An input has no content of its own, so its border is the whole of what says a
+ * field is there and 1.4.11 applies without argument. A button is not that
+ * clean: an *outlined* one is delimited by its border and belongs here, while a
+ * list row or a filter chip rendered as a button is identified by its label and
+ * its selected state, with the border acting as a divider between siblings.
+ *
+ * Adding `button` here finds fifteen sites across eight domains and cannot tell
+ * those two apart. The genuine ones -- four in `domains/ai`, five in the
+ * analyzer -- were found and fixed by reading them. A guard that fires on
+ * arguable cases gets switched off, which is worse than a narrow one that is
+ * always right, so this stays narrow and the button audit stays a human pass.
+ */
 const CONTROL = /<(input|select|textarea)\b/g;
 const OPENS_ELEMENT = /<[A-Za-z]/;
 const CLASS_NAME = /className=(?:"([^"]*)"|\{`([^`]*)`\}|\{([^}]{0,400}?)\})/s;

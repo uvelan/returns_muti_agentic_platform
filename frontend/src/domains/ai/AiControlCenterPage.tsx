@@ -63,14 +63,14 @@ export function AiControlCenterPage() {
   const tab = useDomainSection(AI_DOMAIN) as Tab;
 
   if (!can("ai.request.read")) {
-    return <p className="text-sm text-slate-600">You do not have access to the AI Control Center.</p>;
+    return <p className="text-sm text-on-surface-variant">You do not have access to the AI Control Center.</p>;
   }
 
   return (
     <div className="flex flex-col gap-4">
       <header>
         <h2 className="text-2xl font-semibold text-on-surface">AI Control Center</h2>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-on-surface-variant">
           Requests, interceptions, metrics, routes, and safety.
         </p>
       </header>
@@ -83,7 +83,7 @@ export function AiControlCenterPage() {
 
 function TabBody({ tab, canReadInterceptions }: { tab: Tab; canReadInterceptions: boolean }) {
   const unbacked = UNBACKED[tab];
-  if (unbacked) return <p className="text-sm text-slate-500">{unbacked}</p>;
+  if (unbacked) return <p className="text-sm text-outline">{unbacked}</p>;
 
   switch (tab) {
     case "Overview":
@@ -103,9 +103,9 @@ function TabBody({ tab, canReadInterceptions }: { tab: Tab; canReadInterceptions
 
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <p className="text-xs uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-slate-900">{value}</p>
+    <div className="rounded-lg border border-outline-variant bg-white p-4">
+      <p className="text-xs uppercase tracking-wide text-outline">{label}</p>
+      <p className="mt-1 text-2xl font-semibold text-on-surface">{value}</p>
     </div>
   );
 }
@@ -116,8 +116,8 @@ function MetricsTab() {
     queryFn: aiControlCenterApi.getSummary,
   });
 
-  if (summary.isLoading) return <p className="text-sm text-slate-500">Loading...</p>;
-  if (summary.error) return <p className="text-sm text-red-700">{summary.error.message}</p>;
+  if (summary.isLoading) return <p className="text-sm text-outline">Loading...</p>;
+  if (summary.error) return <p className="text-sm text-error">{summary.error.message}</p>;
   if (!summary.data) return null;
 
   const s = summary.data;
@@ -141,7 +141,7 @@ function MetricsTab() {
         <Breakdown title="By tier" data={s.byTier} />
       </div>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-outline">
         Estimated cost: {(s.estimatedCostMicros / 1_000_000).toFixed(4)}{" "}
         {s.pricingCurrency ?? "(currency unknown)"}.
         {s.unpricedAttempts > 0 && (
@@ -163,16 +163,16 @@ function MetricsTab() {
 function Breakdown({ title, data }: { title: string; data: Readonly<Record<string, number>> }) {
   const rows = Object.entries(data).sort(([, a], [, b]) => b - a);
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4">
-      <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+    <section className="rounded-lg border border-outline-variant bg-white p-4">
+      <h2 className="text-sm font-semibold text-on-surface">{title}</h2>
       {rows.length === 0 ? (
-        <p className="mt-2 text-sm text-slate-600">No data.</p>
+        <p className="mt-2 text-sm text-on-surface-variant">No data.</p>
       ) : (
         <ul className="mt-2 flex flex-col gap-1">
           {rows.map(([key, count]) => (
             <li key={key} className="flex justify-between text-sm">
-              <span className="truncate text-slate-700">{key}</span>
-              <span className="font-medium text-slate-900">{count}</span>
+              <span className="truncate text-on-surface-variant">{key}</span>
+              <span className="font-medium text-on-surface">{count}</span>
             </li>
           ))}
         </ul>
@@ -188,16 +188,16 @@ function RequestsTab() {
     queryFn: aiControlCenterApi.listAttempts,
   });
 
-  if (attempts.isLoading) return <p className="text-sm text-slate-500">Loading...</p>;
-  if (attempts.error) return <p className="text-sm text-red-700">{attempts.error.message}</p>;
+  if (attempts.isLoading) return <p className="text-sm text-outline">Loading...</p>;
+  if (attempts.error) return <p className="text-sm text-error">{attempts.error.message}</p>;
 
   const rows = attempts.data ?? [];
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_22rem]">
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <div className="overflow-x-auto rounded-lg border border-outline-variant bg-white">
         <table className="w-full text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-slate-500">
+          <thead className="text-xs uppercase tracking-wide text-outline">
             <tr>
               <th className="p-2">Task</th>
               <th className="p-2">Provider</th>
@@ -210,14 +210,14 @@ function RequestsTab() {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="p-3 text-slate-600">No requests recorded.</td>
+                <td colSpan={6} className="p-3 text-on-surface-variant">No requests recorded.</td>
               </tr>
             ) : null}
             {rows.map((attempt) => (
               <tr
                 key={attempt.id}
                 onClick={() => { setSelected(attempt); }}
-                className="cursor-pointer border-t border-slate-200 hover:bg-slate-50"
+                className="cursor-pointer border-t border-outline-variant hover:bg-surface-container-low"
               >
                 <td className="p-2">
                   {/*
@@ -253,10 +253,10 @@ function RequestsTab() {
         </table>
       </div>
 
-      <aside className="rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="text-sm font-semibold text-slate-900">Request inspection</h2>
+      <aside className="rounded-lg border border-outline-variant bg-white p-4">
+        <h2 className="text-sm font-semibold text-on-surface">Request inspection</h2>
         {selected === null ? (
-          <p className="mt-2 text-sm text-slate-600">Select a request.</p>
+          <p className="mt-2 text-sm text-on-surface-variant">Select a request.</p>
         ) : (
           <dl className="mt-3 flex flex-col gap-2 text-sm">
             <Field label="Trace" value={selected.traceId} mono />
@@ -283,7 +283,7 @@ function RequestsTab() {
             <Field label="Agent" value={selected.agentId ?? "-"} />
             <Field label="Prompt version" value={selected.promptVersion ?? "-"} />
 
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="mt-2 text-xs text-outline">
               Digests, not bodies. Prompt and response payloads are deliberately not
               served by this surface.
             </p>
@@ -334,8 +334,8 @@ function ReplayControls({ traceId }: { traceId: string }) {
   if (!can("ai.replay.read")) return null;
 
   return (
-    <div className="mt-3 flex flex-col gap-2 border-t border-slate-200 pt-3">
-      <label className="text-xs uppercase tracking-wide text-slate-500" htmlFor="replay-provider">
+    <div className="mt-3 flex flex-col gap-2 border-t border-outline-variant pt-3">
+      <label className="text-xs uppercase tracking-wide text-outline" htmlFor="replay-provider">
         Replay provider
       </label>
       <select
@@ -352,7 +352,7 @@ function ReplayControls({ traceId }: { traceId: string }) {
       <div className="flex gap-2">
         <button
           type="button"
-          className="rounded bg-slate-900 px-2 py-1 text-sm text-white disabled:opacity-50"
+          className="rounded bg-primary px-2 py-1 text-sm text-white disabled:opacity-50"
           disabled={replay.isPending}
           onClick={() => { replay.mutate(); }}
         >
@@ -360,24 +360,24 @@ function ReplayControls({ traceId }: { traceId: string }) {
         </button>
         <button
           type="button"
-          className="rounded border border-slate-300 px-2 py-1 text-sm disabled:opacity-50"
+          className="rounded border border-outline-control px-2 py-1 text-sm disabled:opacity-50"
           disabled={compare.isPending}
           onClick={() => { compare.mutate(); }}
         >
           Compare providers
         </button>
       </div>
-      {replay.error ? <p className="text-xs text-red-700">{replay.error.message}</p> : null}
-      {compare.error ? <p className="text-xs text-red-700">{compare.error.message}</p> : null}
+      {replay.error ? <p className="text-xs text-error">{replay.error.message}</p> : null}
+      {compare.error ? <p className="text-xs text-error">{compare.error.message}</p> : null}
       {replay.data ? (
-        <p className="text-xs text-slate-600">
+        <p className="text-xs text-on-surface-variant">
           Replayed as trace <span className="font-mono">{replay.data.id}</span>:{" "}
           {replay.data.provider ?? "-"} / {replay.data.model ?? "-"} -&gt;{" "}
           {replay.data.decision ?? replay.data.status}
         </p>
       ) : null}
       {compare.data ? (
-        <ul className="flex flex-col gap-1 text-xs text-slate-600">
+        <ul className="flex flex-col gap-1 text-xs text-on-surface-variant">
           {compare.data.map((trace) => (
             <li key={trace.id}>
               {trace.provider ?? "-"} / {trace.model ?? "-"} -&gt;{" "}
@@ -401,8 +401,8 @@ const COMPARE_PROVIDERS = ["GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC"] as const;
 function Field({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-slate-500">{label}</dt>
-      <dd className={mono ? "break-all font-mono text-xs text-slate-800" : "text-slate-800"}>
+      <dt className="text-xs uppercase tracking-wide text-outline">{label}</dt>
+      <dd className={mono ? "break-all font-mono text-xs text-on-surface" : "text-on-surface"}>
         {value}
       </dd>
     </div>
@@ -504,14 +504,14 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
 
   if (!canRead) {
     return (
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-on-surface-variant">
         Viewing interceptions requires ai.interception.read.
       </p>
     );
   }
-  if (interceptions.isLoading) return <p className="text-sm text-slate-500">Loading...</p>;
+  if (interceptions.isLoading) return <p className="text-sm text-outline">Loading...</p>;
   if (interceptions.error) {
-    return <p className="text-sm text-red-700">{interceptions.error.message}</p>;
+    return <p className="text-sm text-error">{interceptions.error.message}</p>;
   }
 
   const rows: readonly InterceptionRow[] = interceptions.data ?? [];
@@ -556,9 +556,9 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
         <Stat label="Held responses" value={byPoint("RESPONSE")} />
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <div className="overflow-x-auto rounded-lg border border-outline-variant bg-white">
         <table className="w-full text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-slate-500">
+          <thead className="text-xs uppercase tracking-wide text-outline">
             <tr>
               <th className="p-2">Interception</th>
               <th className="p-2">Point</th>
@@ -572,14 +572,14 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="p-3 text-slate-600">No interceptions.</td>
+                <td colSpan={7} className="p-3 text-on-surface-variant">No interceptions.</td>
               </tr>
             ) : null}
             {rows.map((row) => {
               const labels = labelsFor(row.point);
               const status = row.status.toUpperCase();
               return (
-              <tr key={row.interceptionId} className="border-t border-slate-200">
+              <tr key={row.interceptionId} className="border-t border-outline-variant">
                 <td className="p-2 font-mono text-xs">{row.interceptionId}</td>
                 <td className="p-2">
                   <span
@@ -599,7 +599,7 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
                 <td className="p-2">
                   {row.status}
                   {labels.outcomes[status] ? (
-                    <span className="ml-1 text-xs text-slate-500">
+                    <span className="ml-1 text-xs text-outline">
                       ({labels.outcomes[status]})
                     </span>
                   ) : null}
@@ -614,7 +614,7 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
                     <div className="flex gap-1">
                       <button
                         type="button"
-                        className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50"
+                        className="rounded border border-outline-control px-2 py-1 text-xs hover:bg-surface-container-low"
                         onClick={() => {
                           setOpen(row);
                         }}
@@ -624,7 +624,7 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
                       <button
                         type="button"
                         disabled={allow.isPending}
-                        className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-40"
+                        className="rounded border border-outline-control px-2 py-1 text-xs hover:bg-surface-container-low disabled:opacity-40"
                         onClick={() => {
                           allow.mutate(row.interceptionId);
                         }}
@@ -634,7 +634,7 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
                       <button
                         type="button"
                         disabled={cancel.isPending}
-                        className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-50 disabled:opacity-40"
+                        className="rounded border border-outline-control px-2 py-1 text-xs hover:bg-surface-container-low disabled:opacity-40"
                         onClick={() => {
                           cancel.mutate(row.interceptionId);
                         }}
@@ -666,17 +666,17 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
       ) : null}
 
       {cancel.error ? (
-        <p role="alert" className="text-sm text-red-700">
+        <p role="alert" className="text-sm text-error">
           {cancel.error.message}
         </p>
       ) : null}
       {allow.error ? (
-        <p role="alert" className="text-sm text-red-700">
+        <p role="alert" className="text-sm text-error">
           {allow.error.message}
         </p>
       ) : null}
 
-      <p className="text-sm text-slate-500">
+      <p className="text-sm text-outline">
         All three actions go through the operator API. A held <strong>request</strong>{" "}
         transitions and the resume bridge signals the waiting workflow separately, so the
         queue may show <code>ANSWERED</code> a moment before the work resumes. A held{" "}
@@ -686,7 +686,7 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
         check, and a malformed edit fails validation exactly as a malformed completion
         does.
       </p>
-      <p className="text-sm text-slate-500">
+      <p className="text-sm text-outline">
         Claim, Generate Candidate, Replay and Release are still not offered.{" "}
         <code>/api/ai</code> has no route for them, and two of the four are hard to justify
         at all: an interception exists <em>because</em> the model could not be called, so
@@ -703,16 +703,16 @@ function RoutesTab() {
   const tasks = useQuery({ queryKey: ["ai", "tasks"], queryFn: aiControlCenterApi.listTasks });
 
   if (routes.isLoading || tasks.isLoading) {
-    return <p className="text-sm text-slate-500">Loading...</p>;
+    return <p className="text-sm text-outline">Loading...</p>;
   }
   const error = routes.error ?? tasks.error;
-  if (error) return <p className="text-sm text-red-700">{error.message}</p>;
+  if (error) return <p className="text-sm text-error">{error.message}</p>;
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <div className="overflow-x-auto rounded-lg border border-outline-variant bg-white">
         <table className="w-full text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-slate-500">
+          <thead className="text-xs uppercase tracking-wide text-outline">
             <tr>
               <th className="p-2">Route</th>
               <th className="p-2">Provider</th>
@@ -731,7 +731,7 @@ function RoutesTab() {
                 children may be duplicated or omitted, on the screen an operator
                 reads to see which provider is live. */}
             {(routes.data ?? []).map((route) => (
-              <tr key={`${route.routeId}:${route.tier}`} className="border-t border-slate-200">
+              <tr key={`${route.routeId}:${route.tier}`} className="border-t border-outline-variant">
                 <td className="p-2 font-mono text-xs">{route.routeId}</td>
                 <td className="p-2">{route.provider}</td>
                 <td className="p-2">{route.model}</td>
@@ -742,14 +742,14 @@ function RoutesTab() {
                       route.circuitState === "CLOSED"
                         ? "text-emerald-700"
                         : route.circuitState === "OPEN"
-                          ? "text-red-700"
+                          ? "text-error"
                           : "text-amber-700"
                     }
                   >
                     {route.circuitState}
                   </span>
                   {!route.configured ? (
-                    <span className="ml-1 text-xs text-slate-500">unconfigured</span>
+                    <span className="ml-1 text-xs text-outline">unconfigured</span>
                   ) : null}
                 </td>
                 <td className="p-2">{route.activeRequests}</td>
@@ -760,9 +760,9 @@ function RoutesTab() {
         </table>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <div className="overflow-x-auto rounded-lg border border-outline-variant bg-white">
         <table className="w-full text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-slate-500">
+          <thead className="text-xs uppercase tracking-wide text-outline">
             <tr>
               <th className="p-2">Task</th>
               <th className="p-2">Tier</th>
@@ -774,7 +774,7 @@ function RoutesTab() {
           </thead>
           <tbody>
             {(tasks.data ?? []).map((task) => (
-              <tr key={task.taskId} className="border-t border-slate-200">
+              <tr key={task.taskId} className="border-t border-outline-variant">
                 <td className="p-2 font-mono text-xs">{task.taskId}</td>
                 <td className="p-2">{task.tier}</td>
                 <td className="p-2">{task.promptVersion}</td>
@@ -883,20 +883,20 @@ function ManualResponder({
   };
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-slate-300 bg-white p-4">
+    <section className="flex flex-col gap-3 rounded-lg border border-outline-variant bg-white p-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold">
           {isResponse ? "Review" : "Respond to"}{" "}
           <code className="font-mono text-xs">{interceptionId}</code>
         </h3>
-        <button type="button" className="text-xs text-slate-500 hover:underline" onClick={onClose}>
+        <button type="button" className="text-xs text-outline hover:underline" onClick={onClose}>
           Close
         </button>
       </div>
 
-      {request.isLoading ? <p className="text-sm text-slate-500">Unsealing request...</p> : null}
+      {request.isLoading ? <p className="text-sm text-outline">Unsealing request...</p> : null}
       {request.error ? (
-        <p className="text-sm text-red-700">{request.error.message}</p>
+        <p className="text-sm text-error">{request.error.message}</p>
       ) : null}
       {request.data ? (
         <pre
@@ -935,7 +935,7 @@ function ManualResponder({
           this is set by a submit that has already come back refused, so it
           announces once and interrupts nothing. */}
       {error ? (
-        <p id={errorId} role="alert" className="text-sm text-red-700">
+        <p id={errorId} role="alert" className="text-sm text-error">
           {error}
         </p>
       ) : null}
@@ -943,13 +943,13 @@ function ManualResponder({
       <div className="flex items-center gap-2">
         <button
           type="button"
-          className="rounded bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-40"
+          className="rounded bg-primary px-3 py-1.5 text-sm text-white disabled:opacity-40"
           disabled={submitting || text.trim().length === 0 || !request.data}
           onClick={() => void submit()}
         >
           {submitting ? "Submitting..." : labels.submit}
         </button>
-        <span className="text-xs text-slate-500">
+        <span className="text-xs text-outline">
           {isResponse && original !== null ? (
             <>
               Delivered as <code>HUMAN_EDITED</code>, recording that{" "}
