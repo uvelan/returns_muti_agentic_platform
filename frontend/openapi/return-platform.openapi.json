@@ -2809,6 +2809,39 @@
         "title": "APIResponse[RuntimeConfig]",
         "type": "object"
       },
+      "APIResponse_SchemaDocumentView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SchemaDocumentView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[SchemaDocumentView]",
+        "type": "object"
+      },
       "APIResponse_SchemaValidation_": {
         "additionalProperties": false,
         "properties": {
@@ -9157,6 +9190,14 @@
           "mode": {
             "$ref": "#/components/schemas/GraphSyncScope",
             "default": "FULL"
+          },
+          "scope": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10000,
+            "title": "Scope",
+            "type": "array"
           }
         },
         "title": "GraphSyncRequest",
@@ -9198,6 +9239,33 @@
             },
             "title": "Constraintsapplied",
             "type": "array"
+          },
+          "currentActivity": {
+            "default": "",
+            "title": "Currentactivity",
+            "type": "string"
+          },
+          "currentObject": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentobject"
+          },
+          "currentSource": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentsource"
           },
           "cutoverStage": {
             "anyOf": [
@@ -9258,6 +9326,12 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "itemsRead": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Itemsread",
+            "type": "integer"
           },
           "mode": {
             "title": "Mode",
@@ -9342,6 +9416,13 @@
             "title": "Schemaversion",
             "type": "string"
           },
+          "scope": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scope",
+            "type": "array"
+          },
           "skippedSources": {
             "items": {
               "type": "string"
@@ -9374,10 +9455,12 @@
           },
           "status": {
             "enum": [
+              "PREPARING",
               "RUNNING",
               "COMPLETED",
               "FAILED",
-              "STALLED"
+              "STALLED",
+              "CANCELLED"
             ],
             "title": "Status",
             "type": "string"
@@ -14971,6 +15054,68 @@
           "detail"
         ],
         "title": "SchemaDiffEntry",
+        "type": "object"
+      },
+      "SchemaDocumentEdit": {
+        "additionalProperties": false,
+        "description": "An edited schema, on its way to becoming a release.",
+        "properties": {
+          "activate": {
+            "default": true,
+            "title": "Activate",
+            "type": "boolean"
+          },
+          "baseChecksum": {
+            "title": "Basechecksum",
+            "type": "string"
+          },
+          "document": {
+            "additionalProperties": true,
+            "title": "Document",
+            "type": "object"
+          }
+        },
+        "required": [
+          "document",
+          "baseChecksum"
+        ],
+        "title": "SchemaDocumentEdit",
+        "type": "object"
+      },
+      "SchemaDocumentView": {
+        "additionalProperties": false,
+        "description": "The active schema as an editable document, plus what it is.\n\nThe document is the schema exactly as the runtime resolved it, so an\noperator editing it is editing the thing that is running rather than a\nrendering of it.",
+        "properties": {
+          "configurationChecksum": {
+            "title": "Configurationchecksum",
+            "type": "string"
+          },
+          "configurationReleaseId": {
+            "title": "Configurationreleaseid",
+            "type": "string"
+          },
+          "document": {
+            "additionalProperties": true,
+            "title": "Document",
+            "type": "object"
+          },
+          "fromFile": {
+            "title": "Fromfile",
+            "type": "boolean"
+          },
+          "schemaVersion": {
+            "title": "Schemaversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "configurationReleaseId",
+          "configurationChecksum",
+          "schemaVersion",
+          "document",
+          "fromFile"
+        ],
+        "title": "SchemaDocumentView",
         "type": "object"
       },
       "SchemaValidation": {
@@ -21885,7 +22030,7 @@
         ]
       },
       "post": {
-        "description": "Run a sync now and answer with the run it produced.\n\nAwaited rather than backgrounded, matching `/api/v1/seed-data/apply`: the\nrequest is bounded by `maxRecordsPerAsset` and by\n`settings.graph_sync_max_records`, and a fire-and-forget task would have to\ninvent a way to hand back the run id that `GraphSyncService.sync` mints\ninternally. A failed run is still recorded FAILED in the ledger before the\nerror propagates, so the list is truthful either way.",
+        "description": "Start a sync and answer with the run reference.\n\nThis used to await the whole rebuild, because a backgrounded task \"would\nhave to invent a way to hand back the run id that `GraphSyncService.sync`\nmints internally\". `GraphSyncService.begin` is that: it claims the id,\nwrites the PREPARING row, and returns once the row exists, so the caller\ngets something `GET /runs/{id}` can already answer for.\n\nBackgrounding matters because a full rebuild reads every configured source.\nAwaiting it held the request open for the whole rebuild, and any client\ntimeout looked like a failure while the graph writes carried on. A failed\nrun is still recorded FAILED in the ledger, so the list stays truthful.",
         "operationId": "start_run_api_graph_sync_runs_post",
         "requestBody": {
           "content": {
@@ -23159,6 +23304,68 @@
           }
         },
         "summary": "List Releases",
+        "tags": [
+          "Graph Schema Releases"
+        ]
+      }
+    },
+    "/api/schema-releases/active/document": {
+      "get": {
+        "description": "The schema the runtime is actually running, as an editable document.",
+        "operationId": "get_active_document_api_schema_releases_active_document_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SchemaDocumentView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Active Document",
+        "tags": [
+          "Graph Schema Releases"
+        ]
+      },
+      "put": {
+        "description": "Publish an edited schema as a new release, and point the runtime at it.\n\nEditing the schema used to mean editing a YAML file on the server and\nrestarting, which is not something an operator can do and not something\nthat leaves a record of who changed what.\n\nThree things happen here that a hand edit does not get:\n\n  * **The checksum is recomputed.** `load_active_schema` refuses a document\n    whose checksum does not match its content, so a hand edit that forgot\n    to reseal it produced a platform that would not start.\n  * **The edit is validated as a schema** before it is published, so a\n    malformed document is a 422 rather than a release nothing can load.\n  * **Concurrent edits are caught.** `baseChecksum` names the release the\n    edit started from; if that is no longer active, someone else published\n    in between and this would silently discard their work.",
+        "operationId": "put_active_document_api_schema_releases_active_document_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SchemaDocumentEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SchemaDocumentView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Active Document",
         "tags": [
           "Graph Schema Releases"
         ]

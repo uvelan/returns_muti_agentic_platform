@@ -7,7 +7,14 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PlainSerializer,
+    StringConstraints,
+    model_validator,
+)
 
 Identifier = Annotated[
     str,
@@ -128,6 +135,27 @@ class EntityDeletionPolicy(StrEnum):
     DETACH_ONLY = "DETACH_ONLY"
 
 
+#: A set of strings that serializes in a stable order.
+#:
+#: A plain `frozenset[str]` dumps in set-iteration order, which depends on the
+#: hash values and the insertion history of that particular set object. Two
+#: equal sets built by different routes therefore dump to differently ordered
+#: lists, and dumping, re-parsing and dumping again does not settle: the third
+#: dump is not reliably the second.
+#:
+#: That is not cosmetic here. `configuration_checksum` is a digest over the
+#: schema document, and `load_active_schema` refuses a document whose checksum
+#: does not match its content. A release published from one dump and verified
+#: against another is a release that will not load, intermittently, depending
+#: on which order the sets happened to come out in.
+#:
+#: Ordering carries no meaning in a set, so sorting costs nothing and makes the
+#: document a function of its content.
+SortedStrings = Annotated[
+    frozenset[str], PlainSerializer(lambda value: sorted(value), return_type=list[str])
+]
+
+
 class FieldCapabilities(BaseModel):
     """Operations explicitly enabled for a logical field."""
 
@@ -139,8 +167,8 @@ class FieldCapabilities(BaseModel):
     aggregatable: bool = False
     displayable: bool = False
     on_demand_sync_anchor: bool = False
-    operators: frozenset[str] = frozenset()
-    aggregations: frozenset[str] = frozenset()
+    operators: SortedStrings = frozenset()
+    aggregations: SortedStrings = frozenset()
 
 
 class FieldPermissions(BaseModel):
@@ -148,9 +176,9 @@ class FieldPermissions(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    searchable_by: frozenset[str] = frozenset()
-    displayable_by: frozenset[str] = frozenset()
-    on_demand_sync_by: frozenset[str] = frozenset()
+    searchable_by: SortedStrings = frozenset()
+    displayable_by: SortedStrings = frozenset()
+    on_demand_sync_by: SortedStrings = frozenset()
     masking: str | None = None
 
 
@@ -460,7 +488,7 @@ class AnchorFieldDefinition(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     field_id: Identifier
-    allowed_operators: frozenset[str]
+    allowed_operators: SortedStrings
     required: bool = True
 
 
@@ -702,9 +730,9 @@ class AgentPolicy(BaseModel):
     agent_id: Identifier
     task_queue: Identifier
     generation_binding: GenerationBinding = GenerationBinding.REBIND_ON_RESUME
-    allowed_business_capabilities: frozenset[str]
-    allowed_roles: frozenset[str]
-    allowed_entity_ids: frozenset[str]
+    allowed_business_capabilities: SortedStrings
+    allowed_roles: SortedStrings
+    allowed_entity_ids: SortedStrings
     standard_model_refs: tuple[str, ...]
     max_reasoning_steps: int = Field(default=8, ge=1, le=32)
     max_graph_queries_per_turn: int = Field(default=12, ge=1, le=64)

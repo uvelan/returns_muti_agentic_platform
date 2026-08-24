@@ -1698,14 +1698,18 @@ export interface paths {
         put?: never;
         /**
          * Start Run
-         * @description Run a sync now and answer with the run it produced.
+         * @description Start a sync and answer with the run reference.
          *
-         *     Awaited rather than backgrounded, matching `/api/v1/seed-data/apply`: the
-         *     request is bounded by `maxRecordsPerAsset` and by
-         *     `settings.graph_sync_max_records`, and a fire-and-forget task would have to
-         *     invent a way to hand back the run id that `GraphSyncService.sync` mints
-         *     internally. A failed run is still recorded FAILED in the ledger before the
-         *     error propagates, so the list is truthful either way.
+         *     This used to await the whole rebuild, because a backgrounded task "would
+         *     have to invent a way to hand back the run id that `GraphSyncService.sync`
+         *     mints internally". `GraphSyncService.begin` is that: it claims the id,
+         *     writes the PREPARING row, and returns once the row exists, so the caller
+         *     gets something `GET /runs/{id}` can already answer for.
+         *
+         *     Backgrounding matters because a full rebuild reads every configured source.
+         *     Awaiting it held the request open for the whole rebuild, and any client
+         *     timeout looked like a failure while the graph writes carried on. A failed
+         *     run is still recorded FAILED in the ledger, so the list stays truthful.
          */
         post: operations["start_run_api_graph_sync_runs_post"];
         delete?: never;
@@ -2250,6 +2254,45 @@ export interface paths {
          */
         get: operations["list_releases_api_schema_releases_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/schema-releases/active/document": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Active Document
+         * @description The schema the runtime is actually running, as an editable document.
+         */
+        get: operations["get_active_document_api_schema_releases_active_document_get"];
+        /**
+         * Put Active Document
+         * @description Publish an edited schema as a new release, and point the runtime at it.
+         *
+         *     Editing the schema used to mean editing a YAML file on the server and
+         *     restarting, which is not something an operator can do and not something
+         *     that leaves a record of who changed what.
+         *
+         *     Three things happen here that a hand edit does not get:
+         *
+         *       * **The checksum is recomputed.** `load_active_schema` refuses a document
+         *         whose checksum does not match its content, so a hand edit that forgot
+         *         to reseal it produced a platform that would not start.
+         *       * **The edit is validated as a schema** before it is published, so a
+         *         malformed document is a 422 rather than a release nothing can load.
+         *       * **Concurrent edits are caught.** `baseChecksum` names the release the
+         *         edit started from; if that is no longer active, someone else published
+         *         in between and this would silently discard their work.
+         */
+        put: operations["put_active_document_api_schema_releases_active_document_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -4358,6 +4401,12 @@ export interface components {
         /** APIResponse[RuntimeConfig] */
         APIResponse_RuntimeConfig_: {
             data?: components["schemas"]["RuntimeConfig"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[SchemaDocumentView] */
+        APIResponse_SchemaDocumentView_: {
+            data?: components["schemas"]["SchemaDocumentView"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -6597,6 +6646,8 @@ export interface components {
             maxRecordsPerAsset: number;
             /** @default FULL */
             mode: components["schemas"]["GraphSyncScope"];
+            /** Scope */
+            scope?: string[];
         };
         /** GraphSyncRunView */
         GraphSyncRunView: {
@@ -6608,6 +6659,15 @@ export interface components {
             configurationDigest: string;
             /** Constraintsapplied */
             constraintsApplied: string[];
+            /**
+             * Currentactivity
+             * @default
+             */
+            currentActivity: string;
+            /** Currentobject */
+            currentObject?: string | null;
+            /** Currentsource */
+            currentSource?: string | null;
             /** Cutoverstage */
             cutoverStage?: string | null;
             /** Errorcode */
@@ -6620,6 +6680,11 @@ export interface components {
             heartbeatAt?: string | null;
             /** Id */
             id: string;
+            /**
+             * Itemsread
+             * @default 0
+             */
+            itemsRead: number;
             /** Mode */
             mode: string;
             /** Nodewrites */
@@ -6643,6 +6708,8 @@ export interface components {
             scanCompletedAt?: string | null;
             /** Schemaversion */
             schemaVersion: string;
+            /** Scope */
+            scope?: string[];
             /** Skippedsources */
             skippedSources?: string[];
             /** Sourcecounts */
@@ -6662,7 +6729,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "RUNNING" | "COMPLETED" | "FAILED" | "STALLED";
+            status: "PREPARING" | "RUNNING" | "COMPLETED" | "FAILED" | "STALLED" | "CANCELLED";
         };
         /**
          * GraphSyncScope
@@ -8800,6 +8867,45 @@ export interface components {
             detail: string;
             /** Element */
             element: string;
+        };
+        /**
+         * SchemaDocumentEdit
+         * @description An edited schema, on its way to becoming a release.
+         */
+        SchemaDocumentEdit: {
+            /**
+             * Activate
+             * @default true
+             */
+            activate: boolean;
+            /** Basechecksum */
+            baseChecksum: string;
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * SchemaDocumentView
+         * @description The active schema as an editable document, plus what it is.
+         *
+         *     The document is the schema exactly as the runtime resolved it, so an
+         *     operator editing it is editing the thing that is running rather than a
+         *     rendering of it.
+         */
+        SchemaDocumentView: {
+            /** Configurationchecksum */
+            configurationChecksum: string;
+            /** Configurationreleaseid */
+            configurationReleaseId: string;
+            /** Document */
+            document: {
+                [key: string]: unknown;
+            };
+            /** Fromfile */
+            fromFile: boolean;
+            /** Schemaversion */
+            schemaVersion: string;
         };
         /** SchemaValidation */
         SchemaValidation: {
@@ -13219,6 +13325,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_ReleaseListView_"];
+                };
+            };
+        };
+    };
+    get_active_document_api_schema_releases_active_document_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_SchemaDocumentView_"];
+                };
+            };
+        };
+    };
+    put_active_document_api_schema_releases_active_document_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SchemaDocumentEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_SchemaDocumentView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
