@@ -64,9 +64,14 @@ class SupportResponseAgent:
                 return tuple(dimension.upper() for dimension in row.requires)
         return None
 
-    def _instructions(self, request: SupportResponseRequest, requires: tuple[str, ...]) -> str:
+    def _instructions(
+        self,
+        request: SupportResponseRequest,
+        requires: tuple[str, ...],
+        items: tuple | None = None,
+    ) -> str:
         lines: list[str] = []
-        for item in request.items:
+        for item in (items if items is not None else request.items):
             product = item.productName or item.sku or item.lineReference
             quantity = f"{item.quantity} x " if item.quantity else ""
             condition = (item.condition or "").strip().upper()
@@ -141,46 +146,78 @@ class SupportResponseAgent:
                 ),
             )
 
-        rma = _reference("RMA", request.caseId)
-        method = (request.returnMethod or "").strip().upper()
-        plan = SupportRmaPlan(
-            returnReference=rma,
-            trackingReference=_reference("TRK", rma) if "TRACKING" in requires else None,
-            labelReference=_reference("LBL", rma) if "LABEL" in requires else None,
-            returnLocation=return_location,
-            shippingInstructionReference=(
-                _reference("SHIP", rma) if requires != ("RMA",) else None
-            ),
-            returnMethod=method or None,
-            carrier=_PARCEL_CARRIER.get(method),
-            orderLineReferences=tuple(item.lineReference for item in request.items),
-            instructions=self._instructions(request, requires),
-        )
-        summary = ", ".join(
-            part
-            for part in (
-                f"RMA {plan.returnReference}",
-                f"tracking {plan.trackingReference}" if plan.trackingReference else None,
-                f"label {plan.labelReference}" if plan.labelReference else None,
+        # One record per shipping-class group. A parcel-class grille and an
+        # LTL-class water heater cannot share a package, a label, or a bill of
+        # lading -- so lines are grouped by the method the handoff derived for
+        # them (falling back to the handoff-level method), and Support issues
+        # one RMA per group. A single group keeps the exact references the
+        # single-record contract always produced, so nothing downstream moves
+        # for the ordinary one-package return.
+        groups: dict[str, list] = {}
+        for item in request.items:
+            key = (item.returnMethod or request.returnMethod or "").strip().upper()
+            groups.setdefault(key, []).append(item)
+
+        return_location = request.returnLocation or request.bayReference
+        plans: list[SupportRmaPlan] = []
+        ordered = sorted(groups.items())
+        for index, (method, group_items) in enumerate(ordered):
+            group_requires = self._requirements_for(method or request.returnMethod)
+            if group_requires is None:
+                group_requires = requires
+            seed = request.caseId if len(ordered) == 1 else f"{request.caseId}-{index + 1}"
+            rma = _reference("RMA", seed)
+            plans.append(SupportRmaPlan(
+                returnReference=rma,
+                trackingReference=_reference("TRK", rma) if "TRACKING" in group_requires else None,
+                labelReference=_reference("LBL", rma) if "LABEL" in group_requires else None,
+                returnLocation=return_location,
+                shippingInstructionReference=(
+                    _reference("SHIP", rma) if group_requires != ("RMA",) else None
+                ),
+                returnMethod=method or None,
+                carrier=_PARCEL_CARRIER.get(method),
+                orderLineReferences=tuple(item.lineReference for item in group_items),
+                instructions=self._instructions(request, group_requires, tuple(group_items)),
+            ))
+
+        summary = "; ".join(
+            ", ".join(
+                part
+                for part in (
+                    f"RMA {plan.returnReference} ({plan.returnMethod or 'method not stated'})",
+                    f"tracking {plan.trackingReference}" if plan.trackingReference else None,
+                    f"label {plan.labelReference}" if plan.labelReference else None,
+                )
+                if part
             )
-            if part
+            for plan in plans
+        )
+        package_note = (
+            ""
+            if len(plans) == 1
+            else f"\nThis return ships as {len(plans)} separate packages -- do not mix them."
         )
         message = (
-            f"Return created for case {request.caseId}: {summary}.\n"
-            f"Return method: {method or 'Not stated'}.\n"
-            f"Instructions:\n{plan.instructions}"
+            f"Return created for case {request.caseId}: {summary}.{package_note}\n"
+            + "\n".join(
+                f"[{plan.returnReference} / {plan.returnMethod or 'method not stated'}]\n"
+                f"{plan.instructions}"
+                for plan in plans
+            )
         )
         return SupportResponseAssessment(
             ready=True,
             missingFields=(),
             clarificationRequest=None,
-            plan=plan,
+            plan=plans[0],
+            plans=tuple(plans),
             messageText=message,
             decision=AgentDecisionView(
                 decision="RETURN_PLANNED",
                 explanation=(
-                    "Artifacts follow the released requirement table for the confirmed method; "
-                    "recording them is the executor's act, not this assessment's."
+                    "Artifacts follow the released requirement table for each shipping-class "
+                    "group; recording them is the executor's act, not this assessment's."
                 ),
                 confidenceMillionths=950_000,
                 **decision_common,

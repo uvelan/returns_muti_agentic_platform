@@ -123,6 +123,11 @@ class SupportHandoffItem:
     quantity: int | None = None
     reason: str | None = None
     condition: str | None = None
+    #: The shipping class this line travels under, derived from the product
+    #: (`return_policy.return_method_derivation`). Per item because a parcel
+    #: grille and an LTL water heater on one order cannot share a package --
+    #: Support issues one return record per method group.
+    return_method: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,6 +213,7 @@ def _item_payload(item: SupportHandoffItem) -> dict[str, Any]:
         "quantity": item.quantity,
         "reason": _clean(item.reason),
         "condition": _clean(item.condition),
+        "returnMethod": _clean(item.return_method),
     }
 
 

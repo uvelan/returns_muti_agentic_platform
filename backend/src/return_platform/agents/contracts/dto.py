@@ -207,6 +207,9 @@ class SupportHandoffItemInput(AgentModel):
     quantity: int | None = Field(default=None, ge=1)
     reason: str | None = None
     condition: str | None = None
+    #: This line's shipping class, when the handoff derived one. Lines with
+    #: different classes are separate packages and get separate return records.
+    returnMethod: str | None = None
 
 
 class SupportResponseRequest(AgentModel):
@@ -253,6 +256,10 @@ class SupportResponseAssessment(AgentModel):
     #: The question to put back on the thread when `ready` is false.
     clarificationRequest: str | None
     plan: SupportRmaPlan | None
+    #: Every record the agent plans, one per shipping-class group of the
+    #: selected lines. `plan` above stays the first of these so readers that
+    #: predate multi-record returns keep working; new readers take the tuple.
+    plans: tuple[SupportRmaPlan, ...] = ()
     #: The message the Support conversation shows for this response.
     messageText: str
     decision: AgentDecisionView

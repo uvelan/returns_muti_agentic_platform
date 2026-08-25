@@ -1,0 +1,43 @@
+{
+ "sent": "Confirm order CI807883.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run12-4cb5642e",
+   "conversation_version": 4,
+   "client_turn_id": "qa-f8d439e3-08df-4374-84b1-9f6290ff4a02",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [],
+    "suggestions": [],
+    "requested_input": "You selected order CI807883. Confirm this order to raise the return?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run12-4cb5642e:qa-f8d439e3-08df-4374-84b1-9f6290ff4a02:1",
+   "case_id": null,
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "GLENN WINSLOW",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:35:40.082000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "fb194cde-d787-4bc9-be80-42b734550dda",
+   "generated_at": "2026-08-25T18:35:42.180312Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

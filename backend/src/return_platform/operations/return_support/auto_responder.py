@@ -100,6 +100,7 @@ def _handoff_request(
             quantity=entry.get("quantity"),
             reason=entry.get("reason"),
             condition=entry.get("condition"),
+            returnMethod=entry.get("returnMethod"),
         )
         for entry in raw_items
         if entry.get("lineReference")
@@ -194,21 +195,25 @@ class SupportAutoResponder:
 
         plan = assessment.plan
         assert plan is not None  # ready implies a plan, by the agent's contract
+        # Every planned record, one per shipping-class group -- `plans` is the
+        # authoritative set and `plan` merely its first entry for older readers.
+        plans = assessment.plans or (plan,)
         receipt = await self._events.record_support_response(
             case_id=item.caseId or "",
             work_item_id=work_item_id,
             support_event_id=event_id,
             records=[
                 support_return_record(
-                    return_reference=plan.returnReference,
-                    tracking_reference=plan.trackingReference,
-                    label_reference=plan.labelReference,
-                    return_location=plan.returnLocation,
-                    shipping_instruction_reference=plan.shippingInstructionReference,
-                    return_method=plan.returnMethod,
-                    carrier=plan.carrier,
-                    order_line_references=plan.orderLineReferences,
+                    return_reference=planned.returnReference,
+                    tracking_reference=planned.trackingReference,
+                    label_reference=planned.labelReference,
+                    return_location=planned.returnLocation,
+                    shipping_instruction_reference=planned.shippingInstructionReference,
+                    return_method=planned.returnMethod,
+                    carrier=planned.carrier,
+                    order_line_references=planned.orderLineReferences,
                 )
+                for planned in plans
             ],
             rejected=False,
             reason=None,

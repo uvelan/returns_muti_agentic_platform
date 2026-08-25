@@ -1,0 +1,121 @@
+{
+ "sent": "customer wants to return an item, name is veronica lamber",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run13-da160a82",
+   "conversation_version": 1,
+   "client_turn_id": "qa-8104cd3d-900f-44fc-9640-e9c7df8ad6e4",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 600924 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "6d3a8b66-7c25-4d66-9e39-378b2f97e6c8",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 2: 600925 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "6d3a8b66-7c25-4d66-9e39-378b2f97e6c8",
+        "result_path": [
+         "candidates",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "6d3a8b66-7c25-4d66-9e39-378b2f97e6c8",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "2ef86d4b71df81c8fad2fb495056b6c79d3845d6ade30369423b7f4ad4e11ddd",
+     "compiled_query_checksum": "32aa52abf681b63781ca68dcbe7bf5527e62dc61ed01cdc2ffea3d54c4401ef7",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "veronica lamber"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600924",
+        "data": {
+         "account_id": "ORL",
+         "customer_id": "600924",
+         "customer_name": "VERONICA LAMBERT",
+         "source_updated_at": "2026-05-18T09:23:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_contains"
+        ]
+       },
+       {
+        "candidate_id": "600925",
+        "data": {
+         "account_id": "LENZ",
+         "customer_id": "600925",
+         "customer_name": "VERONICA LAMBERT",
+         "source_updated_at": "2026-08-01T08:11:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_contains"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "66eb61798177c89c58e2f2193dabacc19697013769c63d17a3a353b520050dba"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:36:51.089000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "1f3e58b3-ccbf-4efe-ac76-869f18952382",
+   "generated_at": "2026-08-25T18:36:55.188136Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

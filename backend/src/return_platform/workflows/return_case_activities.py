@@ -360,7 +360,9 @@ def _count_of(value: Any) -> int | None:
 
 
 def _handoff_item(
-    item: Mapping[str, Any], detail: CaseOrderLineDetail | None
+    item: Mapping[str, Any],
+    detail: CaseOrderLineDetail | None,
+    return_method: str | None = None,
 ) -> SupportHandoffItem:
     """One selected line joined to what the source calls it.
 
@@ -377,6 +379,7 @@ def _handoff_item(
         quantity=_count_of(item.get("quantity")),
         reason=_text_of(item.get("reason")),
         condition=_text_of(item.get("condition")),
+        return_method=return_method,
     )
 
 
@@ -1140,6 +1143,8 @@ class ReturnCaseActivities:
         )
         required_details_complete = known and not awaiting
 
+        item_methods = self._derive_item_methods(selected, details)
+
         handoff = compose_support_handoff(
             case_id=request.case_id,
             work_item_id=request.work_item_id,
@@ -1155,7 +1160,11 @@ class ReturnCaseActivities:
             order=SupportHandoffOrder(
                 reference=order_reference,
                 items=tuple(
-                    _handoff_item(item, details.get(str(item.get("orderLineId") or "")))
+                    _handoff_item(
+                        item,
+                        details.get(str(item.get("orderLineId") or "")),
+                        item_methods.get(str(item.get("orderLineId") or "")),
+                    )
                     for item in selected
                 ),
             ),
@@ -1188,6 +1197,46 @@ class ReturnCaseActivities:
             payload=handoff.payload,
             subject=handoff.subject,
         )
+
+    def _derive_item_methods(
+        self,
+        selected: Sequence[Mapping[str, Any]],
+        details: Mapping[str, CaseOrderLineDetail],
+    ) -> dict[str, str]:
+        """Each selected line's shipping class, from what its product is.
+
+        Per line because one order can carry a parcel-class grille and an
+        LTL-class water heater, and those are different packages: Support
+        issues one return record per class. Empty when no derivation is
+        configured.
+        """
+        configuration = self._configuration() if self._configuration else None
+        derivation = (
+            configuration.return_policy.return_method_derivation
+            if configuration is not None
+            else None
+        )
+        if derivation is None:
+            return {}
+        keywords = tuple(keyword.upper() for keyword in derivation.freight_keywords)
+        methods: dict[str, str] = {}
+        for item in selected:
+            line = str(item.get("orderLineId") or "")
+            detail = details.get(line)
+            text = " ".join(
+                part
+                for part in (
+                    detail.description if detail else None,
+                    detail.sku if detail else None,
+                )
+                if part
+            ).upper()
+            methods[line] = (
+                derivation.freight_method
+                if any(keyword in text for keyword in keywords)
+                else derivation.default_method
+            )
+        return methods
 
     async def _derive_return_method(
         self,

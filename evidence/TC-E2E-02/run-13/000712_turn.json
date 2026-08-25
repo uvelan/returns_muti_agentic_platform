@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CT805233",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run13-da160a82",
+   "conversation_version": 3,
+   "client_turn_id": "qa-124d65cd-60a2-472b-a61f-b8396f098828",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CT805233 / [REDACTED] / JACKSONVILLE / 2026-08-01",
+      "evidence_refs": [
+       {
+        "query_execution_id": "dc764d04-7462-477f-8fc1-839de67d29d5",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "dc764d04-7462-477f-8fc1-839de67d29d5",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "59ab537bdc90a2910139d41f039bbd07f2409fc8a5973c9ddf152e8c9e6646bc",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CT805233"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CT805233",
+        "data": {
+         "order_key": "LENZ*CT805233",
+         "account_id": "LENZ",
+         "sales_order_number": "CT805233",
+         "customer_id": "600925",
+         "customer_name": "VERONICA LAMBERT",
+         "customer_po_number": "JOB",
+         "job_name": "NEW CONSTRUCTION",
+         "order_status": "CALLCSR",
+         "sales_type": "INV",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "1441",
+         "ship_from_warehouse_id": "1441",
+         "shipping_method": "CUSTOMER PICKUP",
+         "order_date": "2026-08-01T00:00:00.000000000",
+         "invoice_date": "2026-08-01T00:00:00.000000000",
+         "shipped_at": "2026-08-03T00:00:00.000000000",
+         "commit_date": "2026-08-01T00:00:00.000000000",
+         "ship_to_name": "VERONICA LAMBERT",
+         "ship_to_phone": "469-555-2164",
+         "ship_to_city": "JACKSONVILLE",
+         "ship_to_state": "FL",
+         "ship_to_postal_code": "32223",
+         "source_updated_at": "2026-08-01T08:11:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "6adf40830fc45709095d603470166fc8b9de78ba3f9c6ad2e8a8756405840f05"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "VERONICA LAMBERT",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:37:03.685000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "a3cb1272-38c5-4637-8cef-9ee412770d7f",
+   "generated_at": "2026-08-25T18:37:12.507180Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

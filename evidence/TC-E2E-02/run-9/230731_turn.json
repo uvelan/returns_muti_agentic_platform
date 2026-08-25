@@ -1,0 +1,388 @@
+{
+ "sent": "Confirm the customer KURT MONROE on account MINNWW.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run9-c1130cff",
+   "conversation_version": 2,
+   "client_turn_id": "qa-e7f5ba37-4bb5-4c67-93d3-7a5de6fa0992",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CH808807 / 2026-08-01T0 / CHATTANOOGA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "62f6bffe-1cb5-4c5b-8848-5f937374ee48",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CZ805340 / 2026-02-03T0 / CHATTANOOGA / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "62f6bffe-1cb5-4c5b-8848-5f937374ee48",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CQ808730 / 2025-11-25T0 / CHATTANOOGA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "62f6bffe-1cb5-4c5b-8848-5f937374ee48",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CZ804130 / 2025-11-23T0 / CHATTANOOGA / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "62f6bffe-1cb5-4c5b-8848-5f937374ee48",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CV807269 / 2025-11-27T0 / CHATTANOOGA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "62f6bffe-1cb5-4c5b-8848-5f937374ee48",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CH804244 / 2025-06-30T0 / CHATTANOOGA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "62f6bffe-1cb5-4c5b-8848-5f937374ee48",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 7: CR803111 / 2025-04-30T0 / CHATTANOOGA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "62f6bffe-1cb5-4c5b-8848-5f937374ee48",
+        "result_path": [
+         "rows",
+         "6"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-7",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 8: CS802745 / 2025-04-04T0 / CHATTANOOGA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "62f6bffe-1cb5-4c5b-8848-5f937374ee48",
+        "result_path": [
+         "rows",
+         "7"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "62f6bffe-1cb5-4c5b-8848-5f937374ee48",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "b8369bb5c732adc0538de57b5bfad463374d90a9b4565f1a5914514156186570",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "MINNWW*CH808807",
+        "account_id": "MINNWW",
+        "sales_order_number": "CH808807",
+        "customer_id": "601114",
+        "customer_name": "KURT MONROE",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "REPLACEMENT",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "795",
+        "ship_from_warehouse_id": "795",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-08-01T00:00:00.000000000",
+        "invoice_date": "2026-08-01T00:00:00.000000000",
+        "shipped_at": "2026-08-03T00:00:00.000000000",
+        "commit_date": "2026-08-01T00:00:00.000000000",
+        "ship_to_name": "KURT MONROE",
+        "ship_to_phone": "303-555-8775",
+        "ship_to_city": "CHATTANOOGA",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37444",
+        "source_updated_at": "2026-08-01T12:49:00.000000000"
+       },
+       {
+        "order_key": "MINNWW*CZ805340",
+        "account_id": "MINNWW",
+        "sales_order_number": "CZ805340",
+        "customer_id": "601114",
+        "customer_name": "KURT MONROE",
+        "customer_po_number": "TRUCK STOCK",
+        "job_name": "REPLACEMENT",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "603",
+        "ship_from_warehouse_id": "603",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-02-03T00:00:00.000000000",
+        "invoice_date": "2026-02-03T00:00:00.000000000",
+        "shipped_at": "2026-02-03T00:00:00.000000000",
+        "commit_date": "2026-02-03T00:00:00.000000000",
+        "ship_to_name": "KURT MONROE",
+        "ship_to_phone": "303-555-8775",
+        "ship_to_city": "CHATTANOOGA",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37444",
+        "source_updated_at": "2026-02-03T14:14:00.000000000"
+       },
+       {
+        "order_key": "MINNWW*CQ808730",
+        "account_id": "MINNWW",
+        "sales_order_number": "CQ808730",
+        "customer_id": "601114",
+        "customer_name": "KURT MONROE",
+        "customer_po_number": "SHOP STOCK",
+        "job_name": "RESIDENTIAL",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "37",
+        "ship_from_warehouse_id": "37",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-11-25T00:00:00.000000000",
+        "invoice_date": "2025-11-25T00:00:00.000000000",
+        "shipped_at": "2025-11-28T00:00:00.000000000",
+        "commit_date": "2025-11-25T00:00:00.000000000",
+        "ship_to_name": "KURT MONROE",
+        "ship_to_phone": "303-555-8775",
+        "ship_to_city": "CHATTANOOGA",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37444",
+        "source_updated_at": "2025-11-25T12:02:00.000000000"
+       },
+       {
+        "order_key": "MINNWW*CZ804130",
+        "account_id": "MINNWW",
+        "sales_order_number": "CZ804130",
+        "customer_id": "601114",
+        "customer_name": "KURT MONROE",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "RESIDENTIAL",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2680",
+        "ship_from_warehouse_id": "2680",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-11-23T00:00:00.000000000",
+        "invoice_date": "2025-11-23T00:00:00.000000000",
+        "shipped_at": "2025-11-25T00:00:00.000000000",
+        "commit_date": "2025-11-23T00:00:00.000000000",
+        "ship_to_name": "KURT MONROE",
+        "ship_to_phone": "303-555-8775",
+        "ship_to_city": "CHATTANOOGA",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37444",
+        "source_updated_at": "2025-11-23T17:37:00.000000000"
+       },
+       {
+        "order_key": "MINNWW*CV807269",
+        "account_id": "MINNWW",
+        "sales_order_number": "CV807269",
+        "customer_id": "601114",
+        "customer_name": "KURT MONROE",
+        "customer_po_number": "TRUCK STOCK",
+        "job_name": "SHOP STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1781",
+        "ship_from_warehouse_id": "1781",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-11-27T00:00:00.000000000",
+        "invoice_date": "2025-11-27T00:00:00.000000000",
+        "shipped_at": "2025-11-29T00:00:00.000000000",
+        "commit_date": "2025-11-27T00:00:00.000000000",
+        "ship_to_name": "KURT MONROE",
+        "ship_to_phone": "303-555-8775",
+        "ship_to_city": "CHATTANOOGA",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37444",
+        "source_updated_at": "2025-11-27T14:55:00.000000000"
+       },
+       {
+        "order_key": "MINNWW*CH804244",
+        "account_id": "MINNWW",
+        "sales_order_number": "CH804244",
+        "customer_id": "601114",
+        "customer_name": "KURT MONROE",
+        "customer_po_number": "RESIDENTIAL",
+        "job_name": "STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1305",
+        "ship_from_warehouse_id": "1305",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-06-30T00:00:00.000000000",
+        "invoice_date": "2025-06-30T00:00:00.000000000",
+        "shipped_at": "2025-06-30T00:00:00.000000000",
+        "commit_date": "2025-06-30T00:00:00.000000000",
+        "ship_to_name": "KURT MONROE",
+        "ship_to_phone": "303-555-8775",
+        "ship_to_city": "CHATTANOOGA",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37444",
+        "source_updated_at": "2025-06-30T16:56:00.000000000"
+       },
+       {
+        "order_key": "MINNWW*CR803111",
+        "account_id": "MINNWW",
+        "sales_order_number": "CR803111",
+        "customer_id": "601114",
+        "customer_name": "KURT MONROE",
+        "customer_po_number": "TRUCK STOCK",
+        "job_name": "SHOP STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "596",
+        "ship_from_warehouse_id": "596",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-04-30T00:00:00.000000000",
+        "invoice_date": "2025-04-30T00:00:00.000000000",
+        "shipped_at": "2025-05-03T00:00:00.000000000",
+        "commit_date": "2025-04-30T00:00:00.000000000",
+        "ship_to_name": "KURT MONROE",
+        "ship_to_phone": "303-555-8775",
+        "ship_to_city": "CHATTANOOGA",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37444",
+        "source_updated_at": "2025-04-30T08:11:00.000000000"
+       },
+       {
+        "order_key": "MINNWW*CS802745",
+        "account_id": "MINNWW",
+        "sales_order_number": "CS802745",
+        "customer_id": "601114",
+        "customer_name": "KURT MONROE",
+        "customer_po_number": "REPLACEMENT",
+        "job_name": "STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "603",
+        "ship_from_warehouse_id": "603",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-04-04T00:00:00.000000000",
+        "invoice_date": "2025-04-04T00:00:00.000000000",
+        "shipped_at": "2025-04-06T00:00:00.000000000",
+        "commit_date": "2025-04-04T00:00:00.000000000",
+        "ship_to_name": "KURT MONROE",
+        "ship_to_phone": "303-555-8775",
+        "ship_to_city": "CHATTANOOGA",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37444",
+        "source_updated_at": "2025-04-04T16:09:00.000000000"
+       }
+      ],
+      "count": 8
+     },
+     "result_checksum": "63e50a0affb60bbb66e695307978aa2042d13067c6e95d00f62247d6436bb7e5"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "KURT MONROE",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T17:37:27.331000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "8dcdf187-7c32-41ec-88f2-2cf294bf374d",
+   "generated_at": "2026-08-25T17:37:31.739539Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

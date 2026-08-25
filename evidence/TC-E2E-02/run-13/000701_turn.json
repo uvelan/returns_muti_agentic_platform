@@ -1,0 +1,306 @@
+{
+ "sent": "Confirm the customer VERONICA LAMBERT on account LENZ.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run13-da160a82",
+   "conversation_version": 2,
+   "client_turn_id": "qa-32916627-488b-41a5-9777-86b3cbe8f211",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CT805233 / 2026-08-01T0 / JACKSONVILLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "dd0d09a6-4e70-4fa6-a93b-10f91e37d219",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CH803359 / 2026-07-04T0 / JACKSONVILLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "dd0d09a6-4e70-4fa6-a93b-10f91e37d219",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CN801957 / 2026-03-26T0 / JACKSONVILLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "dd0d09a6-4e70-4fa6-a93b-10f91e37d219",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CE808064 / 2026-01-19T0 / JACKSONVILLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "dd0d09a6-4e70-4fa6-a93b-10f91e37d219",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CI801461 / 2025-11-15T0 / JACKSONVILLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "dd0d09a6-4e70-4fa6-a93b-10f91e37d219",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CQ800924 / 2025-07-10T0 / JACKSONVILLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "dd0d09a6-4e70-4fa6-a93b-10f91e37d219",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "dd0d09a6-4e70-4fa6-a93b-10f91e37d219",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "88b9d6a29ba466fdc78c98921c142790cea12dbaf4e44f23e5e56654cc505f67",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "LENZ*CT805233",
+        "account_id": "LENZ",
+        "sales_order_number": "CT805233",
+        "customer_id": "600925",
+        "customer_name": "VERONICA LAMBERT",
+        "customer_po_number": "JOB",
+        "job_name": "NEW CONSTRUCTION",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1441",
+        "ship_from_warehouse_id": "1441",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-08-01T00:00:00.000000000",
+        "invoice_date": "2026-08-01T00:00:00.000000000",
+        "shipped_at": "2026-08-03T00:00:00.000000000",
+        "commit_date": "2026-08-01T00:00:00.000000000",
+        "ship_to_name": "VERONICA LAMBERT",
+        "ship_to_phone": "469-555-2164",
+        "ship_to_city": "JACKSONVILLE",
+        "ship_to_state": "FL",
+        "ship_to_postal_code": "32223",
+        "source_updated_at": "2026-08-01T08:11:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CH803359",
+        "account_id": "LENZ",
+        "sales_order_number": "CH803359",
+        "customer_id": "600925",
+        "customer_name": "VERONICA LAMBERT",
+        "customer_po_number": "WARRANTY",
+        "job_name": "TRUCK STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-07-04T00:00:00.000000000",
+        "invoice_date": "2026-07-04T00:00:00.000000000",
+        "shipped_at": "2026-07-05T00:00:00.000000000",
+        "commit_date": "2026-07-04T00:00:00.000000000",
+        "ship_to_name": "VERONICA LAMBERT",
+        "ship_to_phone": "469-555-2164",
+        "ship_to_city": "JACKSONVILLE",
+        "ship_to_state": "FL",
+        "ship_to_postal_code": "32223",
+        "source_updated_at": "2026-07-04T18:52:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CN801957",
+        "account_id": "LENZ",
+        "sales_order_number": "CN801957",
+        "customer_id": "600925",
+        "customer_name": "VERONICA LAMBERT",
+        "customer_po_number": "TRUCK STOCK",
+        "job_name": "JOB",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1549",
+        "ship_from_warehouse_id": "1549",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-03-26T00:00:00.000000000",
+        "invoice_date": "2026-03-26T00:00:00.000000000",
+        "shipped_at": "2026-03-26T00:00:00.000000000",
+        "commit_date": "2026-03-26T00:00:00.000000000",
+        "ship_to_name": "VERONICA LAMBERT",
+        "ship_to_phone": "469-555-2164",
+        "ship_to_city": "JACKSONVILLE",
+        "ship_to_state": "FL",
+        "ship_to_postal_code": "32223",
+        "source_updated_at": "2026-03-26T17:08:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CE808064",
+        "account_id": "LENZ",
+        "sales_order_number": "CE808064",
+        "customer_id": "600925",
+        "customer_name": "VERONICA LAMBERT",
+        "customer_po_number": "WARRANTY",
+        "job_name": "SHOP STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "686",
+        "ship_from_warehouse_id": "686",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-01-19T00:00:00.000000000",
+        "invoice_date": "2026-01-19T00:00:00.000000000",
+        "shipped_at": "2026-01-19T00:00:00.000000000",
+        "commit_date": "2026-01-19T00:00:00.000000000",
+        "ship_to_name": "VERONICA LAMBERT",
+        "ship_to_phone": "469-555-2164",
+        "ship_to_city": "JACKSONVILLE",
+        "ship_to_state": "FL",
+        "ship_to_postal_code": "32223",
+        "source_updated_at": "2026-01-19T10:22:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CI801461",
+        "account_id": "LENZ",
+        "sales_order_number": "CI801461",
+        "customer_id": "600925",
+        "customer_name": "VERONICA LAMBERT",
+        "customer_po_number": "RESIDENTIAL",
+        "job_name": "RESIDENTIAL",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2028",
+        "ship_from_warehouse_id": "2028",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-11-15T00:00:00.000000000",
+        "invoice_date": "2025-11-15T00:00:00.000000000",
+        "shipped_at": "2025-11-16T00:00:00.000000000",
+        "commit_date": "2025-11-15T00:00:00.000000000",
+        "ship_to_name": "VERONICA LAMBERT",
+        "ship_to_phone": "469-555-2164",
+        "ship_to_city": "JACKSONVILLE",
+        "ship_to_state": "FL",
+        "ship_to_postal_code": "32223",
+        "source_updated_at": "2025-11-15T13:43:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CQ800924",
+        "account_id": "LENZ",
+        "sales_order_number": "CQ800924",
+        "customer_id": "600925",
+        "customer_name": "VERONICA LAMBERT",
+        "customer_po_number": "TRUCK STOCK",
+        "job_name": "MAINTENANCE",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "428",
+        "ship_from_warehouse_id": "428",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-07-10T00:00:00.000000000",
+        "invoice_date": "2025-07-10T00:00:00.000000000",
+        "shipped_at": "2025-07-12T00:00:00.000000000",
+        "commit_date": "2025-07-10T00:00:00.000000000",
+        "ship_to_name": "VERONICA LAMBERT",
+        "ship_to_phone": "469-555-2164",
+        "ship_to_city": "JACKSONVILLE",
+        "ship_to_state": "FL",
+        "ship_to_postal_code": "32223",
+        "source_updated_at": "2025-07-10T12:47:00.000000000"
+       }
+      ],
+      "count": 6
+     },
+     "result_checksum": "0e02a38c65a9f2ba7c1e7b78c2978b7166b859fa354ccd64554cb46d2df43272"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "VERONICA LAMBERT",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:36:57.698000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "f1af59e4-e55d-41e7-9eed-0a8ecbeeea88",
+   "generated_at": "2026-08-25T18:37:01.479276Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

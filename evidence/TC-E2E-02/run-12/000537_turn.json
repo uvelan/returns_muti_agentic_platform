@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CI807883",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run12-4cb5642e",
+   "conversation_version": 3,
+   "client_turn_id": "qa-79ecb3c5-17f0-47df-a582-2406b4503ae3",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CI807883 / [REDACTED] / MESA / 2025-02-09",
+      "evidence_refs": [
+       {
+        "query_execution_id": "db29ac3b-385a-479d-bd24-9ad3876f8bda",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "db29ac3b-385a-479d-bd24-9ad3876f8bda",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "c23989e39706e1ffd7126d53cd32667a60a0925e9b9455c5837d8df18e905e24",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CI807883"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CI807883",
+        "data": {
+         "order_key": "SACRAMENTO*CI807883",
+         "account_id": "SACRAMENTO",
+         "sales_order_number": "CI807883",
+         "customer_id": "601167",
+         "customer_name": "GLENN WINSLOW",
+         "customer_po_number": "TRUCK STOCK",
+         "job_name": "RESIDENTIAL",
+         "order_status": "INVOICED",
+         "sales_type": "CASH",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "603",
+         "ship_from_warehouse_id": "603",
+         "shipping_method": "WILL CALL",
+         "order_date": "2025-02-09T00:00:00.000000000",
+         "invoice_date": "2025-02-09T00:00:00.000000000",
+         "shipped_at": "2025-02-11T00:00:00.000000000",
+         "commit_date": "2025-02-09T00:00:00.000000000",
+         "ship_to_name": "GLENN WINSLOW",
+         "ship_to_phone": "312-555-6704",
+         "ship_to_city": "MESA",
+         "ship_to_state": "AZ",
+         "ship_to_postal_code": "85253",
+         "source_updated_at": "2025-02-09T12:57:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "84005900e212f44845ad67acb26969bb439a4f2e18c68c2ebaa010d0ed433388"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "GLENN WINSLOW",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:35:34.329000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "fbc68555-660a-4091-8772-f7e5e9e404e0",
+   "generated_at": "2026-08-25T18:35:37.731850Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

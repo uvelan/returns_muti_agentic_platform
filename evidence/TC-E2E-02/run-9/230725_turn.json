@@ -1,0 +1,121 @@
+{
+ "sent": "customer wants to return an item, name is kurt monro",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run9-c1130cff",
+   "conversation_version": 1,
+   "client_turn_id": "qa-688af72d-051a-4dea-b0c6-9f3fead1e62d",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 601115 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "8a46a730-dc2c-467d-9982-546ce06c5b9c",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 2: 601114 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "8a46a730-dc2c-467d-9982-546ce06c5b9c",
+        "result_path": [
+         "candidates",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "8a46a730-dc2c-467d-9982-546ce06c5b9c",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "12ba85a93baae073ba21f61b9b531781cf277be46c4e9954699541540cc1b1d2",
+     "compiled_query_checksum": "32aa52abf681b63781ca68dcbe7bf5527e62dc61ed01cdc2ffea3d54c4401ef7",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "kurt monro"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "601115",
+        "data": {
+         "account_id": "GARDEN",
+         "customer_id": "601115",
+         "customer_name": "KURT MONROE",
+         "source_updated_at": "2026-07-07T18:52:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_contains"
+        ]
+       },
+       {
+        "candidate_id": "601114",
+        "data": {
+         "account_id": "MINNWW",
+         "customer_id": "601114",
+         "customer_name": "KURT MONROE",
+         "source_updated_at": "2026-08-01T12:49:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_contains"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "f37fe85fd817b05757b3387eb0165ed03d0e43b6eeb1cf35f476757164aa911f"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T17:37:21.222000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "dbdefa6f-b1ef-4454-8076-f8c73a22bdf7",
+   "generated_at": "2026-08-25T17:37:25.138165Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

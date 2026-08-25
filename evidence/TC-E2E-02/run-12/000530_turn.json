@@ -1,0 +1,388 @@
+{
+ "sent": "Confirm the customer GLENN WINSLOW on account SACRAMENTO.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run12-4cb5642e",
+   "conversation_version": 2,
+   "client_turn_id": "qa-f0c30497-ba09-4599-9ffc-80d9d5f2e4ea",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CJ804818 / 2026-06-24T0 / MESA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "39664416-b538-4433-9b76-84fe6ac2ab82",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CG807125 / 2026-05-10T0 / MESA / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "39664416-b538-4433-9b76-84fe6ac2ab82",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CN809715 / 2026-02-21T0 / MESA / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "39664416-b538-4433-9b76-84fe6ac2ab82",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CL803549 / 2025-11-14T0 / MESA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "39664416-b538-4433-9b76-84fe6ac2ab82",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CL805449 / 2025-08-13T0 / MESA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "39664416-b538-4433-9b76-84fe6ac2ab82",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CL807928 / 2025-07-01T0 / MESA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "39664416-b538-4433-9b76-84fe6ac2ab82",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 7: CZ802047 / 2025-05-20T0 / MESA / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "39664416-b538-4433-9b76-84fe6ac2ab82",
+        "result_path": [
+         "rows",
+         "6"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-7",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 8: CI807883 / 2025-02-09T0 / MESA / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "39664416-b538-4433-9b76-84fe6ac2ab82",
+        "result_path": [
+         "rows",
+         "7"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "39664416-b538-4433-9b76-84fe6ac2ab82",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "9c0b5ad7a52b34e6ebe68b064f816d32a5e68292fdb408764e5acbb9fa95dae6",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "SACRAMENTO*CJ804818",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CJ804818",
+        "customer_id": "601167",
+        "customer_name": "GLENN WINSLOW",
+        "customer_po_number": "RESIDENTIAL",
+        "job_name": "WARRANTY",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "686",
+        "ship_from_warehouse_id": "686",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-06-24T00:00:00.000000000",
+        "invoice_date": "2026-06-24T00:00:00.000000000",
+        "shipped_at": "2026-06-27T00:00:00.000000000",
+        "commit_date": "2026-06-24T00:00:00.000000000",
+        "ship_to_name": "GLENN WINSLOW",
+        "ship_to_phone": "312-555-6704",
+        "ship_to_city": "MESA",
+        "ship_to_state": "AZ",
+        "ship_to_postal_code": "85253",
+        "source_updated_at": "2026-06-24T18:36:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CG807125",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CG807125",
+        "customer_id": "601167",
+        "customer_name": "GLENN WINSLOW",
+        "customer_po_number": "TRUCK STOCK",
+        "job_name": "MAINTENANCE",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "596",
+        "ship_from_warehouse_id": "596",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-05-10T00:00:00.000000000",
+        "invoice_date": "2026-05-10T00:00:00.000000000",
+        "shipped_at": "2026-05-12T00:00:00.000000000",
+        "commit_date": "2026-05-10T00:00:00.000000000",
+        "ship_to_name": "GLENN WINSLOW",
+        "ship_to_phone": "312-555-6704",
+        "ship_to_city": "MESA",
+        "ship_to_state": "AZ",
+        "ship_to_postal_code": "85253",
+        "source_updated_at": "2026-05-10T09:11:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CN809715",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CN809715",
+        "customer_id": "601167",
+        "customer_name": "GLENN WINSLOW",
+        "customer_po_number": "SHOP STOCK",
+        "job_name": "JOB",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2624",
+        "ship_from_warehouse_id": "2624",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-02-21T00:00:00.000000000",
+        "invoice_date": "2026-02-21T00:00:00.000000000",
+        "shipped_at": "2026-02-21T00:00:00.000000000",
+        "commit_date": "2026-02-21T00:00:00.000000000",
+        "ship_to_name": "GLENN WINSLOW",
+        "ship_to_phone": "312-555-6704",
+        "ship_to_city": "MESA",
+        "ship_to_state": "AZ",
+        "ship_to_postal_code": "85253",
+        "source_updated_at": "2026-02-21T09:37:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CL803549",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CL803549",
+        "customer_id": "601167",
+        "customer_name": "GLENN WINSLOW",
+        "customer_po_number": "WARRANTY",
+        "job_name": "JOB",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "686",
+        "ship_from_warehouse_id": "686",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-11-14T00:00:00.000000000",
+        "invoice_date": "2025-11-14T00:00:00.000000000",
+        "shipped_at": "2025-11-16T00:00:00.000000000",
+        "commit_date": "2025-11-14T00:00:00.000000000",
+        "ship_to_name": "GLENN WINSLOW",
+        "ship_to_phone": "312-555-6704",
+        "ship_to_city": "MESA",
+        "ship_to_state": "AZ",
+        "ship_to_postal_code": "85253",
+        "source_updated_at": "2025-11-14T12:19:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CL805449",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CL805449",
+        "customer_id": "601167",
+        "customer_name": "GLENN WINSLOW",
+        "customer_po_number": "SHOP STOCK",
+        "job_name": "REPLACEMENT",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2210",
+        "ship_from_warehouse_id": "2210",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-08-13T00:00:00.000000000",
+        "invoice_date": "2025-08-13T00:00:00.000000000",
+        "shipped_at": "2025-08-15T00:00:00.000000000",
+        "commit_date": "2025-08-13T00:00:00.000000000",
+        "ship_to_name": "GLENN WINSLOW",
+        "ship_to_phone": "312-555-6704",
+        "ship_to_city": "MESA",
+        "ship_to_state": "AZ",
+        "ship_to_postal_code": "85253",
+        "source_updated_at": "2025-08-13T18:53:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CL807928",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CL807928",
+        "customer_id": "601167",
+        "customer_name": "GLENN WINSLOW",
+        "customer_po_number": "REPLACEMENT",
+        "job_name": "STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1305",
+        "ship_from_warehouse_id": "1305",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-07-01T00:00:00.000000000",
+        "invoice_date": "2025-07-01T00:00:00.000000000",
+        "shipped_at": "2025-07-04T00:00:00.000000000",
+        "commit_date": "2025-07-01T00:00:00.000000000",
+        "ship_to_name": "GLENN WINSLOW",
+        "ship_to_phone": "312-555-6704",
+        "ship_to_city": "MESA",
+        "ship_to_state": "AZ",
+        "ship_to_postal_code": "85253",
+        "source_updated_at": "2025-07-01T12:20:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CZ802047",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CZ802047",
+        "customer_id": "601167",
+        "customer_name": "GLENN WINSLOW",
+        "customer_po_number": "RESIDENTIAL",
+        "job_name": "MAINTENANCE",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "EXPRESS PARCEL",
+        "order_date": "2025-05-20T00:00:00.000000000",
+        "invoice_date": "2025-05-20T00:00:00.000000000",
+        "shipped_at": "2025-05-21T00:00:00.000000000",
+        "commit_date": "2025-05-20T00:00:00.000000000",
+        "ship_to_name": "GLENN WINSLOW",
+        "ship_to_phone": "312-555-6704",
+        "ship_to_city": "MESA",
+        "ship_to_state": "AZ",
+        "ship_to_postal_code": "85253",
+        "source_updated_at": "2025-05-20T12:25:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CI807883",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CI807883",
+        "customer_id": "601167",
+        "customer_name": "GLENN WINSLOW",
+        "customer_po_number": "TRUCK STOCK",
+        "job_name": "RESIDENTIAL",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "603",
+        "ship_from_warehouse_id": "603",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-02-09T00:00:00.000000000",
+        "invoice_date": "2025-02-09T00:00:00.000000000",
+        "shipped_at": "2025-02-11T00:00:00.000000000",
+        "commit_date": "2025-02-09T00:00:00.000000000",
+        "ship_to_name": "GLENN WINSLOW",
+        "ship_to_phone": "312-555-6704",
+        "ship_to_city": "MESA",
+        "ship_to_state": "AZ",
+        "ship_to_postal_code": "85253",
+        "source_updated_at": "2025-02-09T12:57:00.000000000"
+       }
+      ],
+      "count": 8
+     },
+     "result_checksum": "3a38c15956a2151df94694bb72dc1a3128eb91ed5b9e7a7d06bc83784e12f92d"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "GLENN WINSLOW",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:35:24.685000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "b98fedd8-aa49-4e6c-bdb5-ecd02fa30f01",
+   "generated_at": "2026-08-25T18:35:30.702287Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

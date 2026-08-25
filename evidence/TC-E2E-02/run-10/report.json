@@ -1,0 +1,5 @@
+[
+ {
+  "failure": "HTTP 500 /api/v2/order-agent/conversations/disc-tc02-run10-7c98b9d1/turns: {\"data\":null,\"page\":null,\"meta\":{\"schema_version\":\"1.0\",\"request_id\":\"3cab4762-9fd2-4f65-8833-8ad97d5556d3\",\"generated_at\":\"2026-08-25T17:51:07.852588Z\",\"freshness\":\"LIVE\",\"partial\":true,\"warnings\":[{\"source\":\"SYSTEM\",\"code\":\"INTERNAL_ERROR\",\"message\":\"An unexpected system error occurred.\"}]}}"
+ }
+]

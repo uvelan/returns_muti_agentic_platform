@@ -1,0 +1,149 @@
+{
+ "data": {
+  "caseId": "49549a8e-cb32-4091-96f6-7f1f5eca2b03",
+  "revision": 26,
+  "changed": true,
+  "items": [
+   {
+    "returnItemId": "15b20006-6a81-456c-b588-6431423a369e",
+    "orderLineReference": "1",
+    "productReference": "4000288",
+    "quantity": 1,
+    "reason": "SHIPPING_DAMAGE",
+    "condition": "NEW_IN_ORIGINAL_PACKAGING",
+    "packageReference": null
+   }
+  ],
+  "lines": [
+   {
+    "lineReference": "1",
+    "sku": "MYHMXT",
+    "description": "1-1/4 WROT COP CXC 45 ELL",
+    "colour": null,
+    "orderedQuantity": 1,
+    "unitPrice": "34.21",
+    "productReference": "4000288",
+    "returnableQuantity": 1,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 1,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "2",
+    "sku": "U3028194008",
+    "description": "1 BRZ 150# THRD GBL VLV",
+    "colour": null,
+    "orderedQuantity": 24,
+    "unitPrice": "233.529",
+    "productReference": "4000406",
+    "returnableQuantity": 24,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "3",
+    "sku": "M48270871",
+    "description": "7/8X6 FLT BORING BIT",
+    "colour": null,
+    "orderedQuantity": 4,
+    "unitPrice": "10.357",
+    "productReference": "47026",
+    "returnableQuantity": 4,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "4",
+    "sku": "PFXPPFAF",
+    "description": "LF 3/4X3/4 BRS PXF ADPT",
+    "colour": null,
+    "orderedQuantity": 2,
+    "unitPrice": "8.391",
+    "productReference": "10240708",
+    "returnableQuantity": 2,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "5",
+    "sku": "PWZPDTPAQJT",
+    "description": "3/4 HP EFFLUENT PUMP",
+    "colour": null,
+    "orderedQuantity": 5,
+    "unitPrice": "637.852",
+    "productReference": "4000316",
+    "returnableQuantity": 5,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "6",
+    "sku": "W1694156490",
+    "description": "1 HP CIRC BRZ PUMP",
+    "colour": null,
+    "orderedQuantity": 5,
+    "unitPrice": "188.364",
+    "productReference": "4000202",
+    "returnableQuantity": 5,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "7",
+    "sku": "J688367",
+    "description": "1/3 HP IND DRFT MTR ASSY",
+    "colour": null,
+    "orderedQuantity": 1,
+    "unitPrice": "219.45",
+    "productReference": "4000047",
+    "returnableQuantity": 1,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "8",
+    "sku": "P40SCF",
+    "description": "3/4 PVC S40 SXS COUP",
+    "colour": null,
+    "orderedQuantity": 2,
+    "unitPrice": "1.031",
+    "productReference": "29829",
+    "returnableQuantity": 2,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   }
+  ]
+ },
+ "page": null,
+ "meta": {
+  "schema_version": "1.0",
+  "request_id": "ac41c802-f3de-419d-baa9-cc24312f177d",
+  "generated_at": "2026-08-25T18:36:20.555052Z",
+  "freshness": "LIVE",
+  "partial": false,
+  "warnings": []
+ }
+}
