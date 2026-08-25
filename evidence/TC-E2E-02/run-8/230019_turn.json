@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CK809684",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run8-94ad0888",
+   "conversation_version": 3,
+   "client_turn_id": "qa-5fb733a4-b290-4aa1-ae92-d967b4bce0ea",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CK809684 / [REDACTED] / SALT LAKE CITY / 2026-08-01",
+      "evidence_refs": [
+       {
+        "query_execution_id": "c6a3d2cb-7eb3-492f-97e6-a0e20eccbe79",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "c6a3d2cb-7eb3-492f-97e6-a0e20eccbe79",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "f0e0494d86f37808b7a2b7f3a289437fe90edd924cd97b054a44fe8798927934",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CK809684"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CK809684",
+        "data": {
+         "order_key": "DALLAS*CK809684",
+         "account_id": "DALLAS",
+         "sales_order_number": "CK809684",
+         "customer_id": "601302",
+         "customer_name": "ROSA LATTIMORE",
+         "customer_po_number": "JOB",
+         "job_name": "RESIDENTIAL",
+         "order_status": "CALLCSR",
+         "sales_type": "CASH",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "596",
+         "ship_from_warehouse_id": "596",
+         "shipping_method": "WILL CALL",
+         "order_date": "2026-08-01T00:00:00.000000000",
+         "invoice_date": "2026-08-01T00:00:00.000000000",
+         "shipped_at": "2026-08-03T00:00:00.000000000",
+         "commit_date": "2026-08-01T00:00:00.000000000",
+         "ship_to_name": "ROSA LATTIMORE",
+         "ship_to_phone": "303-555-4969",
+         "ship_to_city": "SALT LAKE CITY",
+         "ship_to_state": "UT",
+         "ship_to_postal_code": "84139",
+         "source_updated_at": "2026-08-01T11:37:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "96809a457819cad08bbac39273be2ff243b9a871fc452dcefe426bef7d8635ac"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "ROSA LATTIMORE",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T17:30:15.734000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "e170cf28-ed83-41f9-8f25-a8535d3083a6",
+   "generated_at": "2026-08-25T17:30:19.909715Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

@@ -307,6 +307,64 @@ class Run:
             self.fail(14, f"associate chat does not relay RMA {rma}")
         self.ok(14, "RMA and shipping details relayed into the original conversation")
 
+    def step_16_downstream(self) -> None:
+        """The ALSO-ASSERT block: omc row, graph sync, one case id everywhere,
+        and nothing posted to branch inventory."""
+        import sys as _sys
+        _sys.path.insert(0, "backend/src")
+        import asyncio as _asyncio
+
+        facts = self.facts()
+        rma = (facts.get("rma_reference") or facts.get("return_reference") or {}).get("value")
+        if not rma:
+            self.fail(16, "no RMA on the case for downstream verification")
+
+        async def _verify() -> list[str]:
+            problems: list[str] = []
+            from pymongo import AsyncMongoClient
+            from neo4j import AsyncGraphDatabase
+            from return_platform.configuration.settings import Settings
+            from return_platform.operations.sql_business_state import SQLBusinessStateRepository
+
+            settings = Settings()
+            row = await SQLBusinessStateRepository(settings).read_return_record_by_reference(rma)
+            if not row:
+                problems.append(f"no omc (dbo.return_record) row for {rma}")
+            elif row.get("case_id") != self.case_id:
+                problems.append(f"omc row names case {row.get('case_id')} != {self.case_id}")
+
+            driver = AsyncGraphDatabase.driver(
+                settings.neo4j_uri,
+                auth=(settings.neo4j_user, settings.neo4j_password.get_secret_value()),
+            )
+            async with driver.session(database=settings.neo4j_database) as session:
+                result = await session.run(
+                    "MATCH (r:ReturnRecord {return_reference:$rma}) RETURN r.case_id", rma=rma)
+                rows = [record[0] async for record in result]
+            await driver.close()
+            if not rows:
+                problems.append(f"return-table sync did not land {rma} in the graph")
+            elif rows[0] != self.case_id:
+                problems.append(f"graph return record names case {rows[0]} != {self.case_id}")
+
+            client: AsyncMongoClient[dict[str, object]] = AsyncMongoClient(
+                settings.mongo_dsn.get_secret_value())
+            db = client[settings.mongo_database]
+            for name in await db.list_collection_names():
+                if "physical" in name.lower() or "receipt" in name.lower():
+                    bad = await db[name].find_one(
+                        {"caseId": self.case_id, "inventoryAddedToBranch": True})
+                    if bad:
+                        problems.append(f"{name} posted the returned item to branch inventory")
+            await client.close()
+            return problems
+
+        problems = _asyncio.run(_verify())
+        if problems:
+            self.fail(16, "; ".join(problems))
+        self.ok(16, f"omc row + graph sync verified for {rma}; one case id across"
+                    " chat/support/omc/graph; nothing posted to branch inventory")
+
     def step_15(self) -> None:
         projection = self.case()
         self.archive("case_final", projection)
@@ -325,7 +383,7 @@ def main() -> None:
     parser.add_argument("--misspelled", required=True)
     parser.add_argument("--account", required=True)
     parser.add_argument("--order", required=True)
-    parser.add_argument("--until", type=int, default=15)
+    parser.add_argument("--until", type=int, default=16)
     parser.add_argument("--resume-conversation", default=None)
     parser.add_argument("--resume-case", default=None)
     parser.add_argument("--from-step", type=int, default=1)
@@ -344,6 +402,7 @@ def main() -> None:
         (2, run.step_1_2), (4, run.step_3_4), (5, run.step_5), (6, run.step_6),
         (7, run.step_7), (9, run.step_8_9), (10, run.step_10),
         (12, run.step_11_12), (14, run.step_13_14), (15, run.step_15),
+        (16, run.step_16_downstream),
     ]
     try:
         for upto, stage in stages:

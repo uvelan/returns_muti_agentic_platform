@@ -1,0 +1,59 @@
+{
+ "data": {
+  "caseId": "ef9f3102-5db3-49a3-a03d-b4f182a3e0fc",
+  "revision": 31,
+  "changed": true,
+  "items": [
+   {
+    "returnItemId": "812e1d1c-75d1-46e2-ba8c-40827b976fb8",
+    "orderLineReference": "1",
+    "productReference": "4000191",
+    "quantity": 1,
+    "reason": "SHIPPING_DAMAGE",
+    "condition": "NEW_IN_ORIGINAL_PACKAGING",
+    "packageReference": null
+   }
+  ],
+  "lines": [
+   {
+    "lineReference": "1",
+    "sku": "N463764",
+    "description": "30 IN TWL BAR CONCEALED MNT MB",
+    "colour": null,
+    "orderedQuantity": 12,
+    "unitPrice": "120.222",
+    "productReference": "4000191",
+    "returnableQuantity": 12,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 1,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "2",
+    "sku": "JH24D100",
+    "description": "1/2-3/4 POLY DUAL CLMP NAIL",
+    "colour": null,
+    "orderedQuantity": 2,
+    "unitPrice": "0.152",
+    "productReference": "9731480",
+    "returnableQuantity": 2,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   }
+  ]
+ },
+ "page": null,
+ "meta": {
+  "schema_version": "1.0",
+  "request_id": "11f50262-1c6e-464d-8419-5d13e2ee8a04",
+  "generated_at": "2026-08-25T17:32:30.150379Z",
+  "freshness": "LIVE",
+  "partial": false,
+  "warnings": []
+ }
+}

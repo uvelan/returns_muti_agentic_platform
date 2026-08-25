@@ -296,8 +296,12 @@ def decide_reasoning(payload: dict) -> str:
     if case_id:
         rma = case_facts.get("rma_reference") or case_facts.get("return_reference")
         if rma:
+            # REASONED_SUGGESTION: the values come off the case fact log the
+            # platform itself recorded; USER_PROVIDED_FACT would demand a
+            # source message and GRAPH_FACT an evidence ref, and neither is
+            # what a case fact is.
             details = [
-                _statement(0, "USER_PROVIDED_FACT",
+                _statement(0, "REASONED_SUGGESTION",
                            f"RMA {rma} is issued for this return.")]
             for i, key in enumerate(
                 ("tracking_reference", "label_reference", "return_location",
@@ -305,7 +309,7 @@ def decide_reasoning(payload: dict) -> str:
             ):
                 if case_facts.get(key):
                     details.append(_statement(
-                        i, "USER_PROVIDED_FACT",
+                        i, "REASONED_SUGGESTION",
                         f"{key.replace('_', ' ')}: {case_facts[key]}"))
             return _action(
                 "RESPOND",

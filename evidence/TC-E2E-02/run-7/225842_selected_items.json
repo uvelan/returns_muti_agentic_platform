@@ -1,0 +1,44 @@
+{
+ "data": {
+  "caseId": "a9dedca7-b43b-4c95-8bec-6636a36aecfc",
+  "revision": 31,
+  "changed": true,
+  "items": [
+   {
+    "returnItemId": "bbcfffb3-0c0c-4822-ab26-5bb1d5394b13",
+    "orderLineReference": "1",
+    "productReference": "4000242",
+    "quantity": 1,
+    "reason": "SHIPPING_DAMAGE",
+    "condition": "NEW_IN_ORIGINAL_PACKAGING",
+    "packageReference": null
+   }
+  ],
+  "lines": [
+   {
+    "lineReference": "1",
+    "sku": "B3134641122",
+    "description": "SINGLE HDL PULLOUT LF 2.2 GPM KIT FCT CP",
+    "colour": null,
+    "orderedQuantity": 10,
+    "unitPrice": "288.019",
+    "productReference": "4000242",
+    "returnableQuantity": 10,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 1,
+    "dataInconsistency": null
+   }
+  ]
+ },
+ "page": null,
+ "meta": {
+  "schema_version": "1.0",
+  "request_id": "d7ab2c5a-f2f8-4d55-944e-871d7d63d1f9",
+  "generated_at": "2026-08-25T17:28:42.721525Z",
+  "freshness": "LIVE",
+  "partial": false,
+  "warnings": []
+ }
+}
