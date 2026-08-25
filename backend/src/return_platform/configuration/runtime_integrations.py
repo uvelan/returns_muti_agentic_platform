@@ -151,6 +151,21 @@ def apply_graph_runtime_configuration(
             updates[f"{key}_api_key_references"] = tuple(
                 item.vault_reference for item in provider.credentials if item.vault_reference
             )
+            # A bootstrap-managed credential without a Vault reference means
+            # exactly what `CredentialBindingConfiguration` documents: "the
+            # value behind it comes from the process environment". The blanket
+            # clearing above wiped the environment's keys for *every* provider
+            # the moment any provider was release-governed, so on a Vault-less
+            # deployment enabling a provider through the release stripped it of
+            # every credential and left it with zero routes. The environment's
+            # keys are restored here for the providers whose release entry
+            # declares them environment-held.
+            if any(
+                item.bootstrap_managed and not item.vault_reference
+                for item in provider.credentials
+            ):
+                updates[f"{key}_api_keys"] = getattr(settings, f"{key}_api_keys")
+                updates[f"{key}_api_key"] = getattr(settings, f"{key}_api_key")
             credential_ordinals = {
                 item.profile_key: index for index, item in enumerate(provider.credentials)
             }

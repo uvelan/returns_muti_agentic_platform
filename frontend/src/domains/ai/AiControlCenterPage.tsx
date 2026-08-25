@@ -1633,12 +1633,17 @@ type DraftProvider = Record<string, unknown> & {
 
 const PROVIDER_KEYS = ["GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC", "OLLAMA"] as const;
 
+// The platform's own defaults from `Settings`, version path included. The
+// first version of this table stopped at the host -- so a provider adopted
+// with these urls called the API root, every request 404ed as
+// MODEL_UNAVAILABLE, and release-governed routing failed wholesale on the
+// first turn that used it.
 const DEFAULT_BASE_URLS: Record<string, string> = {
-  GOOGLE: "https://generativelanguage.googleapis.com",
-  NVIDIA: "https://integrate.api.nvidia.com",
-  OPENAI: "https://api.openai.com",
-  ANTHROPIC: "https://api.anthropic.com",
-  OLLAMA: "http://localhost:11434",
+  GOOGLE: "https://generativelanguage.googleapis.com/v1beta",
+  NVIDIA: "https://integrate.api.nvidia.com/v1",
+  OPENAI: "https://api.openai.com/v1",
+  ANTHROPIC: "https://api.anthropic.com/v1",
+  OLLAMA: "http://localhost:11434/v1",
 };
 
 type RuntimeSummary = {
