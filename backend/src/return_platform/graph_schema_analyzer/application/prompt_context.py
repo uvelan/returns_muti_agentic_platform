@@ -40,6 +40,7 @@ implementations can map them onto whatever the provider's message format is
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping, Sequence
 from enum import StrEnum
@@ -192,17 +193,54 @@ def build_prompt_blocks(
 
 
 def _render_metadata(source_metadata: Sequence[Mapping[str, Any]]) -> str:
+    """Block 4, rendered from whatever evidence the caller gathered.
+
+    Two kinds of entry, told apart by shape. A *dataset* entry carries
+    `dataset_name`/`fields` and renders as the structured listing the proposal
+    prompt teaches. Anything else -- the analyzer chat's workspace context and
+    proposed-schema summaries -- renders as neutralised compact JSON, because
+    the previous behaviour was worse than nothing: every non-dataset entry
+    became the literal line `unknown.unknown` with `unknown: unknown` fields,
+    so the model was handed a metadata block that named no dataset and no field
+    and, entirely reasonably, proposed nothing and asked what the datasets
+    were.
+    """
     if not source_metadata:
         return "No source metadata was discovered."
     lines: list[str] = []
     for dataset in source_metadata:
+        if "dataset_name" not in dataset and "fields" not in dataset:
+            lines.append(
+                f"- {neutralize_delimiters(json.dumps(dict(dataset), sort_keys=True, default=str))}"
+            )
+            continue
         source_id = neutralize_delimiters(str(dataset.get("source_id", "unknown")))
         name = neutralize_delimiters(str(dataset.get("dataset_name", "unknown")))
-        lines.append(f"- {source_id}.{name}")
+        rows = dataset.get("approximate_rows")
+        lines.append(
+            f"- {source_id}.{name}" + (f" (~{rows} rows)" if isinstance(rows, int) else "")
+        )
         for field in dataset.get("fields", ()):
             field_name = neutralize_delimiters(str(field.get("field_name", "unknown")))
             declared = neutralize_delimiters(str(field.get("declared_type", "unknown")))
-            lines.append(f"    {field_name}: {declared}")
+            markers = [
+                marker
+                for marker, present in (
+                    ("identifier", bool(field.get("identifier"))),
+                    ("indexed", bool(field.get("indexed"))),
+                    ("required", field.get("nullable") is False),
+                )
+                if present
+            ]
+            suffix = f" [{', '.join(markers)}]" if markers else ""
+            lines.append(f"    {field_name}: {declared}{suffix}")
+        for relationship in dataset.get("declared_relationships", ()) or ():
+            lines.append(
+                "    relationship: "
+                + neutralize_delimiters(
+                    json.dumps(dict(relationship), sort_keys=True, default=str)
+                )
+            )
     return "\n".join(lines)
 
 

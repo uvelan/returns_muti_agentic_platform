@@ -188,6 +188,18 @@ class Settings(BaseSettings):
     on_demand_sync_receipt_ttl_seconds: int = Field(default=900, ge=60, le=86_400)
 
     ai_provider_order: str = "GOOGLE,NVIDIA,SIMULATOR"
+    # Whether structured-invocation AI calls (the Order Agent's reasoning turns,
+    # the Graph Schema Analyzer's proposals and chat) persist their full request
+    # and response bodies to `ai_traces` -- the store the AI Control Center's
+    # request-detail view reads. The telemetry row itself always stays digests
+    # and identifiers only; this governs the separate trace document.
+    #
+    # On by default because an operator who cannot read what was asked cannot
+    # review what was answered. The payloads can carry customer rows (that is
+    # what the Order Agent reasons over), so a deployment whose policy forbids
+    # storing them in the operational database sets
+    # PLATFORM_AI_TRACE_PAYLOADS=false and returns to digests-only.
+    ai_trace_payloads: bool = True
     # Where a MANUAL handoff waits for its human, and how the answer comes back.
     #
     # `UI`   -- the durable interception store, answered through the AI Control

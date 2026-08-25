@@ -29,6 +29,7 @@ from return_platform.ai.gateway.structured_invocation import (
     StructuredInvocationUnavailable,
     StructuredOutputInvoker,
 )
+from return_platform.ai.gateway.telemetry import AIAttemptRecorder
 from return_platform.ai.interception.store import InterceptionStore
 from return_platform.ai.routing.selection import AIRoutePool
 from return_platform.ai.routing.tasks import AIGatewayConfiguration
@@ -62,6 +63,7 @@ class GatewayAgentReasoningAdapter:
         task_id: str = GRAPH_SCHEMA_AGENT_TASK_ID,
         interception_store: InterceptionStore | None = None,
         gateway_settings: AIGatewaySettingsSource | None = None,
+        recorder: AIAttemptRecorder | None = None,
     ) -> None:
         self._invoker: StructuredOutputInvoker[AgentAnswer] = StructuredOutputInvoker(
             settings=settings,
@@ -73,6 +75,10 @@ class GatewayAgentReasoningAdapter:
             event_prefix="analyzer_agent_answer",
             subject="Graph schema analyzer answer",
             unavailable_error=AgentAnswerUnavailable,
+            # Without this the agent's chat turns, like the proposal path, left
+            # no telemetry: no attempt row, no trace, nothing in the Control
+            # Center saying the call happened.
+            recorder=recorder,
             # Same reasoning as the proposal path: block 5 of this prompt is
             # rows read out of a customer's database, so it is interception's
             # most sensitive payload and must not bypass it.
@@ -126,6 +132,7 @@ def build_analyzer_agent_adapter(
     task_id: str = GRAPH_SCHEMA_AGENT_TASK_ID,
     interception_store: InterceptionStore | None = None,
     gateway_settings: AIGatewaySettingsSource | None = None,
+    recorder: AIAttemptRecorder | None = None,
 ) -> AgentReasoningPort:
     """Typed factory -- the return annotation is what makes mypy prove port
     conformance, rather than a runtime isinstance that only checks method names."""
@@ -136,4 +143,5 @@ def build_analyzer_agent_adapter(
         task_id=task_id,
         interception_store=interception_store,
         gateway_settings=gateway_settings,
+        recorder=recorder,
     )

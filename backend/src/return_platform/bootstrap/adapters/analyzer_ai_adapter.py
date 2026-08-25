@@ -44,6 +44,7 @@ from return_platform.ai.gateway.structured_invocation import (
     StructuredInvocationUnavailable,
     StructuredOutputInvoker,
 )
+from return_platform.ai.gateway.telemetry import AIAttemptRecorder
 from return_platform.ai.interception.store import InterceptionStore
 from return_platform.ai.routing.selection import AIRoutePool
 from return_platform.ai.routing.tasks import AIGatewayConfiguration
@@ -100,6 +101,7 @@ class GatewaySchemaReasoningAdapter:
         task_id: str = GRAPH_SCHEMA_PROPOSAL_TASK_ID,
         interception_store: InterceptionStore | None = None,
         gateway_settings: AIGatewaySettingsSource | None = None,
+        recorder: AIAttemptRecorder | None = None,
     ) -> None:
         self._invoker: StructuredOutputInvoker[_SchemaProposalDraft] = StructuredOutputInvoker(
             settings=settings,
@@ -111,6 +113,10 @@ class GatewaySchemaReasoningAdapter:
             event_prefix="analyzer_schema_proposal",
             subject="Graph schema proposal",
             unavailable_error=SchemaProposalUnavailable,
+            # Without this the analyzer was the one AI caller that left no
+            # telemetry at all: no attempt row, no trace, no evidence in the
+            # Control Center that a proposal was ever asked for.
+            recorder=recorder,
             # AI-01. Block 5 of the analyzer's prompt is UNTRUSTED SOURCE SAMPLE
             # -- rows read out of a customer's database -- so of the two paths
             # that bypassed interception this is the one carrying the most
@@ -182,6 +188,7 @@ def build_analyzer_ai_adapter(
     task_id: str = GRAPH_SCHEMA_PROPOSAL_TASK_ID,
     interception_store: InterceptionStore | None = None,
     gateway_settings: AIGatewaySettingsSource | None = None,
+    recorder: AIAttemptRecorder | None = None,
 ) -> SchemaReasoningPort:
     """Typed factory -- the return annotation is what makes mypy prove port
     conformance, rather than a runtime isinstance that only checks method names.
@@ -199,4 +206,5 @@ def build_analyzer_ai_adapter(
         task_id=task_id,
         interception_store=interception_store,
         gateway_settings=gateway_settings,
+        recorder=recorder,
     )

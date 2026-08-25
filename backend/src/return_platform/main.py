@@ -14,6 +14,7 @@ from neo4j import AsyncGraphDatabase
 from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
+from return_platform.ai.gateway.telemetry import RepositoryAIAttemptRecorder
 from return_platform.ai.interception.store import SystemStoreInterceptionStore
 from return_platform.ai.providers.replay_store import SystemStoreReplayStore
 from return_platform.ai.routing.routes import build_routes
@@ -910,6 +911,18 @@ async def lifespan(
             analyzer_reasoning_bound = False
             if app.state.ai_gateway_route_pool.routes:
                 try:
+                    # One recorder for both analyzer surfaces. Until this the
+                    # analyzer was the one AI caller recording nothing: its
+                    # proposals and chat turns appeared in no metrics row and
+                    # no trace, so the Control Center could not say they had
+                    # happened at all. The trace sink is the payload half,
+                    # gated by the same setting the Order Agent honours.
+                    analyzer_recorder = RepositoryAIAttemptRecorder(
+                        operational_repository,
+                        trace_sink=(
+                            operational_repository if settings.ai_trace_payloads else None
+                        ),
+                    )
                     app.state.graph_schema_analyzer_reasoning = build_analyzer_ai_adapter(
                         settings=settings,
                         configuration=ai_gateway_configuration.configuration,
@@ -919,6 +932,7 @@ async def lifespan(
                         # was the least gated path on the platform.
                         interception_store=getattr(app.state, "ai_interception_store", None),
                         gateway_settings=operational_repository,
+                        recorder=analyzer_recorder,
                     )
                     # The Analyzer Agent runs on the same pool and the same
                     # interception policy; a chat turn carries the same
@@ -929,6 +943,7 @@ async def lifespan(
                         route_pool=app.state.ai_gateway_route_pool,
                         interception_store=getattr(app.state, "ai_interception_store", None),
                         gateway_settings=operational_repository,
+                        recorder=analyzer_recorder,
                     )
                 except Exception as exc:  # noqa: BLE001 - degrade, never block startup
                     logger.warning(

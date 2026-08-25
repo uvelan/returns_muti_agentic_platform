@@ -25,6 +25,7 @@ from return_platform.graph_analyzer.analysis import (
     gather_evidence,
     ground_proposal,
     reasoned_proposal,
+    safe_property_name,
 )
 from return_platform.graph_analyzer.credentials import (
     SEALED_FIELD,
@@ -467,7 +468,7 @@ class GraphAnalyzerService:
                     properties=[
                         GraphProperty(
                             id=f"{entity_id}:{name}",
-                            name=name,
+                            name=safe_property_name(name),
                             dataType=next(
                                 (field.type for field in source_asset.fields if field.name == name),
                                 "string",
@@ -950,16 +951,20 @@ class GraphAnalyzerService:
                     {str(document["_id"]): self._connection_document(document)},
                     [(str(document["_id"]), object_name)],
                 )
+                # `_render_metadata`'s key contract, same correction as
+                # `reasoned_proposal`: the old keys missed every renderer
+                # lookup and the selected object reached the agent as
+                # "unknown.unknown".
                 metadata.extend(
                     {
-                        "dataset": neutralize_delimiters(item.object_name),
-                        "source": neutralize_delimiters(item.source_name),
+                        "source_id": neutralize_delimiters(item.source_name),
+                        "dataset_name": neutralize_delimiters(item.object_name),
                         "engine": item.engine,
                         "approximate_rows": item.approximate_rows,
                         "fields": [
                             {
-                                "name": neutralize_delimiters(str(field_item["name"])),
-                                "type": neutralize_delimiters(str(field_item["type"])),
+                                "field_name": neutralize_delimiters(str(field_item["name"])),
+                                "declared_type": neutralize_delimiters(str(field_item["type"])),
                                 "nullable": field_item["nullable"],
                             }
                             for field_item in item.fields

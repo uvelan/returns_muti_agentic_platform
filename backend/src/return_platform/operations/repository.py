@@ -1675,6 +1675,30 @@ class OperationalRepository(CaseRepository):
         document = await self.ai_traces.find_one({"_id": trace_id})
         return None if document is None else self._trace_view(cast(dict[str, Any], document))
 
+    async def upsert_ai_invocation_trace(self, document: dict[str, Any]) -> None:
+        """Persist a structured-invocation attempt's full trace, last write wins.
+
+        The structured dispatch path (the Order Agent's reasoning turns, the
+        Graph Schema Analyzer's proposals and chat) records one attempt per
+        route tried, all sharing one `trace_id`; the dispatcher records the
+        terminal attempt last, so upserting each leaves the trace showing the
+        outcome that actually reached the caller. `create_ai_trace` documents
+        are never touched: the legacy gateway path mints its own ids and writes
+        through its own updates, and the two writers meet only in the reader.
+        """
+        payload = dict(document)
+        trace_id = payload.pop("_id")
+        now = utc_now()
+        await self.ai_traces.update_one(
+            {"_id": trace_id},
+            {
+                "$set": {**payload, "updatedAt": now},
+                "$setOnInsert": {"createdAt": now},
+                "$inc": {"version": 1},
+            },
+            upsert=True,
+        )
+
     async def list_ai_traces(
         self, *, status: str | None = None, limit: int = 200
     ) -> list[AITraceView]:

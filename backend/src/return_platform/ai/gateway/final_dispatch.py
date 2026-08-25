@@ -553,6 +553,12 @@ class FinalDispatcher:
             # cannot report a provider's answer while the object it was built
             # from says a human rewrote it.
             human_edit=response.human_edit if response else None,
+            # The bodies behind the digests. The recorder decides whether these
+            # persist anywhere: the telemetry row never carries them, and only a
+            # recorder wired with a trace sink writes them to `ai_traces`.
+            system_prompt=request.system_prompt,
+            payload=dict(request.payload),
+            response_text=response.text if response else None,
         )
         try:
             await self._recorder.record(record)

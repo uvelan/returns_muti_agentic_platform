@@ -242,6 +242,22 @@ def _safe_type(value: str, fallback: str) -> str:
     return candidate if candidate and candidate[0].isalpha() else fallback
 
 
+def safe_property_name(field_name: str) -> str:
+    """A legal graph property name from a source field path.
+
+    Mongo metadata reports nested fields as dotted paths
+    (`salesHdrEventData.accountId`), and `GraphProperty.name` refuses anything
+    outside `^[A-Za-z_][A-Za-z0-9_]*$` -- so one nested document anywhere in a
+    selected collection made the entire analysis 422 with a raw pydantic
+    message. The path's segments survive joined by underscores; the *original*
+    path is what `sourceField` is for, and every caller keeps passing it there
+    untouched, so grounding back to the source loses nothing.
+    """
+    cleaned = "".join(c if c.isalnum() or c == "_" else "_" for c in field_name)
+    collapsed = "_".join(part for part in cleaned.split("_") if part) or "field"
+    return collapsed if collapsed[0].isalpha() or collapsed[0] == "_" else f"f_{collapsed}"
+
+
 def deterministic_proposal(
     evidence: Sequence[ObjectEvidence],
 ) -> tuple[list[GraphEntity], list[GraphRelationship]]:
@@ -277,7 +293,7 @@ def deterministic_proposal(
                 properties=[
                     GraphProperty(
                         id=f"{entity_id}:{f['name']}",
-                        name=str(f["name"]),
+                        name=safe_property_name(str(f["name"])),
                         dataType=str(f["type"]),
                         required=not bool(f["nullable"]),
                         identifier=str(f["name"]) in identifiers,
@@ -291,7 +307,9 @@ def deterministic_proposal(
                     )
                     for f in item.fields
                 ],
-                constraints=[f"UNIQUE({name})" for name in sorted(identifiers)[:1]],
+                constraints=[
+                    f"UNIQUE({safe_property_name(name)})" for name in sorted(identifiers)[:1]
+                ],
                 change="ADDED",
             )
         )
@@ -346,16 +364,23 @@ async def reasoned_proposal(
     untrusted framing, with block delimiters neutralised. Source content cannot
     address the model as policy.
     """
+    # The keys are `_render_metadata`'s contract -- `source_id`, `dataset_name`,
+    # `field_name`, `declared_type` -- not this module's own vocabulary. The
+    # first wiring used `dataset`/`source`/`name`/`type`, every lookup in the
+    # renderer missed, and block 4 reached the model as rows of
+    # "unknown: unknown": the model was asked to propose a schema over evidence
+    # that named nothing, and the analysis fell back to deterministic on every
+    # run while both sides looked healthy.
     metadata = [
         {
-            "dataset": neutralize_delimiters(item.object_name),
-            "source": neutralize_delimiters(item.source_name),
+            "source_id": neutralize_delimiters(item.source_name),
+            "dataset_name": neutralize_delimiters(item.object_name),
             "engine": item.engine,
             "approximate_rows": item.approximate_rows,
             "fields": [
                 {
-                    "name": neutralize_delimiters(str(f["name"])),
-                    "type": neutralize_delimiters(str(f["type"])),
+                    "field_name": neutralize_delimiters(str(f["name"])),
+                    "declared_type": neutralize_delimiters(str(f["type"])),
                     "nullable": f["nullable"],
                     "identifier": str(f["name"]) in set(item.identifier_fields),
                     "indexed": str(f["name"]) in set(item.indexed_fields),
@@ -414,13 +439,27 @@ def ground_proposal(
     """
     by_dataset = {item.object_name: item for item in evidence}
     by_leaf = {item.object_name.rsplit(".", 1)[-1]: item for item in evidence}
+    # The rendered form the model is *instructed* to echo: block 4 prints every
+    # dataset as `{source_id}.{dataset_name}` and the prompt says to name it
+    # "exactly as it appears in block 4" -- so a model that obeyed to the letter
+    # answered `return_source (MONGODB).customers`, matched neither lookup
+    # above, and every grounded entity was dropped as ungrounded. The grounder
+    # accepts its own prompt's spelling, plus the leaf for a model that answered
+    # with just the object name.
+    by_rendered = {f"{item.source_name}.{item.object_name}": item for item in evidence}
 
     entities: list[GraphEntity] = []
     label_to_id: dict[str, str] = {}
     for node in proposal.nodes:
-        item = by_dataset.get(node.source_dataset) or by_leaf.get(node.source_dataset)
+        proposed = node.source_dataset
+        item = (
+            by_dataset.get(proposed)
+            or by_rendered.get(proposed)
+            or by_leaf.get(proposed)
+            or by_leaf.get(proposed.rsplit(".", 1)[-1])
+        )
         if item is None:
-            logger.info("graph_analyzer_dropped_ungrounded_entity dataset=%s", node.source_dataset)
+            logger.info("graph_analyzer_dropped_ungrounded_entity dataset=%s", proposed)
             continue
         known_fields = {str(f["name"]): f for f in item.fields}
         entity_id = f"proposal:{item.object_id}"
@@ -435,7 +474,7 @@ def ground_proposal(
             properties.append(
                 GraphProperty(
                     id=f"{entity_id}:{name}",
-                    name=str(raw.get("name") or name),
+                    name=safe_property_name(str(raw.get("name") or name)),
                     dataType=str(declared["type"]),
                     required=not bool(declared["nullable"]),
                     identifier=bool(raw.get("identifier")) or name in set(item.identifier_fields),
@@ -450,7 +489,7 @@ def ground_proposal(
             properties = [
                 GraphProperty(
                     id=f"{entity_id}:{f['name']}",
-                    name=str(f["name"]),
+                    name=safe_property_name(str(f["name"])),
                     dataType=str(f["type"]),
                     required=not bool(f["nullable"]),
                     identifier=str(f["name"]) in set(item.identifier_fields),

@@ -156,7 +156,13 @@ async def build_dynamic_order_agent_runtime(
             settings=settings,
             configuration=ai_gateway_configuration.configuration,
             route_pool=route_pool,
-            recorder=RepositoryAIAttemptRecorder(operational_repository),
+            recorder=RepositoryAIAttemptRecorder(
+                operational_repository,
+                # The payload half of W4.12's observability: with the sink set,
+                # every reasoning turn's prompt and response land in `ai_traces`
+                # and the Control Center can show what was actually said.
+                trace_sink=operational_repository if settings.ai_trace_payloads else None,
+            ),
             # AI-01. The same sealed store the manual path already uses, and the
             # same operator switch the eligibility path already reads -- so
             # turning interception on now holds reasoning traffic too, which is
