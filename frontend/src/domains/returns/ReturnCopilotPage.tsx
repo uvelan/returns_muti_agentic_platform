@@ -26,6 +26,7 @@ import {
   type SelectedItemRequest,
 } from "../../api/orderLines";
 import {
+  candidateColumnCatalogue,
   capturedFactOrder,
   selectionVocabulary,
   type RuntimeConfig,
@@ -1002,6 +1003,9 @@ export function ReturnCopilotPage() {
                 // as the whole match set. Absent once the case's confirmed
                 // order is what is on screen -- one row is the whole of it.
                 totalFound={confirmedOrder === null ? candidateTotal : null}
+                // The operator's column choice from the release; empty means
+                // unstated, and the table falls back to its own identity set.
+                configuredColumns={candidateColumnCatalogue(runtimeConfig)}
                 returnHistory={returnHistory.data ?? null}
                 returnHistoryPending={historyAnchor !== null && returnHistory.isPending}
                 returnHistoryError={returnHistory.error}

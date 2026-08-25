@@ -61,6 +61,22 @@ export type RuntimeConfig = {
   factCatalogue?: {
     orderedFields: string[];
   };
+  /**
+   * Which candidate fields the Copilot's match table leads with; everything
+   * else a row carries waits behind its Details control.
+   *
+   * Served, never compiled in: which fields identify an order to an associate
+   * is an operator decision that changes in a release, not in a frontend
+   * deploy. Each column's `fields` is an alias chain -- the first name the row
+   * carries supplies the value -- because order, line and customer searches
+   * return differently shaped rows one column must read across.
+   *
+   * Optional because a backend older than this field answers without it, and
+   * **empty is meaningful**: the deployment has not said, and the client falls
+   * back to the identity columns it can defend rather than to rendering every
+   * field the query selected.
+   */
+  candidateColumns?: { label: string; fields: string[] }[];
 };
 
 /**
@@ -81,6 +97,17 @@ export function selectionVocabulary(
     reasons: runtimeConfig?.selectionVocabulary?.reasons ?? [],
     conditions: runtimeConfig?.selectionVocabulary?.conditions ?? [],
   };
+}
+
+/**
+ * The operator's candidate-table columns, or empty when the deployment
+ * published none. Empty is a real answer: `CandidateOrderMode` documents the
+ * fallback it defends.
+ */
+export function candidateColumnCatalogue(
+  runtimeConfig: RuntimeConfig | null,
+): readonly { readonly label: string; readonly fields: readonly string[] }[] {
+  return runtimeConfig?.candidateColumns ?? [];
 }
 
 export async function fetchRuntimeConfig(): Promise<RuntimeConfig> {

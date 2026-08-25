@@ -231,7 +231,12 @@ async def test_a_key_the_active_release_predates_is_adopted_from_the_packaged_fi
     await bootstrap_graph_configuration.main()
 
     published = next(iter(repository.saved.values()))[RETURN_PLATFORM_DOMAIN_KEY]
-    assert published["copilot"] == {"order_discovery_agent_id": "order-discovery-agent"}
+    assert published["copilot"] == {
+        "order_discovery_agent_id": "order-discovery-agent",
+        # The model default: an empty column list means the deployment has
+        # not chosen candidate-table columns and the client falls back.
+        "candidate_columns": [],
+    }
 
 
 @pytest.mark.asyncio

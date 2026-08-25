@@ -124,6 +124,27 @@ class RuntimeConfigFactCatalogue(BaseModel):
     orderedFields: tuple[str, ...]
 
 
+class RuntimeConfigCandidateColumn(BaseModel):
+    """One column of the Copilot's candidate table, verbatim from the release.
+
+    `copilot.candidate_columns`, served rather than compiled into the console
+    for the reason every block here is: which fields identify an order to an
+    associate is an operator decision, and it changes in a release, not in a
+    frontend deploy. `fields` is an alias chain -- the first name the row
+    carries supplies the value -- because order, line and customer searches
+    return differently shaped rows that one column must read across.
+
+    **An empty list means the deployment has not said**, and the client falls
+    back to the identity columns it can defend rather than to rendering every
+    field the query selected.
+
+    Non-secret: column labels and field names, no values.
+    """
+
+    label: str
+    fields: tuple[str, ...]
+
+
 class RuntimeConfig(BaseModel):
     releaseId: str
     environment: str
@@ -133,6 +154,7 @@ class RuntimeConfig(BaseModel):
     agents: RuntimeConfigAgents
     selectionVocabulary: RuntimeConfigSelectionVocabulary
     factCatalogue: RuntimeConfigFactCatalogue
+    candidateColumns: tuple[RuntimeConfigCandidateColumn, ...]
 
 
 def _ordered_fact_fields(loaded: object) -> tuple[str, ...]:
@@ -216,6 +238,17 @@ async def get_runtime_config(request: Request) -> APIResponse[RuntimeConfig]:
             # moved one tier down rather than removed.
             factCatalogue=RuntimeConfigFactCatalogue(
                 orderedFields=_ordered_fact_fields(loaded),
+            ),
+            # Empty when nothing is loaded or the release states no columns,
+            # with the same meaning as every block above: the deployment has
+            # not said, and the client falls back to columns it can defend.
+            candidateColumns=(
+                tuple(
+                    RuntimeConfigCandidateColumn(label=item.label, fields=item.fields)
+                    for item in loaded.configuration.copilot.candidate_columns
+                )
+                if isinstance(loaded, LoadedReturnConfiguration)
+                else ()
             ),
         ),
         meta=ResponseMeta(request_id=getattr(request.state, "correlation_id", "unknown")),

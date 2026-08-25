@@ -1108,6 +1108,21 @@ class PolicyEvaluationConfiguration(StrictConfigModel):
         return self
 
 
+class CandidateColumnConfiguration(StrictConfigModel):
+    """One column of the Copilot's candidate table, as the operator wants it read.
+
+    `fields` is an alias chain, not a list of columns: the first name the row
+    actually carries supplies the value. The chain exists because the candidate
+    shape depends on what was searched -- an order search yields order-header
+    rows, a line search yields line rows, a customer search yields rows that
+    carry nothing but the account -- and one column must read correctly across
+    all of them.
+    """
+
+    label: NonBlank
+    fields: tuple[NonBlank, ...] = Field(min_length=1)
+
+
 class CopilotConfiguration(StrictConfigModel):
     """Which registered agent policy the Copilot's conversation turns are routed to.
 
@@ -1130,6 +1145,15 @@ class CopilotConfiguration(StrictConfigModel):
     """
 
     order_discovery_agent_id: NonBlank | None = None
+
+    #: Which candidate fields the Copilot's match table leads with; everything
+    #: else the row carries waits behind its Details control. Empty -- the
+    #: default, so a release cut before this field still loads -- means the
+    #: deployment has not said, and the client falls back to the identity
+    #: columns it can defend (order, product, colour, customer, quantity)
+    #: rather than to rendering everything, which is the twenty-one-column
+    #: table this setting exists to prevent.
+    candidate_columns: tuple[CandidateColumnConfiguration, ...] = ()
 
 
 class CredentialBindingConfiguration(StrictConfigModel):

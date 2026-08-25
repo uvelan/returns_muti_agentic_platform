@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { Fragment, useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type { ReturnHistory } from "../../../api/returnHistory";
 import { ReturnHistorySection } from "./ReturnHistorySection";
 
@@ -19,6 +19,13 @@ export type CandidateOrderModeProps = {
   returnHistoryPending: boolean;
   returnHistoryError: Error | null;
   onSelectCandidate?: (candidate: Record<string, unknown>) => void;
+  /**
+   * The operator's own column choice, from `runtime-config`'s
+   * `candidateColumns`. Empty means the deployment has not said, and the
+   * built-in `PRIMARY_COLUMNS` answer instead -- a fallback this component can
+   * defend, unlike rendering every field the query selected.
+   */
+  configuredColumns?: readonly { readonly label: string; readonly fields: readonly string[] }[];
 };
 
 /**
@@ -40,13 +47,10 @@ function scalar(value: unknown): string {
  * Candidate fields that must never be rendered, by operator instruction
  * (2026-08-15): the customer's internal ERP number is not for the screen.
  *
- * Columns are derived from the graph result's own keys, so anything a query
- * selects appears here by default -- which is why suppression has to be an
- * explicit list rather than a matter of choosing columns. The value is **not**
- * stripped from the candidate object: `onSelectCandidate` and the return-history
- * lookup both need `customer_id`, since an ERP customer number is only unique
- * within an account. It is withheld from display and from anything written into
- * the conversation, not from the client's own reasoning.
+ * The value is **not** stripped from the candidate object: `onSelectCandidate`
+ * and the return-history lookup both need `customer_id`, since an ERP customer
+ * number is only unique within an account. It is withheld from display and from
+ * anything written into the conversation, not from the client's own reasoning.
  */
 const SUPPRESSED_COLUMNS = new Set([
   // The internal ERP customer number is not for the screen.
@@ -57,6 +61,47 @@ const SUPPRESSED_COLUMNS = new Set([
   "source_updated_at",
 ]);
 
+/**
+ * The columns an associate chooses an order by, in the order they read them --
+ * and nothing else. A candidate row used to render every field the graph query
+ * selected: twenty-one columns of warehouses, PO numbers and timestamps around
+ * the five facts that actually identify a return. Those five lead now; the
+ * rest wait behind each row's Details control.
+ *
+ * Each column is a label plus the field aliases that carry it, because the
+ * candidate shape depends on what was searched: an order search yields
+ * order-header rows (no product, no quantity), a line search yields line rows,
+ * a customer search yields customer rows. A column none of the page's rows
+ * carry is simply not drawn.
+ */
+const PRIMARY_COLUMNS: readonly { label: string; fields: readonly string[] }[] = [
+  { label: "Order", fields: ["sales_order_number", "order_number"] },
+  { label: "Product", fields: ["product_description", "product_name", "description"] },
+  { label: "Colour", fields: ["colour", "product_colour", "color"] },
+  // `account_id` is the last resort, not a peer: a customer search returns
+  // rows that carry nothing but the account, and a row with no identity
+  // column at all cannot be chosen from.
+  { label: "Customer", fields: ["customer_name", "company_name", "ship_to_name", "account_id"] },
+  { label: "Qty", fields: ["ordered_quantity", "quantity", "confirmed_quantity"] },
+];
+
+/** The first alias this row actually carries, or null. */
+function primaryValue(row: Record<string, unknown>, fields: readonly string[]): string | null {
+  for (const field of fields) {
+    const value = row[field];
+    if (typeof value === "string" && value.trim() !== "") return value;
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+  }
+  return null;
+}
+
+/** As `scalar`: the absence marker is the accessor's, never a JSX fallback. */
+function primaryDisplay(row: Record<string, unknown>, fields: readonly string[]): string {
+  const value = primaryValue(row, fields);
+  if (value === null) return "-";
+  return value;
+}
+
 export function CandidateOrderMode({
   candidates,
   totalFound = null,
@@ -64,8 +109,10 @@ export function CandidateOrderMode({
   returnHistoryPending,
   returnHistoryError,
   onSelectCandidate,
+  configuredColumns = [],
 }: CandidateOrderModeProps) {
   const [visible, setVisible] = useState<number>(ROW_PAGE);
+  const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set());
 
   if (candidates.length === 0) {
     return (
@@ -84,9 +131,27 @@ export function CandidateOrderMode({
   // fetch -- only the agent can, by searching again for more results.
   const beyondPage = totalFound === null ? 0 : Math.max(0, totalFound - candidates.length);
 
-  const columns = [...new Set(shown.flatMap((row) => Object.keys(row)))].filter(
-    (column) => !SUPPRESSED_COLUMNS.has(column),
+  // The operator's columns when the release states them, the built-in
+  // identity columns when it does not.
+  const primaryColumns = configuredColumns.length > 0 ? configuredColumns : PRIMARY_COLUMNS;
+  // Only the identity columns the page's rows actually carry.
+  const activeColumns = primaryColumns.filter((column) =>
+    shown.some((row) => primaryValue(row, column.fields) !== null),
   );
+  const primaryFields = new Set(activeColumns.flatMap((column) => column.fields));
+  const detailFields = (row: Record<string, unknown>): [string, unknown][] =>
+    Object.entries(row).filter(
+      ([field]) => !SUPPRESSED_COLUMNS.has(field) && !primaryFields.has(field),
+    );
+
+  const toggle = (index: number) => {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
 
   return (
     <div className="flex flex-col gap-3">
@@ -107,37 +172,78 @@ export function CandidateOrderMode({
         <table className="w-full text-left text-xs">
           <thead>
             <tr className="border-b border-outline-variant/20 bg-surface-container-low text-outline">
-              {columns.map((column) => (
-                <th key={column} className="px-3 py-2 font-medium capitalize">
-                  {column.replace(/_/g, " ")}
+              {activeColumns.map((column) => (
+                <th key={column.label} className="px-3 py-2 font-medium">
+                  {column.label}
                 </th>
               ))}
+              <th className="px-3 py-2 font-medium">Details</th>
               <th className="px-3 py-2 text-right font-medium">Action</th>
             </tr>
           </thead>
           <tbody>
-            {shown.map((row, index) => (
-              <tr
-                key={index}
-                className="border-t border-outline-variant/10 transition hover:bg-surface-container-low/60"
-              >
-                {columns.map((column) => (
-                  <td key={column} className="px-3 py-2.5 font-medium text-on-surface">
-                    {scalar(row[column])}
-                  </td>
-                ))}
-                <td className="px-3 py-2.5 text-right">
-                  <button
-                    type="button"
-                    onClick={() => onSelectCandidate?.(row)}
-                    className="inline-flex items-center gap-1 rounded-lg bg-primary-container px-2.5 py-1 text-xs font-semibold text-white shadow-xs transition hover:bg-primary-container/90"
-                  >
-                    <span>Select</span>
-                    <ChevronRight size={12} />
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {shown.map((row, index) => {
+              const details = detailFields(row);
+              const isOpen = expanded.has(index);
+              return (
+                <Fragment key={index}>
+                  <tr className="border-t border-outline-variant/10 transition hover:bg-surface-container-low/60">
+                    {activeColumns.map((column) => (
+                      <td key={column.label} className="px-3 py-2.5 font-medium text-on-surface">
+                        {primaryDisplay(row, column.fields)}
+                      </td>
+                    ))}
+                    <td className="px-3 py-2.5">
+                      {details.length > 0 ? (
+                        <button
+                          type="button"
+                          aria-expanded={isOpen}
+                          onClick={() => { toggle(index); }}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-on-surface-variant transition hover:text-primary"
+                        >
+                          <ChevronDown
+                            size={12}
+                            aria-hidden="true"
+                            className={`transition-transform ${isOpen ? "rotate-180" : ""}`}
+                          />
+                          {isOpen ? "Hide" : "More"}
+                        </button>
+                      ) : (
+                        <span className="text-outline">-</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      <button
+                        type="button"
+                        onClick={() => onSelectCandidate?.(row)}
+                        className="inline-flex items-center gap-1 rounded-lg bg-primary-container px-2.5 py-1 text-xs font-semibold text-white shadow-xs transition hover:bg-primary-container/90"
+                      >
+                        <span>Select</span>
+                        <ChevronRight size={12} />
+                      </button>
+                    </td>
+                  </tr>
+                  {isOpen ? (
+                    <tr className="border-t border-outline-variant/10 bg-surface-container-low/40">
+                      <td colSpan={activeColumns.length + 2} className="px-3 py-3">
+                        <dl className="grid grid-cols-2 gap-x-6 gap-y-1.5 md:grid-cols-3">
+                          {details.map(([field, value]) => (
+                            <div key={field} className="min-w-0">
+                              <dt className="text-[10px] uppercase tracking-wide text-outline">
+                                {field.replace(/_/g, " ")}
+                              </dt>
+                              <dd className="truncate text-xs text-on-surface" title={scalar(value)}>
+                                {scalar(value)}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </td>
+                    </tr>
+                  ) : null}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>
