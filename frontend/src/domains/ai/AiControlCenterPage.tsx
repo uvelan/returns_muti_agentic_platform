@@ -1925,6 +1925,7 @@ function ProvidersTab() {
   const [steps, setSteps] = useState<readonly PublishStep[]>([]);
   const [publishError, setPublishError] = useState<string | null>(null);
   const [published, setPublished] = useState(false);
+  const [confirmingReset, setConfirmingReset] = useState(false);
 
   const summary = runtime.data === undefined ? null : runtimeSummaryOf(runtime.data);
   const providers = drafts ?? summary?.providers ?? [];
@@ -2018,6 +2019,38 @@ function ProvidersTab() {
     }
   };
 
+  /**
+   * Clear every release-held provider and key reference and publish that as a
+   * release. With the release declaring nothing, routing falls back to the
+   * process environment (PLATFORM_AI_PROVIDER_ORDER and the per-provider key
+   * and model variables) -- in a production environment, which never falls
+   * back, it means no providers until some are declared again. Secrets are
+   * untouched either way: only references lived here.
+   */
+  const resetToEnvironment = async () => {
+    if (summary === null) return;
+    setConfirmingReset(false);
+    setPublished(false);
+    setPublishError(null);
+    try {
+      await runPublishPipeline({
+        releaseId: defaultReleaseId("ai-providers-reset"),
+        domainKey: "RETURN_PLATFORM",
+        patch: { runtime_integrations: { ai_providers: [] } },
+        headRevision: summary.headRevision,
+        onSteps: setSteps,
+      });
+      setPublished(true);
+      setDrafts(null);
+      setOpenKey(null);
+      setReleaseId(defaultReleaseId("ai-providers"));
+      await runtime.refetch();
+      await routes.refetch();
+    } catch (caught) {
+      setPublishError(caught instanceof Error ? caught.message : String(caught));
+    }
+  };
+
   if (runtime.isLoading) return <p className="text-sm text-outline">Loading...</p>;
   if (runtime.error) return <p className="text-sm text-error">{runtime.error.message}</p>;
   if (summary === null) return null;
@@ -2033,7 +2066,49 @@ function ProvidersTab() {
           Release <span className="font-mono">{summary.releaseId}</span> · providers are
           tried in rank order; models rank within their provider and tier.
         </p>
-        <AddProviderMenu absentKeys={absentKeys} onAdd={addProvider} />
+        <div className="flex items-center gap-2">
+          {confirmingReset ? (
+            <span className="flex items-center gap-2 rounded-lg border border-error-container bg-error-container/25 px-2.5 py-1.5 text-xs">
+              <span className="text-on-error-container">
+                Remove every release-held provider and key reference and return routing to
+                the environment?
+              </span>
+              <button
+                type="button"
+                onClick={() => void resetToEnvironment()}
+                className="rounded-md bg-error px-2 py-1 font-semibold text-on-error"
+              >
+                Reset
+              </button>
+              <button
+                type="button"
+                onClick={() => { setConfirmingReset(false); }}
+                className="text-on-surface-variant hover:underline"
+              >
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              disabled={
+                !canPublish ||
+                providers.length === 0 ||
+                steps.some((step) => step.state === "RUNNING")
+              }
+              onClick={() => { setConfirmingReset(true); }}
+              title={
+                providers.length === 0
+                  ? "The release already declares no providers"
+                  : "Clear release-held providers and keys; routing returns to the environment"
+              }
+              className="rounded-lg border border-outline-control px-3 py-2 text-sm font-medium text-on-surface-variant transition hover:border-error hover:text-error disabled:opacity-40"
+            >
+              Reset to environment
+            </button>
+          )}
+          <AddProviderMenu absentKeys={absentKeys} onAdd={addProvider} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
