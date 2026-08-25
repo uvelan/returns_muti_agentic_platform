@@ -448,6 +448,31 @@ async def cancel_interception(
     )
 
 
+@router.get("/requests/{trace_id}", response_model=APIResponse[AITraceView])
+async def get_request(
+    request: Request,
+    trace_id: str,
+    _actor_id: str = Depends(require_read_roles),
+) -> APIResponse[AITraceView]:
+    """One recorded request, whole: prompt, redacted input, and response.
+
+    The metrics rows carry digests so a list render never hauls payloads; this
+    is where a digest resolves to the bodies behind it. The canonical mirror of
+    the versioned `GET /api/v1/ai-gateway/requests/{trace_id}` -- same model,
+    same `require_read_roles` gate -- because the Control Center may only speak
+    the versionless surface. What it serves was redacted before storage
+    (`redactedInput` is the input the model actually saw) and `responseText` is
+    the delivered answer, never hidden reasoning; the interception store remains
+    the only place a sealed, unredacted payload lives, behind its own
+    capability.
+    """
+    repository = resolve_operational_repository(request)
+    trace = await repository.get_ai_trace(trace_id)
+    if trace is None:
+        raise HTTPException(status_code=404, detail="AI request not found")
+    return APIResponse(data=trace, meta=_meta(request))
+
+
 @router.post("/requests/{trace_id}/replay", response_model=APIResponse[AITraceView])
 async def replay_request(
     trace_id: str,

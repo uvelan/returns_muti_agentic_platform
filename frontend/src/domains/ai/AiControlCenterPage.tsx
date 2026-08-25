@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { X } from "lucide-react";
 
 import {
   aiControlCenterApi,
@@ -33,12 +34,14 @@ import { useDomainSection } from "../useDomainSection";
  * had no answer short of a database query. Both mint new traces; the recorded
  * original is evidence and is never edited.
  *
- * **Never expose hidden chain-of-thought.** Nothing here renders model
- * reasoning text, and there is none to render: an attempt carries a
- * `requestDigest`/`responseDigest` rather than bodies, which is the design
- * working as intended. Trace, task, provider, model, timing, tokens, fallback
- * and safety status are shown -- structured observability, not private
- * reasoning.
+ * **Payloads on demand, digests on the list.** An attempt row carries a
+ * `requestDigest`/`responseDigest` rather than bodies, so the list renders
+ * without hauling prompts. Opening a row fetches the full recorded trace --
+ * the system prompt, the redacted input the model actually received, and the
+ * response it delivered. `redactedInput` was redacted *before* storage and
+ * `responseText` is the final answer, never hidden reasoning; the one place a
+ * sealed, unredacted payload exists is the interception store, behind
+ * `ai.interception.act`.
  */
 
 const AI_DOMAIN = requireDomain("/ai");
@@ -49,7 +52,7 @@ type Tab = (typeof AI_SECTIONS)[number];
 /** Tabs with no backing route on `/api/ai`. Named, not silently dropped. */
 const UNBACKED: Partial<Record<Tab, string>> = {
   Audit:
-    "Prompts and completions are not stored. A telemetry row holds a digest of the request and nothing else, so there is no payload here to show -- see Requests for what every call recorded, and Interceptions for the one place a full request and its answer exist, because a held request has to be readable by the human answering it.",
+    "Every call's full record lives under Requests: open a row to read the system prompt, the redacted input the model received, and the response it delivered. A dedicated audit surface (export, retention, tamper evidence) has no endpoint on /api/ai.",
   Safety:
     "Per-request safety status appears under Requests. A dedicated safety surface (guard configuration, rejection history) has no endpoint on /api/ai.",
   Configuration:
@@ -103,9 +106,9 @@ function TabBody({ tab, canReadInterceptions }: { tab: Tab; canReadInterceptions
 
 function Stat({ label, value }: { label: string; value: number | string }) {
   return (
-    <div className="rounded-lg border border-outline-variant bg-white p-4">
-      <p className="text-xs uppercase tracking-wide text-outline">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-on-surface">{value}</p>
+    <div className="premium-panel p-4">
+      <p className="premium-kicker">{label}</p>
+      <p className="mt-1.5 text-2xl font-semibold tabular-nums text-on-surface">{value}</p>
     </div>
   );
 }
@@ -163,16 +166,16 @@ function MetricsTab() {
 function Breakdown({ title, data }: { title: string; data: Readonly<Record<string, number>> }) {
   const rows = Object.entries(data).sort(([, a], [, b]) => b - a);
   return (
-    <section className="rounded-lg border border-outline-variant bg-white p-4">
+    <section className="premium-panel p-4">
       <h2 className="text-sm font-semibold text-on-surface">{title}</h2>
       {rows.length === 0 ? (
         <p className="mt-2 text-sm text-on-surface-variant">No data.</p>
       ) : (
-        <ul className="mt-2 flex flex-col gap-1">
+        <ul className="mt-2.5 flex flex-col gap-1.5">
           {rows.map(([key, count]) => (
-            <li key={key} className="flex justify-between text-sm">
+            <li key={key} className="flex items-baseline justify-between gap-3 text-sm">
               <span className="truncate text-on-surface-variant">{key}</span>
-              <span className="font-medium text-on-surface">{count}</span>
+              <span className="font-medium tabular-nums text-on-surface">{count}</span>
             </li>
           ))}
         </ul>
@@ -194,103 +197,324 @@ function RequestsTab() {
   const rows = attempts.data ?? [];
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_22rem]">
-      <div className="overflow-x-auto rounded-lg border border-outline-variant bg-white">
+    <div className="flex flex-col gap-3">
+      <div className="premium-panel overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-outline">
-            <tr>
-              <th className="p-2">Task</th>
-              <th className="p-2">Provider</th>
-              <th className="p-2">Model</th>
-              <th className="p-2">Status</th>
-              <th className="p-2">Latency</th>
-              <th className="p-2">Tokens</th>
+          <thead>
+            <tr className="border-b border-outline-variant/70">
+              <th className="premium-kicker px-4 py-3 font-semibold">Task</th>
+              <th className="premium-kicker px-4 py-3 font-semibold">Provider / model</th>
+              <th className="premium-kicker px-4 py-3 font-semibold">Status</th>
+              <th className="premium-kicker px-4 py-3 text-right font-semibold">Latency</th>
+              <th className="premium-kicker px-4 py-3 text-right font-semibold">Tokens</th>
+              <th className="premium-kicker px-4 py-3 text-right font-semibold">When</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="p-3 text-on-surface-variant">No requests recorded.</td>
+                <td colSpan={6} className="px-4 py-8 text-center text-on-surface-variant">
+                  No requests recorded yet. The first model call this process makes will
+                  appear here.
+                </td>
               </tr>
             ) : null}
             {rows.map((attempt) => (
               <tr
                 key={attempt.id}
                 onClick={() => { setSelected(attempt); }}
-                className="cursor-pointer border-t border-outline-variant hover:bg-surface-container-low"
+                className="group cursor-pointer border-t border-outline-variant/50 transition-colors hover:bg-surface-container-low"
               >
-                <td className="p-2">
+                <td className="px-4 py-2.5">
                   {/*
                     A real control, not a bare cell -- the same correction
                     `ConfigurationPage` already made for its release rows.
-                    Opening a request is the only way to reach the payload pane,
-                    and the row's `onClick` was the only way to open one: a
-                    `<tr>` is not focusable and carries no role, so this table
-                    was mouse-only. The row handler stays for click-anywhere.
+                    Opening a request is the only way to reach the payloads,
+                    and a `<tr>` is not focusable and carries no role, so
+                    without this button the table would be mouse-only. The row
+                    handler stays for click-anywhere.
                   */}
                   <button
                     type="button"
-                    aria-pressed={selected?.id === attempt.id}
                     onClick={() => { setSelected(attempt); }}
-                    className="w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    className="w-full text-left font-medium text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary group-hover:text-primary"
                   >
                     {attempt.taskId}
                   </button>
                 </td>
-                <td className="p-2">{attempt.provider ?? "-"}</td>
-                <td className="p-2">{attempt.model ?? "-"}</td>
-                <td className="p-2">
-                  {attempt.status}
-                  {attempt.fallbackUsed ? (
-                    <span className="ml-1 text-xs text-amber-700">fallback</span>
-                  ) : null}
+                <td className="px-4 py-2.5">
+                  <span className="text-on-surface">{attempt.provider ?? "-"}</span>
+                  <span className="block text-xs text-on-surface-variant">
+                    {attempt.model ?? "-"}
+                  </span>
                 </td>
-                <td className="p-2">{attempt.latencyMs} ms</td>
-                <td className="p-2">{attempt.totalTokens}</td>
+                <td className="px-4 py-2.5">
+                  <StatusPill status={attempt.status} fallbackUsed={attempt.fallbackUsed} />
+                </td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-on-surface-variant">
+                  {attempt.latencyMs} ms
+                </td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-on-surface-variant">
+                  {attempt.totalTokens}
+                </td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-xs text-on-surface-variant">
+                  {formatWhen(attempt.createdAt)}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <p className="text-xs text-outline">
+        Open a request to read the full record: the system prompt, the redacted input the
+        model received, and the response it delivered.
+      </p>
 
-      <aside className="rounded-lg border border-outline-variant bg-white p-4">
-        <h2 className="text-sm font-semibold text-on-surface">Request inspection</h2>
-        {selected === null ? (
-          <p className="mt-2 text-sm text-on-surface-variant">Select a request.</p>
-        ) : (
-          <dl className="mt-3 flex flex-col gap-2 text-sm">
-            <Field label="Trace" value={selected.traceId} mono />
-            <Field label="Attempt" value={String(selected.attemptNumber)} />
-            <Field label="Selection reason" value={selected.selectionReason} />
-            <Field label="Configured tier" value={selected.configuredTier} />
-            <Field label="Selected tier" value={selected.selectedTier ?? "-"} />
-            <Field label="Route" value={selected.routeId ?? "-"} mono />
-            <Field label="Safety" value={selected.safetyStatus} />
-            <Field label="Rate-limit wait" value={`${String(selected.rateLimitWaitMs)} ms`} />
-            <Field label="Input / output tokens" value={`${String(selected.inputTokens)} / ${String(selected.outputTokens)}`} />
-            <Field label="Error" value={selected.errorCode ?? "-"} />
-            <Field label="Fallback reason" value={selected.fallbackReason ?? "-"} />
-            <Field label="Cost" value={formatCost(selected)} />
-            <Field label="Pricing version" value={selected.pricingVersion ?? "-"} />
-            <Field label="Request digest" value={selected.requestDigest} mono />
-            <Field label="Response digest" value={selected.responseDigest ?? "-"} mono />
+      {selected !== null ? (
+        <RequestDetailDialog
+          attempt={selected}
+          onClose={() => { setSelected(null); }}
+        />
+      ) : null}
+    </div>
+  );
+}
 
+/**
+ * Status, readable at a glance. The raw enum stays visible -- an operator
+ * greps logs with it -- but the color answers "is this fine" before the word
+ * does. Fallback is a separate marker rather than folded into the status,
+ * because a fallback that succeeded and a clean success are different facts.
+ */
+function StatusPill({ status, fallbackUsed }: { status: string; fallbackUsed: boolean }) {
+  const upper = status.toUpperCase();
+  const tone = upper.includes("FAIL") || upper.includes("BLOCKED")
+    ? "bg-error-container/60 text-on-error-container"
+    : upper.includes("SUCCESS") || upper.includes("VALIDATED") || upper.includes("PERSISTED")
+      ? "bg-primary-container/15 text-primary"
+      : "bg-surface-container text-on-surface-variant";
+  const dot = upper.includes("FAIL") || upper.includes("BLOCKED")
+    ? "bg-error"
+    : upper.includes("SUCCESS") || upper.includes("VALIDATED") || upper.includes("PERSISTED")
+      ? "bg-primary"
+      : "bg-outline";
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${tone}`}>
+        <span aria-hidden="true" className={`size-1.5 rounded-full ${dot}`} />
+        {status}
+      </span>
+      {fallbackUsed ? (
+        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+          fallback
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/** Compact clock time for today, date plus time for anything older. */
+function formatWhen(iso: string): string {
+  const then = new Date(iso);
+  if (Number.isNaN(then.getTime())) return iso;
+  const now = new Date();
+  const sameDay =
+    then.getFullYear() === now.getFullYear() &&
+    then.getMonth() === now.getMonth() &&
+    then.getDate() === now.getDate();
+  return sameDay
+    ? then.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : then.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+/**
+ * Everything the platform recorded about one request, in one place.
+ *
+ * The attempt row is the summary; this dialog fetches the full trace on open --
+ * the metrics list deliberately carries digests, so the payloads travel only
+ * when somebody asks for exactly one. A modal rather than the old side panel
+ * because the payloads need width and protected reading focus: a system prompt
+ * squeezed into 22rem beside a live table was the reason nobody could read one.
+ */
+function RequestDetailDialog({
+  attempt,
+  onClose,
+}: {
+  attempt: AIUsageAttemptView;
+  onClose: () => void;
+}) {
+  const titleId = useId();
+  const trace = useQuery({
+    queryKey: ["ai", "trace", attempt.traceId],
+    queryFn: () => aiControlCenterApi.getRequest(attempt.traceId),
+  });
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => { window.removeEventListener("keydown", onKey); };
+  }, [onClose]);
+
+  const detail = trace.data;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        onClick={(event) => { event.stopPropagation(); }}
+        className="premium-panel flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden"
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-outline-variant/70 px-6 py-4">
+          <div>
+            <h2 id={titleId} className="text-base font-semibold text-on-surface">
+              {attempt.taskId}
+            </h2>
+            <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-on-surface-variant">
+              <StatusPill status={attempt.status} fallbackUsed={attempt.fallbackUsed} />
+              <span>{attempt.provider ?? "-"} / {attempt.model ?? "-"}</span>
+              <span className="tabular-nums">{attempt.latencyMs} ms</span>
+              <span className="tabular-nums">{formatWhen(attempt.createdAt)}</span>
+            </p>
+          </div>
+          <button
+            type="button"
+            // The first focus lands here so Escape and Enter both close without
+            // a tab stop hunt; the payload <pre>s below are in the tab order.
+            autoFocus
+            onClick={onClose}
+            aria-label="Close request details"
+            className="rounded-lg p-1.5 text-outline transition-colors hover:bg-surface-container-low hover:text-on-surface"
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
+        </header>
+
+        <div className="flex flex-col gap-5 overflow-y-auto px-6 py-5">
+          {attempt.errorCode || attempt.fallbackReason ? (
+            <div className="rounded-xl border border-error-container bg-error-container/25 px-4 py-3 text-sm">
+              {attempt.errorCode ? (
+                <p className="font-medium text-on-error-container">{attempt.errorCode}</p>
+              ) : null}
+              {attempt.fallbackReason ? (
+                <p className="mt-0.5 text-on-error-container/90">{attempt.fallbackReason}</p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-3">
+            <Field label="Trace" value={attempt.traceId} mono />
+            <Field label="Attempt" value={String(attempt.attemptNumber)} />
+            <Field label="Selection reason" value={attempt.selectionReason} />
+            <Field label="Route" value={attempt.routeId ?? "-"} mono />
+            <Field
+              label="Tier"
+              value={
+                attempt.selectedTier && attempt.selectedTier !== attempt.configuredTier
+                  ? `${attempt.configuredTier} -> ${attempt.selectedTier}`
+                  : attempt.configuredTier
+              }
+            />
+            <Field label="Safety" value={attempt.safetyStatus} />
+            <Field
+              label="Tokens in / out"
+              value={`${String(attempt.inputTokens)} / ${String(attempt.outputTokens)}`}
+            />
+            <Field label="Rate-limit wait" value={`${String(attempt.rateLimitWaitMs)} ms`} />
+            <Field label="Cost" value={formatCost(attempt)} />
             {/* W4.12: the business dimension. Ids only -- no customer data
                 reaches this surface, by design of the record itself. */}
-            <Field label="Correlation" value={selected.correlationId ?? "-"} mono />
-            <Field label="Case" value={selected.caseId ?? "-"} mono />
-            <Field label="Conversation" value={selected.conversationId ?? "-"} mono />
-            <Field label="Agent" value={selected.agentId ?? "-"} />
-            <Field label="Prompt version" value={selected.promptVersion ?? "-"} />
-
-            <p className="mt-2 text-xs text-outline">
-              Digests, not bodies. Prompt and response payloads are deliberately not
-              served by this surface.
-            </p>
-            <ReplayControls traceId={selected.traceId} />
+            <Field label="Correlation" value={attempt.correlationId ?? "-"} mono />
+            <Field label="Case" value={attempt.caseId ?? "-"} mono />
+            <Field label="Prompt version" value={attempt.promptVersion ?? "-"} />
           </dl>
-        )}
-      </aside>
+
+          {trace.isLoading ? (
+            <p className="text-sm text-outline">Loading the recorded payloads...</p>
+          ) : null}
+          {trace.error ? (
+            <p role="alert" className="text-sm text-error">{trace.error.message}</p>
+          ) : null}
+
+          {detail ? (
+            <>
+              <section className="flex flex-col gap-2">
+                <h3 className="premium-kicker">Request</h3>
+                <Payload label="System prompt" text={detail.systemPrompt} />
+                <Payload
+                  label="Redacted input (what the model received)"
+                  text={JSON.stringify(detail.redactedInput, null, 2)}
+                />
+              </section>
+
+              <section className="flex flex-col gap-2">
+                <h3 className="premium-kicker">Response</h3>
+                {detail.responseText !== null && detail.responseText !== "" ? (
+                  <Payload label="Response text" text={detail.responseText} />
+                ) : (
+                  <p className="rounded-xl bg-surface-container-low px-4 py-3 text-sm text-on-surface-variant">
+                    No response was recorded
+                    {detail.errorCode ? ` -- the attempt failed with ${detail.errorCode}` : ""}.
+                  </p>
+                )}
+                {detail.decision !== null || detail.explanation !== null ? (
+                  <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-3">
+                    <Field label="Decision" value={detail.decision ?? "-"} />
+                    <Field
+                      label="Confidence"
+                      value={
+                        detail.confidenceMillionths === null
+                          ? "-"
+                          : `${(detail.confidenceMillionths / 10_000).toFixed(1)}%`
+                      }
+                    />
+                    {detail.explanation !== null && detail.explanation !== detail.responseText ? (
+                      <div className="col-span-2 md:col-span-3">
+                        <Field label="Explanation" value={detail.explanation} />
+                      </div>
+                    ) : null}
+                  </dl>
+                ) : null}
+              </section>
+
+              <dl className="grid grid-cols-1 gap-x-6 gap-y-3 border-t border-outline-variant/70 pt-4 text-sm md:grid-cols-2">
+                <Field label="Request digest" value={detail.requestDigest} mono />
+                <Field label="Response digest" value={detail.responseDigest ?? "-"} mono />
+              </dl>
+            </>
+          ) : null}
+
+          <div className="border-t border-outline-variant/70 pt-1">
+            <ReplayControls traceId={attempt.traceId} />
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/**
+ * One recorded body, scrollable and reachable by keyboard. Focusable because it
+ * scrolls and holds nothing focusable -- the same WCAG 2.1.1 correction the
+ * interception payload view already carries.
+ */
+function Payload({ label, text }: { label: string; text: string }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-xs text-on-surface-variant">{label}</p>
+      <pre
+        tabIndex={0}
+        aria-label={label}
+        className="max-h-72 overflow-auto whitespace-pre-wrap rounded-xl bg-surface-container-low px-4 py-3 font-mono text-xs leading-relaxed text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        {text}
+      </pre>
     </div>
   );
 }
@@ -556,32 +780,34 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
         <Stat label="Held responses" value={byPoint("RESPONSE")} />
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-outline-variant bg-white">
+      <div className="premium-panel overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-outline">
-            <tr>
-              <th className="p-2">Interception</th>
-              <th className="p-2">Point</th>
-              <th className="p-2">Status</th>
-              <th className="p-2">Task</th>
-              <th className="p-2">Expires</th>
-              <th className="p-2">Actioned by</th>
-              <th className="p-2" />
+          <thead>
+            <tr className="border-b border-outline-variant/70">
+              <th className="premium-kicker px-4 py-3 font-semibold">Interception</th>
+              <th className="premium-kicker px-4 py-3 font-semibold">Point</th>
+              <th className="premium-kicker px-4 py-3 font-semibold">Status</th>
+              <th className="premium-kicker px-4 py-3 font-semibold">Task</th>
+              <th className="premium-kicker px-4 py-3 font-semibold">Expires</th>
+              <th className="premium-kicker px-4 py-3 font-semibold">Actioned by</th>
+              <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="p-3 text-on-surface-variant">No interceptions.</td>
+                <td colSpan={7} className="px-4 py-8 text-center text-on-surface-variant">
+                  No interceptions. Nothing is waiting on a human right now.
+                </td>
               </tr>
             ) : null}
             {rows.map((row) => {
               const labels = labelsFor(row.point);
               const status = row.status.toUpperCase();
               return (
-              <tr key={row.interceptionId} className="border-t border-outline-variant">
-                <td className="p-2 font-mono text-xs">{row.interceptionId}</td>
-                <td className="p-2">
+              <tr key={row.interceptionId} className="border-t border-outline-variant/50 transition-colors hover:bg-surface-container-low/60">
+                <td className="px-4 py-2.5 font-mono text-xs">{row.interceptionId}</td>
+                <td className="px-4 py-2.5">
                   <span
                     className={
                       labels === POINT_LABELS.RESPONSE
@@ -596,7 +822,7 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
                     `ANSWERED` request is a substitution and an `ANSWERED`
                     response is an edit, and the queue is where somebody has to
                     be able to tell those apart. */}
-                <td className="p-2">
+                <td className="px-4 py-2.5">
                   {row.status}
                   {labels.outcomes[status] ? (
                     <span className="ml-1 text-xs text-outline">
@@ -604,12 +830,12 @@ function InterceptionsTab({ canRead }: { canRead: boolean }) {
                     </span>
                   ) : null}
                 </td>
-                <td className="p-2">{row.taskId}</td>
-                <td className="p-2">{row.expiresAt}</td>
+                <td className="px-4 py-2.5">{row.taskId}</td>
+                <td className="px-4 py-2.5">{row.expiresAt}</td>
                 {/* A human answer must never read as a model's. `answeredBy` is
                     the operator's own subject, recorded by the backend. */}
-                <td className="p-2">{row.answeredBy ?? "-"}</td>
-                <td className="p-2">
+                <td className="px-4 py-2.5">{row.answeredBy ?? "-"}</td>
+                <td className="px-4 py-2.5">
                   {status === "PENDING" && canAct && !hasLapsed(row) ? (
                     <div className="flex gap-1">
                       <button
@@ -710,17 +936,17 @@ function RoutesTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="overflow-x-auto rounded-lg border border-outline-variant bg-white">
+      <div className="premium-panel overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-outline">
-            <tr>
-              <th className="p-2">Route</th>
-              <th className="p-2">Provider</th>
-              <th className="p-2">Model</th>
-              <th className="p-2">Tier</th>
-              <th className="p-2">Circuit</th>
-              <th className="p-2">Active</th>
-              <th className="p-2">Req/min</th>
+          <thead>
+            <tr className="border-b border-outline-variant/70">
+              <th className="premium-kicker px-4 py-3 font-semibold">Route</th>
+              <th className="premium-kicker px-4 py-3 font-semibold">Provider</th>
+              <th className="premium-kicker px-4 py-3 font-semibold">Model</th>
+              <th className="premium-kicker px-4 py-3 font-semibold">Tier</th>
+              <th className="premium-kicker px-4 py-3 font-semibold">Circuit</th>
+              <th className="premium-kicker px-4 py-3 font-semibold">Active</th>
+              <th className="premium-kicker px-4 py-3 font-semibold">Req/min</th>
             </tr>
           </thead>
           <tbody>
@@ -731,12 +957,12 @@ function RoutesTab() {
                 children may be duplicated or omitted, on the screen an operator
                 reads to see which provider is live. */}
             {(routes.data ?? []).map((route) => (
-              <tr key={`${route.routeId}:${route.tier}`} className="border-t border-outline-variant">
-                <td className="p-2 font-mono text-xs">{route.routeId}</td>
-                <td className="p-2">{route.provider}</td>
-                <td className="p-2">{route.model}</td>
-                <td className="p-2">{route.tier}</td>
-                <td className="p-2">
+              <tr key={`${route.routeId}:${route.tier}`} className="border-t border-outline-variant/50 transition-colors hover:bg-surface-container-low/60">
+                <td className="px-4 py-2.5 font-mono text-xs">{route.routeId}</td>
+                <td className="px-4 py-2.5">{route.provider}</td>
+                <td className="px-4 py-2.5">{route.model}</td>
+                <td className="px-4 py-2.5">{route.tier}</td>
+                <td className="px-4 py-2.5">
                   <span
                     className={
                       route.circuitState === "CLOSED"
@@ -752,35 +978,35 @@ function RoutesTab() {
                     <span className="ml-1 text-xs text-outline">unconfigured</span>
                   ) : null}
                 </td>
-                <td className="p-2">{route.activeRequests}</td>
-                <td className="p-2">{route.requestsThisMinute}</td>
+                <td className="px-4 py-2.5">{route.activeRequests}</td>
+                <td className="px-4 py-2.5">{route.requestsThisMinute}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-outline-variant bg-white">
+      <div className="premium-panel overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-outline">
-            <tr>
-              <th className="p-2">Task</th>
-              <th className="p-2">Tier</th>
-              <th className="p-2">Prompt version</th>
-              <th className="p-2">Fallback</th>
-              <th className="p-2">Escalation</th>
-              <th className="p-2">Allowed providers</th>
+          <thead>
+            <tr className="border-b border-outline-variant/70">
+              <th className="premium-kicker px-4 py-3 font-semibold">Task</th>
+              <th className="premium-kicker px-4 py-3 font-semibold">Tier</th>
+              <th className="premium-kicker px-4 py-3 font-semibold">Prompt version</th>
+              <th className="premium-kicker px-4 py-3 font-semibold">Fallback</th>
+              <th className="premium-kicker px-4 py-3 font-semibold">Escalation</th>
+              <th className="premium-kicker px-4 py-3 font-semibold">Allowed providers</th>
             </tr>
           </thead>
           <tbody>
             {(tasks.data ?? []).map((task) => (
-              <tr key={task.taskId} className="border-t border-outline-variant">
-                <td className="p-2 font-mono text-xs">{task.taskId}</td>
-                <td className="p-2">{task.tier}</td>
-                <td className="p-2">{task.promptVersion}</td>
-                <td className="p-2">{task.fallbackStrategy}</td>
-                <td className="p-2">{task.allowTierEscalation ? "yes" : "no"}</td>
-                <td className="p-2">{task.allowedProviders.join(", ")}</td>
+              <tr key={task.taskId} className="border-t border-outline-variant/50 transition-colors hover:bg-surface-container-low/60">
+                <td className="px-4 py-2.5 font-mono text-xs">{task.taskId}</td>
+                <td className="px-4 py-2.5">{task.tier}</td>
+                <td className="px-4 py-2.5">{task.promptVersion}</td>
+                <td className="px-4 py-2.5">{task.fallbackStrategy}</td>
+                <td className="px-4 py-2.5">{task.allowTierEscalation ? "yes" : "no"}</td>
+                <td className="px-4 py-2.5">{task.allowedProviders.join(", ")}</td>
               </tr>
             ))}
           </tbody>
@@ -883,7 +1109,7 @@ function ManualResponder({
   };
 
   return (
-    <section className="flex flex-col gap-3 rounded-lg border border-outline-variant bg-white p-4">
+    <section className="premium-panel flex flex-col gap-3 p-5">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold">
           {isResponse ? "Review" : "Respond to"}{" "}

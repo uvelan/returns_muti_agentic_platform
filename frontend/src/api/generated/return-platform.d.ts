@@ -289,6 +289,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ai/requests/{trace_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Request
+         * @description One recorded request, whole: prompt, redacted input, and response.
+         *
+         *     The metrics rows carry digests so a list render never hauls payloads; this
+         *     is where a digest resolves to the bodies behind it. The canonical mirror of
+         *     the versioned `GET /api/v1/ai-gateway/requests/{trace_id}` -- same model,
+         *     same `require_read_roles` gate -- because the Control Center may only speak
+         *     the versionless surface. What it serves was redacted before storage
+         *     (`redactedInput` is the input the model actually saw) and `responseText` is
+         *     the delivered answer, never hidden reasoning; the interception store remains
+         *     the only place a sealed, unredacted payload lives, behind its own
+         *     capability.
+         */
+        get: operations["get_request_api_ai_requests__trace_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ai/requests/{trace_id}/compare": {
         parameters: {
             query?: never;
@@ -10651,6 +10681,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_AIUsageSummaryView_"];
+                };
+            };
+        };
+    };
+    get_request_api_ai_requests__trace_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                trace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AITraceView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

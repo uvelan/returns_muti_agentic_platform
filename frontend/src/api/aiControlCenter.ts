@@ -169,6 +169,15 @@ export const aiControlCenterApi = {
   listTasks: () => unwrap<AITaskView[]>("/api/ai/tasks"),
   listAttempts: () => unwrap<AIUsageAttemptView[]>("/api/ai/metrics"),
   getSummary: () => unwrap<AIUsageSummaryView>("/api/ai/metrics/summary"),
+
+  /**
+   * One recorded request, whole: the system prompt, the redacted input the
+   * model actually saw, and the response it gave back. This is where a metrics
+   * row's digest resolves to the bodies behind it -- the list stays digests so
+   * rendering it never hauls payloads.
+   */
+  getRequest: (traceId: string) =>
+    unwrap<AITraceDetailView>(`/api/ai/requests/${encodeURIComponent(traceId)}`),
   /**
    * The pending operator queue, or the statuses asked for.
    *
@@ -274,9 +283,10 @@ export const aiControlCenterApi = {
 };
 
 /**
- * One recorded AI request. Transcribed from `operations/models.py::AITraceView`,
- * narrowed to the fields S8 renders -- the full model carries the prompt and the
- * response text, which this screen deliberately does not put on a list.
+ * One recorded AI request as replay/compare summarise it. Transcribed from
+ * `operations/models.py::AITraceView`, narrowed to the fields those flows
+ * render on a list. The full record -- prompt, redacted input, response text --
+ * is `AITraceDetailView`, fetched one trace at a time through `getRequest`.
  */
 export type AITraceView = {
   readonly id: string;
@@ -296,4 +306,36 @@ export type AITraceView = {
   readonly pricingVersion: string | null;
   readonly errorCode: string | null;
   readonly createdAt: string;
+};
+
+/**
+ * The whole recorded trace -- `operations/models.py::AITraceView`, unnarrowed.
+ *
+ * `redactedInput` is the input the model actually received: redaction happens
+ * before storage, so there is nothing here to strip at render time.
+ * `responseText` is the delivered answer, never hidden reasoning. A sealed,
+ * unredacted payload exists only in the interception store, behind
+ * `ai.interception.act`.
+ */
+export type AITraceDetailView = AITraceView & {
+  readonly sessionId: string | null;
+  readonly configuredTier: string;
+  readonly selectedTier: string | null;
+  readonly credentialId: string | null;
+  readonly routeId: string | null;
+  readonly redactedInput: Readonly<Record<string, unknown>>;
+  readonly systemPrompt: string;
+  readonly requestDigest: string;
+  readonly responseText: string | null;
+  readonly confidenceMillionths: number | null;
+  readonly rateLimitWaitMs: number;
+  readonly cachedInputTokens: number | null;
+  readonly totalTokens: number | null;
+  readonly responseDigest: string | null;
+  readonly attempts: number;
+  readonly fallbackUsed: boolean;
+  readonly safetyStatus: string;
+  readonly safetySignals: readonly string[];
+  readonly selectionReason: string | null;
+  readonly interceptedBy: string | null;
 };

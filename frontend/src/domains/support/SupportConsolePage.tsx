@@ -1217,7 +1217,7 @@ function AgentResponsePanel({
       <button
         type="button"
         disabled={run.isPending}
-        onClick={() => run.mutate()}
+        onClick={() => { run.mutate(); }}
         className="flex items-center gap-1.5 self-start text-xs text-primary transition hover:underline disabled:opacity-50"
       >
         <Bot size={14} aria-hidden="true" />

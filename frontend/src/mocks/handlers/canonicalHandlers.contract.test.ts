@@ -328,6 +328,12 @@ const ROUTES: readonly Route[] = [
     contract: "/api/ai/metrics/summary",
     url: "/api/ai/metrics/summary",
   },
+  {
+    method: "get",
+    handler: "/api/ai/requests/:traceId",
+    contract: "/api/ai/requests/{trace_id}",
+    url: "/api/ai/requests/trace-mock-1",
+  },
   { method: "get", handler: "/api/ai/interceptions", contract: "/api/ai/interceptions", url: "/api/ai/interceptions" },
   {
     method: "get",
