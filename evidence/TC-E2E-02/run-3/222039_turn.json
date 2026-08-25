@@ -1,0 +1,470 @@
+{
+ "sent": "Confirm the customer EVELYN GOODWIN on account NASH.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run3-19830822",
+   "conversation_version": 2,
+   "client_turn_id": "qa-3d8d3047-db16-4b23-be94-26253e18d53b",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CH806814 / 2026-08-01T0 / SEATTLE / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a04dc487-fe04-4d24-8178-86eb61698462",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CF809874 / 2026-06-16T0 / SEATTLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a04dc487-fe04-4d24-8178-86eb61698462",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CQ800677 / 2026-04-01T0 / SEATTLE / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a04dc487-fe04-4d24-8178-86eb61698462",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CG800889 / 2025-12-04T0 / SEATTLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a04dc487-fe04-4d24-8178-86eb61698462",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CG804530 / 2025-10-25T0 / SEATTLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a04dc487-fe04-4d24-8178-86eb61698462",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CC806305 / 2025-08-26T0 / SEATTLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a04dc487-fe04-4d24-8178-86eb61698462",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 7: CF806536 / 2025-06-16T0 / SEATTLE / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a04dc487-fe04-4d24-8178-86eb61698462",
+        "result_path": [
+         "rows",
+         "6"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-7",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 8: CT806805 / 2025-05-22T0 / SEATTLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a04dc487-fe04-4d24-8178-86eb61698462",
+        "result_path": [
+         "rows",
+         "7"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-8",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 9: CE805017 / 2025-02-27T0 / SEATTLE / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a04dc487-fe04-4d24-8178-86eb61698462",
+        "result_path": [
+         "rows",
+         "8"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-9",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 10: CR800084 / 2025-02-10T0 / SEATTLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a04dc487-fe04-4d24-8178-86eb61698462",
+        "result_path": [
+         "rows",
+         "9"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "a04dc487-fe04-4d24-8178-86eb61698462",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "662d7da021d3fc9420d5af6e167ec356e7c795abf5818216887ded562bf765a1",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "NASH*CH806814",
+        "account_id": "NASH",
+        "sales_order_number": "CH806814",
+        "customer_id": "601346",
+        "customer_name": "EVELYN GOODWIN",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "NEW CONSTRUCTION",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "596",
+        "ship_from_warehouse_id": "596",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2026-08-01T00:00:00.000000000",
+        "invoice_date": "2026-08-01T00:00:00.000000000",
+        "shipped_at": "2026-08-02T00:00:00.000000000",
+        "commit_date": "2026-08-01T00:00:00.000000000",
+        "ship_to_name": "EVELYN GOODWIN",
+        "ship_to_phone": "404-555-9645",
+        "ship_to_city": "SEATTLE",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98134",
+        "source_updated_at": "2026-08-01T09:39:00.000000000"
+       },
+       {
+        "order_key": "NASH*CF809874",
+        "account_id": "NASH",
+        "sales_order_number": "CF809874",
+        "customer_id": "601346",
+        "customer_name": "EVELYN GOODWIN",
+        "customer_po_number": "NEW CONSTRUCTION",
+        "job_name": "SHOP STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "428",
+        "ship_from_warehouse_id": "428",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-06-16T00:00:00.000000000",
+        "invoice_date": "2026-06-16T00:00:00.000000000",
+        "shipped_at": "2026-06-19T00:00:00.000000000",
+        "commit_date": "2026-06-16T00:00:00.000000000",
+        "ship_to_name": "EVELYN GOODWIN",
+        "ship_to_phone": "404-555-9645",
+        "ship_to_city": "SEATTLE",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98134",
+        "source_updated_at": "2026-06-16T10:15:00.000000000"
+       },
+       {
+        "order_key": "NASH*CQ800677",
+        "account_id": "NASH",
+        "sales_order_number": "CQ800677",
+        "customer_id": "601346",
+        "customer_name": "EVELYN GOODWIN",
+        "customer_po_number": "MAINTENANCE",
+        "job_name": "WARRANTY",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "686",
+        "ship_from_warehouse_id": "686",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-04-01T00:00:00.000000000",
+        "invoice_date": "2026-04-01T00:00:00.000000000",
+        "shipped_at": "2026-04-04T00:00:00.000000000",
+        "commit_date": "2026-04-01T00:00:00.000000000",
+        "ship_to_name": "EVELYN GOODWIN",
+        "ship_to_phone": "404-555-9645",
+        "ship_to_city": "SEATTLE",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98134",
+        "source_updated_at": "2026-04-01T18:22:00.000000000"
+       },
+       {
+        "order_key": "NASH*CG800889",
+        "account_id": "NASH",
+        "sales_order_number": "CG800889",
+        "customer_id": "601346",
+        "customer_name": "EVELYN GOODWIN",
+        "customer_po_number": "REPLACEMENT",
+        "job_name": "STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2680",
+        "ship_from_warehouse_id": "2680",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-12-04T00:00:00.000000000",
+        "invoice_date": "2025-12-04T00:00:00.000000000",
+        "shipped_at": "2025-12-04T00:00:00.000000000",
+        "commit_date": "2025-12-04T00:00:00.000000000",
+        "ship_to_name": "EVELYN GOODWIN",
+        "ship_to_phone": "404-555-9645",
+        "ship_to_city": "SEATTLE",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98134",
+        "source_updated_at": "2025-12-04T08:17:00.000000000"
+       },
+       {
+        "order_key": "NASH*CG804530",
+        "account_id": "NASH",
+        "sales_order_number": "CG804530",
+        "customer_id": "601346",
+        "customer_name": "EVELYN GOODWIN",
+        "customer_po_number": "SHOP STOCK",
+        "job_name": "JOB",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1556",
+        "ship_from_warehouse_id": "1556",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-10-25T00:00:00.000000000",
+        "invoice_date": "2025-10-25T00:00:00.000000000",
+        "shipped_at": "2025-10-28T00:00:00.000000000",
+        "commit_date": "2025-10-25T00:00:00.000000000",
+        "ship_to_name": "EVELYN GOODWIN",
+        "ship_to_phone": "404-555-9645",
+        "ship_to_city": "SEATTLE",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98134",
+        "source_updated_at": "2025-10-25T07:55:00.000000000"
+       },
+       {
+        "order_key": "NASH*CC806305",
+        "account_id": "NASH",
+        "sales_order_number": "CC806305",
+        "customer_id": "601346",
+        "customer_name": "EVELYN GOODWIN",
+        "customer_po_number": "RESIDENTIAL",
+        "job_name": "MAINTENANCE",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2624",
+        "ship_from_warehouse_id": "2624",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-08-26T00:00:00.000000000",
+        "invoice_date": "2025-08-26T00:00:00.000000000",
+        "shipped_at": "2025-08-27T00:00:00.000000000",
+        "commit_date": "2025-08-26T00:00:00.000000000",
+        "ship_to_name": "EVELYN GOODWIN",
+        "ship_to_phone": "404-555-9645",
+        "ship_to_city": "SEATTLE",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98134",
+        "source_updated_at": "2025-08-26T09:51:00.000000000"
+       },
+       {
+        "order_key": "NASH*CF806536",
+        "account_id": "NASH",
+        "sales_order_number": "CF806536",
+        "customer_id": "601346",
+        "customer_name": "EVELYN GOODWIN",
+        "customer_po_number": "JOB",
+        "job_name": "STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "133",
+        "ship_from_warehouse_id": "133",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-06-16T00:00:00.000000000",
+        "invoice_date": "2025-06-16T00:00:00.000000000",
+        "shipped_at": "2025-06-19T00:00:00.000000000",
+        "commit_date": "2025-06-16T00:00:00.000000000",
+        "ship_to_name": "EVELYN GOODWIN",
+        "ship_to_phone": "404-555-9645",
+        "ship_to_city": "SEATTLE",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98134",
+        "source_updated_at": "2025-06-16T15:34:00.000000000"
+       },
+       {
+        "order_key": "NASH*CT806805",
+        "account_id": "NASH",
+        "sales_order_number": "CT806805",
+        "customer_id": "601346",
+        "customer_name": "EVELYN GOODWIN",
+        "customer_po_number": "NEW CONSTRUCTION",
+        "job_name": "WAREHOUSE",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1549",
+        "ship_from_warehouse_id": "1549",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-05-22T00:00:00.000000000",
+        "invoice_date": "2025-05-22T00:00:00.000000000",
+        "shipped_at": "2025-05-22T00:00:00.000000000",
+        "commit_date": "2025-05-22T00:00:00.000000000",
+        "ship_to_name": "EVELYN GOODWIN",
+        "ship_to_phone": "404-555-9645",
+        "ship_to_city": "SEATTLE",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98134",
+        "source_updated_at": "2025-05-22T16:19:00.000000000"
+       },
+       {
+        "order_key": "NASH*CE805017",
+        "account_id": "NASH",
+        "sales_order_number": "CE805017",
+        "customer_id": "601346",
+        "customer_name": "EVELYN GOODWIN",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1549",
+        "ship_from_warehouse_id": "1549",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-02-27T00:00:00.000000000",
+        "invoice_date": "2025-02-27T00:00:00.000000000",
+        "shipped_at": "2025-03-02T00:00:00.000000000",
+        "commit_date": "2025-02-27T00:00:00.000000000",
+        "ship_to_name": "EVELYN GOODWIN",
+        "ship_to_phone": "404-555-9645",
+        "ship_to_city": "SEATTLE",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98134",
+        "source_updated_at": "2025-02-27T13:23:00.000000000"
+       },
+       {
+        "order_key": "NASH*CR800084",
+        "account_id": "NASH",
+        "sales_order_number": "CR800084",
+        "customer_id": "601346",
+        "customer_name": "EVELYN GOODWIN",
+        "customer_po_number": "REPLACEMENT",
+        "job_name": "NEW CONSTRUCTION",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "596",
+        "ship_from_warehouse_id": "596",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-02-10T00:00:00.000000000",
+        "invoice_date": "2025-02-10T00:00:00.000000000",
+        "shipped_at": "2025-02-11T00:00:00.000000000",
+        "commit_date": "2025-02-10T00:00:00.000000000",
+        "ship_to_name": "EVELYN GOODWIN",
+        "ship_to_phone": "404-555-9645",
+        "ship_to_city": "SEATTLE",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98134",
+        "source_updated_at": "2025-02-10T14:28:00.000000000"
+       }
+      ],
+      "count": 10
+     },
+     "result_checksum": "54468d21861fc9d4dc797fc3d0b1718aac6127a44c16f7b941588db235d4ca06"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "EVELYN GOODWIN",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T16:50:34.583000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "37fd0012-84d1-4fff-a592-048c84f979c8",
+   "generated_at": "2026-08-25T16:50:38.995680Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

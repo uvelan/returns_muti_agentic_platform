@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CH806814",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run3-7f905731",
+   "conversation_version": 3,
+   "client_turn_id": "qa-26d1777c-0bf7-411d-b5e0-9e444a547c16",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CH806814 / [REDACTED] / SEATTLE / 2026-08-01",
+      "evidence_refs": [
+       {
+        "query_execution_id": "c727d3eb-d415-4782-8bce-61fca44f9099",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "c727d3eb-d415-4782-8bce-61fca44f9099",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "9197725280a22a7437fe65f5cb9c60600899afa4a2e63f1e1dd2f842b681c272",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CH806814"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CH806814",
+        "data": {
+         "order_key": "NASH*CH806814",
+         "account_id": "NASH",
+         "sales_order_number": "CH806814",
+         "customer_id": "601346",
+         "customer_name": "EVELYN GOODWIN",
+         "customer_po_number": "SERVICE CALL",
+         "job_name": "NEW CONSTRUCTION",
+         "order_status": "INVOICED",
+         "sales_type": "INV",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "596",
+         "ship_from_warehouse_id": "596",
+         "shipping_method": "OUR TRUCK",
+         "order_date": "2026-08-01T00:00:00.000000000",
+         "invoice_date": "2026-08-01T00:00:00.000000000",
+         "shipped_at": "2026-08-02T00:00:00.000000000",
+         "commit_date": "2026-08-01T00:00:00.000000000",
+         "ship_to_name": "EVELYN GOODWIN",
+         "ship_to_phone": "404-555-9645",
+         "ship_to_city": "SEATTLE",
+         "ship_to_state": "WA",
+         "ship_to_postal_code": "98134",
+         "source_updated_at": "2026-08-01T09:39:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "06a1c5497b2bda23e79c2205312281ca09bc51b4ef3b557d6e86cc4f8bde877c"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "EVELYN GOODWIN",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T16:58:17.508000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "a1ccc571-3230-41d7-95e4-53c21f69d4a8",
+   "generated_at": "2026-08-25T16:58:20.338804Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

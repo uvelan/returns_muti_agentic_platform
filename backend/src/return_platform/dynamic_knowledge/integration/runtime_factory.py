@@ -28,6 +28,7 @@ from return_platform.configuration.return_configuration import (
     DiscoveryConfiguration,
     ProgressiveDiscoveryConfiguration,
     ReturnCaseTimingConfiguration,
+    ReturnPlatformConfiguration,
     load_return_configuration,
 )
 from return_platform.configuration.settings import Settings
@@ -111,6 +112,7 @@ async def build_dynamic_order_agent_runtime(
     progressive_discovery: ProgressiveDiscoveryConfiguration | None = None,
     discovery: DiscoveryConfiguration | None = None,
     schema: ActiveSchema | None = None,
+    return_configuration: ReturnPlatformConfiguration | None = None,
 ) -> DynamicOrderAgentCoordinator:
     # The published release if the analyzer has activated one, else the file.
     # This is the line that makes approving a schema in the console change what
@@ -146,7 +148,18 @@ async def build_dynamic_order_agent_runtime(
     # from. Neither path leaves the index name as a code constant, which is the
     # property that matters: `customer_name_search_v2` is created by a migration
     # and can be rebuilt under a new name, and the agent has to follow.
-    loaded_returns = load_return_configuration(settings.return_configuration_path).configuration
+    #
+    # `return_configuration` carries the *release* the caller resolved. Before
+    # it existed, the clarification policy and discovery catalogue below always
+    # came from the packaged file, so an operator adding a clarification field
+    # in a release changed `/api/runtime-config`'s advertisement and changed
+    # nothing about what the agent captured -- every answer to the new question
+    # was reported as an unconfigured fact and discarded (TC-E2E-02 run 4).
+    loaded_returns = (
+        return_configuration
+        if return_configuration is not None
+        else load_return_configuration(settings.return_configuration_path).configuration
+    )
     resolved_discovery = discovery or loaded_returns.discovery
     progressive = progressive_discovery or resolved_discovery.progressive
 

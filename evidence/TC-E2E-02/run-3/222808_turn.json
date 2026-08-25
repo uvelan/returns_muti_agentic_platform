@@ -1,0 +1,147 @@
+{
+ "sent": "customer wants to return an item, name is evelin goodwyn",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run3-7f905731",
+   "conversation_version": 1,
+   "client_turn_id": "qa-cd84142c-ca11-4f3e-b6e5-318958083bea",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 601346 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "3df1dd47-1d11-4e70-b7ec-3292643b5c24",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 2: 601344 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "3df1dd47-1d11-4e70-b7ec-3292643b5c24",
+        "result_path": [
+         "candidates",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 3: 601345 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "3df1dd47-1d11-4e70-b7ec-3292643b5c24",
+        "result_path": [
+         "candidates",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "3df1dd47-1d11-4e70-b7ec-3292643b5c24",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "96416fd6d1e9533f6fc29140b860ae102a1b331e3882b47c988566843ed1ec68",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "evelin goodwyn"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "601346",
+        "data": {
+         "account_id": "NASH",
+         "customer_id": "601346",
+         "customer_name": "EVELYN GOODWIN"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "601344",
+        "data": {
+         "account_id": "DALLAS",
+         "customer_id": "601344",
+         "customer_name": "EVELYN GOODWIN"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "601345",
+        "data": {
+         "account_id": "SACRAMENTO",
+         "customer_id": "601345",
+         "customer_name": "EVELYN GOODWIN"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 3,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "27ae71564bde361f51d9eb9ce43f8c4f75433bf2cec17a5eb0f1b682491ccf47"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T16:58:04.547000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "4b5ed75d-4ce4-4cbd-a050-8c9c9af81592",
+   "generated_at": "2026-08-25T16:58:08.626840Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

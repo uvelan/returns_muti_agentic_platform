@@ -121,6 +121,9 @@ class _OrderDiscoveryStackParticipant:
             # again would let a publish landing between the two reads leave the
             # coordinator and the activity surface on different schemas.
             schema=schema,
+            # Same release, same reason: the clarification policy and discovery
+            # catalogue must be the adopted release's, not the packaged file's.
+            return_configuration=context.return_configuration.configuration,
         )
         return _PreparedStack(
             runtime=OrderDiscoveryRuntime(coordinator=coordinator, schema=schema),
@@ -240,6 +243,9 @@ async def _run() -> None:
             # confirmed keep the ones stamped onto them.
             return_case_timings=runtime.return_configuration.configuration.return_case,
             schema=schema,
+            # The booted release, for the same reason the timings are read off
+            # it: what the agent captures must match what the release declares.
+            return_configuration=runtime.return_configuration.configuration,
         )
         activities = OrderDiscoveryActivities(coordinator=coordinator, schema=schema)
 

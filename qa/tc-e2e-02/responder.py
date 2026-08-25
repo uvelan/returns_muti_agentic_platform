@@ -146,7 +146,10 @@ def decide_reasoning(payload: dict) -> str:
     cset = cache.get("candidateSet") or {}
     evidence = list(ctx.get("query_evidence") or [])
     case_id = ctx.get("case_id")
-    captured = {f.get("name"): f for f in (ctx.get("captured_facts") or [])}
+    captured = {
+        (f.get("fact") or f.get("name")): f
+        for f in (ctx.get("captured_facts") or [])
+    }
     case_facts = ctx.get("case_facts") or {}
     exchanges = list(ctx.get("clarification_exchanges") or [])
     transcript = list(ctx.get("transcript") or [])

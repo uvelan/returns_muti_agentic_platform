@@ -1,0 +1,43 @@
+{
+ "sent": "Confirm order CI800157.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run4-bf614708",
+   "conversation_version": 4,
+   "client_turn_id": "qa-b0336396-e351-43d7-b7c1-e632d7f2bd0d",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [],
+    "suggestions": [],
+    "requested_input": "You selected order CI800157. Confirm this order to raise the return?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run4-bf614708:qa-b0336396-e351-43d7-b7c1-e632d7f2bd0d:1",
+   "case_id": null,
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "LISA CHAPMAN",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T17:00:13.599000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "cc5c0e7a-38af-48b7-a3cb-4b4679291f3d",
+   "generated_at": "2026-08-25T17:00:16.074511Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

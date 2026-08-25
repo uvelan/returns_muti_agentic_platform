@@ -1,0 +1,1 @@
+{"business_capability": "order-discovery", "action_type": "CONFIRM_ORDER", "decision_summary": "The associate confirmed order CI800157; raising the case.", "order_confirmation": {"candidate_set_id": "27d00ea8-4414-43fe-91da-4e0a1c458aaa", "candidate_id": "CI800157", "order_reference": "CI800157"}}

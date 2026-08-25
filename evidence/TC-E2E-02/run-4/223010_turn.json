@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CI800157",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run4-bf614708",
+   "conversation_version": 3,
+   "client_turn_id": "qa-1e69d64b-bca1-4bdf-8268-2c68e3428ee1",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CI800157 / [REDACTED] / PHOENIX / 2026-08-01",
+      "evidence_refs": [
+       {
+        "query_execution_id": "1a59da9e-0253-4577-aa55-362b521eec83",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "1a59da9e-0253-4577-aa55-362b521eec83",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "eba2e2f9883dc7f5b2b62ddec46d150ac5037d5d1fbabcd6b158129c83155152",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CI800157"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CI800157",
+        "data": {
+         "order_key": "PHOENIX*CI800157",
+         "account_id": "PHOENIX",
+         "sales_order_number": "CI800157",
+         "customer_id": "600011",
+         "customer_name": "LISA CHAPMAN",
+         "customer_po_number": "REPLACEMENT",
+         "job_name": "NEW CONSTRUCTION",
+         "order_status": "INVOICED",
+         "sales_type": "CASH",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "596",
+         "ship_from_warehouse_id": "596",
+         "shipping_method": "OUR TRUCK",
+         "order_date": "2026-08-01T00:00:00.000000000",
+         "invoice_date": "2026-08-01T00:00:00.000000000",
+         "shipped_at": "2026-08-02T00:00:00.000000000",
+         "commit_date": "2026-08-01T00:00:00.000000000",
+         "ship_to_name": "LISA CHAPMAN",
+         "ship_to_phone": "469-555-5700",
+         "ship_to_city": "PHOENIX",
+         "ship_to_state": "AZ",
+         "ship_to_postal_code": "85039",
+         "source_updated_at": "2026-08-01T08:30:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "6af1706e4bd990610ec3aaa5999364d2f53d49a788f5d0e9a06eb959b54423ec"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "LISA CHAPMAN",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T17:00:07.852000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "4f7ba0a9-f3e3-4604-9364-f09f7e4860b8",
+   "generated_at": "2026-08-25T17:00:10.809657Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}
