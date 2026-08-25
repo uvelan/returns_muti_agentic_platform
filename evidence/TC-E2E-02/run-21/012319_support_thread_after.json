@@ -1,0 +1,112 @@
+[
+ {
+  "id": "448e1388-d612-4972-b55e-d0ef31891876",
+  "threadId": "ddc96647-8312-4add-aef5-69ddeba51708",
+  "sequence": 1,
+  "senderRole": "AGENT",
+  "senderId": "return-workflow-agent",
+  "messageType": "REQUEST",
+  "messageText": "RETURN SUPPORT REQUEST\n\nCase:\n- Case ID: df94672d-eeb6-419e-a0cd-a25d7ab2059e\n- Work Item ID: cd541815-88ab-447d-a10c-22214b5c61d8\n- Created Date/Time: 2026-08-25T19:53:03.621000+00:00\n- Workflow Status at Handoff: GATHERING_INFO\n\nCustomer:\n- Customer Name: LANCE LIVINGSTON\n- Customer Reference: 600408\n- Branch Associate: Not available\n- Branch Associate Email: Not available\n- Branch Associate Phone: Not available\n\nOrder:\n- Order Number: CZ808074\n- Line/Order-Line Number: 1\n  - Product Name: EL 1.6 GPF 2PC W/ SEAT TOILET WHT\n  - Colour: Not available\n  - SKU: W5229287296\n  - Confirmed Return Quantity: 1\n  - Return Reason: SHIPPING_DAMAGE\n  - Product Condition: NEW_IN_ORIGINAL_PACKAGING\n\nReturn Details:\n- Return Method: BRANCH_UPS\n- Requested Resolution: Not available\n- Product Presence: Not available\n- Associate Notes: Not available\n\nBay Assignment:\n- Assignment Status: UNRESOLVED\n- Recommended Bay: Not available\n- Warehouse/Branch: Not available\n- Return Location: Not available\n- Handling/Staging Instructions: Not available\n- Unresolved Reason: Not available\n\nVerification:\n- Order Confirmation: Confirmed\n- Required Return Information: Incomplete\n- Policy Evaluation: APPROVE on the STANDARD_RETURN route\n- Bay Assignment Source: Bay Assignment Agent\n\nRequested Support Action:\n- Review the complete return request.\n- Review or confirm the bay recommendation.\n- Resolve manual bay assignment: no bay could be recommended.\n- Verify all Support-owned conditions, including warranty when applicable.\n- Create or decline the RMA through the authoritative Support workflow.\n",
+  "attachmentIds": [],
+  "businessPayload": {
+   "bayAssignment": {
+    "bayReference": null,
+    "handlingInstructions": null,
+    "returnLocation": null,
+    "source": "BAY_ASSIGNMENT_AGENT",
+    "status": null,
+    "unresolvedReason": null,
+    "warehouseReference": null
+   },
+   "caseId": "df94672d-eeb6-419e-a0cd-a25d7ab2059e",
+   "createdAt": "2026-08-25T19:53:03.621000+00:00",
+   "customer": {
+    "contactEmail": null,
+    "contactName": null,
+    "contactPhone": null,
+    "name": "LANCE LIVINGSTON",
+    "reference": "600408"
+   },
+   "order": {
+    "items": [
+     {
+      "colour": null,
+      "condition": "NEW_IN_ORIGINAL_PACKAGING",
+      "lineReference": "1",
+      "productName": "EL 1.6 GPF 2PC W/ SEAT TOILET WHT",
+      "productReference": "4000250",
+      "quantity": 1,
+      "reason": "SHIPPING_DAMAGE",
+      "returnMethod": "BRANCH_UPS",
+      "sku": "W5229287296"
+     }
+    ],
+    "reference": "CZ808074"
+   },
+   "returnDetails": {
+    "additional": {},
+    "associateNotes": null,
+    "method": "BRANCH_UPS",
+    "productPresence": null,
+    "requestedResolution": null
+   },
+   "schemaVersion": "support-handoff-v1",
+   "verification": {
+    "orderConfirmed": true,
+    "policyEvaluation": {
+     "decision": "APPROVE",
+     "route": "STANDARD_RETURN",
+     "skippedReason": null,
+     "state": "EVALUATED"
+    },
+    "requiredReturnInformationComplete": false
+   },
+   "workItemId": "cd541815-88ab-447d-a10c-22214b5c61d8",
+   "workflowStatusAtHandoff": "GATHERING_INFO"
+  },
+  "createdAt": "2026-08-25T19:53:05.637000"
+ },
+ {
+  "id": "a38ff810-f9fb-4148-8c75-b94ce25ad592",
+  "threadId": "ddc96647-8312-4add-aef5-69ddeba51708",
+  "sequence": 2,
+  "senderRole": "AGENT",
+  "senderId": "support-response-agent",
+  "messageType": "RETURN_CREATION",
+  "messageText": "Return created for case df94672d-eeb6-419e-a0cd-a25d7ab2059e: RMA RMA-DF94672DEEB6419EA0CDA25D7AB2059E (BRANCH_UPS), tracking TRK-RMADF94672DEEB6419EA0CDA25D7AB2059E, label LBL-RMADF94672DEEB6419EA0CDA25D7AB2059E.\n[RMA-DF94672DEEB6419EA0CDA25D7AB2059E / BRANCH_UPS]\n- 1 x EL 1.6 GPF 2PC W/ SEAT TOILET WHT (line 1)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nAttach the return label to each package.",
+  "attachmentIds": [],
+  "businessPayload": {
+   "supportAgentEventId": "support-response-agent:cd541815-88ab-447d-a10c-22214b5c61d8",
+   "decision": {
+    "agent": "Support Response Agent",
+    "agentVersion": "1.0",
+    "configurationVersion": "FERGUSON-RETURN-ASSUMPTIONS-1.0",
+    "decisionType": "SUPPORT_RESPONSE",
+    "decision": "RETURN_PLANNED",
+    "explanation": "Artifacts follow the released requirement table for each shipping-class group; recording them is the executor's act, not this assessment's.",
+    "confidenceMillionths": 950000,
+    "evidenceReferences": [
+     "CASE:df94672d-eeb6-419e-a0cd-a25d7ab2059e",
+     "ORDER_LINE:1"
+    ],
+    "warnings": [],
+    "executionMode": "DETERMINISTIC",
+    "metadata": {}
+   },
+   "plan": {
+    "returnReference": "RMA-DF94672DEEB6419EA0CDA25D7AB2059E",
+    "trackingReference": "TRK-RMADF94672DEEB6419EA0CDA25D7AB2059E",
+    "labelReference": "LBL-RMADF94672DEEB6419EA0CDA25D7AB2059E",
+    "returnLocation": null,
+    "shippingInstructionReference": "SHIP-RMADF94672DEEB6419EA0CDA25D7AB2059E",
+    "returnMethod": "BRANCH_UPS",
+    "carrier": "UPS",
+    "orderLineReferences": [
+     "1"
+    ],
+    "instructions": "- 1 x EL 1.6 GPF 2PC W/ SEAT TOILET WHT (line 1)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nAttach the return label to each package."
+   }
+  },
+  "createdAt": "2026-08-25T19:53:16.836000"
+ }
+]

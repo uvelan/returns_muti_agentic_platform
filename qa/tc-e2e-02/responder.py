@@ -465,12 +465,18 @@ def main() -> None:
     while True:
         if requests_dir.is_dir():
             for path in sorted(requests_dir.glob("*.json")):
+                # The request id IS the filename; never reopen an answered
+                # file. Re-reading it raced the provider's unlink on Windows
+                # (WinError 32) and turned a served answer into
+                # PROVIDER_UNAVAILABLE.
+                if path.stem in answered:
+                    continue
                 try:
                     payload = json.loads(path.read_text(encoding="utf-8"))
                 except (OSError, ValueError):
                     continue
-                request_id = payload.get("requestId")
-                if not request_id or request_id in answered:
+                request_id = payload.get("requestId") or path.stem
+                if request_id in answered:
                     continue
                 sequence += 1
                 stamp = f"{sequence:04d}_{request_id[:8]}"

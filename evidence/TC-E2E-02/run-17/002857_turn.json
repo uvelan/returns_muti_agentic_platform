@@ -1,0 +1,58 @@
+{
+ "sent": "the item arrived damaged",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run17-3eb8486b",
+   "conversation_version": 6,
+   "client_turn_id": "qa-f1b94a4c-006a-4d72-af9b-6a906722942a",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "How many units are being returned?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "How many units are being returned?"
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "84614f74-ceb8-445c-8ccd-a24509eec09e",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "RACHEL WHITFIELD",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "return_reason",
+     "value": "DAMAGED",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:58:56.295000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "eceb6dea-ae6d-4595-86de-04e82e892f9a",
+   "generated_at": "2026-08-25T18:58:57.923471Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

@@ -1,0 +1,124 @@
+[
+ {
+  "id": "335f5e01-e134-4bfc-8bb3-9c9019b79efd",
+  "threadId": "d5f065cb-8136-415f-a45e-0a66fc7e007c",
+  "sequence": 1,
+  "senderRole": "AGENT",
+  "senderId": "return-workflow-agent",
+  "messageType": "REQUEST",
+  "messageText": "RETURN SUPPORT REQUEST\n\nCase:\n- Case ID: 84614f74-ceb8-445c-8ccd-a24509eec09e\n- Work Item ID: 7ff6dc6d-06e9-4af3-a09d-986a667c71fc\n- Created Date/Time: 2026-08-25T18:59:20.005000+00:00\n- Workflow Status at Handoff: GATHERING_INFO\n\nCustomer:\n- Customer Name: RACHEL WHITFIELD\n- Customer Reference: 600136\n- Branch Associate: Not available\n- Branch Associate Email: Not available\n- Branch Associate Phone: Not available\n\nOrder:\n- Order Number: CW809330\n- Line/Order-Line Number: 1\n  - Product Name: CIRC PUMP 120V/60HZ\n  - Colour: Not available\n  - SKU: N30010780C\n  - Confirmed Return Quantity: 1\n  - Return Reason: SHIPPING_DAMAGE\n  - Product Condition: NEW_IN_ORIGINAL_PACKAGING\n- Line/Order-Line Number: 6\n  - Product Name: 75 GAL LP ATMOS VENT WHTR\n  - Colour: Not available\n  - SKU: Z5925172956\n  - Confirmed Return Quantity: 1\n  - Return Reason: SHIPPING_DAMAGE\n  - Product Condition: NEW_IN_ORIGINAL_PACKAGING\n\nReturn Details:\n- Return Method: BRANCH_LTL\n- Requested Resolution: Not available\n- Product Presence: Not available\n- Associate Notes: Not available\n\nBay Assignment:\n- Assignment Status: PRE_ARRIVAL_NOT_ALLOWED\n- Recommended Bay: Not available\n- Warehouse/Branch: Not available\n- Return Location: Not available\n- Handling/Staging Instructions: Not available\n- Unresolved Reason: PRE_ARRIVAL_NOT_ALLOWED\n\nVerification:\n- Order Confirmation: Confirmed\n- Required Return Information: Incomplete\n- Policy Evaluation: APPROVE on the STANDARD_RETURN route\n- Bay Assignment Source: Bay Assignment Agent\n\nRequested Support Action:\n- Review the complete return request.\n- Review or confirm the bay recommendation.\n- Resolve manual bay assignment: no bay could be recommended.\n- Verify all Support-owned conditions, including warranty when applicable.\n- Create or decline the RMA through the authoritative Support workflow.\n",
+  "attachmentIds": [],
+  "businessPayload": {
+   "bayAssignment": {
+    "bayReference": null,
+    "handlingInstructions": null,
+    "returnLocation": null,
+    "source": "BAY_ASSIGNMENT_AGENT",
+    "status": "PRE_ARRIVAL_NOT_ALLOWED",
+    "unresolvedReason": "PRE_ARRIVAL_NOT_ALLOWED",
+    "warehouseReference": null
+   },
+   "caseId": "84614f74-ceb8-445c-8ccd-a24509eec09e",
+   "createdAt": "2026-08-25T18:59:20.005000+00:00",
+   "customer": {
+    "contactEmail": null,
+    "contactName": null,
+    "contactPhone": null,
+    "name": "RACHEL WHITFIELD",
+    "reference": "600136"
+   },
+   "order": {
+    "items": [
+     {
+      "colour": null,
+      "condition": "NEW_IN_ORIGINAL_PACKAGING",
+      "lineReference": "1",
+      "productName": "CIRC PUMP 120V/60HZ",
+      "productReference": "9545745",
+      "quantity": 1,
+      "reason": "SHIPPING_DAMAGE",
+      "returnMethod": "BRANCH_UPS",
+      "sku": "N30010780C"
+     },
+     {
+      "colour": null,
+      "condition": "NEW_IN_ORIGINAL_PACKAGING",
+      "lineReference": "6",
+      "productName": "75 GAL LP ATMOS VENT WHTR",
+      "productReference": "4000258",
+      "quantity": 1,
+      "reason": "SHIPPING_DAMAGE",
+      "returnMethod": "BRANCH_LTL",
+      "sku": "Z5925172956"
+     }
+    ],
+    "reference": "CW809330"
+   },
+   "returnDetails": {
+    "additional": {},
+    "associateNotes": null,
+    "method": "BRANCH_LTL",
+    "productPresence": null,
+    "requestedResolution": null
+   },
+   "schemaVersion": "support-handoff-v1",
+   "verification": {
+    "orderConfirmed": true,
+    "policyEvaluation": {
+     "decision": "APPROVE",
+     "route": "STANDARD_RETURN",
+     "skippedReason": null,
+     "state": "EVALUATED"
+    },
+    "requiredReturnInformationComplete": false
+   },
+   "workItemId": "7ff6dc6d-06e9-4af3-a09d-986a667c71fc",
+   "workflowStatusAtHandoff": "GATHERING_INFO"
+  },
+  "createdAt": "2026-08-25T18:59:20.623000"
+ },
+ {
+  "id": "13aa7066-2b52-458f-ba01-d7d9a3e0d827",
+  "threadId": "d5f065cb-8136-415f-a45e-0a66fc7e007c",
+  "sequence": 2,
+  "senderRole": "AGENT",
+  "senderId": "support-response-agent",
+  "messageType": "RETURN_CREATION",
+  "messageText": "Return created for case 84614f74-ceb8-445c-8ccd-a24509eec09e: RMA RMA-84614F74CEB8445C8CCDA24509EEC09E1 (BRANCH_LTL); RMA RMA-84614F74CEB8445C8CCDA24509EEC09E2 (BRANCH_UPS), tracking TRK-RMA84614F74CEB8445C8CCDA24509EEC09E2, label LBL-RMA84614F74CEB8445C8CCDA24509EEC09E2.\nThis return ships as 2 separate packages -- do not mix them.\n[RMA-84614F74CEB8445C8CCDA24509EEC09E1 / BRANCH_LTL]\n- 1 x 75 GAL LP ATMOS VENT WHTR (line 6)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nKeep the bill of lading with the shipment for the carrier.\nA carrier pickup will be scheduled; keep the goods staged and accessible.\n[RMA-84614F74CEB8445C8CCDA24509EEC09E2 / BRANCH_UPS]\n- 1 x CIRC PUMP 120V/60HZ (line 1)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nAttach the return label to each package.",
+  "attachmentIds": [],
+  "businessPayload": {
+   "supportAgentEventId": "support-response-agent:7ff6dc6d-06e9-4af3-a09d-986a667c71fc",
+   "decision": {
+    "agent": "Support Response Agent",
+    "agentVersion": "1.0",
+    "configurationVersion": "FERGUSON-RETURN-ASSUMPTIONS-1.0",
+    "decisionType": "SUPPORT_RESPONSE",
+    "decision": "RETURN_PLANNED",
+    "explanation": "Artifacts follow the released requirement table for each shipping-class group; recording them is the executor's act, not this assessment's.",
+    "confidenceMillionths": 950000,
+    "evidenceReferences": [
+     "CASE:84614f74-ceb8-445c-8ccd-a24509eec09e",
+     "ORDER_LINE:1",
+     "ORDER_LINE:6"
+    ],
+    "warnings": [],
+    "executionMode": "DETERMINISTIC",
+    "metadata": {}
+   },
+   "plan": {
+    "returnReference": "RMA-84614F74CEB8445C8CCDA24509EEC09E1",
+    "trackingReference": null,
+    "labelReference": null,
+    "returnLocation": null,
+    "shippingInstructionReference": "SHIP-RMA84614F74CEB8445C8CCDA24509EEC09E1",
+    "returnMethod": "BRANCH_LTL",
+    "carrier": null,
+    "orderLineReferences": [
+     "6"
+    ],
+    "instructions": "- 1 x 75 GAL LP ATMOS VENT WHTR (line 6)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nKeep the bill of lading with the shipment for the carrier.\nA carrier pickup will be scheduled; keep the goods staged and accessible."
+   }
+  },
+  "createdAt": "2026-08-25T18:59:31.483000"
+ }
+]

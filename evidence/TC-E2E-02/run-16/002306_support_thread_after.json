@@ -1,0 +1,124 @@
+[
+ {
+  "id": "b320b300-1e7b-4995-927d-b0a86e7e65e2",
+  "threadId": "0332d4db-ac9b-4da0-8161-6141416c5eb5",
+  "sequence": 1,
+  "senderRole": "AGENT",
+  "senderId": "return-workflow-agent",
+  "messageType": "REQUEST",
+  "messageText": "RETURN SUPPORT REQUEST\n\nCase:\n- Case ID: cdec77c9-9879-46c0-bea9-c50726ccc317\n- Work Item ID: 4c1b6d27-486f-498d-bea9-939208dd242c\n- Created Date/Time: 2026-08-25T18:52:40.324000+00:00\n- Workflow Status at Handoff: GATHERING_INFO\n\nCustomer:\n- Customer Name: SIDNEY ARNETT\n- Customer Reference: 600396\n- Branch Associate: Not available\n- Branch Associate Email: Not available\n- Branch Associate Phone: Not available\n\nOrder:\n- Order Number: CO809044\n- Line/Order-Line Number: 1\n  - Product Name: SHWR ARM FLG *CLASSI\n  - Colour: Not available\n  - SKU: DRP34356\n  - Confirmed Return Quantity: 1\n  - Return Reason: SHIPPING_DAMAGE\n  - Product Condition: NEW_IN_ORIGINAL_PACKAGING\n- Line/Order-Line Number: 5\n  - Product Name: 75 GAL NG ATMOS VENT WHTR\n  - Colour: Not available\n  - SKU: RVH4937\n  - Confirmed Return Quantity: 1\n  - Return Reason: SHIPPING_DAMAGE\n  - Product Condition: NEW_IN_ORIGINAL_PACKAGING\n\nReturn Details:\n- Return Method: BRANCH_LTL\n- Requested Resolution: Not available\n- Product Presence: Not available\n- Associate Notes: Not available\n\nBay Assignment:\n- Assignment Status: PRE_ARRIVAL_NOT_ALLOWED\n- Recommended Bay: Not available\n- Warehouse/Branch: Not available\n- Return Location: Not available\n- Handling/Staging Instructions: Not available\n- Unresolved Reason: PRE_ARRIVAL_NOT_ALLOWED\n\nVerification:\n- Order Confirmation: Confirmed\n- Required Return Information: Incomplete\n- Policy Evaluation: APPROVE on the STANDARD_RETURN route\n- Bay Assignment Source: Bay Assignment Agent\n\nRequested Support Action:\n- Review the complete return request.\n- Review or confirm the bay recommendation.\n- Resolve manual bay assignment: no bay could be recommended.\n- Verify all Support-owned conditions, including warranty when applicable.\n- Create or decline the RMA through the authoritative Support workflow.\n",
+  "attachmentIds": [],
+  "businessPayload": {
+   "bayAssignment": {
+    "bayReference": null,
+    "handlingInstructions": null,
+    "returnLocation": null,
+    "source": "BAY_ASSIGNMENT_AGENT",
+    "status": "PRE_ARRIVAL_NOT_ALLOWED",
+    "unresolvedReason": "PRE_ARRIVAL_NOT_ALLOWED",
+    "warehouseReference": null
+   },
+   "caseId": "cdec77c9-9879-46c0-bea9-c50726ccc317",
+   "createdAt": "2026-08-25T18:52:40.324000+00:00",
+   "customer": {
+    "contactEmail": null,
+    "contactName": null,
+    "contactPhone": null,
+    "name": "SIDNEY ARNETT",
+    "reference": "600396"
+   },
+   "order": {
+    "items": [
+     {
+      "colour": null,
+      "condition": "NEW_IN_ORIGINAL_PACKAGING",
+      "lineReference": "1",
+      "productName": "SHWR ARM FLG *CLASSI",
+      "productReference": "1632142",
+      "quantity": 1,
+      "reason": "SHIPPING_DAMAGE",
+      "returnMethod": "BRANCH_UPS",
+      "sku": "DRP34356"
+     },
+     {
+      "colour": null,
+      "condition": "NEW_IN_ORIGINAL_PACKAGING",
+      "lineReference": "5",
+      "productName": "75 GAL NG ATMOS VENT WHTR",
+      "productReference": "4000429",
+      "quantity": 1,
+      "reason": "SHIPPING_DAMAGE",
+      "returnMethod": "BRANCH_LTL",
+      "sku": "RVH4937"
+     }
+    ],
+    "reference": "CO809044"
+   },
+   "returnDetails": {
+    "additional": {},
+    "associateNotes": null,
+    "method": "BRANCH_LTL",
+    "productPresence": null,
+    "requestedResolution": null
+   },
+   "schemaVersion": "support-handoff-v1",
+   "verification": {
+    "orderConfirmed": true,
+    "policyEvaluation": {
+     "decision": "APPROVE",
+     "route": "STANDARD_RETURN",
+     "skippedReason": null,
+     "state": "EVALUATED"
+    },
+    "requiredReturnInformationComplete": false
+   },
+   "workItemId": "4c1b6d27-486f-498d-bea9-939208dd242c",
+   "workflowStatusAtHandoff": "GATHERING_INFO"
+  },
+  "createdAt": "2026-08-25T18:52:40.852000"
+ },
+ {
+  "id": "f089956b-965f-4d26-93d6-76610b2bb16d",
+  "threadId": "0332d4db-ac9b-4da0-8161-6141416c5eb5",
+  "sequence": 2,
+  "senderRole": "AGENT",
+  "senderId": "support-response-agent",
+  "messageType": "RETURN_CREATION",
+  "messageText": "Return created for case cdec77c9-9879-46c0-bea9-c50726ccc317: RMA RMA-CDEC77C9987946C0BEA9C50726CCC3171 (BRANCH_LTL); RMA RMA-CDEC77C9987946C0BEA9C50726CCC3172 (BRANCH_UPS), tracking TRK-RMACDEC77C9987946C0BEA9C50726CCC3172, label LBL-RMACDEC77C9987946C0BEA9C50726CCC3172.\nThis return ships as 2 separate packages -- do not mix them.\n[RMA-CDEC77C9987946C0BEA9C50726CCC3171 / BRANCH_LTL]\n- 1 x 75 GAL NG ATMOS VENT WHTR (line 5)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nKeep the bill of lading with the shipment for the carrier.\nA carrier pickup will be scheduled; keep the goods staged and accessible.\n[RMA-CDEC77C9987946C0BEA9C50726CCC3172 / BRANCH_UPS]\n- 1 x SHWR ARM FLG *CLASSI (line 1)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nAttach the return label to each package.",
+  "attachmentIds": [],
+  "businessPayload": {
+   "supportAgentEventId": "support-response-agent:4c1b6d27-486f-498d-bea9-939208dd242c",
+   "decision": {
+    "agent": "Support Response Agent",
+    "agentVersion": "1.0",
+    "configurationVersion": "FERGUSON-RETURN-ASSUMPTIONS-1.0",
+    "decisionType": "SUPPORT_RESPONSE",
+    "decision": "RETURN_PLANNED",
+    "explanation": "Artifacts follow the released requirement table for each shipping-class group; recording them is the executor's act, not this assessment's.",
+    "confidenceMillionths": 950000,
+    "evidenceReferences": [
+     "CASE:cdec77c9-9879-46c0-bea9-c50726ccc317",
+     "ORDER_LINE:1",
+     "ORDER_LINE:5"
+    ],
+    "warnings": [],
+    "executionMode": "DETERMINISTIC",
+    "metadata": {}
+   },
+   "plan": {
+    "returnReference": "RMA-CDEC77C9987946C0BEA9C50726CCC3171",
+    "trackingReference": null,
+    "labelReference": null,
+    "returnLocation": null,
+    "shippingInstructionReference": "SHIP-RMACDEC77C9987946C0BEA9C50726CCC3171",
+    "returnMethod": "BRANCH_LTL",
+    "carrier": null,
+    "orderLineReferences": [
+     "5"
+    ],
+    "instructions": "- 1 x 75 GAL NG ATMOS VENT WHTR (line 5)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nKeep the bill of lading with the shipment for the carrier.\nA carrier pickup will be scheduled; keep the goods staged and accessible."
+   }
+  },
+  "createdAt": "2026-08-25T18:53:03.711000"
+ }
+]

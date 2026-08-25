@@ -1,0 +1,72 @@
+{
+ "sent": "the item arrived damaged",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run18-833bae1a",
+   "conversation_version": 9,
+   "client_turn_id": "qa-bf31eac2-ed8a-44ea-8274-e550492d14f3",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "Any proof reference for the condition (photo/receipt id)? Reply 'none' if not available.",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "Any proof reference for the condition (photo/receipt id)? Reply 'none' if not available."
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "14ad1029-7e82-45f9-86ed-9cc9247c28dc",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "NADIA GALLARDO",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "return_reason",
+     "value": "DAMAGED",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "ordered_quantity",
+     "value": 1,
+     "status": "USABLE",
+     "label": "quantity being returned",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "branch_location",
+     "value": "SACRAMENTO",
+     "status": "USABLE",
+     "label": "branch handling the return",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T19:19:29.021000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "d354b4cf-8160-4d47-beaa-7d43233b60f2",
+   "generated_at": "2026-08-25T19:19:30.680337Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

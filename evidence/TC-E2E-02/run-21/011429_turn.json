@@ -1,0 +1,147 @@
+{
+ "sent": "customer wants to return an item, name is lance livingstone",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run21-974f6458",
+   "conversation_version": 1,
+   "client_turn_id": "qa-07ebd15e-3ac9-45e6-bba5-7fe2d9a67d92",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 600406 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "117ba4f2-8ebb-4cd2-83de-9bacb4ae63e9",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 2: 600408 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "117ba4f2-8ebb-4cd2-83de-9bacb4ae63e9",
+        "result_path": [
+         "candidates",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 3: 600407 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "117ba4f2-8ebb-4cd2-83de-9bacb4ae63e9",
+        "result_path": [
+         "candidates",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "117ba4f2-8ebb-4cd2-83de-9bacb4ae63e9",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "d11c04c59e37340dc368ba44b77c272cbfb5a891746d5eb87d87b9e1c8538a29",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "lance livingstone"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600406",
+        "data": {
+         "account_id": "CHARLOTTE",
+         "customer_id": "600406",
+         "customer_name": "LANCE LIVINGSTON"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600408",
+        "data": {
+         "account_id": "LAKEWOOD",
+         "customer_id": "600408",
+         "customer_name": "LANCE LIVINGSTON"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600407",
+        "data": {
+         "account_id": "SACRAMENTO",
+         "customer_id": "600407",
+         "customer_name": "LANCE LIVINGSTON"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 3,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "a881dc21de0ed0131f33b6805a868f8fb88a47d0ca28cdf5947b21ce3a81c318"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T19:44:24.101000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "71bc6c74-d604-405d-a0e6-7e62a42c08d1",
+   "generated_at": "2026-08-25T19:44:29.336278Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

@@ -1,0 +1,43 @@
+{
+ "sent": "Confirm order CZ808074.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run21-974f6458",
+   "conversation_version": 4,
+   "client_turn_id": "qa-578f386a-72a0-4c64-850c-5d2c3a51f7a7",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [],
+    "suggestions": [],
+    "requested_input": "You selected order CZ808074. Confirm this order to raise the return?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run21-974f6458:qa-578f386a-72a0-4c64-850c-5d2c3a51f7a7:1",
+   "case_id": null,
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "LANCE LIVINGSTON",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T19:44:44.093000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "78919121-a27a-47c6-a43c-dc227d528d9f",
+   "generated_at": "2026-08-25T19:44:45.764737Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

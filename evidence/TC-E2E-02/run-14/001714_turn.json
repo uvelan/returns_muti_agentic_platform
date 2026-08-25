@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CT807912",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run14-3470c655",
+   "conversation_version": 3,
+   "client_turn_id": "qa-8727d08a-dec8-413a-a784-68165f690593",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CT807912 / [REDACTED] / TEMPE / 2026-08-01",
+      "evidence_refs": [
+       {
+        "query_execution_id": "e0320d57-584b-4059-8c5c-ec5e8eb6ac98",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "e0320d57-584b-4059-8c5c-ec5e8eb6ac98",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "be445f97dacd3ffe135daeb2bfd69eb6c5754854edef4758f5d01c9d5baca124",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CT807912"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CT807912",
+        "data": {
+         "order_key": "LAKEWOOD*CT807912",
+         "account_id": "LAKEWOOD",
+         "sales_order_number": "CT807912",
+         "customer_id": "600188",
+         "customer_name": "NOEL WILKERSON",
+         "customer_po_number": "JOB",
+         "job_name": "TRUCK STOCK",
+         "order_status": "CALLCSR",
+         "sales_type": "INV",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "1549",
+         "ship_from_warehouse_id": "1549",
+         "shipping_method": "CUSTOMER PICKUP",
+         "order_date": "2026-08-01T00:00:00.000000000",
+         "invoice_date": "2026-08-01T00:00:00.000000000",
+         "shipped_at": "2026-08-04T00:00:00.000000000",
+         "commit_date": "2026-08-01T00:00:00.000000000",
+         "ship_to_name": "NOEL WILKERSON",
+         "ship_to_phone": "469-555-8397",
+         "ship_to_city": "TEMPE",
+         "ship_to_state": "AZ",
+         "ship_to_postal_code": "85299",
+         "source_updated_at": "2026-08-01T13:44:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "10f4d1c4f5eb9eded2d1dc0012967968a450db287d90ceae81969dcc8eb6873b"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "NOEL WILKERSON",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:47:08.886000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "fb56341a-2062-4a93-9f11-f94aea7cee43",
+   "generated_at": "2026-08-25T18:47:13.945225Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

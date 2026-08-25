@@ -1,0 +1,47 @@
+[
+ {
+  "step": 7,
+  "state": "PASS",
+  "note": "details elicited (3 questions, none repeated, no shipping-class question); line selected reason=SHIPPING_DAMAGE"
+ },
+ {
+  "step": 8,
+  "state": "PASS",
+  "note": "return workflow drafted the support request (status AWAITING_SUPPORT)"
+ },
+ {
+  "step": 9,
+  "state": "PASS",
+  "note": "bay never answered inside the window; the return proceeded without it and nothing downstream blocked"
+ },
+ {
+  "step": 10,
+  "state": "PASS",
+  "note": "drafted template present in support thread (1 message(s))"
+ },
+ {
+  "step": 11,
+  "state": "PASS",
+  "note": "support response agent processed the work item"
+ },
+ {
+  "step": 12,
+  "state": "PASS",
+  "note": "support reply posted in the same conversation"
+ },
+ {
+  "step": 13,
+  "state": "PASS",
+  "note": "RMA RMA-DF94672DEEB6419EA0CDA25D7AB2059E recorded on the return"
+ },
+ {
+  "step": 14,
+  "state": "PASS",
+  "note": "RMA and shipping details relayed into the original conversation"
+ },
+ {
+  "step": 15,
+  "state": "PASS",
+  "note": "operations projection consistent; case df94672d-eeb6-419e-a0cd-a25d7ab2059e links conversation disc-tc02-run21-974f6458"
+ }
+]

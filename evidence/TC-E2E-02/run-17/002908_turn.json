@@ -1,0 +1,72 @@
+{
+ "sent": "through the LENZ branch",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run17-3eb8486b",
+   "conversation_version": 8,
+   "client_turn_id": "qa-4c5bb548-41dd-4e8a-8bd5-2d29456977b6",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "Any proof reference for the condition (photo/receipt id)? Reply 'none' if not available.",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "Any proof reference for the condition (photo/receipt id)? Reply 'none' if not available."
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "84614f74-ceb8-445c-8ccd-a24509eec09e",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "RACHEL WHITFIELD",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "return_reason",
+     "value": "DAMAGED",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "ordered_quantity",
+     "value": 1,
+     "status": "USABLE",
+     "label": "quantity being returned",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "branch_location",
+     "value": "LENZ",
+     "status": "USABLE",
+     "label": "branch handling the return",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:59:06.630000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "f1fb6918-162f-4cc4-af31-8bb617c903bf",
+   "generated_at": "2026-08-25T18:59:08.886469Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

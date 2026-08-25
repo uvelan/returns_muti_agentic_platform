@@ -1,0 +1,65 @@
+{
+ "sent": "1 unit",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run14-3470c655",
+   "conversation_version": 7,
+   "client_turn_id": "qa-2b2cfaa1-2a59-49dd-8a02-5318dd278343",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "Which branch or location is the customer returning it through?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "Which branch or location is the customer returning it through?"
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "38fb87ee-444f-4b68-86b4-52dbbd8855cc",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "NOEL WILKERSON",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "return_reason",
+     "value": "DAMAGED",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "ordered_quantity",
+     "value": 1,
+     "status": "USABLE",
+     "label": "quantity being returned",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:47:36.632000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "cdfcd889-9678-494c-9dcb-7f7190fbdad4",
+   "generated_at": "2026-08-25T18:47:38.362620Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

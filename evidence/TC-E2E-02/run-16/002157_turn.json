@@ -1,0 +1,58 @@
+{
+ "sent": "the item arrived damaged",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run16-b930a027",
+   "conversation_version": 6,
+   "client_turn_id": "qa-87c9435f-bcbc-4696-bb3f-c00ee0371f64",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "How many units are being returned?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "How many units are being returned?"
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "cdec77c9-9879-46c0-bea9-c50726ccc317",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "SIDNEY ARNETT",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "return_reason",
+     "value": "DAMAGED",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:51:53.453000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "52172456-2874-4fdf-b43c-3bb8d54837f2",
+   "generated_at": "2026-08-25T18:51:57.436252Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

@@ -1,0 +1,388 @@
+{
+ "sent": "Confirm the customer LANCE LIVINGSTON on account LAKEWOOD.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run21-974f6458",
+   "conversation_version": 2,
+   "client_turn_id": "qa-75234485-e594-4cc5-9182-fcbc196c6ccf",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CZ808074 / 2026-07-28T0 / SAINT LOUIS  / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "56130184-da51-4f04-bb79-8ecdae905b3d",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CZ803573 / 2026-06-08T0 / SAINT LOUIS  / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "56130184-da51-4f04-bb79-8ecdae905b3d",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CN808048 / 2026-03-10T0 / SAINT LOUIS  / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "56130184-da51-4f04-bb79-8ecdae905b3d",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CT803010 / 2026-02-21T0 / SAINT LOUIS  / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "56130184-da51-4f04-bb79-8ecdae905b3d",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CE800974 / 2025-12-07T0 / SAINT LOUIS  / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "56130184-da51-4f04-bb79-8ecdae905b3d",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CQ803675 / 2025-10-14T0 / SAINT LOUIS  / INVOICE-PAID",
+      "evidence_refs": [
+       {
+        "query_execution_id": "56130184-da51-4f04-bb79-8ecdae905b3d",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 7: CZ808854 / 2025-06-04T0 / SAINT LOUIS  / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "56130184-da51-4f04-bb79-8ecdae905b3d",
+        "result_path": [
+         "rows",
+         "6"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-7",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 8: CT804896 / 2025-02-13T0 / SAINT LOUIS  / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "56130184-da51-4f04-bb79-8ecdae905b3d",
+        "result_path": [
+         "rows",
+         "7"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "56130184-da51-4f04-bb79-8ecdae905b3d",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "21356502000a60325e9b2fc2dc1287f5f7ba77c178f90db4324413cf1e902387",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "LAKEWOOD*CZ808074",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CZ808074",
+        "customer_id": "600408",
+        "customer_name": "LANCE LIVINGSTON",
+        "customer_po_number": "REPLACEMENT",
+        "job_name": "SERVICE CALL",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1844",
+        "ship_from_warehouse_id": "1844",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-07-28T00:00:00.000000000",
+        "invoice_date": "2026-07-28T00:00:00.000000000",
+        "shipped_at": "2026-07-28T00:00:00.000000000",
+        "commit_date": "2026-07-28T00:00:00.000000000",
+        "ship_to_name": "LANCE LIVINGSTON",
+        "ship_to_phone": "212-555-2863",
+        "ship_to_city": "SAINT LOUIS PARK",
+        "ship_to_state": "MN",
+        "ship_to_postal_code": "55485",
+        "source_updated_at": "2026-07-28T10:42:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CZ803573",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CZ803573",
+        "customer_id": "600408",
+        "customer_name": "LANCE LIVINGSTON",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "603",
+        "ship_from_warehouse_id": "603",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-06-08T00:00:00.000000000",
+        "invoice_date": "2026-06-08T00:00:00.000000000",
+        "shipped_at": "2026-06-09T00:00:00.000000000",
+        "commit_date": "2026-06-08T00:00:00.000000000",
+        "ship_to_name": "LANCE LIVINGSTON",
+        "ship_to_phone": "212-555-2863",
+        "ship_to_city": "SAINT LOUIS PARK",
+        "ship_to_state": "MN",
+        "ship_to_postal_code": "55485",
+        "source_updated_at": "2026-06-08T14:55:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CN808048",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CN808048",
+        "customer_id": "600408",
+        "customer_name": "LANCE LIVINGSTON",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "WAREHOUSE",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2624",
+        "ship_from_warehouse_id": "2624",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-03-10T00:00:00.000000000",
+        "invoice_date": "2026-03-10T00:00:00.000000000",
+        "shipped_at": "2026-03-13T00:00:00.000000000",
+        "commit_date": "2026-03-10T00:00:00.000000000",
+        "ship_to_name": "LANCE LIVINGSTON",
+        "ship_to_phone": "212-555-2863",
+        "ship_to_city": "SAINT LOUIS PARK",
+        "ship_to_state": "MN",
+        "ship_to_postal_code": "55485",
+        "source_updated_at": "2026-03-10T14:31:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CT803010",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CT803010",
+        "customer_id": "600408",
+        "customer_name": "LANCE LIVINGSTON",
+        "customer_po_number": "NEW CONSTRUCTION",
+        "job_name": "RESIDENTIAL",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1781",
+        "ship_from_warehouse_id": "1781",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2026-02-21T00:00:00.000000000",
+        "invoice_date": "2026-02-21T00:00:00.000000000",
+        "shipped_at": "2026-02-22T00:00:00.000000000",
+        "commit_date": "2026-02-21T00:00:00.000000000",
+        "ship_to_name": "LANCE LIVINGSTON",
+        "ship_to_phone": "212-555-2863",
+        "ship_to_city": "SAINT LOUIS PARK",
+        "ship_to_state": "MN",
+        "ship_to_postal_code": "55485",
+        "source_updated_at": "2026-02-21T09:10:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CE800974",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CE800974",
+        "customer_id": "600408",
+        "customer_name": "LANCE LIVINGSTON",
+        "customer_po_number": "RESIDENTIAL",
+        "job_name": "NEW CONSTRUCTION",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "596",
+        "ship_from_warehouse_id": "596",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-12-07T00:00:00.000000000",
+        "invoice_date": "2025-12-07T00:00:00.000000000",
+        "shipped_at": "2025-12-10T00:00:00.000000000",
+        "commit_date": "2025-12-07T00:00:00.000000000",
+        "ship_to_name": "LANCE LIVINGSTON",
+        "ship_to_phone": "212-555-2863",
+        "ship_to_city": "SAINT LOUIS PARK",
+        "ship_to_state": "MN",
+        "ship_to_postal_code": "55485",
+        "source_updated_at": "2025-12-07T10:13:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CQ803675",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CQ803675",
+        "customer_id": "600408",
+        "customer_name": "LANCE LIVINGSTON",
+        "customer_po_number": "REPLACEMENT",
+        "job_name": "STOCK",
+        "order_status": "INVOICE-PAID",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2028",
+        "ship_from_warehouse_id": "2028",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2025-10-14T00:00:00.000000000",
+        "invoice_date": "2025-10-14T00:00:00.000000000",
+        "shipped_at": "2025-10-15T00:00:00.000000000",
+        "commit_date": "2025-10-14T00:00:00.000000000",
+        "ship_to_name": "LANCE LIVINGSTON",
+        "ship_to_phone": "212-555-2863",
+        "ship_to_city": "SAINT LOUIS PARK",
+        "ship_to_state": "MN",
+        "ship_to_postal_code": "55485",
+        "source_updated_at": "2025-10-14T08:36:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CZ808854",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CZ808854",
+        "customer_id": "600408",
+        "customer_name": "LANCE LIVINGSTON",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "MAINTENANCE",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "596",
+        "ship_from_warehouse_id": "596",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-06-04T00:00:00.000000000",
+        "invoice_date": "2025-06-04T00:00:00.000000000",
+        "shipped_at": "2025-06-06T00:00:00.000000000",
+        "commit_date": "2025-06-04T00:00:00.000000000",
+        "ship_to_name": "LANCE LIVINGSTON",
+        "ship_to_phone": "212-555-2863",
+        "ship_to_city": "SAINT LOUIS PARK",
+        "ship_to_state": "MN",
+        "ship_to_postal_code": "55485",
+        "source_updated_at": "2025-06-04T07:34:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CT804896",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CT804896",
+        "customer_id": "600408",
+        "customer_name": "LANCE LIVINGSTON",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "SERVICE CALL",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1844",
+        "ship_from_warehouse_id": "1844",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-02-13T00:00:00.000000000",
+        "invoice_date": "2025-02-13T00:00:00.000000000",
+        "shipped_at": "2025-02-16T00:00:00.000000000",
+        "commit_date": "2025-02-13T00:00:00.000000000",
+        "ship_to_name": "LANCE LIVINGSTON",
+        "ship_to_phone": "212-555-2863",
+        "ship_to_city": "SAINT LOUIS PARK",
+        "ship_to_state": "MN",
+        "ship_to_postal_code": "55485",
+        "source_updated_at": "2025-02-13T16:57:00.000000000"
+       }
+      ],
+      "count": 8
+     },
+     "result_checksum": "8ddd6c8256022909f7bc451d8af7ec49561d2d7aba3622786b610fde2e72a093"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "LANCE LIVINGSTON",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T19:44:32.432000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "61bd4d5b-aee7-425c-81be-8cd87dcb8e27",
+   "generated_at": "2026-08-25T19:44:35.279570Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

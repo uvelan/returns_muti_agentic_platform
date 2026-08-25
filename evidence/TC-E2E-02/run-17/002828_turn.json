@@ -1,0 +1,520 @@
+{
+ "sent": "Confirm the customer RACHEL WHITFIELD on account LENZ.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run17-3eb8486b",
+   "conversation_version": 2,
+   "client_turn_id": "qa-8e51a4f7-97ca-4ac1-a24a-230d87f1dcf4",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CW809330 / 2026-07-31T0 / TACOMA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a68c31fa-e352-4773-b282-1c2dc0eb537f",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CZ809796 / 2026-06-25T0 / TACOMA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a68c31fa-e352-4773-b282-1c2dc0eb537f",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CE804820 / 2026-04-13T0 / TACOMA / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a68c31fa-e352-4773-b282-1c2dc0eb537f",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CA807844 / 2026-04-07T0 / TACOMA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a68c31fa-e352-4773-b282-1c2dc0eb537f",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CA803008 / 2026-03-15T0 / TACOMA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a68c31fa-e352-4773-b282-1c2dc0eb537f",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CE804838 / 2026-03-04T0 / TACOMA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a68c31fa-e352-4773-b282-1c2dc0eb537f",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 7: CC804924 / 2026-01-28T0 / TACOMA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a68c31fa-e352-4773-b282-1c2dc0eb537f",
+        "result_path": [
+         "rows",
+         "6"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-7",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 8: CP807285 / 2026-01-05T0 / TACOMA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a68c31fa-e352-4773-b282-1c2dc0eb537f",
+        "result_path": [
+         "rows",
+         "7"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-8",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 9: CN806123 / 2025-09-18T0 / TACOMA / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a68c31fa-e352-4773-b282-1c2dc0eb537f",
+        "result_path": [
+         "rows",
+         "8"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-9",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 10: CA802564 / 2025-08-31T0 / TACOMA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a68c31fa-e352-4773-b282-1c2dc0eb537f",
+        "result_path": [
+         "rows",
+         "9"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "a68c31fa-e352-4773-b282-1c2dc0eb537f",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "723e5d5606cd765b4cc4e49c8304c5989e95954433db956a1307c5a301c0c245",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "LENZ*CW809330",
+        "account_id": "LENZ",
+        "sales_order_number": "CW809330",
+        "customer_id": "600136",
+        "customer_name": "RACHEL WHITFIELD",
+        "customer_po_number": "STOCK",
+        "job_name": "MAINTENANCE",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2028",
+        "ship_from_warehouse_id": "2028",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-07-31T00:00:00.000000000",
+        "invoice_date": "2026-07-31T00:00:00.000000000",
+        "shipped_at": "2026-08-01T00:00:00.000000000",
+        "commit_date": "2026-07-31T00:00:00.000000000",
+        "ship_to_name": "RACHEL WHITFIELD",
+        "ship_to_phone": "469-555-4324",
+        "ship_to_city": "TACOMA",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98410",
+        "source_updated_at": "2026-07-31T14:26:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CZ809796",
+        "account_id": "LENZ",
+        "sales_order_number": "CZ809796",
+        "customer_id": "600136",
+        "customer_name": "RACHEL WHITFIELD",
+        "customer_po_number": "SHOP STOCK",
+        "job_name": "STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "596",
+        "ship_from_warehouse_id": "596",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-06-25T00:00:00.000000000",
+        "invoice_date": "2026-06-25T00:00:00.000000000",
+        "shipped_at": "2026-06-27T00:00:00.000000000",
+        "commit_date": "2026-06-25T00:00:00.000000000",
+        "ship_to_name": "RACHEL WHITFIELD",
+        "ship_to_phone": "469-555-4324",
+        "ship_to_city": "TACOMA",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98410",
+        "source_updated_at": "2026-06-25T16:05:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CE804820",
+        "account_id": "LENZ",
+        "sales_order_number": "CE804820",
+        "customer_id": "600136",
+        "customer_name": "RACHEL WHITFIELD",
+        "customer_po_number": "WARRANTY",
+        "job_name": "MAINTENANCE",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1844",
+        "ship_from_warehouse_id": "1844",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-04-13T00:00:00.000000000",
+        "invoice_date": "2026-04-13T00:00:00.000000000",
+        "shipped_at": "2026-04-14T00:00:00.000000000",
+        "commit_date": "2026-04-13T00:00:00.000000000",
+        "ship_to_name": "RACHEL WHITFIELD",
+        "ship_to_phone": "469-555-4324",
+        "ship_to_city": "TACOMA",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98410",
+        "source_updated_at": "2026-04-13T10:09:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CA807844",
+        "account_id": "LENZ",
+        "sales_order_number": "CA807844",
+        "customer_id": "600136",
+        "customer_name": "RACHEL WHITFIELD",
+        "customer_po_number": "MAINTENANCE",
+        "job_name": "NEW CONSTRUCTION",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2028",
+        "ship_from_warehouse_id": "2028",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-04-07T00:00:00.000000000",
+        "invoice_date": "2026-04-07T00:00:00.000000000",
+        "shipped_at": "2026-04-09T00:00:00.000000000",
+        "commit_date": "2026-04-07T00:00:00.000000000",
+        "ship_to_name": "RACHEL WHITFIELD",
+        "ship_to_phone": "469-555-4324",
+        "ship_to_city": "TACOMA",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98410",
+        "source_updated_at": "2026-04-07T09:31:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CA803008",
+        "account_id": "LENZ",
+        "sales_order_number": "CA803008",
+        "customer_id": "600136",
+        "customer_name": "RACHEL WHITFIELD",
+        "customer_po_number": "RESIDENTIAL",
+        "job_name": "SERVICE CALL",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "31",
+        "ship_from_warehouse_id": "31",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-03-15T00:00:00.000000000",
+        "invoice_date": "2026-03-15T00:00:00.000000000",
+        "shipped_at": "2026-03-17T00:00:00.000000000",
+        "commit_date": "2026-03-15T00:00:00.000000000",
+        "ship_to_name": "RACHEL WHITFIELD",
+        "ship_to_phone": "469-555-4324",
+        "ship_to_city": "TACOMA",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98410",
+        "source_updated_at": "2026-03-15T17:56:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CE804838",
+        "account_id": "LENZ",
+        "sales_order_number": "CE804838",
+        "customer_id": "600136",
+        "customer_name": "RACHEL WHITFIELD",
+        "customer_po_number": "JOB",
+        "job_name": "WARRANTY",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "195",
+        "ship_from_warehouse_id": "195",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-03-04T00:00:00.000000000",
+        "invoice_date": "2026-03-04T00:00:00.000000000",
+        "shipped_at": "2026-03-07T00:00:00.000000000",
+        "commit_date": "2026-03-04T00:00:00.000000000",
+        "ship_to_name": "RACHEL WHITFIELD",
+        "ship_to_phone": "469-555-4324",
+        "ship_to_city": "TACOMA",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98410",
+        "source_updated_at": "2026-03-04T08:49:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CC804924",
+        "account_id": "LENZ",
+        "sales_order_number": "CC804924",
+        "customer_id": "600136",
+        "customer_name": "RACHEL WHITFIELD",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "WARRANTY",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1549",
+        "ship_from_warehouse_id": "1549",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-01-28T00:00:00.000000000",
+        "invoice_date": "2026-01-28T00:00:00.000000000",
+        "shipped_at": "2026-01-29T00:00:00.000000000",
+        "commit_date": "2026-01-28T00:00:00.000000000",
+        "ship_to_name": "RACHEL WHITFIELD",
+        "ship_to_phone": "469-555-4324",
+        "ship_to_city": "TACOMA",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98410",
+        "source_updated_at": "2026-01-28T07:40:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CP807285",
+        "account_id": "LENZ",
+        "sales_order_number": "CP807285",
+        "customer_id": "600136",
+        "customer_name": "RACHEL WHITFIELD",
+        "customer_po_number": "WARRANTY",
+        "job_name": "STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1556",
+        "ship_from_warehouse_id": "1556",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-01-05T00:00:00.000000000",
+        "invoice_date": "2026-01-05T00:00:00.000000000",
+        "shipped_at": "2026-01-08T00:00:00.000000000",
+        "commit_date": "2026-01-05T00:00:00.000000000",
+        "ship_to_name": "RACHEL WHITFIELD",
+        "ship_to_phone": "469-555-4324",
+        "ship_to_city": "TACOMA",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98410",
+        "source_updated_at": "2026-01-05T10:32:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CN806123",
+        "account_id": "LENZ",
+        "sales_order_number": "CN806123",
+        "customer_id": "600136",
+        "customer_name": "RACHEL WHITFIELD",
+        "customer_po_number": "MAINTENANCE",
+        "job_name": "TRUCK STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "603",
+        "ship_from_warehouse_id": "603",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-09-18T00:00:00.000000000",
+        "invoice_date": "2025-09-18T00:00:00.000000000",
+        "shipped_at": "2025-09-20T00:00:00.000000000",
+        "commit_date": "2025-09-18T00:00:00.000000000",
+        "ship_to_name": "RACHEL WHITFIELD",
+        "ship_to_phone": "469-555-4324",
+        "ship_to_city": "TACOMA",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98410",
+        "source_updated_at": "2025-09-18T17:46:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CA802564",
+        "account_id": "LENZ",
+        "sales_order_number": "CA802564",
+        "customer_id": "600136",
+        "customer_name": "RACHEL WHITFIELD",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "REPLACEMENT",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2210",
+        "ship_from_warehouse_id": "2210",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-08-31T00:00:00.000000000",
+        "invoice_date": "2025-08-31T00:00:00.000000000",
+        "shipped_at": "2025-09-01T00:00:00.000000000",
+        "commit_date": "2025-08-31T00:00:00.000000000",
+        "ship_to_name": "RACHEL WHITFIELD",
+        "ship_to_phone": "469-555-4324",
+        "ship_to_city": "TACOMA",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98410",
+        "source_updated_at": "2025-08-31T10:37:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CZ804112",
+        "account_id": "LENZ",
+        "sales_order_number": "CZ804112",
+        "customer_id": "600136",
+        "customer_name": "RACHEL WHITFIELD",
+        "customer_po_number": "NEW CONSTRUCTION",
+        "job_name": "TRUCK STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "596",
+        "ship_from_warehouse_id": "596",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-07-01T00:00:00.000000000",
+        "invoice_date": "2025-07-01T00:00:00.000000000",
+        "shipped_at": "2025-07-02T00:00:00.000000000",
+        "commit_date": "2025-07-01T00:00:00.000000000",
+        "ship_to_name": "RACHEL WHITFIELD",
+        "ship_to_phone": "469-555-4324",
+        "ship_to_city": "TACOMA",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98410",
+        "source_updated_at": "2025-07-01T16:11:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CK806702",
+        "account_id": "LENZ",
+        "sales_order_number": "CK806702",
+        "customer_id": "600136",
+        "customer_name": "RACHEL WHITFIELD",
+        "customer_po_number": "JOB",
+        "job_name": "WARRANTY",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "596",
+        "ship_from_warehouse_id": "596",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-04-27T00:00:00.000000000",
+        "invoice_date": "2025-04-27T00:00:00.000000000",
+        "shipped_at": "2025-04-29T00:00:00.000000000",
+        "commit_date": "2025-04-27T00:00:00.000000000",
+        "ship_to_name": "RACHEL WHITFIELD",
+        "ship_to_phone": "469-555-4324",
+        "ship_to_city": "TACOMA",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "98410",
+        "source_updated_at": "2025-04-27T14:51:00.000000000"
+       }
+      ],
+      "count": 12
+     },
+     "result_checksum": "c6e84a7b149aaeefeea5390abb9920790f0a0736a352869a2f950ba2a067e67e"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "RACHEL WHITFIELD",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:58:25.294000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "98342850-ed50-4dc4-8859-13f8bb7d1f90",
+   "generated_at": "2026-08-25T18:58:28.556351Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

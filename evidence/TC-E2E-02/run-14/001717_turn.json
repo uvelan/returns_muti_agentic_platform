@@ -1,0 +1,43 @@
+{
+ "sent": "Confirm order CT807912.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run14-3470c655",
+   "conversation_version": 4,
+   "client_turn_id": "qa-1211c37d-c662-4ba5-9d72-e3ef36276eb5",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [],
+    "suggestions": [],
+    "requested_input": "You selected order CT807912. Confirm this order to raise the return?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run14-3470c655:qa-1211c37d-c662-4ba5-9d72-e3ef36276eb5:1",
+   "case_id": null,
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "NOEL WILKERSON",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:47:16.270000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "a6ad1169-a607-488c-b3f8-9a0ef588febc",
+   "generated_at": "2026-08-25T18:47:17.853393Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

@@ -1,0 +1,69 @@
+[
+ {
+  "id": "bfa93c48-0306-4866-a65e-f0ac62e41352",
+  "threadId": "3083b39d-2b3d-412a-b52d-108ff9cd94f5",
+  "sequence": 1,
+  "senderRole": "AGENT",
+  "senderId": "return-workflow-agent",
+  "messageType": "REQUEST",
+  "messageText": "RETURN SUPPORT REQUEST\n\nCase:\n- Case ID: d389fd24-60e3-4c2d-ac49-68fa0502907b\n- Work Item ID: 4716a398-f718-4503-8147-a73cacf434cd\n- Created Date/Time: 2026-08-25T18:49:52.317000+00:00\n- Workflow Status at Handoff: GATHERING_INFO\n\nCustomer:\n- Customer Name: ERIC BOONE\n- Customer Reference: 600594\n- Branch Associate: Not available\n- Branch Associate Email: Not available\n- Branch Associate Phone: Not available\n\nOrder:\n- Order Number: CF803505\n- Line/Order-Line Number: 1\n  - Product Name: 1/2 PLAS CLAMP F/ PEXRITE BRKT\n  - Colour: Not available\n  - SKU: H701\n  - Confirmed Return Quantity: 1\n  - Return Reason: SHIPPING_DAMAGE\n  - Product Condition: NEW_IN_ORIGINAL_PACKAGING\n\nReturn Details:\n- Return Method: BRANCH_UPS\n- Requested Resolution: Not available\n- Product Presence: Not available\n- Associate Notes: Not available\n\nBay Assignment:\n- Assignment Status: PRE_ARRIVAL_NOT_ALLOWED\n- Recommended Bay: Not available\n- Warehouse/Branch: Not available\n- Return Location: Not available\n- Handling/Staging Instructions: Not available\n- Unresolved Reason: PRE_ARRIVAL_NOT_ALLOWED\n\nVerification:\n- Order Confirmation: Confirmed\n- Required Return Information: Incomplete\n- Policy Evaluation: APPROVE on the STANDARD_RETURN route\n- Bay Assignment Source: Bay Assignment Agent\n\nRequested Support Action:\n- Review the complete return request.\n- Review or confirm the bay recommendation.\n- Resolve manual bay assignment: no bay could be recommended.\n- Verify all Support-owned conditions, including warranty when applicable.\n- Create or decline the RMA through the authoritative Support workflow.\n",
+  "attachmentIds": [],
+  "businessPayload": {
+   "bayAssignment": {
+    "bayReference": null,
+    "handlingInstructions": null,
+    "returnLocation": null,
+    "source": "BAY_ASSIGNMENT_AGENT",
+    "status": "PRE_ARRIVAL_NOT_ALLOWED",
+    "unresolvedReason": "PRE_ARRIVAL_NOT_ALLOWED",
+    "warehouseReference": null
+   },
+   "caseId": "d389fd24-60e3-4c2d-ac49-68fa0502907b",
+   "createdAt": "2026-08-25T18:49:52.317000+00:00",
+   "customer": {
+    "contactEmail": null,
+    "contactName": null,
+    "contactPhone": null,
+    "name": "ERIC BOONE",
+    "reference": "600594"
+   },
+   "order": {
+    "items": [
+     {
+      "colour": null,
+      "condition": "NEW_IN_ORIGINAL_PACKAGING",
+      "lineReference": "1",
+      "productName": "1/2 PLAS CLAMP F/ PEXRITE BRKT",
+      "productReference": "3380383",
+      "quantity": 1,
+      "reason": "SHIPPING_DAMAGE",
+      "returnMethod": "BRANCH_UPS",
+      "sku": "H701"
+     }
+    ],
+    "reference": "CF803505"
+   },
+   "returnDetails": {
+    "additional": {},
+    "associateNotes": null,
+    "method": "BRANCH_UPS",
+    "productPresence": null,
+    "requestedResolution": null
+   },
+   "schemaVersion": "support-handoff-v1",
+   "verification": {
+    "orderConfirmed": true,
+    "policyEvaluation": {
+     "decision": "APPROVE",
+     "route": "STANDARD_RETURN",
+     "skippedReason": null,
+     "state": "EVALUATED"
+    },
+    "requiredReturnInformationComplete": false
+   },
+   "workItemId": "4716a398-f718-4503-8147-a73cacf434cd",
+   "workflowStatusAtHandoff": "GATHERING_INFO"
+  },
+  "createdAt": "2026-08-25T18:49:53.909000"
+ }
+]

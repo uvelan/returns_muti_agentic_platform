@@ -1,0 +1,44 @@
+{
+ "data": {
+  "caseId": "38fb87ee-444f-4b68-86b4-52dbbd8855cc",
+  "revision": 31,
+  "changed": true,
+  "items": [
+   {
+    "returnItemId": "370a41d2-9b3f-43d3-a630-796b1168a696",
+    "orderLineReference": "1",
+    "productReference": "3879356",
+    "quantity": 1,
+    "reason": "SHIPPING_DAMAGE",
+    "condition": "NEW_IN_ORIGINAL_PACKAGING",
+    "packageReference": null
+   }
+  ],
+  "lines": [
+   {
+    "lineReference": "1",
+    "sku": "SAF984P50",
+    "description": "4X50 AF984 SILV CW TAPE",
+    "colour": null,
+    "orderedQuantity": 5,
+    "unitPrice": "24.344",
+    "productReference": "3879356",
+    "returnableQuantity": 5,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 1,
+    "dataInconsistency": null
+   }
+  ]
+ },
+ "page": null,
+ "meta": {
+  "schema_version": "1.0",
+  "request_id": "2ce3d5ea-712d-4a84-8e2b-6464d4322e14",
+  "generated_at": "2026-08-25T18:47:56.721168Z",
+  "freshness": "LIVE",
+  "partial": false,
+  "warnings": []
+ }
+}

@@ -1,0 +1,388 @@
+{
+ "sent": "Confirm the customer NADIA GALLARDO on account SACRAMENTO.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run18-833bae1a",
+   "conversation_version": 2,
+   "client_turn_id": "qa-01f4d664-bd45-405a-9188-c7d749c25ad5",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CO807909 / 2026-07-31T0 / CHATTANOOGA / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "650dd601-c0ec-4ebd-8471-81e864e24724",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CF809154 / 2026-07-06T0 / CHATTANOOGA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "650dd601-c0ec-4ebd-8471-81e864e24724",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CN809703 / 2026-03-26T0 / CHATTANOOGA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "650dd601-c0ec-4ebd-8471-81e864e24724",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CX802819 / 2026-03-18T0 / CHATTANOOGA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "650dd601-c0ec-4ebd-8471-81e864e24724",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CV802301 / 2026-03-01T0 / CHATTANOOGA / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "650dd601-c0ec-4ebd-8471-81e864e24724",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CL803610 / 2026-01-04T0 / CHATTANOOGA / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "650dd601-c0ec-4ebd-8471-81e864e24724",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 7: CH808629 / 2025-11-18T0 / CHATTANOOGA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "650dd601-c0ec-4ebd-8471-81e864e24724",
+        "result_path": [
+         "rows",
+         "6"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-7",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 8: CF809575 / 2025-05-24T0 / CHATTANOOGA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "650dd601-c0ec-4ebd-8471-81e864e24724",
+        "result_path": [
+         "rows",
+         "7"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "650dd601-c0ec-4ebd-8471-81e864e24724",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "f6a4f605c98c0b68cdce9568c03468863ab8cf8f2cdb1fecf26a6dd5a8e9f08c",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "SACRAMENTO*CO807909",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CO807909",
+        "customer_id": "600833",
+        "customer_name": "NADIA GALLARDO",
+        "customer_po_number": "MAINTENANCE",
+        "job_name": "SERVICE CALL",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-07-31T00:00:00.000000000",
+        "invoice_date": "2026-07-31T00:00:00.000000000",
+        "shipped_at": "2026-08-03T00:00:00.000000000",
+        "commit_date": "2026-07-31T00:00:00.000000000",
+        "ship_to_name": "NADIA GALLARDO",
+        "ship_to_phone": "205-555-3725",
+        "ship_to_city": "CHATTANOOGA",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37420",
+        "source_updated_at": "2026-07-31T13:48:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CF809154",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CF809154",
+        "customer_id": "600833",
+        "customer_name": "NADIA GALLARDO",
+        "customer_po_number": "SHOP STOCK",
+        "job_name": "MAINTENANCE",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2680",
+        "ship_from_warehouse_id": "2680",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2026-07-06T00:00:00.000000000",
+        "invoice_date": "2026-07-06T00:00:00.000000000",
+        "shipped_at": "2026-07-09T00:00:00.000000000",
+        "commit_date": "2026-07-06T00:00:00.000000000",
+        "ship_to_name": "NADIA GALLARDO",
+        "ship_to_phone": "205-555-3725",
+        "ship_to_city": "CHATTANOOGA",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37420",
+        "source_updated_at": "2026-07-06T09:28:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CN809703",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CN809703",
+        "customer_id": "600833",
+        "customer_name": "NADIA GALLARDO",
+        "customer_po_number": "STOCK",
+        "job_name": "MAINTENANCE",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "795",
+        "ship_from_warehouse_id": "795",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-03-26T00:00:00.000000000",
+        "invoice_date": "2026-03-26T00:00:00.000000000",
+        "shipped_at": "2026-03-29T00:00:00.000000000",
+        "commit_date": "2026-03-26T00:00:00.000000000",
+        "ship_to_name": "NADIA GALLARDO",
+        "ship_to_phone": "205-555-3725",
+        "ship_to_city": "CHATTANOOGA",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37420",
+        "source_updated_at": "2026-03-26T15:11:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CX802819",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CX802819",
+        "customer_id": "600833",
+        "customer_name": "NADIA GALLARDO",
+        "customer_po_number": "WARRANTY",
+        "job_name": "WARRANTY",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "795",
+        "ship_from_warehouse_id": "795",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-03-18T00:00:00.000000000",
+        "invoice_date": "2026-03-18T00:00:00.000000000",
+        "shipped_at": "2026-03-20T00:00:00.000000000",
+        "commit_date": "2026-03-18T00:00:00.000000000",
+        "ship_to_name": "NADIA GALLARDO",
+        "ship_to_phone": "205-555-3725",
+        "ship_to_city": "CHATTANOOGA",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37420",
+        "source_updated_at": "2026-03-18T07:38:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CV802301",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CV802301",
+        "customer_id": "600833",
+        "customer_name": "NADIA GALLARDO",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "SERVICE CALL",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-03-01T00:00:00.000000000",
+        "invoice_date": "2026-03-01T00:00:00.000000000",
+        "shipped_at": "2026-03-02T00:00:00.000000000",
+        "commit_date": "2026-03-01T00:00:00.000000000",
+        "ship_to_name": "NADIA GALLARDO",
+        "ship_to_phone": "205-555-3725",
+        "ship_to_city": "CHATTANOOGA",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37420",
+        "source_updated_at": "2026-03-01T10:47:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CL803610",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CL803610",
+        "customer_id": "600833",
+        "customer_name": "NADIA GALLARDO",
+        "customer_po_number": "SHOP STOCK",
+        "job_name": "JOB",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1549",
+        "ship_from_warehouse_id": "1549",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-01-04T00:00:00.000000000",
+        "invoice_date": "2026-01-04T00:00:00.000000000",
+        "shipped_at": "2026-01-04T00:00:00.000000000",
+        "commit_date": "2026-01-04T00:00:00.000000000",
+        "ship_to_name": "NADIA GALLARDO",
+        "ship_to_phone": "205-555-3725",
+        "ship_to_city": "CHATTANOOGA",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37420",
+        "source_updated_at": "2026-01-04T14:11:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CH808629",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CH808629",
+        "customer_id": "600833",
+        "customer_name": "NADIA GALLARDO",
+        "customer_po_number": "WARRANTY",
+        "job_name": "RESIDENTIAL",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "31",
+        "ship_from_warehouse_id": "31",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2025-11-18T00:00:00.000000000",
+        "invoice_date": "2025-11-18T00:00:00.000000000",
+        "shipped_at": "2025-11-21T00:00:00.000000000",
+        "commit_date": "2025-11-18T00:00:00.000000000",
+        "ship_to_name": "NADIA GALLARDO",
+        "ship_to_phone": "205-555-3725",
+        "ship_to_city": "CHATTANOOGA",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37420",
+        "source_updated_at": "2025-11-18T15:35:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CF809575",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CF809575",
+        "customer_id": "600833",
+        "customer_name": "NADIA GALLARDO",
+        "customer_po_number": "REPLACEMENT",
+        "job_name": "REPLACEMENT",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "195",
+        "ship_from_warehouse_id": "195",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2025-05-24T00:00:00.000000000",
+        "invoice_date": "2025-05-24T00:00:00.000000000",
+        "shipped_at": "2025-05-24T00:00:00.000000000",
+        "commit_date": "2025-05-24T00:00:00.000000000",
+        "ship_to_name": "NADIA GALLARDO",
+        "ship_to_phone": "205-555-3725",
+        "ship_to_city": "CHATTANOOGA",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37420",
+        "source_updated_at": "2025-05-24T10:14:00.000000000"
+       }
+      ],
+      "count": 8
+     },
+     "result_checksum": "b74dac36d6d0e00b10fcf50b940a64d8c642ea318bdb6d53e3bc6d4a8a7c523a"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "NADIA GALLARDO",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T19:05:24.744000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "978c8157-af7b-4f48-92fb-e1ae6857d859",
+   "generated_at": "2026-08-25T19:05:41.274593Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

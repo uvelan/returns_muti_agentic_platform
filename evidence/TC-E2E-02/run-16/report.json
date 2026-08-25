@@ -1,0 +1,22 @@
+[
+ {
+  "step": 13,
+  "state": "PASS",
+  "note": "RMA RMA-CDEC77C9987946C0BEA9C50726CCC3172 recorded on the return"
+ },
+ {
+  "step": 13,
+  "state": "PASS",
+  "note": "2 separate records, distinct RMAs/labels, no line in two packages"
+ },
+ {
+  "step": 14,
+  "state": "PASS",
+  "note": "RMA and shipping details relayed into the original conversation"
+ },
+ {
+  "step": 15,
+  "state": "PASS",
+  "note": "operations projection consistent; case cdec77c9-9879-46c0-bea9-c50726ccc317 links conversation disc-tc02-run16-b930a027"
+ }
+]

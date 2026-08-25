@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CO807909",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run18-833bae1a",
+   "conversation_version": 3,
+   "client_turn_id": "qa-3cfb592d-4f1b-46c3-a660-dad223d38284",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CO807909 / [REDACTED] / CHATTANOOGA / 2026-07-31",
+      "evidence_refs": [
+       {
+        "query_execution_id": "4638c772-10d6-45d4-acff-8d83eb6efc87",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "4638c772-10d6-45d4-acff-8d83eb6efc87",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "e7fe8013f6b4520814716ca84c26d533ad7671f92e278b73215c16bd8a994f2e",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CO807909"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CO807909",
+        "data": {
+         "order_key": "SACRAMENTO*CO807909",
+         "account_id": "SACRAMENTO",
+         "sales_order_number": "CO807909",
+         "customer_id": "600833",
+         "customer_name": "NADIA GALLARDO",
+         "customer_po_number": "MAINTENANCE",
+         "job_name": "SERVICE CALL",
+         "order_status": "INVOICED",
+         "sales_type": "CASH",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "3526",
+         "ship_from_warehouse_id": "3526",
+         "shipping_method": "WILL CALL",
+         "order_date": "2026-07-31T00:00:00.000000000",
+         "invoice_date": "2026-07-31T00:00:00.000000000",
+         "shipped_at": "2026-08-03T00:00:00.000000000",
+         "commit_date": "2026-07-31T00:00:00.000000000",
+         "ship_to_name": "NADIA GALLARDO",
+         "ship_to_phone": "205-555-3725",
+         "ship_to_city": "CHATTANOOGA",
+         "ship_to_state": "TN",
+         "ship_to_postal_code": "37420",
+         "source_updated_at": "2026-07-31T13:48:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "547cc5d90b5df58eef3d32229d855b84b302f381bd0b34682f8e90c69f52272e"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "NADIA GALLARDO",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T19:05:43.873000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "1c9ca925-b22f-4179-831b-dbca16ff84cb",
+   "generated_at": "2026-08-25T19:06:01.188502Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

@@ -1,0 +1,79 @@
+{
+ "sent": "none",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run15-4009b8e0",
+   "conversation_version": 9,
+   "client_turn_id": "qa-2f275318-f108-4914-b680-1c114acd8091",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "All return details are captured. The return is being processed and Support will issue the RMA and shipping details.",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "d389fd24-60e3-4c2d-ac49-68fa0502907b",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "ERIC BOONE",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "return_reason",
+     "value": "DAMAGED",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "ordered_quantity",
+     "value": 1,
+     "status": "USABLE",
+     "label": "quantity being returned",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "branch_location",
+     "value": "NASH",
+     "status": "USABLE",
+     "label": "branch handling the return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "proof_reference",
+     "value": null,
+     "status": "INVALID",
+     "label": "proof of condition reference",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:49:42.083000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "be4e17fc-9dc6-4cd9-991d-4b3bfaba4b29",
+   "generated_at": "2026-08-25T18:49:45.995790Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

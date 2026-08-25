@@ -1,0 +1,58 @@
+{
+ "sent": "the item arrived damaged",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run18-833bae1a",
+   "conversation_version": 6,
+   "client_turn_id": "qa-5b1990f5-6cc3-438d-8b41-16cffde4b79c",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "How many units are being returned?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "How many units are being returned?"
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "14ad1029-7e82-45f9-86ed-9cc9247c28dc",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "NADIA GALLARDO",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "return_reason",
+     "value": "DAMAGED",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T19:08:59.684000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "19827de9-be4d-49a0-b919-e107fbca4f43",
+   "generated_at": "2026-08-25T19:09:01.324330Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

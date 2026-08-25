@@ -218,17 +218,34 @@ class Run:
         conditions = vocabulary.get("conditions") or []
         reason = next((r for r in reasons if "DAMAG" in r.upper()), reasons[0] if reasons else None)
         condition = conditions[0] if conditions else None
-        line = lines[0]
-        item: dict[str, Any] = {
-            "orderLineReference": line.get("orderLineReference") or line.get("lineReference"),
-            "quantity": 1,
-        }
-        if reason:
-            item["reason"] = reason
-        if condition:
-            item["condition"] = condition
+        chosen = [lines[0]]
+        if getattr(self, "multi", False):
+            freight_words = ("CONDENSER", "WHTR", "WATER HEATER", "BOILER", "FURNACE",
+                             "BATHTUB", "CAST IRON", "AIR HANDLER", "VANITY")
+            freight = next(
+                (l for l in lines
+                 if any(w in str(l.get("productDescription") or l.get("description") or "").upper()
+                        for w in freight_words)), None)
+            parcel = next(
+                (l for l in lines
+                 if not any(w in str(l.get("productDescription") or l.get("description") or "").upper()
+                            for w in freight_words)), None)
+            if freight is None or parcel is None:
+                self.fail(7, "multi-item run needs one freight-class and one parcel-class line")
+            chosen = [parcel, freight]
+        items = []
+        for line in chosen:
+            item: dict[str, Any] = {
+                "orderLineReference": line.get("orderLineReference") or line.get("lineReference"),
+                "quantity": 1,
+            }
+            if reason:
+                item["reason"] = reason
+            if condition:
+                item["condition"] = condition
+            items.append(item)
         selection = self.call(
-            "POST", f"/api/cases/{self.case_id}/selected-items", {"items": [item]})
+            "POST", f"/api/cases/{self.case_id}/selected-items", {"items": items})
         self.archive("selected_items", selection)
         self.ok(7, f"details elicited ({len(asked)} questions, none repeated,"
                    f" no shipping-class question); line selected reason={reason}")
@@ -251,9 +268,17 @@ class Run:
         self.archive("case_at_support", projection)
         self.ok(8, f"return workflow drafted the support request (status {last_status})")
         facts = self.facts(projection)
-        if "bay_assignment_requested" not in facts:
-            self.fail(9, "no bay answer recorded")
-        self.ok(9, f"bay answered: {facts.get('bay_reason', {}).get('value')}")
+        if getattr(self, "bay_timeout", False):
+            if "bay_reference" in facts or "bay_reason" in facts:
+                self.fail(9, "bay answered although the timeout path was forced")
+            if "bay_assignment_requested" not in facts:
+                self.fail(9, "the bay request marker is missing")
+            self.ok(9, "bay never answered inside the window; the return proceeded"
+                       " without it and nothing downstream blocked")
+        else:
+            if "bay_assignment_requested" not in facts:
+                self.fail(9, "no bay answer recorded")
+            self.ok(9, f"bay answered: {facts.get('bay_reason', {}).get('value')}")
 
     def step_10(self) -> None:
         items = self.call("GET", "/api/v1/return-support/work-items").get("data") or []
@@ -300,6 +325,34 @@ class Run:
             self.archive("case_no_rma", projection)
             self.fail(13, f"no RMA landed on the case (status {projection.get('status')})")
         self.ok(13, f"RMA {rma} recorded on the return")
+        if getattr(self, "multi", False):
+            # The projection assembles records and their item links
+            # asynchronously after the outcome lands; poll rather than race it.
+            deadline = time.time() + 180
+            records: list = []
+            while time.time() < deadline:
+                projection = self.case()
+                records = projection.get("returnRecords") or []
+                if (len(records) >= 2
+                        and all((r.get("items") or []) for r in records)):
+                    break
+                time.sleep(5)
+            self.archive("case_multi_records", projection)
+            if len(records) < 2:
+                self.fail(13, f"multi-item return produced {len(records)} record(s), expected >=2")
+            refs = [r.get("returnReference") for r in records]
+            labels = [r.get("labelReference") for r in records]
+            if len(set(refs)) != len(refs) or len(set(labels) - {None}) != len([l for l in labels if l]):
+                self.fail(13, f"records share references: {refs} / {labels}")
+            line_sets = [frozenset(
+                i.get("orderLineReference") for i in (r.get("items") or []))
+                for r in records]
+            for a in range(len(line_sets)):
+                for b in range(a + 1, len(line_sets)):
+                    if line_sets[a] & line_sets[b]:
+                        self.fail(13, "packages mixed: a line appears in two records")
+            self.ok(13, f"{len(records)} separate records, distinct RMAs/labels,"
+                        " no line in two packages")
         data = self.send("what is the RMA and where does the parcel go?")
         response = data.get("response") or {}
         text = json.dumps(response, default=str)
@@ -387,9 +440,13 @@ def main() -> None:
     parser.add_argument("--resume-conversation", default=None)
     parser.add_argument("--resume-case", default=None)
     parser.add_argument("--from-step", type=int, default=1)
+    parser.add_argument("--multi", action="store_true")
+    parser.add_argument("--bay-timeout", action="store_true")
     args = parser.parse_args()
 
     run = Run(args.run, args.customer, args.misspelled, args.account, args.order)
+    run.multi = args.multi
+    run.bay_timeout = args.bay_timeout
     if args.resume_conversation:
         run.conversation = args.resume_conversation
         run.case_id = args.resume_case

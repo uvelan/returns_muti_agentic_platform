@@ -1,0 +1,1 @@
+{"business_capability": "order-discovery", "action_type": "ORDER_SEARCH", "decision_summary": "Searching by order number CZ808074.", "search_intent": {"searchMode": "DISCOVER", "confidence": 0.9, "orderNumbers": ["CZ808074"]}}

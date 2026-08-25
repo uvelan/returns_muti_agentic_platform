@@ -1,0 +1,91 @@
+{
+ "sent": "customer wants to return an item, name is nadia galardo",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run18-833bae1a",
+   "conversation_version": 1,
+   "client_turn_id": "qa-a5f071fb-c7f4-4918-919b-2eeaf88bff55",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 600833 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "bb713977-73d6-4e04-853a-4a37c5292ba6",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "bb713977-73d6-4e04-853a-4a37c5292ba6",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "a08baded843df9edc665bc227096017b23723fb0e6dfa70977fcf291a3eddba0",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "nadia galardo"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600833",
+        "data": {
+         "account_id": "SACRAMENTO",
+         "customer_id": "600833",
+         "customer_name": "NADIA GALLARDO"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "7152a9191c8eb450b57c68bb44bcbe14c1c3412cbb16936d56cbf781327f58b8"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T19:05:09.381000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "4bf11473-f8ee-4701-a1e0-0332bda690c5",
+   "generated_at": "2026-08-25T19:05:22.324073Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

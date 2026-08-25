@@ -1,0 +1,65 @@
+{
+ "sent": "1 unit",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run16-b930a027",
+   "conversation_version": 7,
+   "client_turn_id": "qa-350f5364-e2ab-4084-b298-cb2d55508f56",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "Which branch or location is the customer returning it through?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "Which branch or location is the customer returning it through?"
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "cdec77c9-9879-46c0-bea9-c50726ccc317",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "SIDNEY ARNETT",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "return_reason",
+     "value": "DAMAGED",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "ordered_quantity",
+     "value": 1,
+     "status": "USABLE",
+     "label": "quantity being returned",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:52:11.778000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "0e78dff5-044a-4d31-9ed0-64f7fe946e3b",
+   "generated_at": "2026-08-25T18:52:25.354693Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

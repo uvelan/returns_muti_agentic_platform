@@ -1,0 +1,15 @@
+[
+ {
+  "step": 8,
+  "state": "PASS",
+  "note": "return workflow drafted the support request (status AWAITING_SUPPORT)"
+ },
+ {
+  "step": 9,
+  "state": "FAIL",
+  "note": "bay answered although the timeout path was forced"
+ },
+ {
+  "failure": "step 9: bay answered although the timeout path was forced"
+ }
+]

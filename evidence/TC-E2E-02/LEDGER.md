@@ -18,3 +18,13 @@ One row per run. Never edited after append. `outcome`: clean | fail | infra.
 | 11 | A | A2 | ERIC BOONE / CF803505 | 1 | order-discovery worker had died during the container recovery window; turn never reached a poller | worker restart per infra ladder | infra | evidence/TC-E2E-02/run-11 |
 | 12 | A | A2 | GLENN WINSLOW / CI807883 | 8 | harness picked an order outside the standard return window; policy REVIEW_REQUIRED is the correct platform answer (OUTSIDE_STANDARD_RETURN_WINDOW) | run selection fixed (recent orders only) | fail | evidence/TC-E2E-02/run-12 |
 | 13 | A | A2 | VERONICA LAMBERT / CT805233 | - | - | - | clean | evidence/TC-E2E-02/run-13 |
+| 14 | A | A1 (re-clear after agent change) | NOEL WILKERSON / CT807912 | - | - | - | clean | evidence/TC-E2E-02/run-14 |
+| 15 | A | A2 (re-clear after agent change) | ERIC BOONE / CF803505 | - | - | - | clean | evidence/TC-E2E-02/run-15 |
+| 16 | A | A3 | SIDNEY ARNETT / CO809044 | 13 | platform produced 2 correct per-class records; harness assertion raced the async projection (later verified clean on resume) | run_flow poll fix, harness-only | fail | evidence/TC-E2E-02/run-16 |
+| 17 | A | A3 | RACHEL WHITFIELD / CW809330 (2 items: parcel + freight) | - | - | - | clean | evidence/TC-E2E-02/run-17 |
+| 18 | A | A4 | NADIA GALLARDO / CO807909 | 9 | bay answered from configuration (PRE_ARRIVAL_NOT_ALLOWED) before touching any store, so pausing SQL cannot force the timeout; timeout path needs allow_prearrival_reservation=true so placement performs real reads | release flip + neo4j pause (next run) | fail | evidence/TC-E2E-02/run-18 |
+| 19 | A | A4 | YOLANDA KAMINSKI / CJ805218 | 1 | responder re-read answered request files each poll and raced the provider's unlink on Windows (WinError 32 -> PROVIDER_UNAVAILABLE) | responder filename-keyed skip, harness-only | fail | evidence/TC-E2E-02/run-19 |
+| 20 | A | A4 | YOLANDA KAMINSKI / CJ805218 | 9 | return-workflow worker predated the bay-prearrival release; bay still answered from the old configuration | worker restart | infra | evidence/TC-E2E-02/run-20 |
+| 21 | A | A4 | LANCE LIVINGSTON / CZ808074 | - | bay window elapsed with no answer (graph paused during the bay call under allow_prearrival_reservation=true); return proceeded without a bay, nothing downstream blocked | - | clean | evidence/TC-E2E-02/run-21 |
+
+**Phase A gates: A1 = run 14, A2 = run 15, A3 = run 17, A4 = run 21 — all on the final agent code. Phase B begins.**

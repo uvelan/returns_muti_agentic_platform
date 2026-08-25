@@ -1,0 +1,72 @@
+{
+ "sent": "through the NASH branch",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run15-4009b8e0",
+   "conversation_version": 8,
+   "client_turn_id": "qa-71c7ed79-755f-4e92-aa49-a5fa8036e928",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "Any proof reference for the condition (photo/receipt id)? Reply 'none' if not available.",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "Any proof reference for the condition (photo/receipt id)? Reply 'none' if not available."
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "d389fd24-60e3-4c2d-ac49-68fa0502907b",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "ERIC BOONE",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "return_reason",
+     "value": "DAMAGED",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "ordered_quantity",
+     "value": 1,
+     "status": "USABLE",
+     "label": "quantity being returned",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "branch_location",
+     "value": "NASH",
+     "status": "USABLE",
+     "label": "branch handling the return",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:49:28.846000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "201e4f63-005a-4d26-b648-9168ea56bbdd",
+   "generated_at": "2026-08-25T18:49:39.422922Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

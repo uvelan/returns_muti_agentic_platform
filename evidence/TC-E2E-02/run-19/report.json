@@ -1,0 +1,5 @@
+[
+ {
+  "failure": "HTTP 503 /api/v2/order-agent/conversations/disc-tc02-run19-93794a00/turns: {\"data\":null,\"page\":null,\"meta\":{\"schema_version\":\"1.0\",\"request_id\":\"5fc8f1cc-0d4c-4e01-9364-051c53f0902f\",\"generated_at\":\"2026-08-25T19:33:15.772077Z\",\"freshness\":\"LIVE\",\"partial\":true,\"warnings\":[{\"source\":\"API\",\"code\":\"ORDER_AGENT_WORKFLOW_FAILED\",\"message\":\"The Order Discovery workflow could not process the request.\"}]}}"
+ }
+]

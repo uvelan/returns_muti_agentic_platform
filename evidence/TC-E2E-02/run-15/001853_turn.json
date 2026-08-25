@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CF803505",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run15-4009b8e0",
+   "conversation_version": 3,
+   "client_turn_id": "qa-28c97622-f0bc-45b6-9a55-2f528d66d608",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CF803505 / [REDACTED] / GARDEN GROVE / 2026-08-01",
+      "evidence_refs": [
+       {
+        "query_execution_id": "ca36de77-ebc5-4aad-b22e-33fea17b0d6c",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "ca36de77-ebc5-4aad-b22e-33fea17b0d6c",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "3880dd20924a3dff28bad2f3579ef300ae67062258f433b665f94426df9e79be",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CF803505"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CF803505",
+        "data": {
+         "order_key": "NASH*CF803505",
+         "account_id": "NASH",
+         "sales_order_number": "CF803505",
+         "customer_id": "600594",
+         "customer_name": "ERIC BOONE",
+         "customer_po_number": "MAINTENANCE",
+         "job_name": "WAREHOUSE",
+         "order_status": "CALLCSR",
+         "sales_type": "INV",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "596",
+         "ship_from_warehouse_id": "596",
+         "shipping_method": "CUSTOMER PICKUP",
+         "order_date": "2026-08-01T00:00:00.000000000",
+         "invoice_date": "2026-08-01T00:00:00.000000000",
+         "shipped_at": "2026-08-01T00:00:00.000000000",
+         "commit_date": "2026-08-01T00:00:00.000000000",
+         "ship_to_name": "ERIC BOONE",
+         "ship_to_phone": "212-555-0547",
+         "ship_to_city": "GARDEN GROVE",
+         "ship_to_state": "CA",
+         "ship_to_postal_code": "92892",
+         "source_updated_at": "2026-08-01T13:46:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "7d64d41fb80a22dc9e456a0a8d50c5142784942800c3045260d822cdda4dc0fc"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "ERIC BOONE",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:48:50.067000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "f5be1548-da76-4fb2-931a-e212e18750d0",
+   "generated_at": "2026-08-25T18:48:53.035092Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

@@ -1,0 +1,93 @@
+{
+ "sent": "what is the RMA and where does the parcel go?",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run21-974f6458",
+   "conversation_version": 10,
+   "client_turn_id": "qa-82fb92bd-2414-44e6-b673-a4338afa3d83",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "RMA RMA-DF94672DEEB6419EA0CDA25D7AB2059E is issued for this return.",
+      "evidence_refs": [],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "tracking reference: TRK-RMADF94672DEEB6419EA0CDA25D7AB2059E",
+      "evidence_refs": [],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "label reference: LBL-RMADF94672DEEB6419EA0CDA25D7AB2059E",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "df94672d-eeb6-419e-a0cd-a25d7ab2059e",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "LANCE LIVINGSTON",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "return_reason",
+     "value": "DAMAGED",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "ordered_quantity",
+     "value": 1,
+     "status": "USABLE",
+     "label": "quantity being returned",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "branch_location",
+     "value": "LAKEWOOD",
+     "status": "USABLE",
+     "label": "branch handling the return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "proof_reference",
+     "value": null,
+     "status": "INVALID",
+     "label": "proof of condition reference",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T19:53:23.905000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "572766c0-04e7-4b5b-aef4-ef6bd9fc64ac",
+   "generated_at": "2026-08-25T19:53:25.984621Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

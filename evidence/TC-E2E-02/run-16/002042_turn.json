@@ -1,0 +1,470 @@
+{
+ "sent": "Confirm the customer SIDNEY ARNETT on account ORL.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run16-b930a027",
+   "conversation_version": 2,
+   "client_turn_id": "qa-8e152be6-837b-4f63-863d-4d123094b781",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CO809044 / 2026-08-01T0 / KNOXVILLE / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "d2d1ffc0-b2bf-4c85-b6c1-4feeeb33d8be",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CQ802841 / 2026-03-19T0 / KNOXVILLE / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "d2d1ffc0-b2bf-4c85-b6c1-4feeeb33d8be",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CX805188 / 2026-03-03T0 / KNOXVILLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "d2d1ffc0-b2bf-4c85-b6c1-4feeeb33d8be",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CH800428 / 2026-02-05T0 / KNOXVILLE / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "d2d1ffc0-b2bf-4c85-b6c1-4feeeb33d8be",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CA808091 / 2025-11-25T0 / KNOXVILLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "d2d1ffc0-b2bf-4c85-b6c1-4feeeb33d8be",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CT800381 / 2025-05-25T0 / KNOXVILLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "d2d1ffc0-b2bf-4c85-b6c1-4feeeb33d8be",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 7: CK809292 / 2025-05-03T0 / KNOXVILLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "d2d1ffc0-b2bf-4c85-b6c1-4feeeb33d8be",
+        "result_path": [
+         "rows",
+         "6"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-7",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 8: CA809836 / 2025-02-04T0 / KNOXVILLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "d2d1ffc0-b2bf-4c85-b6c1-4feeeb33d8be",
+        "result_path": [
+         "rows",
+         "7"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-8",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 9: CZ808810 / 2025-02-05T0 / KNOXVILLE / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "d2d1ffc0-b2bf-4c85-b6c1-4feeeb33d8be",
+        "result_path": [
+         "rows",
+         "8"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-9",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 10: CF800483 / 2025-02-11T0 / KNOXVILLE / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "d2d1ffc0-b2bf-4c85-b6c1-4feeeb33d8be",
+        "result_path": [
+         "rows",
+         "9"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "d2d1ffc0-b2bf-4c85-b6c1-4feeeb33d8be",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "d0bd42cb6ded7f2b8a791bfb84ff93e0860250b80150da1f5391838ebe8b0128",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "ORL*CO809044",
+        "account_id": "ORL",
+        "sales_order_number": "CO809044",
+        "customer_id": "600396",
+        "customer_name": "SIDNEY ARNETT",
+        "customer_po_number": "MAINTENANCE",
+        "job_name": "SERVICE CALL",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-08-01T00:00:00.000000000",
+        "invoice_date": "2026-08-01T00:00:00.000000000",
+        "shipped_at": "2026-08-04T00:00:00.000000000",
+        "commit_date": "2026-08-01T00:00:00.000000000",
+        "ship_to_name": "SIDNEY ARNETT",
+        "ship_to_phone": "303-555-6180",
+        "ship_to_city": "KNOXVILLE",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37976",
+        "source_updated_at": "2026-08-01T17:57:00.000000000"
+       },
+       {
+        "order_key": "ORL*CQ802841",
+        "account_id": "ORL",
+        "sales_order_number": "CQ802841",
+        "customer_id": "600396",
+        "customer_name": "SIDNEY ARNETT",
+        "customer_po_number": "NEW CONSTRUCTION",
+        "job_name": "SHOP STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2624",
+        "ship_from_warehouse_id": "2624",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-03-19T00:00:00.000000000",
+        "invoice_date": "2026-03-19T00:00:00.000000000",
+        "shipped_at": "2026-03-19T00:00:00.000000000",
+        "commit_date": "2026-03-19T00:00:00.000000000",
+        "ship_to_name": "SIDNEY ARNETT",
+        "ship_to_phone": "303-555-6180",
+        "ship_to_city": "KNOXVILLE",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37976",
+        "source_updated_at": "2026-03-19T19:00:00.000000000"
+       },
+       {
+        "order_key": "ORL*CX805188",
+        "account_id": "ORL",
+        "sales_order_number": "CX805188",
+        "customer_id": "600396",
+        "customer_name": "SIDNEY ARNETT",
+        "customer_po_number": "RESIDENTIAL",
+        "job_name": "NEW CONSTRUCTION",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-03-03T00:00:00.000000000",
+        "invoice_date": "2026-03-03T00:00:00.000000000",
+        "shipped_at": "2026-03-06T00:00:00.000000000",
+        "commit_date": "2026-03-03T00:00:00.000000000",
+        "ship_to_name": "SIDNEY ARNETT",
+        "ship_to_phone": "303-555-6180",
+        "ship_to_city": "KNOXVILLE",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37976",
+        "source_updated_at": "2026-03-03T16:53:00.000000000"
+       },
+       {
+        "order_key": "ORL*CH800428",
+        "account_id": "ORL",
+        "sales_order_number": "CH800428",
+        "customer_id": "600396",
+        "customer_name": "SIDNEY ARNETT",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "SHOP STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "686",
+        "ship_from_warehouse_id": "686",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-02-05T00:00:00.000000000",
+        "invoice_date": "2026-02-05T00:00:00.000000000",
+        "shipped_at": "2026-02-06T00:00:00.000000000",
+        "commit_date": "2026-02-05T00:00:00.000000000",
+        "ship_to_name": "SIDNEY ARNETT",
+        "ship_to_phone": "303-555-6180",
+        "ship_to_city": "KNOXVILLE",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37976",
+        "source_updated_at": "2026-02-05T08:27:00.000000000"
+       },
+       {
+        "order_key": "ORL*CA808091",
+        "account_id": "ORL",
+        "sales_order_number": "CA808091",
+        "customer_id": "600396",
+        "customer_name": "SIDNEY ARNETT",
+        "customer_po_number": "TRUCK STOCK",
+        "job_name": "WAREHOUSE",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-11-25T00:00:00.000000000",
+        "invoice_date": "2025-11-25T00:00:00.000000000",
+        "shipped_at": "2025-11-28T00:00:00.000000000",
+        "commit_date": "2025-11-25T00:00:00.000000000",
+        "ship_to_name": "SIDNEY ARNETT",
+        "ship_to_phone": "303-555-6180",
+        "ship_to_city": "KNOXVILLE",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37976",
+        "source_updated_at": "2025-11-25T16:12:00.000000000"
+       },
+       {
+        "order_key": "ORL*CT800381",
+        "account_id": "ORL",
+        "sales_order_number": "CT800381",
+        "customer_id": "600396",
+        "customer_name": "SIDNEY ARNETT",
+        "customer_po_number": "TRUCK STOCK",
+        "job_name": "RESIDENTIAL",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "596",
+        "ship_from_warehouse_id": "596",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-05-25T00:00:00.000000000",
+        "invoice_date": "2025-05-25T00:00:00.000000000",
+        "shipped_at": "2025-05-28T00:00:00.000000000",
+        "commit_date": "2025-05-25T00:00:00.000000000",
+        "ship_to_name": "SIDNEY ARNETT",
+        "ship_to_phone": "303-555-6180",
+        "ship_to_city": "KNOXVILLE",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37976",
+        "source_updated_at": "2025-05-25T11:32:00.000000000"
+       },
+       {
+        "order_key": "ORL*CK809292",
+        "account_id": "ORL",
+        "sales_order_number": "CK809292",
+        "customer_id": "600396",
+        "customer_name": "SIDNEY ARNETT",
+        "customer_po_number": "MAINTENANCE",
+        "job_name": "REPLACEMENT",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "37",
+        "ship_from_warehouse_id": "37",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-05-03T00:00:00.000000000",
+        "invoice_date": "2025-05-03T00:00:00.000000000",
+        "shipped_at": "2025-05-03T00:00:00.000000000",
+        "commit_date": "2025-05-03T00:00:00.000000000",
+        "ship_to_name": "SIDNEY ARNETT",
+        "ship_to_phone": "303-555-6180",
+        "ship_to_city": "KNOXVILLE",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37976",
+        "source_updated_at": "2025-05-03T08:15:00.000000000"
+       },
+       {
+        "order_key": "ORL*CA809836",
+        "account_id": "ORL",
+        "sales_order_number": "CA809836",
+        "customer_id": "600396",
+        "customer_name": "SIDNEY ARNETT",
+        "customer_po_number": "JOB",
+        "job_name": "SHOP STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1781",
+        "ship_from_warehouse_id": "1781",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-02-04T00:00:00.000000000",
+        "invoice_date": "2025-02-04T00:00:00.000000000",
+        "shipped_at": "2025-02-07T00:00:00.000000000",
+        "commit_date": "2025-02-04T00:00:00.000000000",
+        "ship_to_name": "SIDNEY ARNETT",
+        "ship_to_phone": "303-555-6180",
+        "ship_to_city": "KNOXVILLE",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37976",
+        "source_updated_at": "2025-02-04T16:36:00.000000000"
+       },
+       {
+        "order_key": "ORL*CZ808810",
+        "account_id": "ORL",
+        "sales_order_number": "CZ808810",
+        "customer_id": "600396",
+        "customer_name": "SIDNEY ARNETT",
+        "customer_po_number": "WARRANTY",
+        "job_name": "JOB",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1969",
+        "ship_from_warehouse_id": "1969",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-02-05T00:00:00.000000000",
+        "invoice_date": "2025-02-05T00:00:00.000000000",
+        "shipped_at": "2025-02-08T00:00:00.000000000",
+        "commit_date": "2025-02-05T00:00:00.000000000",
+        "ship_to_name": "SIDNEY ARNETT",
+        "ship_to_phone": "303-555-6180",
+        "ship_to_city": "KNOXVILLE",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37976",
+        "source_updated_at": "2025-02-05T07:11:00.000000000"
+       },
+       {
+        "order_key": "ORL*CF800483",
+        "account_id": "ORL",
+        "sales_order_number": "CF800483",
+        "customer_id": "600396",
+        "customer_name": "SIDNEY ARNETT",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "JOB",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1556",
+        "ship_from_warehouse_id": "1556",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-02-11T00:00:00.000000000",
+        "invoice_date": "2025-02-11T00:00:00.000000000",
+        "shipped_at": "2025-02-14T00:00:00.000000000",
+        "commit_date": "2025-02-11T00:00:00.000000000",
+        "ship_to_name": "SIDNEY ARNETT",
+        "ship_to_phone": "303-555-6180",
+        "ship_to_city": "KNOXVILLE",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37976",
+        "source_updated_at": "2025-02-11T16:21:00.000000000"
+       }
+      ],
+      "count": 10
+     },
+     "result_checksum": "2d5c36f796e595a3e4f413d0525d71bbac8ba05286dfba96c10e3a62415314d4"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "SIDNEY ARNETT",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:50:38.526000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "2d8ef720-c8db-4ea4-b5b7-01aa750d8e9e",
+   "generated_at": "2026-08-25T18:50:42.302486Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CW809330",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run17-3eb8486b",
+   "conversation_version": 3,
+   "client_turn_id": "qa-3694c9bd-a5a3-4946-8d86-6c3eb5fae833",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CW809330 / [REDACTED] / TACOMA / 2026-07-31",
+      "evidence_refs": [
+       {
+        "query_execution_id": "b2091a16-d398-49aa-9e6e-2bf5fa5b2444",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "b2091a16-d398-49aa-9e6e-2bf5fa5b2444",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "ec200f935e79302e257eab095d4af18a6e75c81c4423c020816c8cc4dfd385c9",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CW809330"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CW809330",
+        "data": {
+         "order_key": "LENZ*CW809330",
+         "account_id": "LENZ",
+         "sales_order_number": "CW809330",
+         "customer_id": "600136",
+         "customer_name": "RACHEL WHITFIELD",
+         "customer_po_number": "STOCK",
+         "job_name": "MAINTENANCE",
+         "order_status": "CALLCSR",
+         "sales_type": "CASH",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "2028",
+         "ship_from_warehouse_id": "2028",
+         "shipping_method": "CUSTOMER PICKUP",
+         "order_date": "2026-07-31T00:00:00.000000000",
+         "invoice_date": "2026-07-31T00:00:00.000000000",
+         "shipped_at": "2026-08-01T00:00:00.000000000",
+         "commit_date": "2026-07-31T00:00:00.000000000",
+         "ship_to_name": "RACHEL WHITFIELD",
+         "ship_to_phone": "469-555-4324",
+         "ship_to_city": "TACOMA",
+         "ship_to_state": "WA",
+         "ship_to_postal_code": "98410",
+         "source_updated_at": "2026-07-31T14:26:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "74af591323d6aac132a47b18a12960b783b5c5a6e36769852a063380d37fb357"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "RACHEL WHITFIELD",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:58:30.770000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "63ce2832-3f10-47c2-9ed1-c7aaf549a894",
+   "generated_at": "2026-08-25T18:58:35.255033Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

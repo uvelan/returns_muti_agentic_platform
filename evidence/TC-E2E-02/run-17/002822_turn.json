@@ -1,0 +1,147 @@
+{
+ "sent": "customer wants to return an item, name is rachel whitfeild",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run17-3eb8486b",
+   "conversation_version": 1,
+   "client_turn_id": "qa-121f62b0-c72a-4857-b899-d130bd67a250",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 600137 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "33fa8cb9-806b-4f28-bbab-7ac3a1687ccf",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 2: 600135 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "33fa8cb9-806b-4f28-bbab-7ac3a1687ccf",
+        "result_path": [
+         "candidates",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 3: 600136 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "33fa8cb9-806b-4f28-bbab-7ac3a1687ccf",
+        "result_path": [
+         "candidates",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "33fa8cb9-806b-4f28-bbab-7ac3a1687ccf",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "b6957428076eb10d4c828ac1f93930e7a0a943405c5cb2e427ee731b9e72b0eb",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "rachel whitfeild"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600137",
+        "data": {
+         "account_id": "SEATTLE",
+         "customer_id": "600137",
+         "customer_name": "RACHEL WHITFIELD"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600135",
+        "data": {
+         "account_id": "ORL",
+         "customer_id": "600135",
+         "customer_name": "RACHEL WHITFIELD"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600136",
+        "data": {
+         "account_id": "LENZ",
+         "customer_id": "600136",
+         "customer_name": "RACHEL WHITFIELD"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 3,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "c90b9d185d15ae5f54713601317a450b8752c1bfa291e9dd094d89e8313fa48b"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T18:58:17.861000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "dbce4168-4572-43bb-bbd9-2034596c65e5",
+   "generated_at": "2026-08-25T18:58:22.737280Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}
