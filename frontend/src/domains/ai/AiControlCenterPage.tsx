@@ -1,6 +1,6 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { X } from "lucide-react";
+import { ChevronDown, Plus, X } from "lucide-react";
 
 import { APIError } from "../../api/client";
 import { configApi } from "../../api/configuration";
@@ -1807,6 +1807,77 @@ function eligibleTaskKeys(
 }
 
 
+
+/** One button, one menu: the providers not yet in the release, ready to add. */
+function AddProviderMenu({
+  absentKeys,
+  onAdd,
+}: {
+  absentKeys: readonly string[];
+  onAdd: (key: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (containerRef.current !== null && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  if (absentKeys.length === 0) return null;
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        aria-haspopup="true"
+        aria-expanded={open}
+        onClick={() => { setOpen((value) => !value); }}
+        className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-on-primary transition hover:bg-primary-container focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+      >
+        <Plus size={15} aria-hidden="true" />
+        Add provider
+        <ChevronDown
+          size={14}
+          aria-hidden="true"
+          className={`transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open ? (
+        <ul className="absolute right-0 top-full z-10 mt-1 w-48 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest py-1 shadow-lg">
+          {absentKeys.map((key) => (
+            <li key={key}>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  onAdd(key);
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-on-surface transition-colors hover:bg-surface-container-low"
+              >
+                {key}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 /** A provider present only in the live environment routing, not in the release. */
 type EnvProviderView = {
   provider: string;
@@ -1962,21 +2033,7 @@ function ProvidersTab() {
           Release <span className="font-mono">{summary.releaseId}</span> · providers are
           tried in rank order; models rank within their provider and tier.
         </p>
-        {absentKeys.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="premium-kicker">Add provider</span>
-            {absentKeys.map((key) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => { addProvider(key); }}
-                className="rounded-lg border border-outline-control px-2.5 py-1 text-xs font-medium text-on-surface-variant transition hover:bg-surface-container-low hover:text-on-surface"
-              >
-                + {key}
-              </button>
-            ))}
-          </div>
-        ) : null}
+        <AddProviderMenu absentKeys={absentKeys} onAdd={addProvider} />
       </div>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
