@@ -23,6 +23,7 @@ AGENT_MODULES = (
     "fulfillment",
     "bay_assignment",
     "feedback",
+    "support_response",
 )
 
 

@@ -108,6 +108,22 @@ export function newSupportEventId(workItemId: string): string {
   return `ui-${workItemId}-${crypto.randomUUID()}`;
 }
 
+/** What one Support Response Agent run did -- `return_support.py::SupportAgentRunView`. */
+export type SupportAgentRun = {
+  workItemId: string;
+  caseId: string | null;
+  outcome:
+    | "RESPONDED"
+    | "CLARIFICATION_REQUESTED"
+    | "SKIPPED_NO_CASE"
+    | "SKIPPED_STATUS"
+    | "SKIPPED_NO_HANDOFF";
+  returnReference: string | null;
+  supportEventId: string | null;
+  missingFields: string[];
+  detail: string | null;
+};
+
 export const supportApi = {
   async listWorkItems(status?: string): Promise<SupportWorkItem[]> {
     const query = status === undefined || status === "" ? "" : `?status=${encodeURIComponent(status)}`;
@@ -170,6 +186,24 @@ export const supportApi = {
         body: JSON.stringify(input),
       },
     );
+  },
+
+  /**
+   * Let the Support Response Agent answer this work item.
+   *
+   * The agent reads the thread's structured handoff, posts its message into the
+   * same conversation this console renders, and either records the RMA,
+   * tracking, label and instructions through the durable outcome seam or asks a
+   * clarification on the thread. Idempotent server-side on a per-work-item
+   * event id, so pressing this twice cannot issue a second RMA.
+   */
+  async runAgentResponse(workItemId: string): Promise<SupportAgentRun> {
+    const response = await apiClient<SupportAgentRun>(
+      `/api/v1/return-support/work-items/${encodeURIComponent(workItemId)}/agent-response`,
+      { method: "POST" },
+    );
+    if (!response.data) throw new Error("The agent run reported no outcome.");
+    return response.data;
   },
 
   async act(workItemId: string, input: SupportActionInput): Promise<void> {

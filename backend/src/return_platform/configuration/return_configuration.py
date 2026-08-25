@@ -28,18 +28,33 @@ class StrictConfigModel(BaseModel):
 
 
 class AgentConfiguration(StrictConfigModel):
+    """One agent's released settings.
+
+    The live surface is small: `name`, `version`, `enabled`, `ai_assisted`, and
+    `ai_route_ref`. Everything from `human_confirmation_required` down is read
+    by nothing -- agents are constructed by `AgentRegistry.build`, task queues
+    come from `Settings`, and capability labels were documentation posing as
+    configuration. Those fields are **retained as optional, not deleted**,
+    because releases are stored as `model_dump(mode="json")` with defaults
+    materialized and re-validated here with `extra="forbid"`: removing a field
+    would refuse every release already published. New releases simply stop
+    writing them (production.yaml no longer does), and a future migration that
+    rewrites stored payloads may then delete them.
+    """
+
     name: NonBlank
     version: NonBlank
     enabled: bool
     ai_assisted: bool
-    human_confirmation_required: bool
-    capabilities: tuple[NonBlank, ...] = Field(min_length=1)
-    implementation_id: NonBlank
-    task_queue: NonBlank
-    state_namespace: NonBlank
+    ai_route_ref: NonBlank | None = None
+    # --- Dead knobs, kept only so stored release payloads still parse. ------
+    human_confirmation_required: bool = True
+    capabilities: tuple[NonBlank, ...] = ()
+    implementation_id: NonBlank | None = None
+    task_queue: NonBlank | None = None
+    state_namespace: NonBlank | None = None
     prompt_ref: NonBlank | None = None
     policy_ref: NonBlank | None = None
-    ai_route_ref: NonBlank | None = None
     # There is deliberately no `failure_policy` here. What happens when a step
     # fails is not a per-agent setting: it is decided by the workflow phase that
     # calls it, in code, and it has to be, because the two directions are

@@ -196,3 +196,63 @@ class FeedbackAssessment(AgentModel):
     recommendations: tuple[str, ...]
     reviewRequired: bool
     decision: AgentDecisionView
+
+
+class SupportHandoffItemInput(AgentModel):
+    """One order line as the `support-handoff-v1` payload carries it."""
+
+    lineReference: str
+    productName: str | None = None
+    sku: str | None = None
+    quantity: int | None = Field(default=None, ge=1)
+    reason: str | None = None
+    condition: str | None = None
+
+
+class SupportResponseRequest(AgentModel):
+    """The handoff facts the Support Response Agent plans an RMA from.
+
+    `returnMethod` is a plain string, not `NormalizedReturnMethod`: the method
+    vocabulary is operator-owned through the Control Centre (D23/CFG-03), and an
+    enum here would refuse every method added after the day it was written. The
+    agent resolves what the method requires from the released
+    `return_policy.return_method_requirements` table instead.
+    """
+
+    caseId: str
+    workItemId: str
+    orderReference: str | None = None
+    customerName: str | None = None
+    returnMethod: str | None = None
+    bayReference: str | None = None
+    returnLocation: str | None = None
+    handlingInstructions: str | None = None
+    items: tuple[SupportHandoffItemInput, ...] = Field(min_length=1)
+
+
+class SupportRmaPlan(AgentModel):
+    """One RMA the agent is prepared to issue, artifact-for-artifact what the
+    configured return method requires and nothing the method does not."""
+
+    returnReference: str
+    trackingReference: str | None
+    labelReference: str | None
+    returnLocation: str | None
+    shippingInstructionReference: str | None
+    returnMethod: str | None
+    carrier: str | None
+    orderLineReferences: tuple[str, ...] = Field(min_length=1)
+    #: What the person physically handling the product should do, composed from
+    #: the product, its condition, the method, and the bay recommendation.
+    instructions: str
+
+
+class SupportResponseAssessment(AgentModel):
+    ready: bool
+    missingFields: tuple[str, ...]
+    #: The question to put back on the thread when `ready` is false.
+    clarificationRequest: str | None
+    plan: SupportRmaPlan | None
+    #: The message the Support conversation shows for this response.
+    messageText: str
+    decision: AgentDecisionView

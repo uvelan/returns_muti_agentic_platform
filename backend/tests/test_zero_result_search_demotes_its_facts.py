@@ -14,7 +14,7 @@ merges against it as a rival rather than replacing it).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -53,7 +53,7 @@ def catalogue() -> FactCatalogue:
 
 @pytest.fixture
 def as_of() -> datetime:
-    return datetime(2026, 8, 24, 12, 0, tzinfo=timezone.utc)
+    return datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
 
 
 def _after_failed_search(

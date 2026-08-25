@@ -37,6 +37,10 @@ from return_platform.agents.contracts.dto import (
     ReturnItemInput,
     ReturnWorkflowAssessment,
     ReturnWorkflowAssessmentRequest,
+    SupportHandoffItemInput,
+    SupportResponseAssessment,
+    SupportResponseRequest,
+    SupportRmaPlan,
 )
 from return_platform.agents.contracts.ports import AgentAiPort, KnowledgePort
 
@@ -67,4 +71,8 @@ __all__ = [
     "ReturnItemInput",
     "ReturnWorkflowAssessment",
     "ReturnWorkflowAssessmentRequest",
+    "SupportHandoffItemInput",
+    "SupportResponseAssessment",
+    "SupportResponseRequest",
+    "SupportRmaPlan",
 ]

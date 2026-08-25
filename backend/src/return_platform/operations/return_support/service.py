@@ -219,6 +219,192 @@ def production_events_for_support_action(
     return (primary,)
 
 
+#: Queue ordering for each priority. One spelling, shared by every writer.
+_PRIORITY_RANK: Final[dict[str, int]] = {"CRITICAL": 0, "HIGH": 1, "NORMAL": 2, "LOW": 3}
+
+
+def _work_item_document(
+    *,
+    item_id: str,
+    thread_id: str,
+    now: datetime,
+    sla_due_at: datetime,
+    idempotency_key: str,
+    created_by: str,
+    subject: str,
+    request_snapshot_digest: str,
+    priority: str = "NORMAL",
+    queue: str = "RETURNS_SUPPORT",
+    scope: dict[str, Any],
+) -> dict[str, Any]:
+    """The shared work-item skeleton `create_work_item` and `open_case_thread` write.
+
+    The two writers used to spell all ~30 fields out independently, and the only
+    honest difference between the copies was `scope` -- `{"sessionId": ...}` for
+    the legacy session shape, `{"caseId": ..., "tenantId": ..., "sessionId": None}`
+    for Channel B. Everything else was one skeleton written twice, which is how
+    the copies drift.
+    """
+    return {
+        "_id": item_id,
+        **scope,
+        "threadId": thread_id,
+        "status": SupportWorkItemStatus.NEW.value,
+        "priority": priority,
+        "priorityRank": _PRIORITY_RANK[priority],
+        "queue": queue,
+        "subject": subject,
+        "requestSnapshotDigest": request_snapshot_digest,
+        "assignedTo": None,
+        "externalTicketReference": None,
+        "returnVersion": None,
+        "returnReference": None,
+        "returnCreationCommandId": None,
+        "returnCreationRequestedAt": None,
+        "shippingInstructionReference": None,
+        "customerResolutionStatus": None,
+        "acknowledgedAt": None,
+        "returnCreatedAt": None,
+        "shippingInstructionsIssuedAt": None,
+        "customerResolutionRecordedAt": None,
+        "completedAt": None,
+        "slaDueAt": sla_due_at,
+        "lastMessageSequence": 1,
+        "version": 0,
+        "idempotencyKey": idempotency_key,
+        "createdBy": created_by,
+        "createdAt": now,
+        "updatedAt": now,
+    }
+
+
+def _opening_message(
+    *,
+    thread_id: str,
+    now: datetime,
+    sender_role: str,
+    sender_id: str,
+    text: str,
+    business_payload: dict[str, Any],
+) -> dict[str, Any]:
+    """The thread's sequence-1 REQUEST message, shared by both openers."""
+    return {
+        "_id": str(uuid.uuid4()),
+        "threadId": thread_id,
+        "sequence": 1,
+        "senderRole": sender_role,
+        "senderId": sender_id,
+        "messageType": SupportMessageType.REQUEST.value,
+        "messageText": text,
+        "attachmentIds": [],
+        "businessPayload": business_payload,
+        "createdAt": now,
+    }
+
+
+#: Which actions are legal from each status. Module-level and immutable rather
+#: than rebuilt inside every `_validate_action` call, which is what it used to
+#: be -- the table is configuration-shaped data, not per-call state.
+_ALLOWED_ACTIONS: Final[dict[SupportWorkItemStatus, frozenset[SupportAction]]] = {
+    SupportWorkItemStatus.NEW: frozenset(
+        {
+            SupportAction.ASSIGN,
+            SupportAction.ACKNOWLEDGE,
+            SupportAction.REQUEST_CLARIFICATION,
+            SupportAction.REJECT,
+            SupportAction.CANCEL,
+            SupportAction.ATTACH_EXTERNAL_TICKET,
+        }
+    ),
+    SupportWorkItemStatus.ACKNOWLEDGED: frozenset(
+        {
+            SupportAction.ASSIGN,
+            SupportAction.START_WORK,
+            SupportAction.REQUEST_CLARIFICATION,
+            SupportAction.REQUEST_RETURN_CREATION,
+            SupportAction.RECORD_RETURN_CREATION,
+            SupportAction.REJECT,
+            SupportAction.CANCEL,
+            SupportAction.ATTACH_EXTERNAL_TICKET,
+        }
+    ),
+    SupportWorkItemStatus.CLARIFICATION_REQUIRED: frozenset(
+        {
+            SupportAction.ASSIGN,
+            SupportAction.START_WORK,
+            SupportAction.REJECT,
+            SupportAction.CANCEL,
+            SupportAction.ATTACH_EXTERNAL_TICKET,
+        }
+    ),
+    SupportWorkItemStatus.IN_PROGRESS: frozenset(
+        {
+            SupportAction.ASSIGN,
+            SupportAction.REQUEST_CLARIFICATION,
+            SupportAction.REQUEST_RETURN_CREATION,
+            SupportAction.RECORD_RETURN_CREATION,
+            SupportAction.REJECT,
+            SupportAction.CANCEL,
+            SupportAction.ATTACH_EXTERNAL_TICKET,
+        }
+    ),
+    SupportWorkItemStatus.RETURN_CREATION_PENDING: frozenset(
+        {
+            SupportAction.ASSIGN,
+            SupportAction.RECORD_RETURN_CREATION,
+            SupportAction.REQUEST_CLARIFICATION,
+            SupportAction.CANCEL,
+            SupportAction.ATTACH_EXTERNAL_TICKET,
+        }
+    ),
+    # A work item waiting on a manufacturer or a carrier is still a work
+    # item Support owns: it can be reassigned, chased, progressed when
+    # the answer comes back, rejected, or cancelled. The action set
+    # therefore matches `IN_PROGRESS` -- what changes is who everyone is
+    # waiting for, not what Support may do about it.
+    SupportWorkItemStatus.EXTERNAL_PARTY_REVIEW: frozenset(
+        {
+            SupportAction.ASSIGN,
+            SupportAction.REQUEST_CLARIFICATION,
+            SupportAction.REQUEST_RETURN_CREATION,
+            SupportAction.RECORD_RETURN_CREATION,
+            SupportAction.REJECT,
+            SupportAction.CANCEL,
+            SupportAction.ATTACH_EXTERNAL_TICKET,
+        }
+    ),
+    SupportWorkItemStatus.RETURN_CREATED: frozenset(
+        {
+            SupportAction.RECORD_SHIPPING_INSTRUCTIONS,
+            SupportAction.RECORD_CUSTOMER_RESOLUTION,
+            SupportAction.MARK_READY_FOR_ASSOCIATE,
+            SupportAction.COMPLETE,
+            SupportAction.CANCEL,
+            SupportAction.ATTACH_EXTERNAL_TICKET,
+        }
+    ),
+    SupportWorkItemStatus.SHIPPING_INSTRUCTIONS_PENDING: frozenset(
+        {
+            SupportAction.RECORD_SHIPPING_INSTRUCTIONS,
+            SupportAction.RECORD_CUSTOMER_RESOLUTION,
+            SupportAction.CANCEL,
+            SupportAction.ATTACH_EXTERNAL_TICKET,
+        }
+    ),
+    SupportWorkItemStatus.READY_FOR_ASSOCIATE: frozenset(
+        {
+            SupportAction.RECORD_CUSTOMER_RESOLUTION,
+            SupportAction.COMPLETE,
+            SupportAction.CANCEL,
+            SupportAction.ATTACH_EXTERNAL_TICKET,
+        }
+    ),
+    SupportWorkItemStatus.COMPLETED: frozenset({SupportAction.ATTACH_EXTERNAL_TICKET}),
+    SupportWorkItemStatus.REJECTED: frozenset({SupportAction.ATTACH_EXTERNAL_TICKET}),
+    SupportWorkItemStatus.CANCELLED: frozenset({SupportAction.ATTACH_EXTERNAL_TICKET}),
+}
+
+
 class ReturnSupportService:
     """Platform-owned business queue; external ticketing is an optional mirror."""
 
@@ -312,49 +498,26 @@ class ReturnSupportService:
         item_id = str(uuid.uuid4())
         thread_id = str(uuid.uuid4())
         sla_minutes = self._config.workflow.sla_minutes["support_acknowledgement"]
-        document: dict[str, Any] = {
-            "_id": item_id,
-            "sessionId": request.sessionId,
-            "threadId": thread_id,
-            "status": SupportWorkItemStatus.NEW.value,
-            "priority": request.priority,
-            "priorityRank": {"CRITICAL": 0, "HIGH": 1, "NORMAL": 2, "LOW": 3}[request.priority],
-            "queue": "RETURNS_SUPPORT",
-            "subject": request.subject,
-            "requestSnapshotDigest": request.requestSnapshotDigest,
-            "assignedTo": None,
-            "externalTicketReference": None,
-            "returnVersion": None,
-            "returnReference": None,
-            "returnCreationCommandId": None,
-            "returnCreationRequestedAt": None,
-            "shippingInstructionReference": None,
-            "customerResolutionStatus": None,
-            "acknowledgedAt": None,
-            "returnCreatedAt": None,
-            "shippingInstructionsIssuedAt": None,
-            "customerResolutionRecordedAt": None,
-            "completedAt": None,
-            "slaDueAt": now + timedelta(minutes=sla_minutes),
-            "lastMessageSequence": 1,
-            "version": 0,
-            "idempotencyKey": request.idempotencyKey,
-            "createdBy": actor_id,
-            "createdAt": now,
-            "updatedAt": now,
-        }
-        message = {
-            "_id": str(uuid.uuid4()),
-            "threadId": thread_id,
-            "sequence": 1,
-            "senderRole": "ASSOCIATE",
-            "senderId": actor_id,
-            "messageType": SupportMessageType.REQUEST.value,
-            "messageText": request.supportDraft,
-            "attachmentIds": [],
-            "businessPayload": {"requestSnapshotDigest": request.requestSnapshotDigest},
-            "createdAt": now,
-        }
+        document = _work_item_document(
+            item_id=item_id,
+            thread_id=thread_id,
+            now=now,
+            sla_due_at=now + timedelta(minutes=sla_minutes),
+            idempotency_key=request.idempotencyKey,
+            created_by=actor_id,
+            subject=request.subject,
+            request_snapshot_digest=request.requestSnapshotDigest,
+            priority=request.priority,
+            scope={"sessionId": request.sessionId},
+        )
+        message = _opening_message(
+            thread_id=thread_id,
+            now=now,
+            sender_role="ASSOCIATE",
+            sender_id=actor_id,
+            text=request.supportDraft,
+            business_payload={"requestSnapshotDigest": request.requestSnapshotDigest},
+        )
         outbox: dict[str, Any] | None = None
         if self._config.support.external_mirror_enabled:
             outbox = {
@@ -547,59 +710,34 @@ class ReturnSupportService:
         item_id = work_item_id or str(uuid.uuid4())
         thread_id = str(uuid.uuid4())
         sla_minutes = self._config.workflow.sla_minutes["support_acknowledgement"]
-        document: dict[str, Any] = {
-            "_id": item_id,
-            "caseId": case_id,
-            "tenantId": tenant_id,
-            "sessionId": None,
-            "threadId": thread_id,
-            "status": SupportWorkItemStatus.NEW.value,
-            "priority": "NORMAL",
-            "priorityRank": 2,
-            "queue": queue or "RETURNS_SUPPORT",
-            "subject": (subject or "").strip() or f"Return request for case {case_id}",
-            "requestSnapshotDigest": _digest({"caseId": case_id}),
-            "assignedTo": None,
-            "externalTicketReference": None,
-            "returnVersion": None,
-            "returnReference": None,
-            "returnCreationCommandId": None,
-            "returnCreationRequestedAt": None,
-            "shippingInstructionReference": None,
-            "customerResolutionStatus": None,
-            "acknowledgedAt": None,
-            "returnCreatedAt": None,
-            "shippingInstructionsIssuedAt": None,
-            "customerResolutionRecordedAt": None,
-            "completedAt": None,
+        document = _work_item_document(
+            item_id=item_id,
+            thread_id=thread_id,
+            now=now,
             # The caller's deadline wins where there is one; the desk's own SLA
             # is the fallback and not the default, which is the difference D2
             # closed. A tz-aware instant is required: a naive one stored beside
             # aware ones compares wrong in every query that sorts on this field.
-            "slaDueAt": (
+            sla_due_at=(
                 sla_due_at if sla_due_at is not None else now + timedelta(minutes=sla_minutes)
             ),
-            "lastMessageSequence": 1,
-            "version": 0,
-            "idempotencyKey": idempotency_key,
-            "createdBy": principal_id,
-            "createdAt": now,
-            "updatedAt": now,
-        }
-        message = {
-            "_id": str(uuid.uuid4()),
-            "threadId": thread_id,
-            "sequence": 1,
-            "senderRole": "AGENT",
-            "senderId": "return-workflow-agent",
-            "messageType": SupportMessageType.REQUEST.value,
-            "messageText": support_draft,
-            "attachmentIds": [],
+            idempotency_key=idempotency_key,
+            created_by=principal_id,
+            subject=(subject or "").strip() or f"Return request for case {case_id}",
+            request_snapshot_digest=_digest({"caseId": case_id}),
+            queue=queue or "RETURNS_SUPPORT",
+            scope={"caseId": case_id, "tenantId": tenant_id, "sessionId": None},
+        )
+        message = _opening_message(
+            thread_id=thread_id,
+            now=now,
+            sender_role="AGENT",
+            sender_id="return-workflow-agent",
+            text=support_draft,
             # The case id is written last so a caller cannot displace it: it is
             # the link every reader of this message resolves the case through.
-            "businessPayload": {**dict(business_payload or {}), "caseId": case_id},
-            "createdAt": now,
-        }
+            business_payload={**dict(business_payload or {}), "caseId": case_id},
+        )
 
         async def _open(mongo_session: AsyncClientSession) -> None:
             await self._work_items.insert_one(document, session=mongo_session)
@@ -721,105 +859,7 @@ class ReturnSupportService:
 
     @staticmethod
     def _validate_action(status: SupportWorkItemStatus, action: SupportAction) -> None:
-        allowed: dict[SupportWorkItemStatus, frozenset[SupportAction]] = {
-            SupportWorkItemStatus.NEW: frozenset(
-                {
-                    SupportAction.ASSIGN,
-                    SupportAction.ACKNOWLEDGE,
-                    SupportAction.REQUEST_CLARIFICATION,
-                    SupportAction.REJECT,
-                    SupportAction.CANCEL,
-                    SupportAction.ATTACH_EXTERNAL_TICKET,
-                }
-            ),
-            SupportWorkItemStatus.ACKNOWLEDGED: frozenset(
-                {
-                    SupportAction.ASSIGN,
-                    SupportAction.START_WORK,
-                    SupportAction.REQUEST_CLARIFICATION,
-                    SupportAction.REQUEST_RETURN_CREATION,
-                    SupportAction.RECORD_RETURN_CREATION,
-                    SupportAction.REJECT,
-                    SupportAction.CANCEL,
-                    SupportAction.ATTACH_EXTERNAL_TICKET,
-                }
-            ),
-            SupportWorkItemStatus.CLARIFICATION_REQUIRED: frozenset(
-                {
-                    SupportAction.ASSIGN,
-                    SupportAction.START_WORK,
-                    SupportAction.REJECT,
-                    SupportAction.CANCEL,
-                    SupportAction.ATTACH_EXTERNAL_TICKET,
-                }
-            ),
-            SupportWorkItemStatus.IN_PROGRESS: frozenset(
-                {
-                    SupportAction.ASSIGN,
-                    SupportAction.REQUEST_CLARIFICATION,
-                    SupportAction.REQUEST_RETURN_CREATION,
-                    SupportAction.RECORD_RETURN_CREATION,
-                    SupportAction.REJECT,
-                    SupportAction.CANCEL,
-                    SupportAction.ATTACH_EXTERNAL_TICKET,
-                }
-            ),
-            SupportWorkItemStatus.RETURN_CREATION_PENDING: frozenset(
-                {
-                    SupportAction.ASSIGN,
-                    SupportAction.RECORD_RETURN_CREATION,
-                    SupportAction.REQUEST_CLARIFICATION,
-                    SupportAction.CANCEL,
-                    SupportAction.ATTACH_EXTERNAL_TICKET,
-                }
-            ),
-            # A work item waiting on a manufacturer or a carrier is still a work
-            # item Support owns: it can be reassigned, chased, progressed when
-            # the answer comes back, rejected, or cancelled. The action set
-            # therefore matches `IN_PROGRESS` -- what changes is who everyone is
-            # waiting for, not what Support may do about it.
-            SupportWorkItemStatus.EXTERNAL_PARTY_REVIEW: frozenset(
-                {
-                    SupportAction.ASSIGN,
-                    SupportAction.REQUEST_CLARIFICATION,
-                    SupportAction.REQUEST_RETURN_CREATION,
-                    SupportAction.RECORD_RETURN_CREATION,
-                    SupportAction.REJECT,
-                    SupportAction.CANCEL,
-                    SupportAction.ATTACH_EXTERNAL_TICKET,
-                }
-            ),
-            SupportWorkItemStatus.RETURN_CREATED: frozenset(
-                {
-                    SupportAction.RECORD_SHIPPING_INSTRUCTIONS,
-                    SupportAction.RECORD_CUSTOMER_RESOLUTION,
-                    SupportAction.MARK_READY_FOR_ASSOCIATE,
-                    SupportAction.COMPLETE,
-                    SupportAction.CANCEL,
-                    SupportAction.ATTACH_EXTERNAL_TICKET,
-                }
-            ),
-            SupportWorkItemStatus.SHIPPING_INSTRUCTIONS_PENDING: frozenset(
-                {
-                    SupportAction.RECORD_SHIPPING_INSTRUCTIONS,
-                    SupportAction.RECORD_CUSTOMER_RESOLUTION,
-                    SupportAction.CANCEL,
-                    SupportAction.ATTACH_EXTERNAL_TICKET,
-                }
-            ),
-            SupportWorkItemStatus.READY_FOR_ASSOCIATE: frozenset(
-                {
-                    SupportAction.RECORD_CUSTOMER_RESOLUTION,
-                    SupportAction.COMPLETE,
-                    SupportAction.CANCEL,
-                    SupportAction.ATTACH_EXTERNAL_TICKET,
-                }
-            ),
-            SupportWorkItemStatus.COMPLETED: frozenset({SupportAction.ATTACH_EXTERNAL_TICKET}),
-            SupportWorkItemStatus.REJECTED: frozenset({SupportAction.ATTACH_EXTERNAL_TICKET}),
-            SupportWorkItemStatus.CANCELLED: frozenset({SupportAction.ATTACH_EXTERNAL_TICKET}),
-        }
-        if action not in allowed[status]:
+        if action not in _ALLOWED_ACTIONS[status]:
             raise ValueError(f"Action {action.value} is not valid from {status.value}")
 
     async def apply_action(

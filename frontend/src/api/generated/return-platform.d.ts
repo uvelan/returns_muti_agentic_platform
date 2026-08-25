@@ -3136,6 +3136,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/return-support/work-items/{work_item_id}/agent-response": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Support Response Agent
+         * @description Let the Support Response Agent answer this work item.
+         *
+         *     Reads the thread's `support-handoff-v1` payload, posts the agent's message
+         *     into the same conversation the Support UI chat renders, and — when the
+         *     handoff carries everything the confirmed return method requires — records
+         *     the RMA, tracking, label and instructions through the same durable outcome
+         *     seam as `submit_return_outcome`, idempotent on
+         *     `support-response-agent:<workItemId>`. When something is missing it asks on
+         *     the thread instead, and creates nothing.
+         */
+        post: operations["run_support_response_agent_api_v1_return_support_work_items__work_item_id__agent_response_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/return-support/work-items/{work_item_id}/messages": {
         parameters: {
             query?: never;
@@ -4461,6 +4489,12 @@ export interface components {
         /** APIResponse[SourceDetail] */
         APIResponse_SourceDetail_: {
             data?: components["schemas"]["SourceDetail"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[SupportAgentRunView] */
+        APIResponse_SupportAgentRunView_: {
+            data?: components["schemas"]["SupportAgentRunView"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -9832,6 +9866,29 @@ export interface components {
             trackingNumbers: string[];
         };
         /**
+         * SupportAgentRunView
+         * @description What one Support Response Agent run did to this work item.
+         */
+        SupportAgentRunView: {
+            /** Caseid */
+            caseId: string | null;
+            /** Detail */
+            detail?: string | null;
+            /**
+             * Missingfields
+             * @default []
+             */
+            missingFields: string[];
+            /** Outcome */
+            outcome: string;
+            /** Returnreference */
+            returnReference?: string | null;
+            /** Supporteventid */
+            supportEventId?: string | null;
+            /** Workitemid */
+            workItemId: string;
+        };
+        /**
          * SupportCaseStatus
          * @enum {string}
          */
@@ -14879,6 +14936,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_SupportWorkItemView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_support_response_agent_api_v1_return_support_work_items__work_item_id__agent_response_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                work_item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_SupportAgentRunView_"];
                 };
             };
             /** @description Validation Error */

@@ -1,10 +1,10 @@
 # agents
 
-The six independent business agents and the one registry that constructs them. See
-`contracts/README.md` for the shapes they share, and `registry/README.md` for how
-they're constructed.
+The seven independent business agents and the one registry that constructs them.
+See `contracts/README.md` for the shapes they share, and `registry/README.md` for
+how they're constructed.
 
-## The six agents
+## The seven agents
 
 There is no per-agent subdirectory (each agent is one file) — each gets a sibling
 `<name>.md` next to its `.py` instead of a directory README:
@@ -16,6 +16,7 @@ Return Workflow      return_workflow.py     return_workflow.md
 Return Fulfillment   fulfillment.py         fulfillment.md
 Bay Assignment       bay_assignment.py      bay_assignment.md
 Feedback Learning    feedback.py            feedback.md
+Support Response     support_response.py    support_response.md
 ```
 
 Each covers responsibility, input, output, queue, state, prompt, policy, AI route,

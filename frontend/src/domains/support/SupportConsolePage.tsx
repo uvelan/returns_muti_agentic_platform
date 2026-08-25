@@ -32,6 +32,7 @@ import {
   newSupportEventId,
   supportApi,
   type ReturnOutcomeRecordInput,
+  type SupportAgentRun,
   type SupportMessage,
   type SupportWorkItem,
 } from "../../api/support";
@@ -549,13 +550,16 @@ function CasePane({
         ) : null}
 
         {workItemId === null ? null : (
-          <IssueOutcomeForm
-            workItemId={workItemId}
-            caseId={item.caseId}
-            unassignedItems={selectedItems}
-            suggestedReturnLocation={bay.returnLocation}
-            canAct={canAct}
-          />
+          <>
+            <AgentResponsePanel workItemId={workItemId} caseId={item.caseId} canAct={canAct} />
+            <IssueOutcomeForm
+              workItemId={workItemId}
+              caseId={item.caseId}
+              unassignedItems={selectedItems}
+              suggestedReturnLocation={bay.returnLocation}
+              canAct={canAct}
+            />
+          </>
         )}
       </div>
     </Pane>
@@ -1160,6 +1164,67 @@ function toInput(draft: DraftRecord): ReturnOutcomeRecordInput {
     // how an RMA covering nothing used to reach the server.
     orderLineReferences: [...draft.orderLineReferences],
   };
+}
+
+/**
+ * Let the Support Response Agent answer this request.
+ *
+ * One button, one server-side act. The agent posts into the same thread the
+ * middle pane renders and either records the outcome (RMA, tracking, label,
+ * instructions -- exactly what the confirmed return method requires) or asks a
+ * clarification on the thread. Idempotent server-side, so the button can be
+ * pressed again after a lost response without a second RMA.
+ */
+function AgentResponsePanel({
+  workItemId,
+  caseId,
+  canAct,
+}: {
+  workItemId: string;
+  caseId: string;
+  canAct: boolean;
+}) {
+  const client = useQueryClient();
+  const run = useMutation({
+    mutationFn: () => supportApi.runAgentResponse(workItemId),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: ["support", "work-item", workItemId] });
+      await client.invalidateQueries({ queryKey: ["support", "messages", workItemId] });
+      await client.invalidateQueries({ queryKey: ["support", "work-items"] });
+      await client.invalidateQueries({ queryKey: ["cases", caseId] });
+    },
+  });
+
+  if (!canAct) return null;
+
+  const outcome: SupportAgentRun | undefined = run.data;
+  return (
+    <div className="flex flex-col gap-1 border-t border-outline-variant pt-3">
+      {run.error === null ? null : (
+        <p role="alert" className="text-[11px] text-error">
+          {run.error.message}
+        </p>
+      )}
+      {outcome === undefined ? null : (
+        <p role="status" className="text-[11px] text-on-surface-variant">
+          {outcome.outcome === "RESPONDED"
+            ? `The agent issued ${outcome.returnReference ?? "the RMA"} and posted the instructions to the thread.`
+            : outcome.outcome === "CLARIFICATION_REQUESTED"
+              ? `The agent asked on the thread for: ${outcome.missingFields.join(", ")}.`
+              : (outcome.detail ?? "The agent made no change.")}
+        </p>
+      )}
+      <button
+        type="button"
+        disabled={run.isPending}
+        onClick={() => run.mutate()}
+        className="flex items-center gap-1.5 self-start text-xs text-primary transition hover:underline disabled:opacity-50"
+      >
+        <Bot size={14} aria-hidden="true" />
+        {run.isPending ? "Agent is answering..." : "Let the agent answer"}
+      </button>
+    </div>
+  );
 }
 
 /**

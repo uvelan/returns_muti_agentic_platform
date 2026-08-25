@@ -3139,6 +3139,39 @@
         "title": "APIResponse[SourceDetail]",
         "type": "object"
       },
+      "APIResponse_SupportAgentRunView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SupportAgentRunView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[SupportAgentRunView]",
+        "type": "object"
+      },
       "APIResponse_SupportCaseView_": {
         "additionalProperties": false,
         "properties": {
@@ -17478,6 +17511,79 @@
         "title": "SupportActionRequest",
         "type": "object"
       },
+      "SupportAgentRunView": {
+        "additionalProperties": false,
+        "description": "What one Support Response Agent run did to this work item.",
+        "properties": {
+          "caseId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caseid"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "missingFields": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Missingfields",
+            "type": "array"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "returnReference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returnreference"
+          },
+          "supportEventId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supporteventid"
+          },
+          "workItemId": {
+            "title": "Workitemid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workItemId",
+          "caseId",
+          "outcome"
+        ],
+        "title": "SupportAgentRunView",
+        "type": "object"
+      },
       "SupportCaseStatus": {
         "enum": [
           "OPEN",
@@ -25486,6 +25592,49 @@
           }
         },
         "summary": "Apply Action",
+        "tags": [
+          "Returns Support"
+        ]
+      }
+    },
+    "/api/v1/return-support/work-items/{work_item_id}/agent-response": {
+      "post": {
+        "description": "Let the Support Response Agent answer this work item.\n\nReads the thread's `support-handoff-v1` payload, posts the agent's message\ninto the same conversation the Support UI chat renders, and \u2014 when the\nhandoff carries everything the confirmed return method requires \u2014 records\nthe RMA, tracking, label and instructions through the same durable outcome\nseam as `submit_return_outcome`, idempotent on\n`support-response-agent:<workItemId>`. When something is missing it asks on\nthe thread instead, and creates nothing.",
+        "operationId": "run_support_response_agent_api_v1_return_support_work_items__work_item_id__agent_response_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "work_item_id",
+            "required": true,
+            "schema": {
+              "title": "Work Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SupportAgentRunView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Support Response Agent",
         "tags": [
           "Returns Support"
         ]

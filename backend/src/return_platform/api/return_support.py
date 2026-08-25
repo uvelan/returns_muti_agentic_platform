@@ -7,6 +7,7 @@ from typing import cast
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from return_platform.agents.support_response import SupportResponseAgent
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
 from return_platform.operations.models import CaseStatus
 from return_platform.operations.production_event_authorization import (
@@ -14,6 +15,10 @@ from return_platform.operations.production_event_authorization import (
 )
 from return_platform.operations.production_workflow import ProductionWorkflowCoordinator
 from return_platform.operations.repository import ConcurrencyConflictError, OperationalRepository
+from return_platform.operations.return_support.auto_responder import (
+    SupportAgentRunOutcome,
+    SupportAutoResponder,
+)
 from return_platform.operations.return_support.service import (
     CreateSupportMessageRequest,
     CreateSupportWorkItemRequest,
@@ -309,6 +314,93 @@ async def apply_action(
                     ),
                 )
     return APIResponse(data=data, meta=_meta(request))
+
+
+class SupportAgentRunView(BaseModel):
+    """What one Support Response Agent run did to this work item."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workItemId: str
+    caseId: str | None
+    outcome: str
+    returnReference: str | None = None
+    supportEventId: str | None = None
+    missingFields: tuple[str, ...] = ()
+    detail: str | None = None
+
+
+@router.post(
+    "/work-items/{work_item_id}/agent-response",
+    response_model=APIResponse[SupportAgentRunView],
+)
+async def run_support_response_agent(
+    work_item_id: str,
+    request: Request,
+    # The agent acts as Support, so triggering it is gated the way Support's own
+    # outcome-recording actions are.
+    actor_id: str = Depends(require_support_roles),
+) -> APIResponse[SupportAgentRunView]:
+    """Let the Support Response Agent answer this work item.
+
+    Reads the thread's `support-handoff-v1` payload, posts the agent's message
+    into the same conversation the Support UI chat renders, and — when the
+    handoff carries everything the confirmed return method requires — records
+    the RMA, tracking, label and instructions through the same durable outcome
+    seam as `submit_return_outcome`, idempotent on
+    `support-response-agent:<workItemId>`. When something is missing it asks on
+    the thread instead, and creates nothing.
+    """
+    resources = getattr(request.app.state, "resources", None)
+    loaded = getattr(request.app.state, "return_configuration", None)
+    if (
+        not isinstance(resources, RuntimeResources)
+        or resources.mongo is None
+        or not isinstance(loaded, LoadedReturnConfiguration)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "SUPPORT_AGENT_UNAVAILABLE",
+                "message": "The Support Response Agent's dependencies are unavailable.",
+                "retryable": True,
+            },
+        )
+    responder = SupportAutoResponder(
+        service=_service(request),
+        event_store=DurableSupportEventStore(resources.mongo, resources.settings),
+        agent=SupportResponseAgent(loaded.configuration),
+    )
+    try:
+        outcome: SupportAgentRunOutcome = await responder.respond(
+            work_item_id, correlation_id=_meta(request).request_id
+        )
+    except KeyError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "WORK_ITEM_NOT_FOUND", "message": "No such work item."},
+        ) from error
+    except ConcurrencyConflictError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "CONCURRENCY_CONFLICT",
+                "message": "The work item changed while the agent was answering; retry.",
+                "retryable": True,
+            },
+        ) from error
+    return APIResponse(
+        data=SupportAgentRunView(
+            workItemId=outcome.workItemId,
+            caseId=outcome.caseId,
+            outcome=outcome.outcome,
+            returnReference=outcome.returnReference,
+            supportEventId=outcome.supportEventId,
+            missingFields=outcome.missingFields,
+            detail=outcome.detail,
+        ),
+        meta=_meta(request),
+    )
 
 
 class ReturnOutcomeRecord(BaseModel):

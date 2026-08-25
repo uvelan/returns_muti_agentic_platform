@@ -1,93 +1,55 @@
 schema_version: "1.0"
 assumption_set_version: "FERGUSON-RETURN-ASSUMPTIONS-1.0"
 
+# Each agent's live settings and nothing else. The blocks used to carry
+# `human_confirmation_required`, `capabilities`, `implementation_id`,
+# `task_queue` and `state_namespace` -- none was read by any runtime code
+# (agents are constructed by AgentRegistry.build and task queues come from
+# Settings), so the fields were documentation posing as configuration. They
+# remain optional on `AgentConfiguration` so releases published before this
+# change still parse; new releases stop writing them.
 agents:
   order_analysis:
     name: "Order Analysis Agent"
     version: "2.0"
     enabled: true
     ai_assisted: true
-    human_confirmation_required: true
-    capabilities:
-      - evaluate_candidates
-      - generate_smart_questions
-    implementation_id: "built_in.order_analysis"
-    task_queue: "returns.order-analysis"
-    state_namespace: "order_analysis"
+    # Read by the agent (the one source for the analysis task id).
     ai_route_ref: "ORDER_CANDIDATE_ANALYSIS_V1"
   order_discovery:
     name: "Order Discovery Agent"
     version: "2.0"
     enabled: true
     ai_assisted: true
-    human_confirmation_required: true
-    capabilities:
-      - normalize_evidence
-      - classify_order_source
-      - rank_candidates
-      - explain_candidate_evidence
-      - recommend_dynamic_clarification
-    implementation_id: "built_in.order_discovery"
-    task_queue: "returns.order-discovery"
-    state_namespace: "order_discovery"
   return_workflow:
     name: "Return Workflow Agent"
     version: "2.0"
     enabled: true
     ai_assisted: true
-    human_confirmation_required: true
-    capabilities:
-      - identify_missing_fields
-      - enforce_evidence_requirements
-      - recommend_physical_path
-      - draft_support_request
-      - summarize_clarification
-    implementation_id: "built_in.return_workflow"
-    task_queue: "returns.return-workflow"
-    state_namespace: "return_workflow"
   return_fulfillment:
     name: "Return Fulfillment Agent"
     version: "2.0"
     enabled: true
     ai_assisted: false
-    human_confirmation_required: false
-    capabilities:
-      - normalize_omc_status
-      - distinguish_rma_rga
-      - interpret_parcel_and_freight_state
-      - detect_stale_or_conflicting_evidence
-    implementation_id: "built_in.return_fulfillment"
-    task_queue: "returns.return-fulfillment"
-    state_namespace: "return_fulfillment"
   bay_assignment:
     name: "Bay Assignment Agent"
     version: "2.0"
     enabled: true
     ai_assisted: false
-    human_confirmation_required: true
-    capabilities:
-      - filter_eligible_bays
-      - rank_bays
-      - recommend_overflow_or_hold
-      - explain_exclusions
-    implementation_id: "built_in.bay_assignment"
-    task_queue: "returns.bay-assignment"
-    state_namespace: "bay_assignment"
   feedback_learning:
     name: "Feedback Learning Agent"
     version: "2.0"
     enabled: true
-    ai_assisted: true
-    human_confirmation_required: true
-    capabilities:
-      - calculate_operational_metrics
-      - detect_rework_patterns
-      - detect_assumption_mismatches
-      - recommend_policy_changes
-    implementation_id: "built_in.feedback_learning"
-    task_queue: "returns.feedback-learning"
-    state_namespace: "feedback_learning"
-    ai_route_ref: "FEEDBACK_RECOMMENDATION_V1"
+    # The agent is four deterministic threshold rules and calls no model. This
+    # said `ai_assisted: true` with an `ai_route_ref` no code ever read -- a
+    # declared capability the implementation does not have. Stated honestly now;
+    # flip this back only when the agent actually routes through the gateway.
+    ai_assisted: false
+  support_response:
+    name: "Support Response Agent"
+    version: "1.0"
+    enabled: true
+    ai_assisted: false
 
 discovery:
   web_order_pattern: "^W[0-9]{9,12}$"

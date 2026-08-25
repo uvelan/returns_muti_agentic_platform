@@ -14,12 +14,73 @@ from return_platform.ai.gateway.service import AIGatewayService
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 
 
+def _question_from_explanation(explanation: str) -> str | None:
+    """The clarification question, when the model returned one as JSON.
+
+    The task prompts ask for compact JSON inside the envelope's explanation
+    field; a model that answered with plain prose instead is not an error, it is
+    an explanation with no extractable question -- so only a syntactically
+    JSON-shaped explanation is parsed, and a malformed one falls back to `None`
+    rather than raising.
+    """
+    if not explanation.startswith("{"):
+        return None
+    try:
+        parsed = json.loads(explanation)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    question = parsed.get("question") or parsed.get("smartQuestion")
+    return question if isinstance(question, str) and question.strip() else None
+
+
+def _distinct_candidate_values(candidates: list[Any], candidate_field: str) -> set[str]:
+    """Every distinct value the candidates carry for one field.
+
+    Duck-typed on purpose, and in one place on purpose. The candidates are the
+    dynamic-knowledge order shapes, whose property bags are release-defined --
+    and this module may not import `dynamic_knowledge` (agents/README.md), so a
+    shared type cannot express them here. The lookup order is: an explicit model
+    attribute, then the customer/order property bags, then each line's product
+    properties.
+    """
+    values: set[str] = set()
+    for candidate in candidates:
+        if hasattr(candidate, candidate_field):
+            value = getattr(candidate, candidate_field)
+            if value:
+                values.add(str(value))
+            continue
+        for bag_name in ("customerProperties", "orderProperties"):
+            bag = getattr(candidate, bag_name, None)
+            if bag and candidate_field in bag:
+                value = bag[candidate_field]
+                if value:
+                    values.add(str(value))
+                break
+        else:
+            for line in getattr(candidate, "lines", None) or ():
+                properties = getattr(line, "productProperties", None)
+                if properties and candidate_field in properties:
+                    value = properties[candidate_field]
+                    if value:
+                        values.add(str(value))
+    return values
+
+
 class OrderAnalysisAgent:
     """This agent does not directly invoke another agent."""
 
     def __init__(self, configuration: ReturnPlatformConfiguration) -> None:
         self._root = configuration
         self._config = configuration.agents["order_analysis"]
+        #: The analysis task, from configuration where the release names one --
+        #: `ai_route_ref` existed in every release and was read by nothing, so
+        #: the code and the configuration could name different tasks with
+        #: neither being wrong. The literal remains only as the fallback for a
+        #: release cut before the field was honoured.
+        self._analysis_task_id = self._config.ai_route_ref or "ORDER_CANDIDATE_ANALYSIS_V1"
 
     async def analyze(
         self, request: OrderAnalysisRequest, ai_gateway: AIGatewayService
@@ -52,28 +113,12 @@ class OrderAnalysisAgent:
         evaluation = await ai_gateway.evaluate(
             session_id=request.sessionId,
             redacted_input=payload,
-            task_id="ORDER_CANDIDATE_ANALYSIS_V1",
+            task_id=self._analysis_task_id,
         )
 
         trace = evaluation.trace
-
         explanation = trace.explanation or ""
-        smart_question = None
-
-        try:
-            # We expect the explanation might have a smart question or just be text.
-            # If the gateway is configured properly, it should return a JSON explanation.
-            # Let's see if we can parse it.
-            if explanation and explanation.startswith("{"):
-                parsed = json.loads(explanation)
-                smart_question = parsed.get("question") or parsed.get("smartQuestion")
-        except Exception:
-            pass
-
-        if not smart_question:
-            # If the AI failed to return JSON, we can assume the whole text is the question,
-            # or fallback. But the prompt said "Return exactly the configured structured gateway JSON envelope"
-            pass
+        smart_question = _question_from_explanation(explanation)
 
         return OrderAnalysisAssessment(
             smartQuestion=smart_question,
@@ -117,35 +162,10 @@ class OrderAnalysisAgent:
             candidate_field = field_config.get("candidate_field")
             if not candidate_field:
                 continue
-
-            distinct_values = set()
-            for c in candidates:
-                val = None
-                # Check explicit model attributes
-                if hasattr(c, candidate_field):
-                    val = getattr(c, candidate_field)
-                # Check dynamic properties
-                elif hasattr(c, "customerProperties") and candidate_field in c.customerProperties:
-                    val = c.customerProperties[candidate_field]
-                elif hasattr(c, "orderProperties") and candidate_field in c.orderProperties:
-                    val = c.orderProperties[candidate_field]
-                elif hasattr(c, "lines") and c.lines:
-                    for line in c.lines:
-                        if (
-                            hasattr(line, "productProperties")
-                            and candidate_field in line.productProperties
-                        ):
-                            val = line.productProperties[candidate_field]
-                            if val:
-                                distinct_values.add(str(val))
-                    continue
-
-                if val:
-                    distinct_values.add(str(val))
-
+            distinct_values = _distinct_candidate_values(candidates, candidate_field)
             if distinct_values:
                 if len(distinct_values) <= max_distinct:
-                    summary[field_name] = list(distinct_values)
+                    summary[field_name] = sorted(distinct_values)
                 else:
                     summary[field_name] = {"count": len(distinct_values)}
 
@@ -163,20 +183,9 @@ class OrderAnalysisAgent:
 
         trace = evaluation.trace
         explanation = trace.explanation or ""
-        smart_question = None
+        smart_question = _question_from_explanation(explanation)
 
-        try:
-            if explanation and explanation.startswith("{"):
-                parsed = json.loads(explanation)
-                smart_question = parsed.get("question") or parsed.get("smartQuestion")
-        except Exception:
-            pass
-
-        if (
-            trace.decision
-            and trace.decision.value != "AMBIGUOUS"
-            and trace.decision.value != "UNKNOWN"
-        ):
+        if trace.decision and trace.decision.value not in {"AMBIGUOUS", "UNKNOWN"}:
             # AI identified a specific candidate
             return trace.decision.value, None
 

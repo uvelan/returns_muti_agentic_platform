@@ -19,6 +19,7 @@ from return_platform.agents.fulfillment import ReturnFulfillmentAgent
 from return_platform.agents.order_analysis import OrderAnalysisAgent
 from return_platform.agents.order_discovery import OrderDiscoveryAgent
 from return_platform.agents.return_workflow import ReturnWorkflowAgent
+from return_platform.agents.support_response import SupportResponseAgent
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 
 
@@ -46,6 +47,7 @@ class AgentRegistry:
     return_fulfillment: ReturnFulfillmentAgent
     bay_assignment: BayAssignmentAgent
     feedback_learning: FeedbackLearningAgent
+    support_response: SupportResponseAgent
 
     @classmethod
     def build(cls, configuration: ReturnPlatformConfiguration) -> AgentRegistry:
@@ -56,4 +58,5 @@ class AgentRegistry:
             return_fulfillment=ReturnFulfillmentAgent(configuration),
             bay_assignment=BayAssignmentAgent(configuration),
             feedback_learning=FeedbackLearningAgent(configuration),
+            support_response=SupportResponseAgent(configuration),
         )
