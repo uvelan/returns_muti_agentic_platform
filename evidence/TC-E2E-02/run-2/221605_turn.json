@@ -1,0 +1,119 @@
+{
+ "sent": "customer wants to return an item, name is yuki cousens",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run2-0b6498d0",
+   "conversation_version": 1,
+   "client_turn_id": "qa-881b853d-01ca-494d-9e1f-9ba290e2dd45",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 600807 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "49b0ab4d-910e-4379-b73d-d5f06769fc6e",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 2: 600808 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "49b0ab4d-910e-4379-b73d-d5f06769fc6e",
+        "result_path": [
+         "candidates",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "49b0ab4d-910e-4379-b73d-d5f06769fc6e",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "cc1cfcf1b37d9ae350f924ca15b0785c5d3373acecf6b94c69c7ab096ad216f3",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "yuki cousens"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600807",
+        "data": {
+         "account_id": "LAKEWOOD",
+         "customer_id": "600807",
+         "customer_name": "YUKI COUSINS"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600808",
+        "data": {
+         "account_id": "PLYMOUTH",
+         "customer_id": "600808",
+         "customer_name": "YUKI COUSINS"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "0313d259787a7805e9554db7578fc875a3d08357ac4ae6b0c4d96757c4ac47c7"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T16:46:00.636000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "0ff7c38d-fa7a-456a-94ee-4a5af4ba4125",
+   "generated_at": "2026-08-25T16:46:05.266143Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

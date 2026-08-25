@@ -1,0 +1,265 @@
+{
+ "sent": "Confirm the customer YUKI COUSINS on account LAKEWOOD.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run2-0b6498d0",
+   "conversation_version": 2,
+   "client_turn_id": "qa-4b37f0fc-ff04-42b5-8df5-fe7f17a59354",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CT800996 / 2026-08-01T0 / DES MOINES / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a735420f-0a26-406f-a5d5-a6493eb009a2",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CQ802440 / 2026-04-08T0 / DES MOINES / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a735420f-0a26-406f-a5d5-a6493eb009a2",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CN803936 / 2025-07-30T0 / DES MOINES / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a735420f-0a26-406f-a5d5-a6493eb009a2",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CO803459 / 2025-06-15T0 / DES MOINES / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a735420f-0a26-406f-a5d5-a6493eb009a2",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CS803327 / 2025-01-20T0 / DES MOINES / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a735420f-0a26-406f-a5d5-a6493eb009a2",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "a735420f-0a26-406f-a5d5-a6493eb009a2",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "c2a93f6fd1839fdfce59d9c6dec25b63c38355ca1536178f4c04e7817fad65c6",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "LAKEWOOD*CT800996",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CT800996",
+        "customer_id": "600807",
+        "customer_name": "YUKI COUSINS",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "MAINTENANCE",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1441",
+        "ship_from_warehouse_id": "1441",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-08-01T00:00:00.000000000",
+        "invoice_date": "2026-08-01T00:00:00.000000000",
+        "shipped_at": "2026-08-03T00:00:00.000000000",
+        "commit_date": "2026-08-01T00:00:00.000000000",
+        "ship_to_name": "YUKI COUSINS",
+        "ship_to_phone": "404-555-3392",
+        "ship_to_city": "DES MOINES",
+        "ship_to_state": "IA",
+        "ship_to_postal_code": "50326",
+        "source_updated_at": "2026-08-01T07:51:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CQ802440",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CQ802440",
+        "customer_id": "600807",
+        "customer_name": "YUKI COUSINS",
+        "customer_po_number": "STOCK",
+        "job_name": "SERVICE CALL",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1549",
+        "ship_from_warehouse_id": "1549",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-04-08T00:00:00.000000000",
+        "invoice_date": "2026-04-08T00:00:00.000000000",
+        "shipped_at": "2026-04-10T00:00:00.000000000",
+        "commit_date": "2026-04-08T00:00:00.000000000",
+        "ship_to_name": "YUKI COUSINS",
+        "ship_to_phone": "404-555-3392",
+        "ship_to_city": "DES MOINES",
+        "ship_to_state": "IA",
+        "ship_to_postal_code": "50326",
+        "source_updated_at": "2026-04-08T18:57:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CN803936",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CN803936",
+        "customer_id": "600807",
+        "customer_name": "YUKI COUSINS",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "WAREHOUSE",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "603",
+        "ship_from_warehouse_id": "603",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2025-07-30T00:00:00.000000000",
+        "invoice_date": "2025-07-30T00:00:00.000000000",
+        "shipped_at": "2025-08-02T00:00:00.000000000",
+        "commit_date": "2025-07-30T00:00:00.000000000",
+        "ship_to_name": "YUKI COUSINS",
+        "ship_to_phone": "404-555-3392",
+        "ship_to_city": "DES MOINES",
+        "ship_to_state": "IA",
+        "ship_to_postal_code": "50326",
+        "source_updated_at": "2025-07-30T15:35:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CO803459",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CO803459",
+        "customer_id": "600807",
+        "customer_name": "YUKI COUSINS",
+        "customer_po_number": "JOB",
+        "job_name": "TRUCK STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1549",
+        "ship_from_warehouse_id": "1549",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-06-15T00:00:00.000000000",
+        "invoice_date": "2025-06-15T00:00:00.000000000",
+        "shipped_at": "2025-06-16T00:00:00.000000000",
+        "commit_date": "2025-06-15T00:00:00.000000000",
+        "ship_to_name": "YUKI COUSINS",
+        "ship_to_phone": "404-555-3392",
+        "ship_to_city": "DES MOINES",
+        "ship_to_state": "IA",
+        "ship_to_postal_code": "50326",
+        "source_updated_at": "2025-06-15T10:14:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CS803327",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CS803327",
+        "customer_id": "600807",
+        "customer_name": "YUKI COUSINS",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "SERVICE CALL",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "133",
+        "ship_from_warehouse_id": "133",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-01-20T00:00:00.000000000",
+        "invoice_date": "2025-01-20T00:00:00.000000000",
+        "shipped_at": "2025-01-21T00:00:00.000000000",
+        "commit_date": "2025-01-20T00:00:00.000000000",
+        "ship_to_name": "YUKI COUSINS",
+        "ship_to_phone": "404-555-3392",
+        "ship_to_city": "DES MOINES",
+        "ship_to_state": "IA",
+        "ship_to_postal_code": "50326",
+        "source_updated_at": "2025-01-20T17:57:00.000000000"
+       }
+      ],
+      "count": 5
+     },
+     "result_checksum": "734f152fface5deceeaca5e9ec3a25355205d852c7b50b4b8f0daf89f4e3ff17"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "YUKI COUSINS",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T16:46:08.129000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "8498b9c5-4410-478e-b55f-90da568e87eb",
+   "generated_at": "2026-08-25T16:46:12.810050Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

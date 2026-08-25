@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CG807268",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run1-5fae369e",
+   "conversation_version": 3,
+   "client_turn_id": "qa-35594a3a-9f13-4cd3-a9e7-b0d4233f06a7",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CG807268 / [REDACTED] / SALT LAKE CITY / 2026-08-01",
+      "evidence_refs": [
+       {
+        "query_execution_id": "3323685c-0947-46a4-8c2f-43b8c4dbc283",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "3323685c-0947-46a4-8c2f-43b8c4dbc283",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "6a7d7070511a7091e05d89e54718cbeacfd793f99de4af42c0d4f712afbe0a9c",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CG807268"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CG807268",
+        "data": {
+         "order_key": "SACRAMENTO*CG807268",
+         "account_id": "SACRAMENTO",
+         "sales_order_number": "CG807268",
+         "customer_id": "600124",
+         "customer_name": "LUIS FLETCHER",
+         "customer_po_number": "REPLACEMENT",
+         "job_name": "TRUCK STOCK",
+         "order_status": "INVOICED",
+         "sales_type": "CASH",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "1549",
+         "ship_from_warehouse_id": "1549",
+         "shipping_method": "CUSTOMER PICKUP",
+         "order_date": "2026-08-01T00:00:00.000000000",
+         "invoice_date": "2026-08-01T00:00:00.000000000",
+         "shipped_at": "2026-08-01T00:00:00.000000000",
+         "commit_date": "2026-08-01T00:00:00.000000000",
+         "ship_to_name": "LUIS FLETCHER",
+         "ship_to_phone": "205-555-9195",
+         "ship_to_city": "SALT LAKE CITY",
+         "ship_to_state": "UT",
+         "ship_to_postal_code": "84114",
+         "source_updated_at": "2026-08-01T07:18:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "ad142cf04908cfcefb6c329d5120640d5eac087c79ca019745c0f90a89d8edc0"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "LUIS FLETCHER",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T16:42:30.717000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "cd439925-92ca-4082-bc28-99b302b06a7d",
+   "generated_at": "2026-08-25T16:42:35.197331Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

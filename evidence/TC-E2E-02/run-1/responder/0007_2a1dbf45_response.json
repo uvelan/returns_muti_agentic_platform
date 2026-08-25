@@ -1,0 +1,1 @@
+{"business_capability": "order-discovery", "action_type": "CLARIFY", "decision_summary": "The associate selected CG807268; asking for explicit confirmation.", "response": {"status": "NEEDS_CLARIFICATION", "business_capability": "order-discovery", "statements": [], "suggestions": [], "requested_input": "You selected order CG807268. Confirm this order to raise the return?"}}

@@ -1,0 +1,67 @@
+{
+ "sent": "the item arrived damaged",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run2-0b6498d0",
+   "conversation_version": 6,
+   "client_turn_id": "qa-d4805182-47d5-4aea-afdc-f343e85af94b",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [],
+    "suggestions": [],
+    "requested_input": "No orders matched. Do you have an order number, email, or the city on the order?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run2-0b6498d0:qa-d4805182-47d5-4aea-afdc-f343e85af94b:1",
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "136826d2-97db-456e-be83-c45d49379422",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "adde0778aedd9d1d39fe6199b546b5dc2f8a4fe9d4144a0d5d3d753e3bda3105",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "the item arrived damaged"
+       ]
+      },
+      "candidates": [],
+      "total_found": 0,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "5b3550bcc0ae62ef4b2b507f7eb36ff5c35815b1fde395259de6230132067ce4"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "YUKI COUSINS",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T16:46:38.880000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "30753433-cabd-4bec-af97-4bef0a12d761",
+   "generated_at": "2026-08-25T16:46:42.510635Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

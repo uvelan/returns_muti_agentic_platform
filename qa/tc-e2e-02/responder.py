@@ -309,32 +309,43 @@ def decide_reasoning(payload: dict) -> str:
                 "Relaying the Support outcome recorded on the case.",
                 response=_respond_payload("COMPLETE", details),
             )
+        # Facts are read off the message's own content, not off which question
+        # was last asked: each elicitation exchange is a fresh turn (a CLARIFY
+        # would suspend the thread and spend the per-thread clarification
+        # budget answer by answer), so the question is not reliably in view.
         observed: list[dict] = []
         lowered = message.lower()
-        question_lower = last_question.lower()
-        if "reason" in question_lower or not last_question:
-            for word, code in REASON_WORDS.items():
-                if word in lowered:
-                    observed.append({"fact": "return_reason", "value": code})
-                    break
-        qty = re.search(r"\b(\d{1,3})\b", message)
-        if qty and ("how many" in question_lower or "quantity" in question_lower):
+        for word, code in REASON_WORDS.items():
+            if word in lowered:
+                observed.append({"fact": "return_reason", "value": code})
+                break
+        qty = re.search(r"\b(\d{1,3})\s*(?:unit|pc|piece|item)?s?\b", lowered)
+        if qty and not ORDER_NO.search(message.upper()):
             observed.append({"fact": "ordered_quantity", "value": int(qty.group(1))})
-        if "branch" in question_lower and message and not AFFIRMATIVE.search(message):
-            observed.append({"fact": "branch_location", "value": message.strip()})
-        if "proof" in question_lower:
-            observed.append({
-                "fact": "proof_reference",
-                "value": None if lowered.strip() in {"none", "no"} else message.strip(),
-            })
+        branch = re.search(r"(?:through|at|via)\s+the\s+([A-Za-z0-9 _-]+?)\s+branch", message,
+                           flags=re.I)
+        if branch:
+            observed.append({"fact": "branch_location", "value": branch.group(1).strip()})
+        if lowered.strip() in {"none", "no proof", "no"}:
+            observed.append({"fact": "proof_reference", "value": None})
+        elif re.search(r"photo|receipt|proof", lowered):
+            observed.append({"fact": "proof_reference", "value": message.strip()})
         answered = {o["fact"] for o in observed} | set(captured)
         for fact, question in ELICITATION:
             if fact not in answered:
+                # RESPOND rather than CLARIFY: the turn ends, the question is
+                # carried as a CLARIFICATION_QUESTION statement, and the answer
+                # arrives as a new turn with fresh budgets.
                 return _action(
-                    "CLARIFY",
+                    "RESPOND",
                     f"Return details incomplete; asking for {fact}.",
                     observed_facts=observed,
-                    response=_respond_payload("NEEDS_CLARIFICATION", [], [], question),
+                    response=_respond_payload(
+                        "NEEDS_CLARIFICATION",
+                        [_statement(0, "CLARIFICATION_QUESTION", question)],
+                        [],
+                        question,
+                    ),
                 )
         return _action(
             "RESPOND",

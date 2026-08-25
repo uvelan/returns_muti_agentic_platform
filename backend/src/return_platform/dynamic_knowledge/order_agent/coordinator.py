@@ -547,6 +547,15 @@ class DynamicOrderAgentCoordinator:
             "as_of": as_of.isoformat(),
             "session_timezone": session_timezone,
             "correlation_id": correlation_id,
+            # Rehydrated from the conversation document. `AgentTurnContext`
+            # documents case_facts as "how a Support outcome reaches the
+            # associate's *original* conversation", and the context builder
+            # reads both off graph state -- but nothing seeded the case back
+            # into a later turn's state, so every turn after the confirming one
+            # reasoned as though no case existed: elicitation never engaged and
+            # the Support outcome had no path back into the chat (TC-E2E-02
+            # step 14).
+            "case_id": conversation_state.get("caseId"),
             "requested_schema_entity_ids": (),
             "evidence_refs": (),
             "order_search_cache": _cache_for_generation(
@@ -677,6 +686,9 @@ class DynamicOrderAgentCoordinator:
                     **conversation_state,
                     "orderSearchCache": final_state.get("order_search_cache"),
                     "observedFacts": list(final_state.get("observed_facts", ())),
+                    # Never cleared once set: a conversation that confirmed an
+                    # order stays that case's conversation.
+                    "caseId": final_state.get("case_id") or conversation_state.get("caseId"),
                     # The question, not `None`. It is what a human reopening this
                     # conversation has to see, and it is what the agent is told
                     # to read before asking anything.
@@ -704,6 +716,9 @@ class DynamicOrderAgentCoordinator:
             **conversation_state,
             "orderSearchCache": final_state.get("order_search_cache"),
             "observedFacts": list(final_state.get("observed_facts", ())),
+            # Never cleared once set: a conversation that confirmed an order
+            # stays that case's conversation.
+            "caseId": final_state.get("case_id") or conversation_state.get("caseId"),
             "transcript": _extended_transcript(
                 conversation_state, user_message=request.message, response=response
             ),

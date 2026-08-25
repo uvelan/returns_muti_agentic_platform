@@ -1,0 +1,470 @@
+{
+ "sent": "Confirm the customer LUIS FLETCHER on account SACRAMENTO.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run1-5fae369e",
+   "conversation_version": 2,
+   "client_turn_id": "qa-bf31a887-f7df-4e8a-8c9a-5a2ab606310c",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CG807268 / 2026-08-01T0 / SALT LAKE CI / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "e5d516f0-9636-46ce-a396-cd327285289e",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CD800904 / 2026-04-20T0 / SALT LAKE CI / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "e5d516f0-9636-46ce-a396-cd327285289e",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CR802452 / 2026-02-12T0 / SALT LAKE CI / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "e5d516f0-9636-46ce-a396-cd327285289e",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CO801580 / 2025-11-20T0 / SALT LAKE CI / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "e5d516f0-9636-46ce-a396-cd327285289e",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CA809412 / 2025-10-13T0 / SALT LAKE CI / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "e5d516f0-9636-46ce-a396-cd327285289e",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CF800220 / 2025-09-09T0 / SALT LAKE CI / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "e5d516f0-9636-46ce-a396-cd327285289e",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 7: CX800555 / 2025-06-01T0 / SALT LAKE CI / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "e5d516f0-9636-46ce-a396-cd327285289e",
+        "result_path": [
+         "rows",
+         "6"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-7",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 8: CX808672 / 2025-05-10T0 / SALT LAKE CI / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "e5d516f0-9636-46ce-a396-cd327285289e",
+        "result_path": [
+         "rows",
+         "7"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-8",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 9: CN800995 / 2025-05-13T0 / SALT LAKE CI / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "e5d516f0-9636-46ce-a396-cd327285289e",
+        "result_path": [
+         "rows",
+         "8"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-9",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 10: CV803687 / 2025-01-16T0 / SALT LAKE CI / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "e5d516f0-9636-46ce-a396-cd327285289e",
+        "result_path": [
+         "rows",
+         "9"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "e5d516f0-9636-46ce-a396-cd327285289e",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "dd5de87f4a76d0f7cce47248f52a4d0dcf28f8614963afdb413377ec2a2a77af",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "SACRAMENTO*CG807268",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CG807268",
+        "customer_id": "600124",
+        "customer_name": "LUIS FLETCHER",
+        "customer_po_number": "REPLACEMENT",
+        "job_name": "TRUCK STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1549",
+        "ship_from_warehouse_id": "1549",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-08-01T00:00:00.000000000",
+        "invoice_date": "2026-08-01T00:00:00.000000000",
+        "shipped_at": "2026-08-01T00:00:00.000000000",
+        "commit_date": "2026-08-01T00:00:00.000000000",
+        "ship_to_name": "LUIS FLETCHER",
+        "ship_to_phone": "205-555-9195",
+        "ship_to_city": "SALT LAKE CITY",
+        "ship_to_state": "UT",
+        "ship_to_postal_code": "84114",
+        "source_updated_at": "2026-08-01T07:18:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CD800904",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CD800904",
+        "customer_id": "600124",
+        "customer_name": "LUIS FLETCHER",
+        "customer_po_number": "REPLACEMENT",
+        "job_name": "WARRANTY",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "603",
+        "ship_from_warehouse_id": "603",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2026-04-20T00:00:00.000000000",
+        "invoice_date": "2026-04-20T00:00:00.000000000",
+        "shipped_at": "2026-04-23T00:00:00.000000000",
+        "commit_date": "2026-04-20T00:00:00.000000000",
+        "ship_to_name": "LUIS FLETCHER",
+        "ship_to_phone": "205-555-9195",
+        "ship_to_city": "SALT LAKE CITY",
+        "ship_to_state": "UT",
+        "ship_to_postal_code": "84114",
+        "source_updated_at": "2026-04-20T14:27:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CR802452",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CR802452",
+        "customer_id": "600124",
+        "customer_name": "LUIS FLETCHER",
+        "customer_po_number": "MAINTENANCE",
+        "job_name": "STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "133",
+        "ship_from_warehouse_id": "133",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-02-12T00:00:00.000000000",
+        "invoice_date": "2026-02-12T00:00:00.000000000",
+        "shipped_at": "2026-02-13T00:00:00.000000000",
+        "commit_date": "2026-02-12T00:00:00.000000000",
+        "ship_to_name": "LUIS FLETCHER",
+        "ship_to_phone": "205-555-9195",
+        "ship_to_city": "SALT LAKE CITY",
+        "ship_to_state": "UT",
+        "ship_to_postal_code": "84114",
+        "source_updated_at": "2026-02-12T08:38:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CO801580",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CO801580",
+        "customer_id": "600124",
+        "customer_name": "LUIS FLETCHER",
+        "customer_po_number": "WARRANTY",
+        "job_name": "REPLACEMENT",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "603",
+        "ship_from_warehouse_id": "603",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-11-20T00:00:00.000000000",
+        "invoice_date": "2025-11-20T00:00:00.000000000",
+        "shipped_at": "2025-11-21T00:00:00.000000000",
+        "commit_date": "2025-11-20T00:00:00.000000000",
+        "ship_to_name": "LUIS FLETCHER",
+        "ship_to_phone": "205-555-9195",
+        "ship_to_city": "SALT LAKE CITY",
+        "ship_to_state": "UT",
+        "ship_to_postal_code": "84114",
+        "source_updated_at": "2025-11-20T17:06:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CA809412",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CA809412",
+        "customer_id": "600124",
+        "customer_name": "LUIS FLETCHER",
+        "customer_po_number": "JOB",
+        "job_name": "STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "795",
+        "ship_from_warehouse_id": "795",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-10-13T00:00:00.000000000",
+        "invoice_date": "2025-10-13T00:00:00.000000000",
+        "shipped_at": "2025-10-13T00:00:00.000000000",
+        "commit_date": "2025-10-13T00:00:00.000000000",
+        "ship_to_name": "LUIS FLETCHER",
+        "ship_to_phone": "205-555-9195",
+        "ship_to_city": "SALT LAKE CITY",
+        "ship_to_state": "UT",
+        "ship_to_postal_code": "84114",
+        "source_updated_at": "2025-10-13T12:47:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CF800220",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CF800220",
+        "customer_id": "600124",
+        "customer_name": "LUIS FLETCHER",
+        "customer_po_number": "MAINTENANCE",
+        "job_name": "MAINTENANCE",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2028",
+        "ship_from_warehouse_id": "2028",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-09-09T00:00:00.000000000",
+        "invoice_date": "2025-09-09T00:00:00.000000000",
+        "shipped_at": "2025-09-11T00:00:00.000000000",
+        "commit_date": "2025-09-09T00:00:00.000000000",
+        "ship_to_name": "LUIS FLETCHER",
+        "ship_to_phone": "205-555-9195",
+        "ship_to_city": "SALT LAKE CITY",
+        "ship_to_state": "UT",
+        "ship_to_postal_code": "84114",
+        "source_updated_at": "2025-09-09T07:39:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CX800555",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CX800555",
+        "customer_id": "600124",
+        "customer_name": "LUIS FLETCHER",
+        "customer_po_number": "NEW CONSTRUCTION",
+        "job_name": "SHOP STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "31",
+        "ship_from_warehouse_id": "31",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-06-01T00:00:00.000000000",
+        "invoice_date": "2025-06-01T00:00:00.000000000",
+        "shipped_at": "2025-06-04T00:00:00.000000000",
+        "commit_date": "2025-06-01T00:00:00.000000000",
+        "ship_to_name": "LUIS FLETCHER",
+        "ship_to_phone": "205-555-9195",
+        "ship_to_city": "SALT LAKE CITY",
+        "ship_to_state": "UT",
+        "ship_to_postal_code": "84114",
+        "source_updated_at": "2025-06-01T11:43:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CX808672",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CX808672",
+        "customer_id": "600124",
+        "customer_name": "LUIS FLETCHER",
+        "customer_po_number": "SHOP STOCK",
+        "job_name": "NEW CONSTRUCTION",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "31",
+        "ship_from_warehouse_id": "31",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-05-10T00:00:00.000000000",
+        "invoice_date": "2025-05-10T00:00:00.000000000",
+        "shipped_at": "2025-05-11T00:00:00.000000000",
+        "commit_date": "2025-05-10T00:00:00.000000000",
+        "ship_to_name": "LUIS FLETCHER",
+        "ship_to_phone": "205-555-9195",
+        "ship_to_city": "SALT LAKE CITY",
+        "ship_to_state": "UT",
+        "ship_to_postal_code": "84114",
+        "source_updated_at": "2025-05-10T17:42:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CN800995",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CN800995",
+        "customer_id": "600124",
+        "customer_name": "LUIS FLETCHER",
+        "customer_po_number": "SHOP STOCK",
+        "job_name": "RESIDENTIAL",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1549",
+        "ship_from_warehouse_id": "1549",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2025-05-13T00:00:00.000000000",
+        "invoice_date": "2025-05-13T00:00:00.000000000",
+        "shipped_at": "2025-05-16T00:00:00.000000000",
+        "commit_date": "2025-05-13T00:00:00.000000000",
+        "ship_to_name": "LUIS FLETCHER",
+        "ship_to_phone": "205-555-9195",
+        "ship_to_city": "SALT LAKE CITY",
+        "ship_to_state": "UT",
+        "ship_to_postal_code": "84114",
+        "source_updated_at": "2025-05-13T10:25:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CV803687",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CV803687",
+        "customer_id": "600124",
+        "customer_name": "LUIS FLETCHER",
+        "customer_po_number": "STOCK",
+        "job_name": "JOB",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2210",
+        "ship_from_warehouse_id": "2210",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-01-16T00:00:00.000000000",
+        "invoice_date": "2025-01-16T00:00:00.000000000",
+        "shipped_at": "2025-01-18T00:00:00.000000000",
+        "commit_date": "2025-01-16T00:00:00.000000000",
+        "ship_to_name": "LUIS FLETCHER",
+        "ship_to_phone": "205-555-9195",
+        "ship_to_city": "SALT LAKE CITY",
+        "ship_to_state": "UT",
+        "ship_to_postal_code": "84114",
+        "source_updated_at": "2025-01-16T07:46:00.000000000"
+       }
+      ],
+      "count": 10
+     },
+     "result_checksum": "8d725c7806155e1cd54274d68b8e040143547605dd84f5ffc35b1f75646f0b70"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "LUIS FLETCHER",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T16:42:23.732000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "394f3959-431f-4693-9652-728a72f65a2a",
+   "generated_at": "2026-08-25T16:42:28.421495Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

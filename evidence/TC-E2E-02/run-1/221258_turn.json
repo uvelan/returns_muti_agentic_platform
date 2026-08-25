@@ -1,0 +1,43 @@
+{
+ "sent": "the item arrived damaged",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run1-5fae369e",
+   "conversation_version": 6,
+   "client_turn_id": "qa-e402277d-261b-4733-b250-a58f1988b239",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [],
+    "suggestions": [],
+    "requested_input": "What is the reason for the return?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run1-5fae369e:qa-e81c5d2b-618f-4ba5-aa75-d27b5cdb728f:1",
+   "case_id": "a4102754-4d70-4e1b-a778-37787cdf2cea",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "LUIS FLETCHER",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T16:42:37.533000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "fdcaf93f-8058-41ca-af09-69463470027f",
+   "generated_at": "2026-08-25T16:42:58.382758Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

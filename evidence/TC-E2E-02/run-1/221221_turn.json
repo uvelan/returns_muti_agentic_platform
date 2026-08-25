@@ -1,0 +1,91 @@
+{
+ "sent": "customer wants to return an item, name is luis flecher",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run1-5fae369e",
+   "conversation_version": 1,
+   "client_turn_id": "qa-b29bf5e1-052f-4a97-906e-e371cf9d703b",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 600124 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "9591fa3a-429b-42c8-96d5-850979cb4b65",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "9591fa3a-429b-42c8-96d5-850979cb4b65",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "86aadbe74b11fcc0726e5d375806e50a6af6739014ec816b0389cddbfac542ab",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "luis flecher"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600124",
+        "data": {
+         "account_id": "SACRAMENTO",
+         "customer_id": "600124",
+         "customer_name": "LUIS FLETCHER"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "ff7944e2732ca946e28f5975001ea7470fe0624c0aae19b9caac7a2fe58f1a35"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T16:42:17.342000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "f22fc735-1d81-4189-8c9a-a3992f51fa11",
+   "generated_at": "2026-08-25T16:42:21.326123Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

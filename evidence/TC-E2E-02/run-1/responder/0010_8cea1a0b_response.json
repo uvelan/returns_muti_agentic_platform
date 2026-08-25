@@ -1,0 +1,1 @@
+{"business_capability": "order-discovery", "action_type": "CLARIFY", "decision_summary": "Return details incomplete; asking for return_reason.", "observed_facts": [], "response": {"status": "NEEDS_CLARIFICATION", "business_capability": "order-discovery", "statements": [], "suggestions": [], "requested_input": "What is the reason for the return?"}}
