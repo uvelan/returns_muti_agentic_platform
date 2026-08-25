@@ -1,0 +1,1 @@
+{"business_capability": "order-discovery", "action_type": "CLARIFY", "decision_summary": "The search matched nothing; ask for a stronger identifier.", "response": {"status": "NEEDS_CLARIFICATION", "business_capability": "order-discovery", "statements": [], "suggestions": [], "requested_input": "No orders matched. Do you have an order number, email, or the city on the order?"}}

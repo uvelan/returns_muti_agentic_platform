@@ -1,0 +1,59 @@
+{
+ "sent": "customer wants to return an item, name is rebeca feldmen",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-smoke-1787674984",
+   "conversation_version": 1,
+   "client_turn_id": "qa-b52d933b-cbbd-4df1-b6d1-50fabbb79217",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [],
+    "suggestions": [],
+    "requested_input": "No orders matched. Do you have an order number, email, or the city on the order?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-smoke-1787674984:qa-b52d933b-cbbd-4df1-b6d1-50fabbb79217:1",
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "12d9f436-502a-4423-941b-96371ce755b1",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "62d362527a53031af3cafc8aec844029858aa896f2eef1ae9c7c9c6cd4765dac",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "customer wants to return an item  name is rebeca feldmen"
+       ]
+      },
+      "candidates": [],
+      "total_found": 0,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "b0e9b76ff6740760a430de1b5213caaa2d044fc8239725f5ca4eb420b159d67c"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T16:23:12.029000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "f4e4bff9-1f46-4fcb-b649-9585e9c94738",
+   "generated_at": "2026-08-25T16:23:19.225562Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

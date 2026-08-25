@@ -1,0 +1,121 @@
+{
+ "sent": "yes the customer is REBECCA FELDMAN",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-smoke2-1787675036",
+   "conversation_version": 2,
+   "client_turn_id": "qa-c536c7b5-9e1b-4135-9247-79dd9be555e7",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 601306 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a3759b87-678b-420e-a21b-61977303e4e7",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 2: 601305 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a3759b87-678b-420e-a21b-61977303e4e7",
+        "result_path": [
+         "candidates",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order by its order number to raise the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "a3759b87-678b-420e-a21b-61977303e4e7",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "5b06277a9d877dfbcdd2b734af05592d561224a4bfe2513b3bd99dad696e426d",
+     "compiled_query_checksum": "32aa52abf681b63781ca68dcbe7bf5527e62dc61ed01cdc2ffea3d54c4401ef7",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "REBECCA FELDMAN"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "601306",
+        "data": {
+         "account_id": "MINNWW",
+         "customer_id": "601306",
+         "customer_name": "REBECCA FELDMAN",
+         "source_updated_at": "2026-02-13T07:51:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_exact"
+        ]
+       },
+       {
+        "candidate_id": "601305",
+        "data": {
+         "account_id": "CHARLOTTE",
+         "customer_id": "601305",
+         "customer_name": "REBECCA FELDMAN",
+         "source_updated_at": "2026-07-21T11:25:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_exact"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "2b98c18b8b410531ab5580a18188b89da44d5797049626a7e9d7dbb644257301"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T16:24:56.091000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "70850f4c-a631-453a-9618-79cad44b5e72",
+   "generated_at": "2026-08-25T16:25:00.713845Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

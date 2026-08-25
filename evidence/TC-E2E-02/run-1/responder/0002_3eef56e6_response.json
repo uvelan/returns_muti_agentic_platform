@@ -1,0 +1,1 @@
+{"business_capability": "order-discovery", "action_type": "ORDER_SEARCH", "decision_summary": "Searching by customer name 'customer wants to return an item  name is rebeca feldmen'.", "search_intent": {"searchMode": "DISCOVER", "confidence": 0.8, "customerNames": ["customer wants to return an item  name is rebeca feldmen"]}}

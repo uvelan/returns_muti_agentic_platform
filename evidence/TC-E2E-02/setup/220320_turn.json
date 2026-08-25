@@ -1,0 +1,43 @@
+{
+ "sent": "Confirm order CW802024.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-smoke2-1787675036",
+   "conversation_version": 8,
+   "client_turn_id": "qa-ad98610a-f0f7-40c2-996e-87272cb78788",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [],
+    "suggestions": [],
+    "requested_input": "You selected order CW802024. Confirm this order to raise the return?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-smoke2-1787675036:qa-ad98610a-f0f7-40c2-996e-87272cb78788:1",
+   "case_id": null,
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "REBECCA FELDMAN",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T16:33:19.128000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "4fc8fde7-cc79-4148-893d-ef8f9526cc5c",
+   "generated_at": "2026-08-25T16:33:20.680027Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

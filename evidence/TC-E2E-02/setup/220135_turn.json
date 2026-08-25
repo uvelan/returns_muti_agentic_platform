@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CW802024",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-smoke2-1787675036",
+   "conversation_version": 6,
+   "client_turn_id": "qa-c5149d90-3c0e-402d-aafd-38124c89da23",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CW802024 / [REDACTED] / CHATTANOOGA / 2025-02-08",
+      "evidence_refs": [
+       {
+        "query_execution_id": "b2b62759-8f41-426e-8d3a-ec8a19a24d0b",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "b2b62759-8f41-426e-8d3a-ec8a19a24d0b",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "5a7a3d88ea69423b23aed0a577923ffb5028a5e681b1489d675cf72ea59c04a7",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CW802024"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CW802024",
+        "data": {
+         "order_key": "CHARLOTTE*CW802024",
+         "account_id": "CHARLOTTE",
+         "sales_order_number": "CW802024",
+         "customer_id": "601305",
+         "customer_name": "REBECCA FELDMAN",
+         "customer_po_number": "SHOP STOCK",
+         "job_name": "STOCK",
+         "order_status": "INVOICED",
+         "sales_type": "CASH",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "1549",
+         "ship_from_warehouse_id": "1549",
+         "shipping_method": "CUSTOMER PICKUP",
+         "order_date": "2025-02-08T00:00:00.000000000",
+         "invoice_date": "2025-02-08T00:00:00.000000000",
+         "shipped_at": "2025-02-11T00:00:00.000000000",
+         "commit_date": "2025-02-08T00:00:00.000000000",
+         "ship_to_name": "REBECCA FELDMAN",
+         "ship_to_phone": "303-555-3890",
+         "ship_to_city": "CHATTANOOGA",
+         "ship_to_state": "TN",
+         "ship_to_postal_code": "37484",
+         "source_updated_at": "2025-02-08T08:40:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "ff3ed625b7c90bbfeb79c376d94754567866b486a9e2354abbe3b6644b0783ad"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "REBECCA FELDMAN",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T16:31:32.765000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "6078ccbb-37fc-447b-bff9-884d2797d6f7",
+   "generated_at": "2026-08-25T16:31:35.840474Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

@@ -57,6 +57,24 @@
       "autoPort": true
     },
     {
+      "name": "order-discovery-worker-manual",
+      "runtimeExecutable": "backend/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "qa/tc-e2e-02/run_worker_manual.py",
+        "backend/scripts/run_order_discovery_worker.py"
+      ],
+      "autoPort": true
+    },
+    {
+      "name": "return-workflow-worker-manual",
+      "runtimeExecutable": "backend/.venv/Scripts/python.exe",
+      "runtimeArgs": [
+        "qa/tc-e2e-02/run_worker_manual.py",
+        "backend/scripts/run_return_workflow_worker.py"
+      ],
+      "autoPort": true
+    },
+    {
       "name": "frontend",
       "runtimeExecutable": "npm",
       "runtimeArgs": [
