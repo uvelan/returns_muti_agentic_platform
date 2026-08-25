@@ -1,0 +1,121 @@
+{
+ "sent": "customer wants to return an item, name is lionel knap",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run5-737d00dd",
+   "conversation_version": 1,
+   "client_turn_id": "qa-36b5b098-cd3d-4267-89e4-63cd39583586",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 600377 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a0d739b2-54da-47ea-8bf8-09192a91ff3c",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 2: 600376 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "a0d739b2-54da-47ea-8bf8-09192a91ff3c",
+        "result_path": [
+         "candidates",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "a0d739b2-54da-47ea-8bf8-09192a91ff3c",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "d641e8d9297a3d9a1637103bbc7710294a35cb389078c327ef3d13c1f9547687",
+     "compiled_query_checksum": "32aa52abf681b63781ca68dcbe7bf5527e62dc61ed01cdc2ffea3d54c4401ef7",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "lionel knap"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600377",
+        "data": {
+         "account_id": "GARDEN",
+         "customer_id": "600377",
+         "customer_name": "LIONEL KNAPP",
+         "source_updated_at": "2026-08-01T09:46:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_contains"
+        ]
+       },
+       {
+        "candidate_id": "600376",
+        "data": {
+         "account_id": "SACRAMENTO",
+         "customer_id": "600376",
+         "customer_name": "LIONEL KNAPP",
+         "source_updated_at": "2026-07-23T16:06:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_contains"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "0756366202d7f8770d008ccaf9b1794b99fccc1d030ccbed56d23c9adaeeedff"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T17:05:16.025000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "92d5d131-4658-44d6-988c-f44be373c1f3",
+   "generated_at": "2026-08-25T17:05:19.838823Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

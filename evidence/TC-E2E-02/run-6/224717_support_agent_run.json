@@ -1,0 +1,22 @@
+{
+ "data": {
+  "workItemId": "beb3a514-3e9d-4cd9-87b5-024fe632252c",
+  "caseId": "0d82c4b5-eff4-4944-bf5f-bc46829f20b8",
+  "outcome": "CLARIFICATION_REQUESTED",
+  "returnReference": null,
+  "supportEventId": null,
+  "missingFields": [
+   "return_method"
+  ],
+  "detail": "Before the RMA can be issued, please confirm: return method."
+ },
+ "page": null,
+ "meta": {
+  "schema_version": "1.0",
+  "request_id": "90212f46-ac29-4170-a781-fd50ee896b12",
+  "generated_at": "2026-08-25T17:17:17.836112Z",
+  "freshness": "LIVE",
+  "partial": false,
+  "warnings": []
+ }
+}

@@ -1,0 +1,89 @@
+{
+ "data": {
+  "caseId": "3e53c9c7-04dd-4d2f-87b3-12c6ab8af2c4",
+  "revision": 33,
+  "changed": true,
+  "items": [
+   {
+    "returnItemId": "598f99e8-3d7c-4466-bc38-6c57a2f81173",
+    "orderLineReference": "1",
+    "productReference": "33888",
+    "quantity": 1,
+    "reason": "SHIPPING_DAMAGE",
+    "condition": "NEW_IN_ORIGINAL_PACKAGING",
+    "packageReference": null
+   }
+  ],
+  "lines": [
+   {
+    "lineReference": "1",
+    "sku": "NHSRMK",
+    "description": "3X2 NH CI SHRT RED",
+    "colour": null,
+    "orderedQuantity": 1,
+    "unitPrice": "16.443",
+    "productReference": "33888",
+    "returnableQuantity": 1,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 1,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "2",
+    "sku": "CWAQHRGSCMY",
+    "description": "1 X 10 M HARD COP TUBE",
+    "colour": null,
+    "orderedQuantity": 1,
+    "unitPrice": "42.959",
+    "productReference": "4000460",
+    "returnableQuantity": 1,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "3",
+    "sku": "Y2318804757",
+    "description": "16X25X1 MERV 8 PLEAT FLTR",
+    "colour": null,
+    "orderedQuantity": 3,
+    "unitPrice": "36.764",
+    "productReference": "4000442",
+    "returnableQuantity": 3,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "4",
+    "sku": "QNCST",
+    "description": "1/2 COMP X3/8 LF QTR TRN ANG STP ORB",
+    "colour": null,
+    "orderedQuantity": 24,
+    "unitPrice": "2.915",
+    "productReference": "4000008",
+    "returnableQuantity": 24,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   }
+  ]
+ },
+ "page": null,
+ "meta": {
+  "schema_version": "1.0",
+  "request_id": "5fce3b07-61af-4ae4-b44e-c223d2b889cd",
+  "generated_at": "2026-08-25T17:06:24.202503Z",
+  "freshness": "LIVE",
+  "partial": false,
+  "warnings": []
+ }
+}

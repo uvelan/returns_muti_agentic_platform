@@ -1,0 +1,388 @@
+{
+ "sent": "Confirm the customer LIONEL KNAPP on account GARDEN.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run5-737d00dd",
+   "conversation_version": 2,
+   "client_turn_id": "qa-6fd9d3cc-3374-4208-81be-03bab60e3746",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CW802018 / 2026-08-01T0 / AKRON / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "3749e446-3668-4ae3-a9fa-8134dac137f1",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CC800786 / 2026-03-07T0 / AKRON / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "3749e446-3668-4ae3-a9fa-8134dac137f1",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CP808982 / 2025-07-13T0 / AKRON / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "3749e446-3668-4ae3-a9fa-8134dac137f1",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CE800105 / 2025-06-19T0 / AKRON / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "3749e446-3668-4ae3-a9fa-8134dac137f1",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CH803241 / 2025-06-22T0 / AKRON / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "3749e446-3668-4ae3-a9fa-8134dac137f1",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CK804752 / 2025-06-09T0 / AKRON / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "3749e446-3668-4ae3-a9fa-8134dac137f1",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 7: CL801264 / 2025-05-14T0 / AKRON / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "3749e446-3668-4ae3-a9fa-8134dac137f1",
+        "result_path": [
+         "rows",
+         "6"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-7",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 8: CE809673 / 2025-02-13T0 / AKRON / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "3749e446-3668-4ae3-a9fa-8134dac137f1",
+        "result_path": [
+         "rows",
+         "7"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "3749e446-3668-4ae3-a9fa-8134dac137f1",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "2baa1a058011a103a718dbd2a1bc40d7439f8d903fdbc2745332722492dbec4b",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "GARDEN*CW802018",
+        "account_id": "GARDEN",
+        "sales_order_number": "CW802018",
+        "customer_id": "600377",
+        "customer_name": "LIONEL KNAPP",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "REPLACEMENT",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "133",
+        "ship_from_warehouse_id": "133",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2026-08-01T00:00:00.000000000",
+        "invoice_date": "2026-08-01T00:00:00.000000000",
+        "shipped_at": "2026-08-02T00:00:00.000000000",
+        "commit_date": "2026-08-01T00:00:00.000000000",
+        "ship_to_name": "LIONEL KNAPP",
+        "ship_to_phone": "303-555-2612",
+        "ship_to_city": "AKRON",
+        "ship_to_state": "OH",
+        "ship_to_postal_code": "44313",
+        "source_updated_at": "2026-08-01T09:46:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CC800786",
+        "account_id": "GARDEN",
+        "sales_order_number": "CC800786",
+        "customer_id": "600377",
+        "customer_name": "LIONEL KNAPP",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "MAINTENANCE",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1556",
+        "ship_from_warehouse_id": "1556",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-03-07T00:00:00.000000000",
+        "invoice_date": "2026-03-07T00:00:00.000000000",
+        "shipped_at": "2026-03-07T00:00:00.000000000",
+        "commit_date": "2026-03-07T00:00:00.000000000",
+        "ship_to_name": "LIONEL KNAPP",
+        "ship_to_phone": "303-555-2612",
+        "ship_to_city": "AKRON",
+        "ship_to_state": "OH",
+        "ship_to_postal_code": "44313",
+        "source_updated_at": "2026-03-07T15:21:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CP808982",
+        "account_id": "GARDEN",
+        "sales_order_number": "CP808982",
+        "customer_id": "600377",
+        "customer_name": "LIONEL KNAPP",
+        "customer_po_number": "SHOP STOCK",
+        "job_name": "WAREHOUSE",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1549",
+        "ship_from_warehouse_id": "1549",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-07-13T00:00:00.000000000",
+        "invoice_date": "2025-07-13T00:00:00.000000000",
+        "shipped_at": "2025-07-16T00:00:00.000000000",
+        "commit_date": "2025-07-13T00:00:00.000000000",
+        "ship_to_name": "LIONEL KNAPP",
+        "ship_to_phone": "303-555-2612",
+        "ship_to_city": "AKRON",
+        "ship_to_state": "OH",
+        "ship_to_postal_code": "44313",
+        "source_updated_at": "2025-07-13T09:17:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CE800105",
+        "account_id": "GARDEN",
+        "sales_order_number": "CE800105",
+        "customer_id": "600377",
+        "customer_name": "LIONEL KNAPP",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "TRUCK STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "31",
+        "ship_from_warehouse_id": "31",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-06-19T00:00:00.000000000",
+        "invoice_date": "2025-06-19T00:00:00.000000000",
+        "shipped_at": "2025-06-21T00:00:00.000000000",
+        "commit_date": "2025-06-19T00:00:00.000000000",
+        "ship_to_name": "LIONEL KNAPP",
+        "ship_to_phone": "303-555-2612",
+        "ship_to_city": "AKRON",
+        "ship_to_state": "OH",
+        "ship_to_postal_code": "44313",
+        "source_updated_at": "2025-06-19T14:36:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CH803241",
+        "account_id": "GARDEN",
+        "sales_order_number": "CH803241",
+        "customer_id": "600377",
+        "customer_name": "LIONEL KNAPP",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "REPLACEMENT",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-06-22T00:00:00.000000000",
+        "invoice_date": "2025-06-22T00:00:00.000000000",
+        "shipped_at": "2025-06-25T00:00:00.000000000",
+        "commit_date": "2025-06-22T00:00:00.000000000",
+        "ship_to_name": "LIONEL KNAPP",
+        "ship_to_phone": "303-555-2612",
+        "ship_to_city": "AKRON",
+        "ship_to_state": "OH",
+        "ship_to_postal_code": "44313",
+        "source_updated_at": "2025-06-22T10:27:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CK804752",
+        "account_id": "GARDEN",
+        "sales_order_number": "CK804752",
+        "customer_id": "600377",
+        "customer_name": "LIONEL KNAPP",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "MAINTENANCE",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-06-09T00:00:00.000000000",
+        "invoice_date": "2025-06-09T00:00:00.000000000",
+        "shipped_at": "2025-06-09T00:00:00.000000000",
+        "commit_date": "2025-06-09T00:00:00.000000000",
+        "ship_to_name": "LIONEL KNAPP",
+        "ship_to_phone": "303-555-2612",
+        "ship_to_city": "AKRON",
+        "ship_to_state": "OH",
+        "ship_to_postal_code": "44313",
+        "source_updated_at": "2025-06-09T17:57:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CL801264",
+        "account_id": "GARDEN",
+        "sales_order_number": "CL801264",
+        "customer_id": "600377",
+        "customer_name": "LIONEL KNAPP",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "NEW CONSTRUCTION",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2028",
+        "ship_from_warehouse_id": "2028",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2025-05-14T00:00:00.000000000",
+        "invoice_date": "2025-05-14T00:00:00.000000000",
+        "shipped_at": "2025-05-14T00:00:00.000000000",
+        "commit_date": "2025-05-14T00:00:00.000000000",
+        "ship_to_name": "LIONEL KNAPP",
+        "ship_to_phone": "303-555-2612",
+        "ship_to_city": "AKRON",
+        "ship_to_state": "OH",
+        "ship_to_postal_code": "44313",
+        "source_updated_at": "2025-05-14T16:17:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CE809673",
+        "account_id": "GARDEN",
+        "sales_order_number": "CE809673",
+        "customer_id": "600377",
+        "customer_name": "LIONEL KNAPP",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "MAINTENANCE",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1549",
+        "ship_from_warehouse_id": "1549",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2025-02-13T00:00:00.000000000",
+        "invoice_date": "2025-02-13T00:00:00.000000000",
+        "shipped_at": "2025-02-16T00:00:00.000000000",
+        "commit_date": "2025-02-13T00:00:00.000000000",
+        "ship_to_name": "LIONEL KNAPP",
+        "ship_to_phone": "303-555-2612",
+        "ship_to_city": "AKRON",
+        "ship_to_state": "OH",
+        "ship_to_postal_code": "44313",
+        "source_updated_at": "2025-02-13T13:06:00.000000000"
+       }
+      ],
+      "count": 8
+     },
+     "result_checksum": "f4ed127e468f0868ff4183706272111f4094d394dfc62f38d882e3fddf9b2658"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "LIONEL KNAPP",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T17:05:22.520000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "0bd7f1ed-308a-4e56-b24d-35bf5a147716",
+   "generated_at": "2026-08-25T17:05:26.655050Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

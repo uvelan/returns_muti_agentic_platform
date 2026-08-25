@@ -1,0 +1,57 @@
+[
+ {
+  "id": "a7cc0316-2285-4e90-81cf-41d0e1a2a6f9",
+  "threadId": "c44ea506-8acf-4b00-a638-7bc2df2c8016",
+  "sequence": 1,
+  "senderRole": "AGENT",
+  "senderId": "return-workflow-agent",
+  "messageType": "REQUEST",
+  "messageText": "RETURN SUPPORT REQUEST\n\nCase:\n- Case ID: 3e53c9c7-04dd-4d2f-87b3-12c6ab8af2c4\n- Work Item ID: 980b7e54-d080-46d3-a1da-1f97d6bea12d\n- Created Date/Time: 2026-08-25T17:05:52.506000+00:00\n- Workflow Status at Handoff: POLICY_APPROVED\n\nCustomer:\n- Customer Name: LIONEL KNAPP\n- Customer Reference: 600377\n- Branch Associate: Not available\n- Branch Associate Email: Not available\n- Branch Associate Phone: Not available\n\nOrder:\n- Order Number: CW802018\n- Selected lines: Not available\n\nReturn Details:\n- Return Method: Not available\n- Requested Resolution: Not available\n- Product Presence: Not available\n- Associate Notes: Not available\n\nBay Assignment:\n- Assignment Status: PRE_ARRIVAL_NOT_ALLOWED\n- Recommended Bay: Not available\n- Warehouse/Branch: Not available\n- Return Location: Not available\n- Handling/Staging Instructions: Not available\n- Unresolved Reason: PRE_ARRIVAL_NOT_ALLOWED\n\nVerification:\n- Order Confirmation: Confirmed\n- Required Return Information: Incomplete\n- Policy Evaluation: APPROVE on the STANDARD_RETURN route\n- Bay Assignment Source: Bay Assignment Agent\n\nRequested Support Action:\n- Review the complete return request.\n- Review or confirm the bay recommendation.\n- Resolve manual bay assignment: no bay could be recommended.\n- Verify all Support-owned conditions, including warranty when applicable.\n- Create or decline the RMA through the authoritative Support workflow.\n",
+  "attachmentIds": [],
+  "businessPayload": {
+   "bayAssignment": {
+    "bayReference": null,
+    "handlingInstructions": null,
+    "returnLocation": null,
+    "source": "BAY_ASSIGNMENT_AGENT",
+    "status": "PRE_ARRIVAL_NOT_ALLOWED",
+    "unresolvedReason": "PRE_ARRIVAL_NOT_ALLOWED",
+    "warehouseReference": null
+   },
+   "caseId": "3e53c9c7-04dd-4d2f-87b3-12c6ab8af2c4",
+   "createdAt": "2026-08-25T17:05:52.506000+00:00",
+   "customer": {
+    "contactEmail": null,
+    "contactName": null,
+    "contactPhone": null,
+    "name": "LIONEL KNAPP",
+    "reference": "600377"
+   },
+   "order": {
+    "items": [],
+    "reference": "CW802018"
+   },
+   "returnDetails": {
+    "additional": {},
+    "associateNotes": null,
+    "method": null,
+    "productPresence": null,
+    "requestedResolution": null
+   },
+   "schemaVersion": "support-handoff-v1",
+   "verification": {
+    "orderConfirmed": true,
+    "policyEvaluation": {
+     "decision": "APPROVE",
+     "route": "STANDARD_RETURN",
+     "skippedReason": null,
+     "state": "EVALUATED"
+    },
+    "requiredReturnInformationComplete": false
+   },
+   "workItemId": "980b7e54-d080-46d3-a1da-1f97d6bea12d",
+   "workflowStatusAtHandoff": "POLICY_APPROVED"
+  },
+  "createdAt": "2026-08-25T17:05:52.930000"
+ }
+]

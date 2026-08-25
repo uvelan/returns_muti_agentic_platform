@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CW802018",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run5-737d00dd",
+   "conversation_version": 3,
+   "client_turn_id": "qa-4306b6e8-f0ce-452d-aaf9-0d1d24714ac4",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CW802018 / [REDACTED] / AKRON / 2026-08-01",
+      "evidence_refs": [
+       {
+        "query_execution_id": "712631b9-ce80-4887-bd95-b08acf405f8c",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "712631b9-ce80-4887-bd95-b08acf405f8c",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "07cbb2fa3fe2175bc47f1e0ad4aab92c8403f562d2f3959fbcdb84365c6ddb76",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CW802018"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CW802018",
+        "data": {
+         "order_key": "GARDEN*CW802018",
+         "account_id": "GARDEN",
+         "sales_order_number": "CW802018",
+         "customer_id": "600377",
+         "customer_name": "LIONEL KNAPP",
+         "customer_po_number": "SERVICE CALL",
+         "job_name": "REPLACEMENT",
+         "order_status": "INVOICED",
+         "sales_type": "INV",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "133",
+         "ship_from_warehouse_id": "133",
+         "shipping_method": "OUR TRUCK",
+         "order_date": "2026-08-01T00:00:00.000000000",
+         "invoice_date": "2026-08-01T00:00:00.000000000",
+         "shipped_at": "2026-08-02T00:00:00.000000000",
+         "commit_date": "2026-08-01T00:00:00.000000000",
+         "ship_to_name": "LIONEL KNAPP",
+         "ship_to_phone": "303-555-2612",
+         "ship_to_city": "AKRON",
+         "ship_to_state": "OH",
+         "ship_to_postal_code": "44313",
+         "source_updated_at": "2026-08-01T09:46:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "b2b8ca3fe1fabc8b5f406eeadb2000f14e806d01a66bb6dfe9034f2a02e28d75"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "LIONEL KNAPP",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T17:05:28.872000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "6089e592-3596-48ac-b55f-f9cba2511c43",
+   "generated_at": "2026-08-25T17:05:40.081367Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

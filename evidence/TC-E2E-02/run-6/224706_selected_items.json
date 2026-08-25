@@ -1,0 +1,44 @@
+{
+ "data": {
+  "caseId": "0d82c4b5-eff4-4944-bf5f-bc46829f20b8",
+  "revision": 31,
+  "changed": true,
+  "items": [
+   {
+    "returnItemId": "1a893fe2-f947-4de5-a094-2ba781885481",
+    "orderLineReference": "1",
+    "productReference": "7347390",
+    "quantity": 1,
+    "reason": "SHIPPING_DAMAGE",
+    "condition": "NEW_IN_ORIGINAL_PACKAGING",
+    "packageReference": null
+   }
+  ],
+  "lines": [
+   {
+    "lineReference": "1",
+    "sku": "PANFV0510VSC1",
+    "description": "WHISPERVALUE DC FAN CNDST SNSR",
+    "colour": null,
+    "orderedQuantity": 5,
+    "unitPrice": "133.771",
+    "productReference": "7347390",
+    "returnableQuantity": 5,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 1,
+    "dataInconsistency": null
+   }
+  ]
+ },
+ "page": null,
+ "meta": {
+  "schema_version": "1.0",
+  "request_id": "45e057d3-018e-4f81-af2f-88b0e939f378",
+  "generated_at": "2026-08-25T17:17:06.563568Z",
+  "freshness": "LIVE",
+  "partial": false,
+  "warnings": []
+ }
+}

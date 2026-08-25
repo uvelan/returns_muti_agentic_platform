@@ -1,0 +1,429 @@
+{
+ "sent": "Confirm the customer CONNIE FERRARO on account LAKEWOOD.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run6-22346299",
+   "conversation_version": 2,
+   "client_turn_id": "qa-8f90f0c2-e16a-424e-aa14-3837322d1da9",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CA806592 / 2026-08-01T0 / TULSA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "f5124ba0-83c5-4238-ab8a-8f1ae2348544",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CZ800657 / 2026-07-18T0 / TULSA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "f5124ba0-83c5-4238-ab8a-8f1ae2348544",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CT800908 / 2026-05-24T0 / TULSA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "f5124ba0-83c5-4238-ab8a-8f1ae2348544",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CG804684 / 2026-03-24T0 / TULSA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "f5124ba0-83c5-4238-ab8a-8f1ae2348544",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CL801523 / 2025-10-19T0 / TULSA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "f5124ba0-83c5-4238-ab8a-8f1ae2348544",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CX801801 / 2025-08-15T0 / TULSA / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "f5124ba0-83c5-4238-ab8a-8f1ae2348544",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 7: CF803424 / 2025-07-31T0 / TULSA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "f5124ba0-83c5-4238-ab8a-8f1ae2348544",
+        "result_path": [
+         "rows",
+         "6"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-7",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 8: CR809030 / 2025-04-29T0 / TULSA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "f5124ba0-83c5-4238-ab8a-8f1ae2348544",
+        "result_path": [
+         "rows",
+         "7"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-8",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 9: CO807687 / 2025-01-16T0 / TULSA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "f5124ba0-83c5-4238-ab8a-8f1ae2348544",
+        "result_path": [
+         "rows",
+         "8"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "f5124ba0-83c5-4238-ab8a-8f1ae2348544",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "e003df961277a8716f18d185ff8dc3a3c701f85f29982b221a43bd72e47d40cf",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "LAKEWOOD*CA806592",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CA806592",
+        "customer_id": "600493",
+        "customer_name": "CONNIE FERRARO",
+        "customer_po_number": "JOB",
+        "job_name": "RESIDENTIAL",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "31",
+        "ship_from_warehouse_id": "31",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-08-01T00:00:00.000000000",
+        "invoice_date": "2026-08-01T00:00:00.000000000",
+        "shipped_at": "2026-08-03T00:00:00.000000000",
+        "commit_date": "2026-08-01T00:00:00.000000000",
+        "ship_to_name": "CONNIE FERRARO",
+        "ship_to_phone": "469-555-8734",
+        "ship_to_city": "TULSA",
+        "ship_to_state": "OK",
+        "ship_to_postal_code": "74124",
+        "source_updated_at": "2026-08-01T10:30:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CZ800657",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CZ800657",
+        "customer_id": "600493",
+        "customer_name": "CONNIE FERRARO",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "REPLACEMENT",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1556",
+        "ship_from_warehouse_id": "1556",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-07-18T00:00:00.000000000",
+        "invoice_date": "2026-07-18T00:00:00.000000000",
+        "shipped_at": "2026-07-18T00:00:00.000000000",
+        "commit_date": "2026-07-18T00:00:00.000000000",
+        "ship_to_name": "CONNIE FERRARO",
+        "ship_to_phone": "469-555-8734",
+        "ship_to_city": "TULSA",
+        "ship_to_state": "OK",
+        "ship_to_postal_code": "74124",
+        "source_updated_at": "2026-07-18T18:13:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CT800908",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CT800908",
+        "customer_id": "600493",
+        "customer_name": "CONNIE FERRARO",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "WARRANTY",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "686",
+        "ship_from_warehouse_id": "686",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-05-24T00:00:00.000000000",
+        "invoice_date": "2026-05-24T00:00:00.000000000",
+        "shipped_at": "2026-05-27T00:00:00.000000000",
+        "commit_date": "2026-05-24T00:00:00.000000000",
+        "ship_to_name": "CONNIE FERRARO",
+        "ship_to_phone": "469-555-8734",
+        "ship_to_city": "TULSA",
+        "ship_to_state": "OK",
+        "ship_to_postal_code": "74124",
+        "source_updated_at": "2026-05-24T13:49:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CG804684",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CG804684",
+        "customer_id": "600493",
+        "customer_name": "CONNIE FERRARO",
+        "customer_po_number": "RESIDENTIAL",
+        "job_name": "TRUCK STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1844",
+        "ship_from_warehouse_id": "1844",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-03-24T00:00:00.000000000",
+        "invoice_date": "2026-03-24T00:00:00.000000000",
+        "shipped_at": "2026-03-24T00:00:00.000000000",
+        "commit_date": "2026-03-24T00:00:00.000000000",
+        "ship_to_name": "CONNIE FERRARO",
+        "ship_to_phone": "469-555-8734",
+        "ship_to_city": "TULSA",
+        "ship_to_state": "OK",
+        "ship_to_postal_code": "74124",
+        "source_updated_at": "2026-03-24T17:06:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CL801523",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CL801523",
+        "customer_id": "600493",
+        "customer_name": "CONNIE FERRARO",
+        "customer_po_number": "RESIDENTIAL",
+        "job_name": "SHOP STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2210",
+        "ship_from_warehouse_id": "2210",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-10-19T00:00:00.000000000",
+        "invoice_date": "2025-10-19T00:00:00.000000000",
+        "shipped_at": "2025-10-19T00:00:00.000000000",
+        "commit_date": "2025-10-19T00:00:00.000000000",
+        "ship_to_name": "CONNIE FERRARO",
+        "ship_to_phone": "469-555-8734",
+        "ship_to_city": "TULSA",
+        "ship_to_state": "OK",
+        "ship_to_postal_code": "74124",
+        "source_updated_at": "2025-10-19T11:47:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CX801801",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CX801801",
+        "customer_id": "600493",
+        "customer_name": "CONNIE FERRARO",
+        "customer_po_number": "JOB",
+        "job_name": "REPLACEMENT",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2624",
+        "ship_from_warehouse_id": "2624",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-08-15T00:00:00.000000000",
+        "invoice_date": "2025-08-15T00:00:00.000000000",
+        "shipped_at": "2025-08-16T00:00:00.000000000",
+        "commit_date": "2025-08-15T00:00:00.000000000",
+        "ship_to_name": "CONNIE FERRARO",
+        "ship_to_phone": "469-555-8734",
+        "ship_to_city": "TULSA",
+        "ship_to_state": "OK",
+        "ship_to_postal_code": "74124",
+        "source_updated_at": "2025-08-15T15:14:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CF803424",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CF803424",
+        "customer_id": "600493",
+        "customer_name": "CONNIE FERRARO",
+        "customer_po_number": "JOB",
+        "job_name": "SERVICE CALL",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "133",
+        "ship_from_warehouse_id": "133",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-07-31T00:00:00.000000000",
+        "invoice_date": "2025-07-31T00:00:00.000000000",
+        "shipped_at": "2025-07-31T00:00:00.000000000",
+        "commit_date": "2025-07-31T00:00:00.000000000",
+        "ship_to_name": "CONNIE FERRARO",
+        "ship_to_phone": "469-555-8734",
+        "ship_to_city": "TULSA",
+        "ship_to_state": "OK",
+        "ship_to_postal_code": "74124",
+        "source_updated_at": "2025-07-31T15:33:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CR809030",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CR809030",
+        "customer_id": "600493",
+        "customer_name": "CONNIE FERRARO",
+        "customer_po_number": "NEW CONSTRUCTION",
+        "job_name": "SHOP STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "603",
+        "ship_from_warehouse_id": "603",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2025-04-29T00:00:00.000000000",
+        "invoice_date": "2025-04-29T00:00:00.000000000",
+        "shipped_at": "2025-04-30T00:00:00.000000000",
+        "commit_date": "2025-04-29T00:00:00.000000000",
+        "ship_to_name": "CONNIE FERRARO",
+        "ship_to_phone": "469-555-8734",
+        "ship_to_city": "TULSA",
+        "ship_to_state": "OK",
+        "ship_to_postal_code": "74124",
+        "source_updated_at": "2025-04-29T12:47:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CO807687",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CO807687",
+        "customer_id": "600493",
+        "customer_name": "CONNIE FERRARO",
+        "customer_po_number": "REPLACEMENT",
+        "job_name": "WAREHOUSE",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "603",
+        "ship_from_warehouse_id": "603",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-01-16T00:00:00.000000000",
+        "invoice_date": "2025-01-16T00:00:00.000000000",
+        "shipped_at": "2025-01-19T00:00:00.000000000",
+        "commit_date": "2025-01-16T00:00:00.000000000",
+        "ship_to_name": "CONNIE FERRARO",
+        "ship_to_phone": "469-555-8734",
+        "ship_to_city": "TULSA",
+        "ship_to_state": "OK",
+        "ship_to_postal_code": "74124",
+        "source_updated_at": "2025-01-16T09:32:00.000000000"
+       }
+      ],
+      "count": 9
+     },
+     "result_checksum": "bec74d23f2728b1f02c20ee7198ed66fadeaa42d399cdab7cc312df77454ddca"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "CONNIE FERRARO",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-25T17:16:15.391000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "c2e9d074-6b5f-4d71-8f69-4656ba4dee02",
+   "generated_at": "2026-08-25T17:16:19.011191Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

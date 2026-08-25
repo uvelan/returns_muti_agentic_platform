@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import inspect
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -1160,7 +1160,8 @@ class ReturnCaseActivities:
                 ),
             ),
             return_details=SupportHandoffReturn(
-                method=_stated(facts, "return_method"),
+                method=_stated(facts, "return_method")
+                or await self._derive_return_method(request.case_id, selected, details),
                 requested_resolution=_stated(facts, "requested_resolution"),
                 product_presence=_stated(facts, "product_presence"),
                 associate_notes=_stated(facts, "associate_notes"),
@@ -1187,6 +1188,66 @@ class ReturnCaseActivities:
             payload=handoff.payload,
             subject=handoff.subject,
         )
+
+    async def _derive_return_method(
+        self,
+        case_id: str,
+        selected: Sequence[Mapping[str, Any]],
+        details: Mapping[str, CaseOrderLineDetail],
+    ) -> str | None:
+        """The parcel-vs-freight class, from what the product is -- never asked.
+
+        Driven by `return_policy.return_method_derivation`: any selected line
+        whose resolved product description or SKU carries a configured freight
+        keyword makes the whole return the freight method, because one
+        LTL-class item decides the shipment. No derivation configured, or no
+        selected lines, answers `None` and Support asks -- the old behaviour,
+        and the honest one for a deployment that has not declared the rule.
+
+        The answer is recorded on the case fact log as `return_method` with
+        `DERIVED` acquisition, so the handoff, the completion profile and the
+        associate's own conversation all read the same statement with its
+        provenance intact.
+        """
+        configuration = self._configuration() if self._configuration else None
+        derivation = (
+            configuration.return_policy.return_method_derivation
+            if configuration is not None
+            else None
+        )
+        if derivation is None or not selected:
+            return None
+        keywords = tuple(keyword.upper() for keyword in derivation.freight_keywords)
+        method = derivation.default_method
+        for item in selected:
+            detail = details.get(str(item.get("orderLineId") or ""))
+            text = " ".join(
+                part
+                for part in (
+                    detail.description if detail else None,
+                    detail.sku if detail else None,
+                )
+                if part
+            ).upper()
+            if any(keyword in text for keyword in keywords):
+                method = derivation.freight_method
+                break
+        try:
+            await self._append_fact_once(
+                fact_id=f"return_method-{case_id}",
+                case_id=case_id,
+                fact_name="return_method",
+                value=method,
+                agent_id="return-workflow-agent",
+                channel=FactChannel.SYSTEM,
+                acquisition_method=FactAcquisition.DERIVED,
+                source_path="RETURN_CASE_WORKFLOW",
+            )
+        except Exception:  # noqa: BLE001 - the derivation stands even unrecorded
+            logger.warning(
+                "return_method_fact_not_recorded", extra={"case_id": case_id}, exc_info=True
+            )
+        return method
 
     async def _drafted_note(self, case_id: str, facts: Mapping[str, Any]) -> str:
         """A configured drafter's words, under the structured request.

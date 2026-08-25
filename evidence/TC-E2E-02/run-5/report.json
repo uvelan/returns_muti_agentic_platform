@@ -1,0 +1,25 @@
+[
+ {
+  "step": 10,
+  "state": "PASS",
+  "note": "drafted template present in support thread (1 message(s))"
+ },
+ {
+  "step": 11,
+  "state": "PASS",
+  "note": "support response agent processed the work item"
+ },
+ {
+  "step": 12,
+  "state": "PASS",
+  "note": "reply pending (asserted at step 13)"
+ },
+ {
+  "step": 13,
+  "state": "FAIL",
+  "note": "no RMA landed on the case (status AWAITING_SUPPORT)"
+ },
+ {
+  "failure": "step 13: no RMA landed on the case (status AWAITING_SUPPORT)"
+ }
+]

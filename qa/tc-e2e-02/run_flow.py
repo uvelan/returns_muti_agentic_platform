@@ -256,15 +256,15 @@ class Run:
         self.ok(9, f"bay answered: {facts.get('bay_reason', {}).get('value')}")
 
     def step_10(self) -> None:
-        items = self.call("GET", "/api/support/work-items").get("data") or []
+        items = self.call("GET", "/api/v1/return-support/work-items").get("data") or []
         mine = [i for i in items if i.get("caseId") == self.case_id]
         if not mine:
             self.fail(10, "no support work item for the case")
-        self.work_item_id = mine[0]["workItemId"]
+        self.work_item_id = mine[0]["id"]
         messages = self.call(
-            "GET", f"/api/support/work-items/{self.work_item_id}/messages").get("data") or []
+            "GET", f"/api/v1/return-support/work-items/{self.work_item_id}/messages").get("data") or []
         self.archive("support_thread_before", messages)
-        drafted = [m for m in messages if (m.get("body") or m.get("text"))]
+        drafted = [m for m in messages if (m.get("messageText") or "").strip()]
         if not drafted:
             self.fail(10, "no drafted message in the support thread")
         body = json.dumps(messages, default=str)
@@ -274,10 +274,10 @@ class Run:
 
     def step_11_12(self) -> None:
         run = self.call(
-            "POST", f"/api/support/work-items/{self.work_item_id}/agent-response", {})
+            "POST", f"/api/v1/return-support/work-items/{self.work_item_id}/agent-response", {})
         self.archive("support_agent_run", run)
         messages = self.call(
-            "GET", f"/api/support/work-items/{self.work_item_id}/messages").get("data") or []
+            "GET", f"/api/v1/return-support/work-items/{self.work_item_id}/messages").get("data") or []
         self.archive("support_thread_after", messages)
         body = json.dumps(messages, default=str)
         self.ok(11, "support response agent processed the work item")
@@ -326,9 +326,18 @@ def main() -> None:
     parser.add_argument("--account", required=True)
     parser.add_argument("--order", required=True)
     parser.add_argument("--until", type=int, default=15)
+    parser.add_argument("--resume-conversation", default=None)
+    parser.add_argument("--resume-case", default=None)
+    parser.add_argument("--from-step", type=int, default=1)
     args = parser.parse_args()
 
     run = Run(args.run, args.customer, args.misspelled, args.account, args.order)
+    if args.resume_conversation:
+        run.conversation = args.resume_conversation
+        run.case_id = args.resume_case
+        transcript = run.call(
+            "GET", f"/api/v2/order-agent/conversations/{run.conversation}/transcript")
+        run.version = (transcript.get("data") or {}).get("conversationVersion", 0)
     print(f"RUN {args.run}: {args.customer} / {args.order} as {args.misspelled!r}"
           f" conversation {run.conversation}", flush=True)
     stages = [
@@ -340,6 +349,8 @@ def main() -> None:
         for upto, stage in stages:
             if upto > args.until:
                 break
+            if upto < args.from_step:
+                continue
             stage()
     except StepFailure as failure:
         print(f"  FAIL: {failure}", flush=True)

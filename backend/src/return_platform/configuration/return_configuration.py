@@ -463,6 +463,30 @@ class ReturnMethodRequirementConfiguration(StrictConfigModel):
     requires: tuple[NonBlank, ...] = Field(min_length=1)
 
 
+class ReturnMethodDerivationConfiguration(StrictConfigModel):
+    """How the parcel-vs-freight class is derived from the product.
+
+    TC-E2E-02's contract, stated as configuration: the shipping class is
+    **derived from what the product is, never asked** -- an associate cannot be
+    expected to know a grille ships parcel and a water heater ships LTL, and a
+    question about it would be the platform delegating its own judgement.
+
+    `freight_keywords` is matched case-insensitively against the selected
+    lines' product descriptions and SKUs as the source resolves them. Any match
+    on any selected line makes the whole return `freight_method` -- a single
+    LTL-class item decides the shipment, since the parcel network cannot carry
+    it. No match means `default_method`.
+
+    Both methods must name entries of `normalized_return_methods`; the
+    validator on `ReturnPolicyConfiguration` enforces it so a release cannot
+    derive a method the completion table has never heard of.
+    """
+
+    default_method: NonBlank
+    freight_method: NonBlank
+    freight_keywords: tuple[NonBlank, ...] = ()
+
+
 class ReturnPolicyConfiguration(StrictConfigModel):
     photo_required_reason_codes: tuple[NonBlank, ...]
     supported_product_presence: tuple[NonBlank, ...] = Field(min_length=1)
@@ -503,6 +527,11 @@ class ReturnPolicyConfiguration(StrictConfigModel):
     rga_required_product_resolutions: tuple[NonBlank, ...]
     heavy_pickup_required_fields: tuple[NonBlank, ...] = Field(min_length=1)
     branch_staging: BranchStagingConfiguration
+    #: Optional -- `None`, the default so releases cut before this block still
+    #: load, means the deployment has not declared a derivation and the
+    #: workflow records no derived method; Support asks, which is the old
+    #: behaviour and the honest one for an operator who has not answered.
+    return_method_derivation: ReturnMethodDerivationConfiguration | None = None
 
     @model_validator(mode="after")
     def validate_return_method_requirements(self) -> ReturnPolicyConfiguration:
@@ -547,6 +576,16 @@ class ReturnPolicyConfiguration(StrictConfigModel):
                 "return_policy.return_method_requirements names methods that are not in "
                 f"normalized_return_methods: {', '.join(unknown)}"
             )
+        if self.return_method_derivation is not None:
+            for label, method in (
+                ("default_method", self.return_method_derivation.default_method),
+                ("freight_method", self.return_method_derivation.freight_method),
+            ):
+                if method.strip().upper() not in catalogue:
+                    raise ValueError(
+                        f"return_policy.return_method_derivation.{label} names {method!r}, "
+                        "which is not in normalized_return_methods"
+                    )
         return self
 
 

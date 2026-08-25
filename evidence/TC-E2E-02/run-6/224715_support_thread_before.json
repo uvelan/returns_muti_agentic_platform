@@ -1,0 +1,68 @@
+[
+ {
+  "id": "f7b810b1-5fc3-4190-8e84-44717a6fb99f",
+  "threadId": "e788eb7a-c97d-409c-93fc-fc7ff0bb46a4",
+  "sequence": 1,
+  "senderRole": "AGENT",
+  "senderId": "return-workflow-agent",
+  "messageType": "REQUEST",
+  "messageText": "RETURN SUPPORT REQUEST\n\nCase:\n- Case ID: 0d82c4b5-eff4-4944-bf5f-bc46829f20b8\n- Work Item ID: beb3a514-3e9d-4cd9-87b5-024fe632252c\n- Created Date/Time: 2026-08-25T17:17:05.159000+00:00\n- Workflow Status at Handoff: GATHERING_INFO\n\nCustomer:\n- Customer Name: CONNIE FERRARO\n- Customer Reference: 600493\n- Branch Associate: Not available\n- Branch Associate Email: Not available\n- Branch Associate Phone: Not available\n\nOrder:\n- Order Number: CA806592\n- Line/Order-Line Number: 1\n  - Product Name: WHISPERVALUE DC FAN CNDST SNSR\n  - Colour: Not available\n  - SKU: PANFV0510VSC1\n  - Confirmed Return Quantity: 1\n  - Return Reason: SHIPPING_DAMAGE\n  - Product Condition: NEW_IN_ORIGINAL_PACKAGING\n\nReturn Details:\n- Return Method: Not available\n- Requested Resolution: Not available\n- Product Presence: Not available\n- Associate Notes: Not available\n\nBay Assignment:\n- Assignment Status: PRE_ARRIVAL_NOT_ALLOWED\n- Recommended Bay: Not available\n- Warehouse/Branch: Not available\n- Return Location: Not available\n- Handling/Staging Instructions: Not available\n- Unresolved Reason: PRE_ARRIVAL_NOT_ALLOWED\n\nVerification:\n- Order Confirmation: Confirmed\n- Required Return Information: Incomplete\n- Policy Evaluation: APPROVE on the STANDARD_RETURN route\n- Bay Assignment Source: Bay Assignment Agent\n\nRequested Support Action:\n- Review the complete return request.\n- Review or confirm the bay recommendation.\n- Resolve manual bay assignment: no bay could be recommended.\n- Verify all Support-owned conditions, including warranty when applicable.\n- Create or decline the RMA through the authoritative Support workflow.\n",
+  "attachmentIds": [],
+  "businessPayload": {
+   "bayAssignment": {
+    "bayReference": null,
+    "handlingInstructions": null,
+    "returnLocation": null,
+    "source": "BAY_ASSIGNMENT_AGENT",
+    "status": "PRE_ARRIVAL_NOT_ALLOWED",
+    "unresolvedReason": "PRE_ARRIVAL_NOT_ALLOWED",
+    "warehouseReference": null
+   },
+   "caseId": "0d82c4b5-eff4-4944-bf5f-bc46829f20b8",
+   "createdAt": "2026-08-25T17:17:05.159000+00:00",
+   "customer": {
+    "contactEmail": null,
+    "contactName": null,
+    "contactPhone": null,
+    "name": "CONNIE FERRARO",
+    "reference": "600493"
+   },
+   "order": {
+    "items": [
+     {
+      "colour": null,
+      "condition": "NEW_IN_ORIGINAL_PACKAGING",
+      "lineReference": "1",
+      "productName": "WHISPERVALUE DC FAN CNDST SNSR",
+      "productReference": "7347390",
+      "quantity": 1,
+      "reason": "SHIPPING_DAMAGE",
+      "sku": "PANFV0510VSC1"
+     }
+    ],
+    "reference": "CA806592"
+   },
+   "returnDetails": {
+    "additional": {},
+    "associateNotes": null,
+    "method": null,
+    "productPresence": null,
+    "requestedResolution": null
+   },
+   "schemaVersion": "support-handoff-v1",
+   "verification": {
+    "orderConfirmed": true,
+    "policyEvaluation": {
+     "decision": "APPROVE",
+     "route": "STANDARD_RETURN",
+     "skippedReason": null,
+     "state": "EVALUATED"
+    },
+    "requiredReturnInformationComplete": false
+   },
+   "workItemId": "beb3a514-3e9d-4cd9-87b5-024fe632252c",
+   "workflowStatusAtHandoff": "GATHERING_INFO"
+  },
+  "createdAt": "2026-08-25T17:17:07.062000"
+ }
+]
