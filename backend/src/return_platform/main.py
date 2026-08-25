@@ -283,7 +283,16 @@ def _create_error_response(
     code: str,
     message: str,
 ) -> JSONResponse:
-    """Create the standard API error envelope."""
+    """Create the standard API error envelope.
+
+    The message is truncated to `WarningMeta`'s own limit rather than passed
+    through. A pydantic validation detail can easily exceed 500 characters --
+    five field errors with their URLs does it -- and an error *builder* that
+    raises on a long message turns every such refusal into a 500 that tells the
+    caller nothing. The refusal the caller needed was in the part that fits.
+    """
+    if len(message) > 500:
+        message = message[:499] + "…"
 
     response = JSONResponse(
         status_code=status_code,
