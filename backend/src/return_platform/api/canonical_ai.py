@@ -35,6 +35,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from return_platform.ai.gateway.models import (
     AIRouteHealthView,
+    AISafetyTestRequest,
+    AISafetyTestResponse,
     AITaskView,
     AIUsageAttemptView,
     AIUsageSummaryView,
@@ -42,13 +44,18 @@ from return_platform.ai.gateway.models import (
 from return_platform.ai.gateway.service import AIGatewayService
 from return_platform.ai.interception.records import InterceptionStatus
 from return_platform.ai.interception.store import InterceptionNotPending
+from return_platform.ai.safety.inspection import inspect_input
 from return_platform.operations.models import AICompareRequest, AIReplayRequest, AITraceView
 from return_platform.operations.repository import (
     OperationalRepository,
     resolve_operational_repository,
 )
 from return_platform.security import capabilities
-from return_platform.security.authorization import require_capability, require_read_roles
+from return_platform.security.authorization import (
+    require_capability,
+    require_read_roles,
+    require_write_roles,
+)
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 router = APIRouter(prefix="/api/ai", tags=["AI Control Center"])
@@ -444,6 +451,69 @@ async def cancel_interception(
         )
     return APIResponse(
         data={"interceptionId": record.interception_id, "status": record.status.value},
+        meta=_meta(request),
+    )
+
+
+@router.get("/requests", response_model=APIResponse[list[AITraceView]])
+async def list_requests(
+    request: Request,
+    trace_status: str | None = Query(default=None, alias="status"),
+    _actor_id: str = Depends(require_read_roles),
+) -> APIResponse[list[AITraceView]]:
+    """The durable record of what was asked and answered -- the Audit surface.
+
+    Distinct from `/metrics` by grain, not by subject: a metrics row is one
+    *attempt* against one route (three rows for a call that failed over twice),
+    while a trace is the one durable record per invocation, carrying the prompt,
+    the redacted input and the response. The canonical mirror of the versioned
+    `GET /api/v1/ai-gateway/requests`, because the Control Center may only speak
+    the versionless surface.
+    """
+    repository = resolve_operational_repository(request)
+    return APIResponse(
+        data=await repository.list_ai_traces(status=trace_status), meta=_meta(request)
+    )
+
+
+@router.post("/safety-test", response_model=APIResponse[AISafetyTestResponse])
+async def safety_test(
+    request: Request,
+    payload: AISafetyTestRequest,
+    _actor_id: str = Depends(require_write_roles),
+) -> APIResponse[AISafetyTestResponse]:
+    """Run a payload through the deterministic input-safety inspector.
+
+    The canonical mirror of the versioned safety test, with the same guard: a
+    test surface that injects arbitrary payloads has no business existing in
+    production, so anything but development/test answers 403.
+    """
+    settings = request.app.state.settings
+    if settings.environment not in {"development", "test"}:
+        raise HTTPException(
+            status_code=403, detail="AI safety test is disabled in this environment"
+        )
+    repository = resolve_operational_repository(request)
+    gateway = _gateway(request, repository)
+    if payload.taskId not in gateway.configuration.tasks:
+        raise HTTPException(status_code=422, detail="Unknown AI task")
+    inspection = inspect_input(payload.payload)
+    deterministic = (
+        {"status": "ALLOWED", "message": "Input passed deterministic AI safety checks."}
+        if inspection.allowed
+        else {
+            "status": inspection.status.value,
+            "message": "This assistant supports Ferguson return operations only.",
+        }
+    )
+    return APIResponse(
+        data=AISafetyTestResponse(
+            taskId=payload.taskId,
+            status=inspection.status,
+            signals=inspection.signals,
+            allowed=inspection.allowed,
+            deterministicResponse=deterministic,
+        ),
         meta=_meta(request),
     )
 

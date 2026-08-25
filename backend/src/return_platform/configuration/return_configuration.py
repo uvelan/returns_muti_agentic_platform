@@ -1190,6 +1190,13 @@ class AIModelBindingConfiguration(StrictConfigModel):
     model_class: Literal["LIGHTWEIGHT", "STANDARD"]
     task_keys: tuple[NonBlank, ...] = Field(min_length=1)
     priority: int = Field(default=1, ge=1, le=100)
+    #: What an operator calls this model on a screen. Presentation only: routing
+    #: keys on `model_id`, and nothing behavioural may ever read this.
+    display_name: NonBlank | None = None
+    #: A disabled binding stays in the release -- its rank, tasks and name kept
+    #: -- but contributes no route. The alternative was deleting the binding to
+    #: pause a model, which loses the configuration the pause exists to protect.
+    enabled: bool = True
 
 
 class AIValidatedRouteConfiguration(StrictConfigModel):
@@ -1221,8 +1228,11 @@ class AIProviderRuntimeConfiguration(StrictConfigModel):
     def validate_enabled_provider(self) -> AIProviderRuntimeConfiguration:
         if self.enabled and self.provider_key != "OLLAMA" and not self.credentials:
             raise ValueError("enabled hosted AI providers require at least one credential")
-        if self.enabled and not self.models:
-            raise ValueError("enabled AI providers require at least one configured model")
+        # At least one *enabled* model: a provider whose bindings are all
+        # disabled would be enabled in name and contribute zero routes, which is
+        # the misconfiguration this check exists to refuse.
+        if self.enabled and not any(model.enabled for model in self.models):
+            raise ValueError("enabled AI providers require at least one enabled model")
 
         model_ids = [item.model_id for item in self.models]
         if len(model_ids) != len(set(model_ids)):

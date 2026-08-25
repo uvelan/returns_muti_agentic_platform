@@ -178,6 +178,26 @@ export const aiControlCenterApi = {
    */
   getRequest: (traceId: string) =>
     unwrap<AITraceDetailView>(`/api/ai/requests/${encodeURIComponent(traceId)}`),
+
+  /**
+   * The durable trace records -- the Audit surface. Different grain from
+   * `listAttempts`: a metrics row is one attempt against one route (a call
+   * that failed over twice is three rows), a trace is the one durable record
+   * per invocation, carrying its payloads.
+   */
+  listRequests: () => unwrap<AITraceDetailView[]>("/api/ai/requests"),
+
+  /**
+   * Run a payload through the deterministic input-safety inspector, without
+   * calling any model. Development and test environments only -- production
+   * answers 403, and the screen says so rather than hiding the tab.
+   */
+  safetyTest: (taskId: string, payload: Readonly<Record<string, unknown>>) =>
+    unwrap<AISafetyTestResult>("/api/ai/safety-test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ taskId, payload }),
+    }),
   /**
    * The pending operator queue, or the statuses asked for.
    *
@@ -317,6 +337,15 @@ export type AITraceView = {
  * unredacted payload exists only in the interception store, behind
  * `ai.interception.act`.
  */
+/** `ai_gateway/models.py::AISafetyTestResponse`. */
+export type AISafetyTestResult = {
+  readonly taskId: string;
+  readonly status: string;
+  readonly signals: readonly string[];
+  readonly allowed: boolean;
+  readonly deterministicResponse: Readonly<Record<string, unknown>>;
+};
+
 export type AITraceDetailView = AITraceView & {
   readonly sessionId: string | null;
   readonly configuredTier: string;

@@ -181,7 +181,7 @@ const MOCK_AI_TRACES: Record<string, Record<string, unknown>> = {
   "trace-mock-2": {
     id: "trace-mock-2",
     sessionId: null,
-    status: "FAILED",
+    status: "PROVIDER_UNAVAILABLE",
     taskId: "ORDER_AGENT_REASONING_OPENING_V1",
     configuredTier: "STANDARD",
     selectedTier: null,
@@ -1158,6 +1158,24 @@ export const canonicalHandlers = [
       ),
     );
   }),
+  // The two writes the AI Configuration editor rides: open a draft, patch one
+  // behaviour domain. Free-shaped dicts on the backend, so the mock echoes the
+  // identifiers back.
+  http.post("/api/config/releases", async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as { release_id?: string };
+    return HttpResponse.json(
+      envelope({ release_id: body.release_id ?? "rel-mock-draft", status: "DRAFT" }, "release"),
+      { status: 201 },
+    );
+  }),
+  http.patch("/api/config/releases/:releaseId/domains/:domainKey", ({ params }) =>
+    HttpResponse.json(
+      envelope(
+        { release_id: String(params.releaseId), domain: String(params.domainKey), status: "DRAFT" },
+        "release-domain",
+      ),
+    ),
+  ),
   http.get("/api/config/releases", async () => {
     await delay(80);
     return HttpResponse.json(
@@ -1550,6 +1568,37 @@ export const canonicalHandlers = [
   http.get("/api/ai/metrics", () =>
     HttpResponse.json(envelope(MOCK_AI_ATTEMPTS, "metrics")),
   ),
+  // The durable trace records -- the Audit tab's list.
+  http.get("/api/ai/requests", () =>
+    HttpResponse.json(envelope(Object.values(MOCK_AI_TRACES), "traces")),
+  ),
+  // The deterministic input inspector, without any model. Flags the classic
+  // injection phrasing so the mock demo can show both verdicts.
+  http.post("/api/ai/safety-test", async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as {
+      taskId?: string;
+      payload?: Record<string, unknown>;
+    };
+    const text = JSON.stringify(body.payload ?? {}).toLowerCase();
+    const injected = text.includes("ignore previous") || text.includes("system prompt");
+    return HttpResponse.json(
+      envelope(
+        {
+          taskId: body.taskId ?? "RETURN_CLARIFICATION_FIELD_V2",
+          status: injected ? "PROMPT_INJECTION_SUSPECTED" : "SAFE",
+          signals: injected ? ["OVERRIDE_INSTRUCTION_PATTERN"] : [],
+          allowed: !injected,
+          deterministicResponse: injected
+            ? {
+                status: "PROMPT_INJECTION_SUSPECTED",
+                message: "This assistant supports Ferguson return operations only.",
+              }
+            : { status: "ALLOWED", message: "Input passed deterministic AI safety checks." },
+        },
+        "safety-test",
+      ),
+    );
+  }),
   // The full recorded trace behind one metrics row -- what the request-detail
   // dialog fetches on open. Unknown ids 404 the way the backend does.
   http.get("/api/ai/requests/:traceId", async ({ params }) => {

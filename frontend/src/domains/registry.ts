@@ -1,6 +1,5 @@
 import {
   Activity,
-  BarChart3,
   Bot,
   Briefcase,
   ClipboardCheck,
@@ -186,7 +185,6 @@ export const AI_SECTIONS = [
   "Overview",
   "Requests",
   "Interceptions",
-  "Metrics",
   "Providers & Models",
   "Routes & Tasks",
   "Safety",
@@ -291,7 +289,6 @@ export const DOMAINS: readonly DomainDefinition[] = [
       Overview: LayoutDashboard,
       Requests: MessagesSquare,
       Interceptions: Hand,
-      Metrics: BarChart3,
       "Providers & Models": Server,
       "Routes & Tasks": Route,
       Safety: ShieldCheck,

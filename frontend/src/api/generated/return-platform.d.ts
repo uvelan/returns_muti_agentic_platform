@@ -289,6 +289,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/ai/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Requests
+         * @description The durable record of what was asked and answered -- the Audit surface.
+         *
+         *     Distinct from `/metrics` by grain, not by subject: a metrics row is one
+         *     *attempt* against one route (three rows for a call that failed over twice),
+         *     while a trace is the one durable record per invocation, carrying the prompt,
+         *     the redacted input and the response. The canonical mirror of the versioned
+         *     `GET /api/v1/ai-gateway/requests`, because the Control Center may only speak
+         *     the versionless surface.
+         */
+        get: operations["list_requests_api_ai_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/ai/requests/{trace_id}": {
         parameters: {
             query?: never;
@@ -400,6 +427,30 @@ export interface paths {
         get: operations["list_routes_api_ai_routes_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/ai/safety-test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Safety Test
+         * @description Run a payload through the deterministic input-safety inspector.
+         *
+         *     The canonical mirror of the versioned safety test, with the same guard: a
+         *     test surface that injects arbitrary payloads has no business existing in
+         *     production, so anything but development/test answers 403.
+         */
+        post: operations["safety_test_api_ai_safety_test_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10685,6 +10736,37 @@ export interface operations {
             };
         };
     };
+    list_requests_api_ai_requests_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_list_AITraceView__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_request_api_ai_requests__trace_id__get: {
         parameters: {
             query?: never;
@@ -10802,6 +10884,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_list_AIRouteHealthView__"];
+                };
+            };
+        };
+    };
+    safety_test_api_ai_safety_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AISafetyTestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_AISafetyTestResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

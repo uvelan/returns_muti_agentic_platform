@@ -171,6 +171,35 @@ export const configApi = {
   adoption: () => unwrap<ReleaseAdoptionState>("/api/config/adoption"),
 
   /**
+   * Open a draft release, cloned from the active release.
+   *
+   * The only writable release state is DRAFT, so this is the entry point to
+   * changing any behaviour domain -- the AI provider editor rides it the same
+   * way the Configuration domain's own screens do.
+   */
+  createRelease: (releaseId: string) =>
+    unwrap<Readonly<Record<string, unknown>>>("/api/config/releases", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ release_id: releaseId, from_active: true }),
+    }),
+
+  /**
+   * Merge-patch one behaviour domain of a draft (RFC 7396). The backend
+   * validates the *result* against the domain's full model, so a patch that
+   * would leave the configuration invalid is a 422 and nothing is stored.
+   */
+  patchDomain: (releaseId: string, domainKey: string, patch: Readonly<Record<string, unknown>>) =>
+    unwrap<Readonly<Record<string, unknown>>>(
+      `/api/config/releases/${encodeURIComponent(releaseId)}/domains/${encodeURIComponent(domainKey)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patch }),
+      },
+    ),
+
+  /**
    * Move a release along the lifecycle.
    *
    * `expectedHeadRevision` is required to publish and optional otherwise -- the

@@ -19405,6 +19405,56 @@
         ]
       }
     },
+    "/api/ai/requests": {
+      "get": {
+        "description": "The durable record of what was asked and answered -- the Audit surface.\n\nDistinct from `/metrics` by grain, not by subject: a metrics row is one\n*attempt* against one route (three rows for a call that failed over twice),\nwhile a trace is the one durable record per invocation, carrying the prompt,\nthe redacted input and the response. The canonical mirror of the versioned\n`GET /api/v1/ai-gateway/requests`, because the Control Center may only speak\nthe versionless surface.",
+        "operationId": "list_requests_api_ai_requests_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_AITraceView__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Requests",
+        "tags": [
+          "AI Control Center"
+        ]
+      }
+    },
     "/api/ai/requests/{trace_id}": {
       "get": {
         "description": "One recorded request, whole: prompt, redacted input, and response.\n\nThe metrics rows carry digests so a list render never hauls payloads; this\nis where a digest resolves to the bodies behind it. The canonical mirror of\nthe versioned `GET /api/v1/ai-gateway/requests/{trace_id}` -- same model,\nsame `require_read_roles` gate -- because the Control Center may only speak\nthe versionless surface. What it serves was redacted before storage\n(`redactedInput` is the input the model actually saw) and `responseText` is\nthe delivered answer, never hidden reasoning; the interception store remains\nthe only place a sealed, unredacted payload lives, behind its own\ncapability.",
@@ -19571,6 +19621,48 @@
           }
         },
         "summary": "List Routes",
+        "tags": [
+          "AI Control Center"
+        ]
+      }
+    },
+    "/api/ai/safety-test": {
+      "post": {
+        "description": "Run a payload through the deterministic input-safety inspector.\n\nThe canonical mirror of the versioned safety test, with the same guard: a\ntest surface that injects arbitrary payloads has no business existing in\nproduction, so anything but development/test answers 403.",
+        "operationId": "safety_test_api_ai_safety_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AISafetyTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_AISafetyTestResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Safety Test",
         "tags": [
           "AI Control Center"
         ]

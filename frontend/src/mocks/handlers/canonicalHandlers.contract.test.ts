@@ -72,7 +72,7 @@ const document = Object.values(
  * exercised on the branch the mock app takes.
  */
 type Route = {
-  readonly method: "get" | "post" | "put" | "delete";
+  readonly method: "get" | "post" | "put" | "patch" | "delete";
   /** As registered with MSW, so coverage can be checked against the handlers. */
   readonly handler: string;
   /** As published by the backend. */
@@ -197,6 +197,19 @@ const ROUTES: readonly Route[] = [
   // --- configuration -------------------------------------------------------
   { method: "get", handler: "/api/config/runtime", contract: "/api/config/runtime", url: "/api/config/runtime" },
   { method: "get", handler: "/api/config/releases", contract: "/api/config/releases", url: "/api/config/releases" },
+  {
+    method: "post",
+    handler: "/api/config/releases",
+    contract: "/api/config/releases",
+    url: "/api/config/releases",
+    status: 201,
+  },
+  {
+    method: "patch",
+    handler: "/api/config/releases/:releaseId/domains/:domainKey",
+    contract: "/api/config/releases/{release_id}/domains/{domain_key}",
+    url: "/api/config/releases/rel-mock-1/domains/RETURN_PLATFORM",
+  },
   {
     method: "get",
     handler: "/api/config/releases/:releaseId",
@@ -334,6 +347,13 @@ const ROUTES: readonly Route[] = [
     contract: "/api/ai/requests/{trace_id}",
     url: "/api/ai/requests/trace-mock-1",
   },
+  { method: "get", handler: "/api/ai/requests", contract: "/api/ai/requests", url: "/api/ai/requests" },
+  {
+    method: "post",
+    handler: "/api/ai/safety-test",
+    contract: "/api/ai/safety-test",
+    url: "/api/ai/safety-test",
+  },
   { method: "get", handler: "/api/ai/interceptions", contract: "/api/ai/interceptions", url: "/api/ai/interceptions" },
   {
     method: "get",
@@ -392,8 +412,15 @@ function registeredRoutes(): readonly string[] {
 
 describe("every canonical mock route is one the backend publishes", () => {
   it("names a path in the committed OpenAPI document", () => {
+    // Checked at the status the route declares, falling back to 200 -- a
+    // 201-only creation route is exactly as documented as a 200 read, and
+    // hardcoding "200" here made it impossible to mock one. The fallback keeps
+    // the error-status routes honest: a mock that answers 409 for a contract
+    // whose only declared body is the 200 one is still mocking a real path.
     const undocumented = ROUTES.filter(
-      (route) => responseSchema(document, route.method, route.contract) === null,
+      (route) =>
+        responseSchema(document, route.method, route.contract, String(route.status ?? 200)) ===
+          null && responseSchema(document, route.method, route.contract) === null,
     ).map((route) => `${key(route)} -> ${route.contract}`);
 
     // A mock for a route the server does not serve makes a screen work against

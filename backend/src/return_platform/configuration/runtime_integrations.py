@@ -165,15 +165,18 @@ def apply_graph_runtime_configuration(
                 )
                 for route in provider.validated_routes
             )
+        # Disabled bindings keep their place in the release -- rank, tasks and
+        # name intact -- and contribute no route here, which is the whole
+        # difference between pausing a model and deleting its configuration.
         lightweight = tuple(
             item.model_id
             for item in sorted(provider.models, key=lambda item: item.priority)
-            if item.model_class == "LIGHTWEIGHT"
+            if item.model_class == "LIGHTWEIGHT" and item.enabled
         )
         standard = tuple(
             item.model_id
             for item in sorted(provider.models, key=lambda item: item.priority)
-            if item.model_class == "STANDARD"
+            if item.model_class == "STANDARD" and item.enabled
         )
         updates[f"{key}_lightweight_models"] = lightweight
         updates[f"{key}_standard_models"] = standard
