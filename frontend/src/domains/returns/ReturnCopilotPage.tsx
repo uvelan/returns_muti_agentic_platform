@@ -836,6 +836,13 @@ export function ReturnCopilotPage() {
     onSuccess: (transcript) => {
       setHistory(restoredHistory(transcript));
       restoreCandidates(transcript);
+      // The turn itself, not only what was derived from it. Everything the
+      // Progress pane's "Extracted & Verified Facts" shows reads off
+      // `capturedFacts(turn)`, and restore rebuilt history and candidates
+      // while leaving `turn` null -- so every resume and every reload blanked
+      // the facts panel even though the transcript carried the facts. A
+      // conversation resumed mid-return looked like one starting over.
+      setTurn(transcript.lastResultTurn ?? null);
       versionRef.current = transcript.conversationVersion;
     },
   });
