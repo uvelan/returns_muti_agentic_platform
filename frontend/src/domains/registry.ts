@@ -1,12 +1,34 @@
 import {
   Activity,
+  BarChart3,
   Bot,
+  Briefcase,
   ClipboardCheck,
+  Cpu,
+  Database,
+  FolderOpen,
+  Hand,
   Headset,
+  History,
+  Inbox,
+  Layers,
+  LayoutDashboard,
+  Lock,
+  MessagesSquare,
   Network,
+  Package,
+  Plug,
   RefreshCw,
+  Rocket,
   RotateCcw,
+  Route,
+  ScrollText,
+  Server,
   Settings,
+  Settings2,
+  ShieldCheck,
+  Ticket,
+  Waypoints,
 } from "lucide-react";
 
 import type { Capability } from "../api/principal";
@@ -57,6 +79,13 @@ export type DomainSection = {
   readonly slug: string;
   /** Sidebar label, and the value the screen switches on. */
   readonly label: string;
+  /**
+   * Rendered beside the label, and *for* the label when the rail is collapsed:
+   * the icon is what makes an icon-only rail navigable at all, which is why it
+   * is required rather than optional -- a section without one would vanish the
+   * moment the rail collapsed, which is the defect this field removes.
+   */
+  readonly icon: React.ComponentType<{ size?: number; className?: string }>;
 };
 
 /** `"Providers & Models"` -> `"providers-models"`. */
@@ -67,8 +96,20 @@ export function toSlug(label: string): string {
     .replace(/(^-|-$)/g, "");
 }
 
-function sections(labels: readonly string[]): readonly DomainSection[] {
-  return labels.map((label) => ({ slug: toSlug(label), label }));
+function sections(
+  labels: readonly string[],
+  icons: Readonly<Record<string, DomainSection["icon"]>>,
+): readonly DomainSection[] {
+  return labels.map((label) => {
+    const icon = icons[label] as DomainSection["icon"] | undefined;
+    if (icon === undefined) {
+      // A build-time constant, so a miss is a typo caught the first time the
+      // module loads -- never a section that silently loses its collapsed-rail
+      // entry.
+      throw new Error(`no icon declared for section "${label}"`);
+    }
+    return { slug: toSlug(label), label, icon };
+  });
 }
 
 /**
@@ -182,7 +223,7 @@ export const DOMAINS: readonly DomainDefinition[] = [
     // The queue and the conversation it opens, plus the RMA ticket the
     // conversation ends in. The queue picker still filters a list rather
     // than switching what the screen is; the RMA section is a different job.
-    sections: sections(SUPPORT_SECTIONS),
+    sections: sections(SUPPORT_SECTIONS, { "Work Queue": Inbox, "RMA Tickets": Ticket }),
   },
   {
     path: "/config",
@@ -192,7 +233,17 @@ export const DOMAINS: readonly DomainDefinition[] = [
     icon: Settings,
     requires: "config.runtime.read",
     screenPhase: 19,
-    sections: sections(CONFIG_SECTIONS),
+    sections: sections(CONFIG_SECTIONS, {
+      Overview: LayoutDashboard,
+      Agents: Bot,
+      Runtime: Cpu,
+      Releases: Rocket,
+      Integrations: Plug,
+      Business: Briefcase,
+      Modules: Package,
+      Security: Lock,
+      Audit: ScrollText,
+    }),
   },
   {
     path: "/approvals",
@@ -221,7 +272,12 @@ export const DOMAINS: readonly DomainDefinition[] = [
     // The three workspaces the analyzer flow moves between. Draft-scoped tabs
     // (Validation, Versions, Mapping) still belong to a selected draft rather
     // than to the domain, so they are not sections and stay inside the screen.
-    sections: sections(GRAPH_SCHEMA_SECTIONS),
+    sections: sections(GRAPH_SCHEMA_SECTIONS, {
+      "Data Sources": Database,
+      "Graph Analyzer": Waypoints,
+      Schema: Layers,
+      Sync: RefreshCw,
+    }),
   },
   {
     path: "/ai",
@@ -231,7 +287,17 @@ export const DOMAINS: readonly DomainDefinition[] = [
     icon: Bot,
     requires: "ai.request.read",
     screenPhase: 21,
-    sections: sections(AI_SECTIONS),
+    sections: sections(AI_SECTIONS, {
+      Overview: LayoutDashboard,
+      Requests: MessagesSquare,
+      Interceptions: Hand,
+      Metrics: BarChart3,
+      "Providers & Models": Server,
+      "Routes & Tasks": Route,
+      Safety: ShieldCheck,
+      Configuration: Settings2,
+      Audit: ScrollText,
+    }),
   },
   {
     path: "/sync",
@@ -266,7 +332,7 @@ export const DOMAINS: readonly DomainDefinition[] = [
     // outbox -- still has no API, so this domain no longer promises it: a badge
     // saying "no backend" over two working screens would be the same lie in the
     // other direction.
-    sections: sections(OPERATIONS_SECTIONS),
+    sections: sections(OPERATIONS_SECTIONS, { Cases: FolderOpen, "Return sessions": History }),
   },
 ];
 

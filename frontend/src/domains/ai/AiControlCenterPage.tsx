@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
 
+import { APIError } from "../../api/client";
 import {
   aiControlCenterApi,
   type AIUsageAttemptView,
@@ -104,11 +105,22 @@ function TabBody({ tab, canReadInterceptions }: { tab: Tab; canReadInterceptions
   }
 }
 
-function Stat({ label, value }: { label: string; value: number | string }) {
+function Stat({
+  label,
+  value,
+  tone = "text-on-surface",
+}: {
+  label: string;
+  value: number | string;
+  /** Color for the value when the number itself is the signal -- a failure
+      count that is red only when it is non-zero, a success rate that says how
+      healthy it is before the percentage is read. */
+  tone?: string;
+}) {
   return (
     <div className="premium-panel p-4">
       <p className="premium-kicker">{label}</p>
-      <p className="mt-1.5 text-2xl font-semibold tabular-nums text-on-surface">{value}</p>
+      <p className={`mt-1.5 text-2xl font-semibold tabular-nums ${tone}`}>{value}</p>
     </div>
   );
 }
@@ -130,11 +142,27 @@ function MetricsTab() {
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <Stat label="Attempts" value={s.attempts} />
-        <Stat label="Success rate" value={`${String(successRate)}%`} />
-        <Stat label="Failures" value={s.failures} />
-        <Stat label="Fallbacks" value={s.fallbacks} />
-        <Stat label="Blocked by safety" value={s.blockedBySafety} />
-        <Stat label="Total tokens" value={s.totalTokens} />
+        <Stat
+          label="Success rate"
+          value={`${String(successRate)}%`}
+          tone={
+            s.attempts === 0
+              ? "text-on-surface"
+              : successRate >= 90
+                ? "text-primary"
+                : successRate >= 50
+                  ? "text-amber-700"
+                  : "text-error"
+          }
+        />
+        <Stat label="Failures" value={s.failures} tone={s.failures > 0 ? "text-error" : "text-on-surface"} />
+        <Stat label="Fallbacks" value={s.fallbacks} tone={s.fallbacks > 0 ? "text-amber-700" : "text-on-surface"} />
+        <Stat
+          label="Blocked by safety"
+          value={s.blockedBySafety}
+          tone={s.blockedBySafety > 0 ? "text-error" : "text-on-surface"}
+        />
+        <Stat label="Total tokens" value={s.totalTokens.toLocaleString()} />
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -165,17 +193,30 @@ function MetricsTab() {
 
 function Breakdown({ title, data }: { title: string; data: Readonly<Record<string, number>> }) {
   const rows = Object.entries(data).sort(([, a], [, b]) => b - a);
+  const total = rows.reduce((sum, [, count]) => sum + count, 0);
   return (
     <section className="premium-panel p-4">
       <h2 className="text-sm font-semibold text-on-surface">{title}</h2>
       {rows.length === 0 ? (
         <p className="mt-2 text-sm text-on-surface-variant">No data.</p>
       ) : (
-        <ul className="mt-2.5 flex flex-col gap-1.5">
+        <ul className="mt-3 flex flex-col gap-2.5">
           {rows.map(([key, count]) => (
-            <li key={key} className="flex items-baseline justify-between gap-3 text-sm">
-              <span className="truncate text-on-surface-variant">{key}</span>
-              <span className="font-medium tabular-nums text-on-surface">{count}</span>
+            <li key={key} className="flex flex-col gap-1 text-sm">
+              <span className="flex items-baseline justify-between gap-3">
+                <span className="truncate text-on-surface-variant" title={key}>{key}</span>
+                <span className="font-medium tabular-nums text-on-surface">{count}</span>
+              </span>
+              {/* The share, drawn. Four lists of counts is a table; the bar is
+                  what lets "MANUAL took three quarters of the traffic" be seen
+                  before it is computed. Width from data, never below 2% so a
+                  1-of-58 row still visibly exists. */}
+              <span aria-hidden="true" className="h-1 overflow-hidden rounded-full bg-surface-container">
+                <span
+                  className="block h-full rounded-full bg-primary/60"
+                  style={{ width: `${String(Math.max(2, total === 0 ? 0 : (count / total) * 100))}%` }}
+                />
+              </span>
             </li>
           ))}
         </ul>
@@ -439,7 +480,27 @@ function RequestDetailDialog({
             <p className="text-sm text-outline">Loading the recorded payloads...</p>
           ) : null}
           {trace.error ? (
-            <p role="alert" className="text-sm text-error">{trace.error.message}</p>
+            trace.error instanceof APIError && trace.error.status === 404 ? (
+              // Not every attempt has a stored body, and that is a design, not
+              // a gap: the Order Agent's dispatch path records digests only,
+              // because its payloads carry customer rows and the telemetry row
+              // is not allowed to hold them. Saying so beats a bare 404 --
+              // "refuse rather than guess" includes refusing to look broken.
+              <div className="flex flex-col gap-3 rounded-xl bg-surface-container-low px-4 py-3">
+                <p className="text-sm text-on-surface-variant">
+                  No payload record exists for this attempt. This task&apos;s dispatch path
+                  stores only digests -- its payloads carry customer data and are
+                  deliberately not persisted in the clear. A request held for a human is
+                  readable, sealed, under Interceptions.
+                </p>
+                <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm md:grid-cols-2">
+                  <Field label="Request digest" value={attempt.requestDigest} mono />
+                  <Field label="Response digest" value={attempt.responseDigest ?? "-"} mono />
+                </dl>
+              </div>
+            ) : (
+              <p role="alert" className="text-sm text-error">{trace.error.message}</p>
+            )
           ) : null}
 
           {detail ? (

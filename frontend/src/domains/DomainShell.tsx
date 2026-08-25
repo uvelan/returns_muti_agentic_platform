@@ -81,7 +81,7 @@ function RailHeader({ collapsed, onToggle }: { collapsed: boolean; onToggle: () 
   );
 }
 
-function DomainSectionNav({ domain }: { domain: DomainDefinition }) {
+function DomainSectionNav({ domain, collapsed }: { domain: DomainDefinition; collapsed: boolean }) {
   const [location] = useLocation();
 
   if (domain.sections.length === 0) {
@@ -98,22 +98,40 @@ function DomainSectionNav({ domain }: { domain: DomainDefinition }) {
     domain.sections.find((section) => section.slug === rest)?.slug ?? domain.sections[0].slug;
 
   return (
-    <nav aria-label={`${domain.name} sections`} className="flex flex-col gap-0.5 p-3">
-      {domain.sections.map((section) => (
-        <Link
-          key={section.slug}
-          href={`${domain.path}/${section.slug}`}
-          aria-current={section.slug === activeSlug ? "page" : undefined}
-          className={[
-            "rounded-md px-3 py-2 text-sm font-medium transition",
-            section.slug === activeSlug
-              ? "bg-primary text-on-primary"
-              : "text-rail-on-surface/70 hover:bg-white/10 hover:text-rail-on-surface",
-          ].join(" ")}
-        >
-          {section.label}
-        </Link>
-      ))}
+    <nav
+      aria-label={`${domain.name} sections`}
+      className={`flex flex-col gap-0.5 ${collapsed ? "items-center px-2 py-3" : "p-3"}`}
+    >
+      {domain.sections.map((section) => {
+        const active = section.slug === activeSlug;
+        const SectionIcon = section.icon;
+        return (
+          <Link
+            key={section.slug}
+            href={`${domain.path}/${section.slug}`}
+            aria-current={active ? "page" : undefined}
+            // Collapsed, the icon *is* the entry: the label survives as the
+            // tooltip and the accessible name, so the rail stays navigable by
+            // pointer, keyboard, and screen reader alike.
+            aria-label={collapsed ? section.label : undefined}
+            title={collapsed ? section.label : undefined}
+            className={[
+              "flex items-center rounded-lg text-sm font-medium transition",
+              collapsed ? "size-10 justify-center" : "gap-2.5 px-3 py-2",
+              active
+                ? "bg-primary text-on-primary shadow-sm"
+                : "text-rail-on-surface/70 hover:bg-white/10 hover:text-rail-on-surface",
+            ].join(" ")}
+          >
+            <SectionIcon
+              size={16}
+              aria-hidden="true"
+              className={active ? "" : "text-rail-on-surface/50"}
+            />
+            {collapsed ? null : section.label}
+          </Link>
+        );
+      })}
     </nav>
   );
 }
@@ -322,12 +340,12 @@ function DomainFrame({ domain, children }: { domain: DomainDefinition; children:
           )}
         </div>
         {/*
-          Sections are hidden when collapsed rather than reduced to icons: they
-          have no icons, and inventing one per section would be six ambiguous
-          glyphs where there are currently six unambiguous words. Collapsing is
-          for reclaiming width on the copilot, which has no sections at all.
+          Collapsed, the sections stay: every entry now declares an icon in the
+          registry, so the narrow rail is an icon strip with the label as
+          tooltip and accessible name -- not the blank column it used to be,
+          where collapsing threw away the navigation along with the width.
         */}
-        {railCollapsed ? null : <DomainSectionNav domain={domain} />}
+        <DomainSectionNav domain={domain} collapsed={railCollapsed} />
         {/*
           The contextual slot. Filled by the screen through `DomainRail`, which
           is why it carries no fallback: a rail block describing what is on
