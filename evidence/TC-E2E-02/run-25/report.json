@@ -1,0 +1,25 @@
+[
+ {
+  "step": 1,
+  "state": "PASS",
+  "note": "flow started on a partial misspelled name; no crash"
+ },
+ {
+  "step": 2,
+  "state": "PASS",
+  "note": "bounded fuzzy list (2), target present, matches=['customer_name_fuzzy']"
+ },
+ {
+  "step": 3,
+  "state": "PASS",
+  "note": "customer confirmed in-conversation (fact provenance asserted on case later)"
+ },
+ {
+  "step": 4,
+  "state": "PASS",
+  "note": "customer's orders listed from graph (7), config-driven fields"
+ },
+ {
+  "failure": "HTTP 503 /api/v2/order-agent/conversations/disc-tc02-run25-eb22e6b1/turns: {\"data\":null,\"page\":null,\"meta\":{\"schema_version\":\"1.0\",\"request_id\":\"f5fcdc1c-539d-49aa-99c4-3b91dd13999e\",\"generated_at\":\"2026-08-25T20:30:30.942246Z\",\"freshness\":\"LIVE\",\"partial\":true,\"warnings\":[{\"source\":\"API\",\"code\":\"MAX_REASONING_STEPS_REACHED\",\"message\":\"The reasoning step limit was reached before discovery completed.\"}]}}"
+ }
+]

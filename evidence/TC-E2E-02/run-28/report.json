@@ -1,0 +1,15 @@
+[
+ {
+  "step": 1,
+  "state": "PASS",
+  "note": "flow started on a partial misspelled name; no crash"
+ },
+ {
+  "step": 2,
+  "state": "PASS",
+  "note": "bounded fuzzy list (3), target present, matches=['customer_name_fuzzy']"
+ },
+ {
+  "failure": "HTTP 503 /api/v2/order-agent/conversations/disc-tc02-run28-d209725b/turns: {\"data\":null,\"page\":null,\"meta\":{\"schema_version\":\"1.0\",\"request_id\":\"635f8597-a57f-48ae-bdca-b70761957597\",\"generated_at\":\"2026-08-25T20:44:23.503846Z\",\"freshness\":\"LIVE\",\"partial\":true,\"warnings\":[{\"source\":\"API\",\"code\":\"MAX_REASONING_STEPS_REACHED\",\"message\":\"The reasoning step limit was reached before discovery completed.\"}]}}"
+ }
+]

@@ -1,0 +1,20 @@
+[
+ {
+  "step": 1,
+  "state": "PASS",
+  "note": "flow started on a partial misspelled name; no crash"
+ },
+ {
+  "step": 2,
+  "state": "PASS",
+  "note": "bounded fuzzy list (2), target present, matches=['customer_name_fuzzy']"
+ },
+ {
+  "step": 4,
+  "state": "FAIL",
+  "note": "agent repeated the question 'Which Blake Baldwyn is the customer - the one from account LAKEWOOD or the one from account DALLAS?'"
+ },
+ {
+  "failure": "step 4: agent repeated the question 'Which Blake Baldwyn is the customer - the one from account LAKEWOOD or the one from account DALLAS?'"
+ }
+]

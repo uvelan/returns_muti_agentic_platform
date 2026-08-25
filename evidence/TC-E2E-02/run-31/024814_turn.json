@@ -1,0 +1,152 @@
+{
+ "sent": "I don't have an order number. Please list CHERYL BOWERS's recent orders on account LENZ so we can pick it.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run31-dfe66000",
+   "conversation_version": 3,
+   "client_turn_id": "qa-c9f4644f-24d2-4ab1-a5f6-a94d064185b4",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "IN_PROGRESS",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "1",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "Which account is Cheryl Bowers from - LENZ or LAKEWOOD?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "Which account is Cheryl Bowers from - LENZ or LAKEWOOD?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run31-dfe66000:qa-325e2d8a-2f03-46aa-b1c9-cf999cbb9794:1",
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "5ef7ff95-104c-48bf-b88a-a778b2b447d6",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "fc1614a00c0b06bfc1d538cfc6cee86fc0da5700d1adb153ce795659aa540c99",
+     "compiled_query_checksum": "32aa52abf681b63781ca68dcbe7bf5527e62dc61ed01cdc2ffea3d54c4401ef7",
+     "result": {
+      "intent": {
+       "searchMode": "DEFAULT",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "Cheryl Bower"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600787",
+        "data": {
+         "account_id": "LENZ",
+         "customer_id": "600787",
+         "customer_name": "CHERYL BOWERS",
+         "source_updated_at": "2026-08-01T18:53:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_contains"
+        ]
+       },
+       {
+        "candidate_id": "600786",
+        "data": {
+         "account_id": "LAKEWOOD",
+         "customer_id": "600786",
+         "customer_name": "CHERYL BOWERS",
+         "source_updated_at": "2026-05-13T08:14:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_contains"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "2e1a127c9ef4f428c1a1206bf1aea4e8b01ee9dc45a55e72ed654586be669919"
+    },
+    {
+     "query_execution_id": "690c97dc-81f3-401e-a962-9c23f699cb08",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "512f582fc72a6b1f0c2cd4a6dd6c93f502941aa49727b95ca9b33f9a588dc017",
+     "compiled_query_checksum": "32aa52abf681b63781ca68dcbe7bf5527e62dc61ed01cdc2ffea3d54c4401ef7",
+     "result": {
+      "intent": {
+       "searchMode": "DEFAULT",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "Cheryl Bowers"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600787",
+        "data": {
+         "account_id": "LENZ",
+         "customer_id": "600787",
+         "customer_name": "CHERYL BOWERS",
+         "source_updated_at": "2026-08-01T18:53:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_exact"
+        ]
+       },
+       {
+        "candidate_id": "600786",
+        "data": {
+         "account_id": "LAKEWOOD",
+         "customer_id": "600786",
+         "customer_name": "CHERYL BOWERS",
+         "source_updated_at": "2026-05-13T08:14:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_exact"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "bd03884e3bd127f0696485d4c3d73afa43d9fb809a4e8b21f30dcb55218891c6"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "Cheryl Bowers",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "NVIDIA",
+   "model_name": "meta/llama-3.1-70b-instruct",
+   "as_of": "2026-08-25T21:13:47.381000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "c145b90c-0136-43dc-835d-ead05de3583e",
+   "generated_at": "2026-08-25T21:18:14.715973Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

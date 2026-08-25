@@ -1,0 +1,100 @@
+{
+ "sent": "Confirm the customer WARREN PETTIGREW on account LAKEWOOD.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run26-2b9ecd66",
+   "conversation_version": 2,
+   "client_turn_id": "qa-52065d43-772e-418f-89c4-f97d6a2ce6ea",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "IN_PROGRESS",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "statement_1",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "What is the order number for Warren Petigrew's return?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "order number"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run26-2b9ecd66:qa-4fd27526-296a-4f66-909a-48b52fd91a39:1",
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "204aca86-7bbf-4434-862f-4219de6707be",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "feb03ffc5de38eb2b461a032b09c2a1a0c0ca8a99ed6a39808da78c3e46cf91a",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DEFAULT",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "Warren Petigrew"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "601019",
+        "data": {
+         "account_id": "LAKEWOOD",
+         "customer_id": "601019",
+         "customer_name": "WARREN PETTIGREW"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "601018",
+        "data": {
+         "account_id": "LENZ",
+         "customer_id": "601018",
+         "customer_name": "WARREN PETTIGREW"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "9c977db769f62113b4aa72941608940faab7b0796791a42986a580b52f9d5c94"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "Warren Petigrew",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "NVIDIA",
+   "model_name": "meta/llama-3.1-70b-instruct",
+   "as_of": "2026-08-25T20:32:19.821000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "8a4064d8-fa66-4510-85de-136e2b82491e",
+   "generated_at": "2026-08-25T20:33:06.915213Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

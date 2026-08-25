@@ -1,0 +1,336 @@
+{
+ "sent": "Confirm the customer GLENN HARTLEY on account CHARLOTTE.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run25-eb22e6b1",
+   "conversation_version": 2,
+   "client_turn_id": "qa-87bd5843-0a4d-413b-a9fa-a0785eb852c6",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "IN_PROGRESS",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "clarification_request",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "Which location account is this for \u2014 Charlotte or Phoenix \u2014 or do you have an order number?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "account_id or order_number"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run25-eb22e6b1:qa-a20162b7-3cd1-45b8-b94f-e975e6e78794:1",
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "d2f49d87-7fc2-4d34-8415-2371c9354910",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "43afa949c15d2cf3d2f7b344690f34048171d16d7a8ae7548c9ae19eb5653e23",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DEFAULT",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "Glenn Hartly"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600404",
+        "data": {
+         "account_id": "CHARLOTTE",
+         "customer_id": "600404",
+         "customer_name": "GLENN HARTLEY"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600403",
+        "data": {
+         "account_id": "PHOENIX",
+         "customer_id": "600403",
+         "customer_name": "GLENN HARTLEY"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "2042a251ed5fe79d3bca52a3f29511123b52c7b49bc7b3ace237aab92848f609"
+    },
+    {
+     "query_execution_id": "3479afb5-2f02-4ff3-a671-1b13cd38dabe",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "13e35e58fa1c1d93686faee1208ec588c54a80b4824f3e80466539e19960713b",
+     "compiled_query_checksum": "5374b66230ad2f865101a143a7cb01b47f4ac32b91bdfddd7b68b073f53f49e1",
+     "result": {
+      "rows": [
+       {
+        "order_key": "CHARLOTTE*CX802775",
+        "account_id": "CHARLOTTE",
+        "sales_order_number": "CX802775",
+        "customer_id": "600404",
+        "customer_name": "GLENN HARTLEY",
+        "customer_po_number": "NEW CONSTRUCTION",
+        "job_name": "WARRANTY",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2210",
+        "ship_from_warehouse_id": "2210",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2026-07-28T00:00:00.000000000",
+        "invoice_date": "2026-07-28T00:00:00.000000000",
+        "shipped_at": "2026-07-30T00:00:00.000000000",
+        "commit_date": "2026-07-28T00:00:00.000000000",
+        "ship_to_name": "GLENN HARTLEY",
+        "ship_to_phone": "512-555-3395",
+        "ship_to_city": "COLUMBUS",
+        "ship_to_state": "OH",
+        "ship_to_postal_code": "43286",
+        "source_updated_at": "2026-07-28T08:41:00.000000000"
+       },
+       {
+        "order_key": "CHARLOTTE*CK800132",
+        "account_id": "CHARLOTTE",
+        "sales_order_number": "CK800132",
+        "customer_id": "600404",
+        "customer_name": "GLENN HARTLEY",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "SHOP STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "31",
+        "ship_from_warehouse_id": "31",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-05-08T00:00:00.000000000",
+        "invoice_date": "2026-05-08T00:00:00.000000000",
+        "shipped_at": "2026-05-08T00:00:00.000000000",
+        "commit_date": "2026-05-08T00:00:00.000000000",
+        "ship_to_name": "GLENN HARTLEY",
+        "ship_to_phone": "512-555-3395",
+        "ship_to_city": "COLUMBUS",
+        "ship_to_state": "OH",
+        "ship_to_postal_code": "43286",
+        "source_updated_at": "2026-05-08T08:10:00.000000000"
+       },
+       {
+        "order_key": "CHARLOTTE*CC808225",
+        "account_id": "CHARLOTTE",
+        "sales_order_number": "CC808225",
+        "customer_id": "600404",
+        "customer_name": "GLENN HARTLEY",
+        "customer_po_number": "RESIDENTIAL",
+        "job_name": "TRUCK STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "428",
+        "ship_from_warehouse_id": "428",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-04-21T00:00:00.000000000",
+        "invoice_date": "2026-04-21T00:00:00.000000000",
+        "shipped_at": "2026-04-23T00:00:00.000000000",
+        "commit_date": "2026-04-21T00:00:00.000000000",
+        "ship_to_name": "GLENN HARTLEY",
+        "ship_to_phone": "512-555-3395",
+        "ship_to_city": "COLUMBUS",
+        "ship_to_state": "OH",
+        "ship_to_postal_code": "43286",
+        "source_updated_at": "2026-04-21T14:52:00.000000000"
+       },
+       {
+        "order_key": "CHARLOTTE*CW800536",
+        "account_id": "CHARLOTTE",
+        "sales_order_number": "CW800536",
+        "customer_id": "600404",
+        "customer_name": "GLENN HARTLEY",
+        "customer_po_number": "RESIDENTIAL",
+        "job_name": "TRUCK STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2210",
+        "ship_from_warehouse_id": "2210",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-02-18T00:00:00.000000000",
+        "invoice_date": "2026-02-18T00:00:00.000000000",
+        "shipped_at": "2026-02-21T00:00:00.000000000",
+        "commit_date": "2026-02-18T00:00:00.000000000",
+        "ship_to_name": "GLENN HARTLEY",
+        "ship_to_phone": "512-555-3395",
+        "ship_to_city": "COLUMBUS",
+        "ship_to_state": "OH",
+        "ship_to_postal_code": "43286",
+        "source_updated_at": "2026-02-18T13:55:00.000000000"
+       },
+       {
+        "order_key": "CHARLOTTE*CQ804947",
+        "account_id": "CHARLOTTE",
+        "sales_order_number": "CQ804947",
+        "customer_id": "600404",
+        "customer_name": "GLENN HARTLEY",
+        "customer_po_number": "REPLACEMENT",
+        "job_name": "NEW CONSTRUCTION",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-11-20T00:00:00.000000000",
+        "invoice_date": "2025-11-20T00:00:00.000000000",
+        "shipped_at": "2025-11-23T00:00:00.000000000",
+        "commit_date": "2025-11-20T00:00:00.000000000",
+        "ship_to_name": "GLENN HARTLEY",
+        "ship_to_phone": "512-555-3395",
+        "ship_to_city": "COLUMBUS",
+        "ship_to_state": "OH",
+        "ship_to_postal_code": "43286",
+        "source_updated_at": "2025-11-20T18:49:00.000000000"
+       },
+       {
+        "order_key": "CHARLOTTE*CA800101",
+        "account_id": "CHARLOTTE",
+        "sales_order_number": "CA800101",
+        "customer_id": "600404",
+        "customer_name": "GLENN HARTLEY",
+        "customer_po_number": "SHOP STOCK",
+        "job_name": "NEW CONSTRUCTION",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1844",
+        "ship_from_warehouse_id": "1844",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-04-10T00:00:00.000000000",
+        "invoice_date": "2025-04-10T00:00:00.000000000",
+        "shipped_at": "2025-04-10T00:00:00.000000000",
+        "commit_date": "2025-04-10T00:00:00.000000000",
+        "ship_to_name": "GLENN HARTLEY",
+        "ship_to_phone": "512-555-3395",
+        "ship_to_city": "COLUMBUS",
+        "ship_to_state": "OH",
+        "ship_to_postal_code": "43286",
+        "source_updated_at": "2025-04-10T07:59:00.000000000"
+       },
+       {
+        "order_key": "CHARLOTTE*CP808445",
+        "account_id": "CHARLOTTE",
+        "sales_order_number": "CP808445",
+        "customer_id": "600404",
+        "customer_name": "GLENN HARTLEY",
+        "customer_po_number": "WARRANTY",
+        "job_name": "SHOP STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2624",
+        "ship_from_warehouse_id": "2624",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-03-06T00:00:00.000000000",
+        "invoice_date": "2025-03-06T00:00:00.000000000",
+        "shipped_at": "2025-03-07T00:00:00.000000000",
+        "commit_date": "2025-03-06T00:00:00.000000000",
+        "ship_to_name": "GLENN HARTLEY",
+        "ship_to_phone": "512-555-3395",
+        "ship_to_city": "COLUMBUS",
+        "ship_to_state": "OH",
+        "ship_to_postal_code": "43286",
+        "source_updated_at": "2025-03-06T12:54:00.000000000"
+       }
+      ],
+      "count": 7
+     },
+     "result_checksum": "d4da98a00e8e002c6ae62bd375dc4f282583651ca0ea16c2afac94be23e644d1"
+    },
+    {
+     "query_execution_id": "28c06d2d-0195-4f6f-a5ed-88cce717878c",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "43afa949c15d2cf3d2f7b344690f34048171d16d7a8ae7548c9ae19eb5653e23",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DEFAULT",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "Glenn Hartly"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600404",
+        "data": {
+         "account_id": "CHARLOTTE",
+         "customer_id": "600404",
+         "customer_name": "GLENN HARTLEY"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600403",
+        "data": {
+         "account_id": "PHOENIX",
+         "customer_id": "600403",
+         "customer_name": "GLENN HARTLEY"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "2042a251ed5fe79d3bca52a3f29511123b52c7b49bc7b3ace237aab92848f609"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "GLENN HARTLEY lightness STATED",
+     "status": "CONFLICTING",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "NVIDIA",
+   "model_name": "nvidia/llama-3.3-nemotron-super-49b-v1",
+   "as_of": "2026-08-25T20:22:44.228000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "776b91e4-7936-40df-8da4-b346440a0c73",
+   "generated_at": "2026-08-25T20:29:06.078810Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

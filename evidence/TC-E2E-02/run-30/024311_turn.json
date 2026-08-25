@@ -1,0 +1,155 @@
+{
+ "sent": "It's BLAKE BALDWIN on account LAKEWOOD.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run30-db400163",
+   "conversation_version": 3,
+   "client_turn_id": "qa-991fd814-e39b-4b09-860e-91487c452800",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "IN_PROGRESS",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "customer_name",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "Which Blake Baldwyn is the customer - the one from account LAKEWOOD or the one from account DALLAS?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "Which Blake Baldwyn is the customer - the one from account LAKEWOOD or the one from account DALLAS?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run30-db400163:qa-fa507473-d23c-437a-b0b0-b4fe039a8121:1",
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "b234fb63-0ef9-40c3-bade-de3a90c56b54",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "10302f1499f57640536aeb4d4eaab2b79e4667f8491e100c4140a64b791c481d",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "CONTEXTUAL",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "Blake Baldwyn"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600032",
+        "data": {
+         "account_id": "LAKEWOOD",
+         "customer_id": "600032",
+         "customer_name": "BLAKE BALDWIN"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600033",
+        "data": {
+         "account_id": "DALLAS",
+         "customer_id": "600033",
+         "customer_name": "BLAKE BALDWIN"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "645616bf9d0bbd8f3bea694137743a07283383a11fdea0af84aaeb78028bd7f7"
+    },
+    {
+     "query_execution_id": "abe76174-b3f6-46e0-aa27-5422a6dd17f1",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "10302f1499f57640536aeb4d4eaab2b79e4667f8491e100c4140a64b791c481d",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "CONTEXTUAL",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "Blake Baldwyn"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600032",
+        "data": {
+         "account_id": "LAKEWOOD",
+         "customer_id": "600032",
+         "customer_name": "BLAKE BALDWIN"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600033",
+        "data": {
+         "account_id": "DALLAS",
+         "customer_id": "600033",
+         "customer_name": "BLAKE BALDWIN"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "645616bf9d0bbd8f3bea694137743a07283383a11fdea0af84aaeb78028bd7f7"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "return_reason",
+     "value": "customer wants to return an item",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "customer_name",
+     "value": "Blake Baldwyn",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "NVIDIA",
+   "model_name": "meta/llama-3.1-70b-instruct",
+   "as_of": "2026-08-25T21:08:56.341000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "b594df7b-1d67-4a3a-bd23-f401304ad7eb",
+   "generated_at": "2026-08-25T21:13:11.281642Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

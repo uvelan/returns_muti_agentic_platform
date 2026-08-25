@@ -1,0 +1,64 @@
+{
+ "sent": "customer wants to return an item, name is helen latimore",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run33-6955344b",
+   "conversation_version": 1,
+   "client_turn_id": "qa-5925e521-2ce4-4755-bc3c-b40e7b667098",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "IN_PROGRESS",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "1",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "What is the order number for Helen Latimore's return?",
+      "evidence_refs": [],
+      "source_message_id": "qa-5925e521-2ce4-4755-bc3c-b40e7b667098"
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "order number"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run33-6955344b:qa-5925e521-2ce4-4755-bc3c-b40e7b667098:1",
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "a2d7c4b5-e3cc-4167-b280-3f361f3896e2",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "6dc98508cf246bdb04ca9a0bdd668f03f733dcf4a64b9381ce8c1e2d33e0a640",
+     "compiled_query_checksum": "c40f0ef815ddea83c6d4375f23c02a2d8a5cab1dddd42ba90a5a589319be5ac3",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVERY",
+       "confidence": 0.0,
+       "wantsMoreResults": false
+      },
+      "candidates": [],
+      "total_found": 0,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "a270d4d237f7c50637d8501cc6609e47939b34f18ad8d7b9b17b3f40cc172e50"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "NVIDIA",
+   "model_name": "meta/llama-3.1-70b-instruct",
+   "as_of": "2026-08-25T21:24:31.804000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "66f57a8e-f007-4b5b-938a-77db28e2f52f",
+   "generated_at": "2026-08-25T21:25:13.815307Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

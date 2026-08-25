@@ -1,0 +1,104 @@
+{
+ "sent": "customer wants to return an item, name is luis alvorado",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run28-d209725b",
+   "conversation_version": 1,
+   "client_turn_id": "qa-852ccd7b-9c27-4174-96d1-5f36b44182ee",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "DISCOVERY_IN_PROGRESS",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "s1",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "Which customer is this - [REDACTED] from LENZ, [REDACTED] from PLYMOUTH or [REDACTED] from GARDEN?",
+      "evidence_refs": [],
+      "source_message_id": "qa-852ccd7b-9c27-4174-96d1-5f36b44182ee"
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "customer name"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run28-d209725b:qa-852ccd7b-9c27-4174-96d1-5f36b44182ee:1",
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "0efb9b7f-8db5-45b8-86dc-6c8d6fa7d735",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "7f6f9a2c0776dc2fbeb83eb6582e9486931f9169f3dbfb56dd91629c90ce81f1",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DEFAULT",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "Luis Alvorado"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600110",
+        "data": {
+         "account_id": "LENZ",
+         "customer_id": "600110",
+         "customer_name": "LUIS ALVARADO"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600112",
+        "data": {
+         "account_id": "PLYMOUTH",
+         "customer_id": "600112",
+         "customer_name": "LUIS ALVARADO"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600111",
+        "data": {
+         "account_id": "GARDEN",
+         "customer_id": "600111",
+         "customer_name": "LUIS ALVARADO"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 3,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "4c87f3412c5232fcc67a3ad43ef0f8391395283a6968fdadd715212269a03f0b"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "NVIDIA",
+   "model_name": "meta/llama-3.1-70b-instruct",
+   "as_of": "2026-08-25T20:40:48.337000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "198455c4-473f-4849-91e4-830ad8eaea79",
+   "generated_at": "2026-08-25T20:42:07.006464Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

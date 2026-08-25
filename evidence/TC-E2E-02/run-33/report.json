@@ -1,0 +1,15 @@
+[
+ {
+  "step": 1,
+  "state": "PASS",
+  "note": "flow started on a partial misspelled name; no crash"
+ },
+ {
+  "step": 2,
+  "state": "FAIL",
+  "note": "no fuzzy candidates returned"
+ },
+ {
+  "failure": "step 2: no fuzzy candidates returned"
+ }
+]

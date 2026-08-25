@@ -1,0 +1,5 @@
+[
+ {
+  "failure": "HTTP 422 /api/v2/order-agent/conversations/disc-tc02-run27-798a1084/turns: {\"data\":null,\"page\":null,\"meta\":{\"schema_version\":\"1.0\",\"request_id\":\"988d8608-f423-4587-8d21-b86c68d8475b\",\"generated_at\":\"2026-08-25T20:40:12.500961Z\",\"freshness\":\"LIVE\",\"partial\":true,\"warnings\":[{\"source\":\"API\",\"code\":\"ORDER_AGENT_QUERY_BUDGET_EXCEEDED\",\"message\":\"The request exceeded the configured knowledge-query limits.\"}]}}"
+ }
+]

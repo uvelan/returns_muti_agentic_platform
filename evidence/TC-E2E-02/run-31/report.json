@@ -1,0 +1,15 @@
+[
+ {
+  "step": 1,
+  "state": "PASS",
+  "note": "flow started on a partial misspelled name; no crash"
+ },
+ {
+  "step": 2,
+  "state": "PASS",
+  "note": "bounded fuzzy list (2), target present, matches=['customer_name_contains']"
+ },
+ {
+  "failure": "HTTP 422 /api/v2/order-agent/conversations/disc-tc02-run31-dfe66000/turns: {\"data\":null,\"page\":null,\"meta\":{\"schema_version\":\"1.0\",\"request_id\":\"dfe5f3f5-6615-4775-9626-08c015a482ef\",\"generated_at\":\"2026-08-25T21:18:50.618847Z\",\"freshness\":\"LIVE\",\"partial\":true,\"warnings\":[{\"source\":\"API\",\"code\":\"ORDER_AGENT_CLARIFICATION_BUDGET_EXCEEDED\",\"message\":\"The request exceeded the configured clarification limits.\"}]}}"
+ }
+]

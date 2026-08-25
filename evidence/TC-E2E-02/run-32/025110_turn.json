@@ -1,0 +1,92 @@
+{
+ "sent": "customer wants to return an item, name is edward witfield",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run32-e3eec2f9",
+   "conversation_version": 1,
+   "client_turn_id": "qa-d0556cac-556d-413c-bc78-4dd98b743585",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "IN_PROGRESS",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "stmt_1",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "I couldn't find any orders under Edward Witfield. Do you have an order number, email address, or phone number to help locate it?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "Do you have an order number, email address, or phone number to help locate the order?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run32-e3eec2f9:qa-d0556cac-556d-413c-bc78-4dd98b743585:1",
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "2902dba2-764c-42e5-95d7-8fe77039fbf2",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "20df293ddb1ec6d4c9eaf296511b1e979fbdcdf00263c4b431bbf6d133e20db6",
+     "compiled_query_checksum": "c40f0ef815ddea83c6d4375f23c02a2d8a5cab1dddd42ba90a5a589319be5ac3",
+     "result": {
+      "intent": {
+       "searchMode": "INTERACTIVE",
+       "confidence": 1.0,
+       "wantsMoreResults": false
+      },
+      "candidates": [],
+      "total_found": 0,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "eb9280ccc67ea1f81aa3cb4a7069f4504d7197d8cd4ae49b42aad6caa4a0e2cd"
+    },
+    {
+     "query_execution_id": "ddbafb22-5086-4bd2-8d7b-7b2ae133b424",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "20df293ddb1ec6d4c9eaf296511b1e979fbdcdf00263c4b431bbf6d133e20db6",
+     "compiled_query_checksum": "c40f0ef815ddea83c6d4375f23c02a2d8a5cab1dddd42ba90a5a589319be5ac3",
+     "result": {
+      "intent": {
+       "searchMode": "INTERACTIVE",
+       "confidence": 1.0,
+       "wantsMoreResults": false
+      },
+      "candidates": [],
+      "total_found": 0,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "eb9280ccc67ea1f81aa3cb4a7069f4504d7197d8cd4ae49b42aad6caa4a0e2cd"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "edward witfield",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "GOOGLE",
+   "model_name": "models/gemini-3.6-flash",
+   "as_of": "2026-08-25T21:20:26.075000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "3d11d77e-f9c3-4b0a-8cd4-241d4282c0db",
+   "generated_at": "2026-08-25T21:21:09.915809Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

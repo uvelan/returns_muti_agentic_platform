@@ -1,0 +1,107 @@
+{
+ "sent": "Confirm the customer YOLANDA GRANGER on account LENZ.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run35-f1ef3364",
+   "conversation_version": 3,
+   "client_turn_id": "qa-201634e0-a2cc-4845-8903-470ec63efac0",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "IN_PROGRESS",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "1",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "Which branch is the customer from - Lenz or Phoenix?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "branch"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run35-f1ef3364:qa-3ccf2664-7a63-42c3-a6a1-106fb7d90860:1",
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "d4f3129c-5467-4018-85db-6483a4453c77",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "e1999d2b2472968436311f5c821ba3b7b8f86e25a83ff21c33c871e2628dc00b",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "Yolanda Grainger"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "601314",
+        "data": {
+         "account_id": "LENZ",
+         "customer_id": "601314",
+         "customer_name": "YOLANDA GRANGER"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "601315",
+        "data": {
+         "account_id": "PHOENIX",
+         "customer_id": "601315",
+         "customer_name": "YOLANDA GRANGER"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "d4f8ef1194f54473dd86842f8b1f4678c98ebcde2bf8dd09837728f0ed0d2191"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "return_reason",
+     "value": "customer wants to return an item",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "customer_name",
+     "value": "Yolanda Grainger",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "NVIDIA",
+   "model_name": "meta/llama-3.1-70b-instruct",
+   "as_of": "2026-08-25T21:33:17.716000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "3c02622d-95fd-4b82-a2a4-109eb2421345",
+   "generated_at": "2026-08-25T21:40:25.778923Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

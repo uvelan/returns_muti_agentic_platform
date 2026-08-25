@@ -1,0 +1,10 @@
+[
+ {
+  "step": 1,
+  "state": "FAIL",
+  "note": "turn did not complete: DISAMBIGUATING"
+ },
+ {
+  "failure": "step 1: turn did not complete: DISAMBIGUATING"
+ }
+]

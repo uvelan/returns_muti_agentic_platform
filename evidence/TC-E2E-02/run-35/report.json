@@ -1,0 +1,15 @@
+[
+ {
+  "step": 1,
+  "state": "PASS",
+  "note": "flow started on a partial misspelled name; no crash"
+ },
+ {
+  "step": 2,
+  "state": "PASS",
+  "note": "bounded fuzzy list (2), target present, matches=['customer_name_fuzzy']"
+ },
+ {
+  "failure": "HTTP 422 /api/v2/order-agent/conversations/disc-tc02-run35-f1ef3364/turns: {\"data\":null,\"page\":null,\"meta\":{\"schema_version\":\"1.0\",\"request_id\":\"90898f9d-5548-4bf6-9c29-cf82f38287b2\",\"generated_at\":\"2026-08-25T21:41:02.243598Z\",\"freshness\":\"LIVE\",\"partial\":true,\"warnings\":[{\"source\":\"API\",\"code\":\"ORDER_AGENT_CLARIFICATION_BUDGET_EXCEEDED\",\"message\":\"The request exceeded the configured clarification limits.\"}]}}"
+ }
+]

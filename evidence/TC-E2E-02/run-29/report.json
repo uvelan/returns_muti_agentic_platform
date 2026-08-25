@@ -1,0 +1,20 @@
+[
+ {
+  "step": 1,
+  "state": "PASS",
+  "note": "flow started on a partial misspelled name; no crash"
+ },
+ {
+  "step": 2,
+  "state": "PASS",
+  "note": "bounded fuzzy list (3), target present, matches=['customer_name_fuzzy']"
+ },
+ {
+  "step": 4,
+  "state": "FAIL",
+  "note": "confirmed customer produced no order rows"
+ },
+ {
+  "failure": "step 4: confirmed customer produced no order rows"
+ }
+]

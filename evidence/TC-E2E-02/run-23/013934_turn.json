@@ -1,0 +1,139 @@
+{
+ "sent": "Confirm the customer DAVID WOODARD on account LAKEWOOD.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run23-a1be05e8",
+   "conversation_version": 2,
+   "client_turn_id": "qa-28e4665c-f24f-4944-b1dc-5e2bc089f3e5",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "IN_PROGRESS",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "stmt-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "The closest match I found for David Woodward was David Woodard on account LAKEWOOD.",
+      "evidence_refs": [
+       {
+        "query_execution_id": "830de2eb-b50e-4e5a-bba4-a28fbc0961e6",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "stmt-2",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "Could you confirm if David Woodard on account LAKEWOOD is the correct customer, or do you have an order number or product detail for this return?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "Could you confirm if David Woodard on account LAKEWOOD is the correct customer, or do you have an order number or product detail for this return?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run23-a1be05e8:qa-5099e4b3-f67f-48ff-9096-4d8e7e6b47d0:1",
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "830de2eb-b50e-4e5a-bba4-a28fbc0961e6",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "55f06f451dae150cecdf3bd5fc44c357b39c5d882c995c8e8167403fd5007f56",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "FIND",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "David Woodward"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600590",
+        "data": {
+         "account_id": "LAKEWOOD",
+         "customer_id": "600590",
+         "customer_name": "DAVID WOODARD"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "d56b2d6749e31c9e82ba623eed3e1eb625c00692f8fc17c4eb20c6b4cb6adc86"
+    },
+    {
+     "query_execution_id": "f1ede327-87aa-4b58-93ba-56d258222ca2",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "a0595b09b13aef85d4250589d3a233a13ca84a2c45e1cce1397f7ad59c8a3e6e",
+     "compiled_query_checksum": "21e2e50e042bd25176e20889cfa627899d48cd3f3f20b4124e7268c21150577d",
+     "result": {
+      "rows": [
+       {
+        "sales_order_number": "CP804424",
+        "order_date": "2026-07-28T00:00:00.000000000",
+        "order_status": "INVOICED"
+       },
+       {
+        "sales_order_number": "CT805597",
+        "order_date": "2026-02-02T00:00:00.000000000",
+        "order_status": "CALLCSR"
+       },
+       {
+        "sales_order_number": "CC804922",
+        "order_date": "2025-08-10T00:00:00.000000000",
+        "order_status": "CALLCSR"
+       }
+      ],
+      "count": 3
+     },
+     "result_checksum": "1dbcaac93b9c9b6d6956a72b32ed061e914b0782ad25bc0276c3a0f235d284b0"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "return_reason",
+     "value": "customer wants to return an item",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "customer_name",
+     "value": "david woodward\u81ea\u5728 STATED",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "GOOGLE",
+   "model_name": "models/gemini-3.6-flash",
+   "as_of": "2026-08-25T20:05:14.247000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "5c8696a4-9017-49c1-8dfc-f05c16075b76",
+   "generated_at": "2026-08-25T20:09:34.343931Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

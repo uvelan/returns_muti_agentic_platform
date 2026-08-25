@@ -1,0 +1,148 @@
+{
+ "sent": "Confirm the customer SANDRA DEVLIN on account PLYMOUTH.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run24-1aa00216",
+   "conversation_version": 2,
+   "client_turn_id": "qa-1ba1fdfe-98c1-48fa-aa20-9a778347e226",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "IN_PROGRESS",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "s1",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "Which order number is this for?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "order number"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run24-1aa00216:qa-21dbbd73-5aa8-47d5-afe7-ad9c8dc7b81a:1",
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "da63f5ba-f85b-43d5-9798-fba47b3e1652",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "67e26efcc9b18ad5bbc7040576ca792a1fbf710dda5e192c3ae667ee1680b00a",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DEFAULT",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "Sandra Devlyn"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600035",
+        "data": {
+         "account_id": "OHVAL",
+         "customer_id": "600035",
+         "customer_name": "SANDRA DEVLIN"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600036",
+        "data": {
+         "account_id": "PLYMOUTH",
+         "customer_id": "600036",
+         "customer_name": "SANDRA DEVLIN"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "26e8f9797402380bf8479bb6e1c6e692ba55b0cbc98329adc7841c2ea59f83e0"
+    },
+    {
+     "query_execution_id": "8162f21c-62bf-4568-9e08-ff203612dfad",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "67e26efcc9b18ad5bbc7040576ca792a1fbf710dda5e192c3ae667ee1680b00a",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DEFAULT",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "Sandra Devlyn"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600035",
+        "data": {
+         "account_id": "OHVAL",
+         "customer_id": "600035",
+         "customer_name": "SANDRA DEVLIN"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600036",
+        "data": {
+         "account_id": "PLYMOUTH",
+         "customer_id": "600036",
+         "customer_name": "SANDRA DEVLIN"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "26e8f9797402380bf8479bb6e1c6e692ba55b0cbc98329adc7841c2ea59f83e0"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "Sandra Devlyn_clean_value_below_is_correct",
+     "status": "CONFLICTING",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "NVIDIA",
+   "model_name": "meta/llama-3.1-70b-instruct",
+   "as_of": "2026-08-25T20:13:18.374000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "dd49d505-49c5-4f07-9ac8-c2e6856d1cb0",
+   "generated_at": "2026-08-25T20:19:32.223082Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

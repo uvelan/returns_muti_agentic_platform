@@ -1,0 +1,117 @@
+{
+ "sent": "customer wants to return an item, name is rodney jarvys",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run22-096ff3a9",
+   "conversation_version": 1,
+   "client_turn_id": "qa-92155020-54a4-4277-bfaa-a93525bb51ae",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "DISAMBIGUATING",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "customer_fuzzy_matches",
+      "statement_type": "GRAPH_FACT",
+      "text": "I found two close matches for Rodney Jarvys: one in Seattle and one in Charlotte.",
+      "evidence_refs": [
+       {
+        "query_execution_id": "9634a8bd-6f3f-4518-b26f-de0c97d472f9",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       },
+       {
+        "query_execution_id": "9634a8bd-6f3f-4518-b26f-de0c97d472f9",
+        "result_path": [
+         "candidates",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "Which branch is this for \u2014 Seattle or Charlotte? Alternatively, do you have an order number or ZIP code we can use to narrow it down?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run22-096ff3a9:qa-92155020-54a4-4277-bfaa-a93525bb51ae:1",
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "9634a8bd-6f3f-4518-b26f-de0c97d472f9",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "21af0d241d50362f42b7f6afead7aa41beac848ad84d0a24a2121411c9edafd3",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "SEARCH",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "rodney jarvys"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600495",
+        "data": {
+         "account_id": "SEATTLE",
+         "customer_id": "600495",
+         "customer_name": "RODNEY JARVIS"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600494",
+        "data": {
+         "account_id": "CHARLOTTE",
+         "customer_id": "600494",
+         "customer_name": "RODNEY JARVIS"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "09ccd380efbe32520290376441b89ecc19956290191a0041fef374dff3636cb2"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "rodney jarvys",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "GOOGLE",
+   "model_name": "models/gemini-3.5-flash",
+   "as_of": "2026-08-25T19:56:13.695000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "17d3ba72-e52f-47b0-ae90-8565b6b5d762",
+   "generated_at": "2026-08-25T19:57:23.692176Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

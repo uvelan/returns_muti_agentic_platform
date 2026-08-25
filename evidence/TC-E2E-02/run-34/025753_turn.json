@@ -1,0 +1,64 @@
+{
+ "sent": "customer wants to return an item, name is francis herera",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run34-57509619",
+   "conversation_version": 1,
+   "client_turn_id": "qa-30e2f758-bc1f-4265-aab7-474364af13c2",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "IN_PROGRESS",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "s1",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "What is the order number for Francis Herera's return?",
+      "evidence_refs": [],
+      "source_message_id": "qa-30e2f758-bc1f-4265-aab7-474364af13c2"
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "order number"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run34-57509619:qa-30e2f758-bc1f-4265-aab7-474364af13c2:1",
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "fe24747e-743f-4d70-9a4f-129c1302113d",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "4b60f2cbaa452eb21e0f64444c53946a4b69222ced11bde593bc50e482ca7ff1",
+     "compiled_query_checksum": "c40f0ef815ddea83c6d4375f23c02a2d8a5cab1dddd42ba90a5a589319be5ac3",
+     "result": {
+      "intent": {
+       "searchMode": "PROGRESSIVE",
+       "confidence": 0.9,
+       "wantsMoreResults": false
+      },
+      "candidates": [],
+      "total_found": 0,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "e7c14330e1f45ef63779dad785deeb70110a6d4bac6adc010631c149f75ac389"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "NVIDIA",
+   "model_name": "meta/llama-3.1-70b-instruct",
+   "as_of": "2026-08-25T21:27:14.319000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "f845a45c-29d6-41bb-87ef-21d6469b4819",
+   "generated_at": "2026-08-25T21:27:53.902915Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

@@ -1,0 +1,146 @@
+{
+ "sent": "customer wants to return an item, name is glenn hartly",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run25-eb22e6b1",
+   "conversation_version": 1,
+   "client_turn_id": "qa-a20162b7-3cd1-45b8-b94f-e975e6e78794",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "IN_PROGRESS",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "stmt-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "The closest matches I found for Glenn Hartly are customer 600404 under Charlotte and customer 600403 under Phoenix.",
+      "evidence_refs": [
+       {
+        "query_execution_id": "d2f49d87-7fc2-4d34-8415-2371c9354910",
+        "result_path": [
+         "candidates",
+         "0",
+         "candidate_id"
+        ],
+        "expected_value": null
+       },
+       {
+        "query_execution_id": "d2f49d87-7fc2-4d34-8415-2371c9354910",
+        "result_path": [
+         "candidates",
+         "0",
+         "data",
+         "account_id"
+        ],
+        "expected_value": null
+       },
+       {
+        "query_execution_id": "d2f49d87-7fc2-4d34-8415-2371c9354910",
+        "result_path": [
+         "candidates",
+         "1",
+         "candidate_id"
+        ],
+        "expected_value": null
+       },
+       {
+        "query_execution_id": "d2f49d87-7fc2-4d34-8415-2371c9354910",
+        "result_path": [
+         "candidates",
+         "1",
+         "data",
+         "account_id"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "stmt-2",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "Which location account is this for \u2014 Charlotte or Phoenix \u2014 or do you have an order number?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "Which location account is this for \u2014 Charlotte or Phoenix \u2014 or do you have an order number?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run25-eb22e6b1:qa-a20162b7-3cd1-45b8-b94f-e975e6e78794:1",
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "d2f49d87-7fc2-4d34-8415-2371c9354910",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "43afa949c15d2cf3d2f7b344690f34048171d16d7a8ae7548c9ae19eb5653e23",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DEFAULT",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "Glenn Hartly"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600404",
+        "data": {
+         "account_id": "CHARLOTTE",
+         "customer_id": "600404",
+         "customer_name": "GLENN HARTLEY"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600403",
+        "data": {
+         "account_id": "PHOENIX",
+         "customer_id": "600403",
+         "customer_name": "GLENN HARTLEY"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "2042a251ed5fe79d3bca52a3f29511123b52c7b49bc7b3ace237aab92848f609"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "Glenn Hartly\u63cfSTATED_ACQUISITION_VERIFIED_PATTERN_STATED",
+     "status": "CONFLICTING",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "GOOGLE",
+   "model_name": "models/gemini-3.6-flash",
+   "as_of": "2026-08-25T20:22:44.228000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "e7fe055f-5f19-4072-8b73-35d28cb08413",
+   "generated_at": "2026-08-25T20:26:32.477525Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

@@ -1,0 +1,5 @@
+[
+ {
+  "failure": "HTTP 503 /api/v2/order-agent/conversations/disc-tc02-run37-8999b035/turns: {\"data\":null,\"page\":null,\"meta\":{\"schema_version\":\"1.0\",\"request_id\":\"6953450d-f8f9-4368-89dc-0d96142c2209\",\"generated_at\":\"2026-08-25T21:49:14.041460Z\",\"freshness\":\"LIVE\",\"partial\":true,\"warnings\":[{\"source\":\"API\",\"code\":\"ORDER_AGENT_LLM_FAILED\",\"message\":\"The configured reasoning models could not process the request.\"}]}}"
+ }
+]
