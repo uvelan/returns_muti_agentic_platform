@@ -207,6 +207,17 @@ class ShipmentTrackingStore:
             return None
         return document
 
+
+    def _to_logical(self, document: dict[str, Any]) -> dict[str, Any]:
+        """The document under its logical names, whatever the release maps.
+
+        Readers -- the console above all -- see logical names only, so a
+        physical rename in `shipment_tracking.fields` is invisible to every
+        client. Unmapped keys pass through unchanged.
+        """
+        reverse = {physical: logical for logical, physical in self._config().fields.items()}
+        return {reverse.get(key, key): value for key, value in document.items()}
+
     # -- reading ---------------------------------------------------------------
     async def list_shipments(
         self,
@@ -239,8 +250,9 @@ class ShipmentTrackingStore:
             .sort(f("updated_at"), -1)
             .to_list(length=limit)
         )
-        for document in documents:
+        for index, document in enumerate(documents):
             document.pop("_id", None)
+            documents[index] = self._to_logical(document)
         return documents
 
     async def find(self, identifier: str) -> dict[str, Any] | None:
@@ -259,7 +271,7 @@ class ShipmentTrackingStore:
             )
             if document:
                 document.pop("_id", None)
-                return document
+                return self._to_logical(document)
         return None
 
     # -- events ----------------------------------------------------------------
@@ -324,4 +336,4 @@ class ShipmentTrackingStore:
             return_document=ReturnDocument.AFTER,
         )
         updated.pop("_id", None)
-        return updated
+        return self._to_logical(updated)

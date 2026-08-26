@@ -1670,7 +1670,14 @@ class ReturnCaseActivities:
                 await self._shipment_tracking.seed(ShipmentSeed(
                     case_id=request.case_id,
                     return_record_id=plan.record_id,
-                    rma_reference=_text_of(merged.get("returnReference")) or "",
+                    # The RMA is the record's identity -- the upsert key -- so
+                    # it lives on the incoming notice, not in the merged field
+                    # set.
+                    rma_reference=(
+                        _text_of(merged.get("returnReference"))
+                        or getattr(plan.incoming, "return_reference", None)
+                        or ""
+                    ),
                     tracking_reference=tracking,
                     return_method=_text_of(merged.get("returnMethod")),
                     carrier=_text_of(merged.get("carrier")),
