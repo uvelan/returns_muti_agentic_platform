@@ -1,0 +1,121 @@
+{
+ "sent": "customer wants to return an item, name is cheryl bower",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run14-6149e3a0",
+   "conversation_version": 1,
+   "client_turn_id": "qa-3b6470f8-335f-40fa-92cf-5be1b72de9f9",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 600787 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "9cfd7249-fe4f-478e-84ee-5ba3a7895584",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 2: 600786 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "9cfd7249-fe4f-478e-84ee-5ba3a7895584",
+        "result_path": [
+         "candidates",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "9cfd7249-fe4f-478e-84ee-5ba3a7895584",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "340da34778a15398ae659bc73660e85eb6f83ded103a99e2d73dfc23dca10cb7",
+     "compiled_query_checksum": "32aa52abf681b63781ca68dcbe7bf5527e62dc61ed01cdc2ffea3d54c4401ef7",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "cheryl bower"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600787",
+        "data": {
+         "account_id": "LENZ",
+         "customer_id": "600787",
+         "customer_name": "CHERYL BOWERS",
+         "source_updated_at": "2026-08-01T18:53:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_contains"
+        ]
+       },
+       {
+        "candidate_id": "600786",
+        "data": {
+         "account_id": "LAKEWOOD",
+         "customer_id": "600786",
+         "customer_name": "CHERYL BOWERS",
+         "source_updated_at": "2026-05-13T08:14:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_contains"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "a3e1db7721dd050487cab0cc5c6e5a492f64affb795289c8ddac0d90bfda65a9"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:35:15.461000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "06e53c58-55d0-4860-b6fc-1d2edc54b166",
+   "generated_at": "2026-08-26T02:35:19.508537Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

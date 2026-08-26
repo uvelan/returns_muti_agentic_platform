@@ -1,0 +1,79 @@
+{
+ "kind": "returnShipment",
+ "return_record_id": "4351618b-8fbd-4779-a6fd-c65098557d6b",
+ "tracking_reference": "TRK-RMAC4CC01ECC2B042238EA46F60C2BFDE15",
+ "carrier": "UPS",
+ "case_id": "c4cc01ec-c2b0-4223-8ea4-6f60c2bfde15",
+ "created_at": "2026-08-26T02:39:05.552000",
+ "current_status": "delivered",
+ "destination_bay": null,
+ "destination_warehouse": "1549",
+ "events": [
+  {
+   "event_id": "838aed78-e131-45b5-b49f-875a62551492",
+   "status": "exception",
+   "location": null,
+   "note": "TC-E2E-03 forced exception",
+   "event_at": "2026-08-26T02:39:43.127000",
+   "recorded_at": "2026-08-26T02:39:43.127000",
+   "actor": "dev-operator"
+  },
+  {
+   "event_id": "be0bb93a-7a1c-40f1-8569-f01318541825",
+   "status": "picked_up",
+   "location": null,
+   "note": "resumed after exception",
+   "event_at": "2026-08-26T02:39:47.833000",
+   "recorded_at": "2026-08-26T02:39:47.833000",
+   "actor": "dev-operator"
+  },
+  {
+   "event_id": "e2a3f9c2-e801-4407-abdc-0fc84085be9f",
+   "status": "in_transit",
+   "location": "stage 1",
+   "note": "TC-E2E-03 manual drive",
+   "event_at": "2026-08-26T02:39:57.220000",
+   "recorded_at": "2026-08-26T02:39:57.220000",
+   "actor": "dev-operator"
+  },
+  {
+   "event_id": "299907f7-6244-4aff-96f9-d33101f8c4bf",
+   "status": "arrived_at_facility",
+   "location": "stage 2",
+   "note": "TC-E2E-03 manual drive",
+   "event_at": "2026-08-26T02:40:02.315000",
+   "recorded_at": "2026-08-26T02:40:02.315000",
+   "actor": "dev-operator"
+  },
+  {
+   "event_id": "19bbd986-a349-4e37-af54-bb3ec792fa93",
+   "status": "out_for_delivery",
+   "location": "stage 3",
+   "note": "TC-E2E-03 manual drive",
+   "event_at": "2026-08-26T02:40:07.724000",
+   "recorded_at": "2026-08-26T02:40:07.724000",
+   "actor": "dev-operator"
+  },
+  {
+   "event_id": "f58d83aa-e052-40af-8221-5f737552f678",
+   "status": "delivered",
+   "location": "stage 4",
+   "note": "TC-E2E-03 manual drive",
+   "event_at": "2026-08-26T02:40:13.330000",
+   "recorded_at": "2026-08-26T02:40:13.330000",
+   "actor": "dev-operator"
+  }
+ ],
+ "label_reference": "LBL-RMAC4CC01ECC2B042238EA46F60C2BFDE15",
+ "mode": "parcel",
+ "provenance": {
+  "agent": "return-support",
+  "channel": "CHANNEL_B",
+  "source": "SUPPORT_REPLY",
+  "method": "PARSED",
+  "supportEventId": "support-response-agent:fa38f8b7-b4a9-43fc-9ba3-7329c999e93c"
+ },
+ "rma_reference": "RMA-C4CC01ECC2B042238EA46F60C2BFDE15",
+ "shipment_id": "a8b0dba0-8271-444e-bb4d-7b4df097e3f4",
+ "updated_at": "2026-08-26T02:40:13.330000"
+}

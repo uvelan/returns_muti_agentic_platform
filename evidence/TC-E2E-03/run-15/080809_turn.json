@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CG806844",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run15-b5c03985",
+   "conversation_version": 3,
+   "client_turn_id": "qa-e1494836-975b-4464-abd2-b5235e210c74",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CG806844 / [REDACTED] / LAS VEGAS / 2026-07-30",
+      "evidence_refs": [
+       {
+        "query_execution_id": "9c38ec1a-7590-4d49-a381-eefc6ac0c911",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "9c38ec1a-7590-4d49-a381-eefc6ac0c911",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "1581eb74d4435937761017ea61b64ef89486bd1d04c31d61d1187b002834a79b",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CG806844"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CG806844",
+        "data": {
+         "order_key": "GARDEN*CG806844",
+         "account_id": "GARDEN",
+         "sales_order_number": "CG806844",
+         "customer_id": "600353",
+         "customer_name": "DEBORAH MONROE",
+         "customer_po_number": "JOB",
+         "job_name": "TRUCK STOCK",
+         "order_status": "CALLCSR",
+         "sales_type": "INV",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "1549",
+         "ship_from_warehouse_id": "1549",
+         "shipping_method": "CUSTOMER PICKUP",
+         "order_date": "2026-07-30T00:00:00.000000000",
+         "invoice_date": "2026-07-30T00:00:00.000000000",
+         "shipped_at": "2026-08-01T00:00:00.000000000",
+         "commit_date": "2026-07-30T00:00:00.000000000",
+         "ship_to_name": "DEBORAH MONROE",
+         "ship_to_phone": "404-555-6427",
+         "ship_to_city": "LAS VEGAS",
+         "ship_to_state": "NV",
+         "ship_to_postal_code": "89180",
+         "source_updated_at": "2026-07-30T11:55:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "315e85c0c65ca1e0f80e7cd624d634abca053fc5858ed5c23a2e50c3b2864b11"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "DEBORAH MONROE",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:38:06.194000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "32e82e30-c494-4ccf-921f-c62453532e56",
+   "generated_at": "2026-08-26T02:38:09.627563Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

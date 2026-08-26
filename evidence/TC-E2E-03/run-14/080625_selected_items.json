@@ -1,0 +1,44 @@
+{
+ "data": {
+  "caseId": "b51a6295-962c-4df4-a1c7-e8ef59039567",
+  "revision": 33,
+  "changed": true,
+  "items": [
+   {
+    "returnItemId": "b9c2db32-044a-4eb2-8bdb-5ea74f3184fb",
+    "orderLineReference": "1",
+    "productReference": "7211560",
+    "quantity": 1,
+    "reason": "SHIPPING_DAMAGE",
+    "condition": "NEW_IN_ORIGINAL_PACKAGING",
+    "packageReference": null
+   }
+  ],
+  "lines": [
+   {
+    "lineReference": "1",
+    "sku": "DT27997",
+    "description": "CCY TRAD MNTR DIV VLV TRIM *CASSID",
+    "colour": null,
+    "orderedQuantity": 3,
+    "unitPrice": "524.584",
+    "productReference": "7211560",
+    "returnableQuantity": 3,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 1,
+    "dataInconsistency": null
+   }
+  ]
+ },
+ "page": null,
+ "meta": {
+  "schema_version": "1.0",
+  "request_id": "8cb12b8b-7b1a-434a-a74c-a903f0a9c917",
+  "generated_at": "2026-08-26T02:36:25.926276Z",
+  "freshness": "LIVE",
+  "partial": false,
+  "warnings": []
+ }
+}

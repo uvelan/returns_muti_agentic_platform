@@ -1,0 +1,44 @@
+{
+ "data": {
+  "caseId": "c4cc01ec-c2b0-4223-8ea4-6f60c2bfde15",
+  "revision": 33,
+  "changed": true,
+  "items": [
+   {
+    "returnItemId": "041db2a0-16e1-4860-a98d-f977404a6667",
+    "orderLineReference": "1",
+    "productReference": "4000057",
+    "quantity": 1,
+    "reason": "SHIPPING_DAMAGE",
+    "condition": "NEW_IN_ORIGINAL_PACKAGING",
+    "packageReference": null
+   }
+  ],
+  "lines": [
+   {
+    "lineReference": "1",
+    "sku": "EBH8118",
+    "description": "1-1/4 PVC S40 SXS 90 ELL",
+    "colour": null,
+    "orderedQuantity": 3,
+    "unitPrice": "5.695",
+    "productReference": "4000057",
+    "returnableQuantity": 3,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 1,
+    "dataInconsistency": null
+   }
+  ]
+ },
+ "page": null,
+ "meta": {
+  "schema_version": "1.0",
+  "request_id": "28eeca9a-067c-4bbc-85fe-74310541d09b",
+  "generated_at": "2026-08-26T02:38:52.051362Z",
+  "freshness": "LIVE",
+  "partial": false,
+  "warnings": []
+ }
+}

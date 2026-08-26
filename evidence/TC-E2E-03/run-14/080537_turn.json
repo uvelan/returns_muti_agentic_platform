@@ -1,0 +1,347 @@
+{
+ "sent": "Confirm the customer CHERYL BOWERS on account LENZ.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run14-6149e3a0",
+   "conversation_version": 2,
+   "client_turn_id": "qa-947c1ffb-d769-4dbb-950b-7e1cb19aab39",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CS803957 / 2026-08-01T0 / KNOXVILLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "8b0042da-e004-4c7b-9303-cca4cafeed0c",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CC803379 / 2026-02-13T0 / KNOXVILLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "8b0042da-e004-4c7b-9303-cca4cafeed0c",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CJ801213 / 2025-11-15T0 / KNOXVILLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "8b0042da-e004-4c7b-9303-cca4cafeed0c",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CD808628 / 2025-11-06T0 / KNOXVILLE / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "8b0042da-e004-4c7b-9303-cca4cafeed0c",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CE806890 / 2025-10-21T0 / KNOXVILLE / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "8b0042da-e004-4c7b-9303-cca4cafeed0c",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CQ802568 / 2025-04-13T0 / KNOXVILLE / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "8b0042da-e004-4c7b-9303-cca4cafeed0c",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 7: CD808952 / 2025-01-24T0 / KNOXVILLE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "8b0042da-e004-4c7b-9303-cca4cafeed0c",
+        "result_path": [
+         "rows",
+         "6"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "8b0042da-e004-4c7b-9303-cca4cafeed0c",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "ab846411295997db2d0c14bb946fb25ffbaceb9a85863f15dc6248c9edc9d4b7",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "LENZ*CS803957",
+        "account_id": "LENZ",
+        "sales_order_number": "CS803957",
+        "customer_id": "600787",
+        "customer_name": "CHERYL BOWERS",
+        "customer_po_number": "SHOP STOCK",
+        "job_name": "JOB",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "686",
+        "ship_from_warehouse_id": "686",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-08-01T00:00:00.000000000",
+        "invoice_date": "2026-08-01T00:00:00.000000000",
+        "shipped_at": "2026-08-03T00:00:00.000000000",
+        "commit_date": "2026-08-01T00:00:00.000000000",
+        "ship_to_name": "CHERYL BOWERS",
+        "ship_to_phone": "404-555-9067",
+        "ship_to_city": "KNOXVILLE",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37951",
+        "source_updated_at": "2026-08-01T18:53:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CC803379",
+        "account_id": "LENZ",
+        "sales_order_number": "CC803379",
+        "customer_id": "600787",
+        "customer_name": "CHERYL BOWERS",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "JOB",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-02-13T00:00:00.000000000",
+        "invoice_date": "2026-02-13T00:00:00.000000000",
+        "shipped_at": "2026-02-13T00:00:00.000000000",
+        "commit_date": "2026-02-13T00:00:00.000000000",
+        "ship_to_name": "CHERYL BOWERS",
+        "ship_to_phone": "404-555-9067",
+        "ship_to_city": "KNOXVILLE",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37951",
+        "source_updated_at": "2026-02-13T10:22:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CJ801213",
+        "account_id": "LENZ",
+        "sales_order_number": "CJ801213",
+        "customer_id": "600787",
+        "customer_name": "CHERYL BOWERS",
+        "customer_po_number": "WARRANTY",
+        "job_name": "WAREHOUSE",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1549",
+        "ship_from_warehouse_id": "1549",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-11-15T00:00:00.000000000",
+        "invoice_date": "2025-11-15T00:00:00.000000000",
+        "shipped_at": "2025-11-16T00:00:00.000000000",
+        "commit_date": "2025-11-15T00:00:00.000000000",
+        "ship_to_name": "CHERYL BOWERS",
+        "ship_to_phone": "404-555-9067",
+        "ship_to_city": "KNOXVILLE",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37951",
+        "source_updated_at": "2025-11-15T08:26:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CD808628",
+        "account_id": "LENZ",
+        "sales_order_number": "CD808628",
+        "customer_id": "600787",
+        "customer_name": "CHERYL BOWERS",
+        "customer_po_number": "MAINTENANCE",
+        "job_name": "NEW CONSTRUCTION",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1441",
+        "ship_from_warehouse_id": "1441",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-11-06T00:00:00.000000000",
+        "invoice_date": "2025-11-06T00:00:00.000000000",
+        "shipped_at": "2025-11-06T00:00:00.000000000",
+        "commit_date": "2025-11-06T00:00:00.000000000",
+        "ship_to_name": "CHERYL BOWERS",
+        "ship_to_phone": "404-555-9067",
+        "ship_to_city": "KNOXVILLE",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37951",
+        "source_updated_at": "2025-11-06T15:46:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CE806890",
+        "account_id": "LENZ",
+        "sales_order_number": "CE806890",
+        "customer_id": "600787",
+        "customer_name": "CHERYL BOWERS",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1781",
+        "ship_from_warehouse_id": "1781",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-10-21T00:00:00.000000000",
+        "invoice_date": "2025-10-21T00:00:00.000000000",
+        "shipped_at": "2025-10-23T00:00:00.000000000",
+        "commit_date": "2025-10-21T00:00:00.000000000",
+        "ship_to_name": "CHERYL BOWERS",
+        "ship_to_phone": "404-555-9067",
+        "ship_to_city": "KNOXVILLE",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37951",
+        "source_updated_at": "2025-10-21T16:34:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CQ802568",
+        "account_id": "LENZ",
+        "sales_order_number": "CQ802568",
+        "customer_id": "600787",
+        "customer_name": "CHERYL BOWERS",
+        "customer_po_number": "JOB",
+        "job_name": "RESIDENTIAL",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1441",
+        "ship_from_warehouse_id": "1441",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-04-13T00:00:00.000000000",
+        "invoice_date": "2025-04-13T00:00:00.000000000",
+        "shipped_at": "2025-04-13T00:00:00.000000000",
+        "commit_date": "2025-04-13T00:00:00.000000000",
+        "ship_to_name": "CHERYL BOWERS",
+        "ship_to_phone": "404-555-9067",
+        "ship_to_city": "KNOXVILLE",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37951",
+        "source_updated_at": "2025-04-13T15:07:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CD808952",
+        "account_id": "LENZ",
+        "sales_order_number": "CD808952",
+        "customer_id": "600787",
+        "customer_name": "CHERYL BOWERS",
+        "customer_po_number": "TRUCK STOCK",
+        "job_name": "WAREHOUSE",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1556",
+        "ship_from_warehouse_id": "1556",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-01-24T00:00:00.000000000",
+        "invoice_date": "2025-01-24T00:00:00.000000000",
+        "shipped_at": "2025-01-27T00:00:00.000000000",
+        "commit_date": "2025-01-24T00:00:00.000000000",
+        "ship_to_name": "CHERYL BOWERS",
+        "ship_to_phone": "404-555-9067",
+        "ship_to_city": "KNOXVILLE",
+        "ship_to_state": "TN",
+        "ship_to_postal_code": "37951",
+        "source_updated_at": "2025-01-24T12:36:00.000000000"
+       }
+      ],
+      "count": 7
+     },
+     "result_checksum": "8ed6fe5680e38b6c2c8c855429fcebc1bd8e371445bdf7a5ae26decdfd9fc14b"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "CHERYL BOWERS",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:35:22.845000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "a8d15394-b8b3-458c-bd0e-50f76932ceac",
+   "generated_at": "2026-08-26T02:35:37.955792Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

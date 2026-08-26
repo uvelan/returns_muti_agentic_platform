@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CS803957",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run14-6149e3a0",
+   "conversation_version": 3,
+   "client_turn_id": "qa-fcc8fa3f-ccf6-4cb8-ad8a-fb6fb9592072",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CS803957 / [REDACTED] / KNOXVILLE / 2026-08-01",
+      "evidence_refs": [
+       {
+        "query_execution_id": "332124f7-6747-4ae3-848a-0e404dcca0e3",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "332124f7-6747-4ae3-848a-0e404dcca0e3",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "2df01fbfbe0f825a57e1132c44f3b75291efd1aab773532bf9cc32b73afd8f38",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CS803957"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CS803957",
+        "data": {
+         "order_key": "LENZ*CS803957",
+         "account_id": "LENZ",
+         "sales_order_number": "CS803957",
+         "customer_id": "600787",
+         "customer_name": "CHERYL BOWERS",
+         "customer_po_number": "SHOP STOCK",
+         "job_name": "JOB",
+         "order_status": "CALLCSR",
+         "sales_type": "INV",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "686",
+         "ship_from_warehouse_id": "686",
+         "shipping_method": "CUSTOMER PICKUP",
+         "order_date": "2026-08-01T00:00:00.000000000",
+         "invoice_date": "2026-08-01T00:00:00.000000000",
+         "shipped_at": "2026-08-03T00:00:00.000000000",
+         "commit_date": "2026-08-01T00:00:00.000000000",
+         "ship_to_name": "CHERYL BOWERS",
+         "ship_to_phone": "404-555-9067",
+         "ship_to_city": "KNOXVILLE",
+         "ship_to_state": "TN",
+         "ship_to_postal_code": "37951",
+         "source_updated_at": "2026-08-01T18:53:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "1fdb381f8a508ee526fbcf1712cb422c9755088f93a26c63c6575265940db33c"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "CHERYL BOWERS",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:35:40.903000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "5fe32fd3-87c1-4bd7-ba12-b4fec3ab805d",
+   "generated_at": "2026-08-26T02:35:44.163914Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

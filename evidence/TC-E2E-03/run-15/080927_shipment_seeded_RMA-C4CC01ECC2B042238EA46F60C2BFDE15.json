@@ -1,0 +1,24 @@
+{
+ "kind": "returnShipment",
+ "return_record_id": "4351618b-8fbd-4779-a6fd-c65098557d6b",
+ "tracking_reference": "TRK-RMAC4CC01ECC2B042238EA46F60C2BFDE15",
+ "carrier": "UPS",
+ "case_id": "c4cc01ec-c2b0-4223-8ea4-6f60c2bfde15",
+ "created_at": "2026-08-26T02:39:05.552000",
+ "current_status": "label_created",
+ "destination_bay": null,
+ "destination_warehouse": "1549",
+ "events": [],
+ "label_reference": "LBL-RMAC4CC01ECC2B042238EA46F60C2BFDE15",
+ "mode": "parcel",
+ "provenance": {
+  "agent": "return-support",
+  "channel": "CHANNEL_B",
+  "source": "SUPPORT_REPLY",
+  "method": "PARSED",
+  "supportEventId": "support-response-agent:fa38f8b7-b4a9-43fc-9ba3-7329c999e93c"
+ },
+ "rma_reference": "RMA-C4CC01ECC2B042238EA46F60C2BFDE15",
+ "shipment_id": "a8b0dba0-8271-444e-bb4d-7b4df097e3f4",
+ "updated_at": "2026-08-26T02:39:05.552000"
+}

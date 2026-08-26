@@ -1,0 +1,43 @@
+{
+ "sent": "Confirm order CS803957.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run14-6149e3a0",
+   "conversation_version": 4,
+   "client_turn_id": "qa-3c89a7d5-af2b-4a09-993e-d367b19ee161",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [],
+    "suggestions": [],
+    "requested_input": "You selected order CS803957. Confirm this order to raise the return?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run14-6149e3a0:qa-3c89a7d5-af2b-4a09-993e-d367b19ee161:1",
+   "case_id": null,
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "CHERYL BOWERS",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:35:47.107000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "1176bb21-3a55-4794-9512-5b22f1161727",
+   "generated_at": "2026-08-26T02:35:48.915475Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

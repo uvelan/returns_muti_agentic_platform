@@ -1,0 +1,150 @@
+{
+ "sent": "customer wants to return an item, name is deborah monro",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run15-b5c03985",
+   "conversation_version": 1,
+   "client_turn_id": "qa-20796c6c-8aef-45aa-bb55-9af436f2a04b",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 600354 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "5d61f0df-be3c-414a-9f2b-9938a75f0705",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 2: 600352 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "5d61f0df-be3c-414a-9f2b-9938a75f0705",
+        "result_path": [
+         "candidates",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 3: 600353 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "5d61f0df-be3c-414a-9f2b-9938a75f0705",
+        "result_path": [
+         "candidates",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "5d61f0df-be3c-414a-9f2b-9938a75f0705",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "ea190b051745d7e982075b353a4f991c48b78c07b7cac093c9b7acf9bc6c41f8",
+     "compiled_query_checksum": "32aa52abf681b63781ca68dcbe7bf5527e62dc61ed01cdc2ffea3d54c4401ef7",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "deborah monro"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600354",
+        "data": {
+         "account_id": "DIST",
+         "customer_id": "600354",
+         "customer_name": "DEBORAH MONROE",
+         "source_updated_at": "2026-06-24T15:29:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_contains"
+        ]
+       },
+       {
+        "candidate_id": "600352",
+        "data": {
+         "account_id": "CHARLOTTE",
+         "customer_id": "600352",
+         "customer_name": "DEBORAH MONROE",
+         "source_updated_at": "2026-02-05T15:17:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_contains"
+        ]
+       },
+       {
+        "candidate_id": "600353",
+        "data": {
+         "account_id": "GARDEN",
+         "customer_id": "600353",
+         "customer_name": "DEBORAH MONROE",
+         "source_updated_at": "2026-07-30T11:55:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_contains"
+        ]
+       }
+      ],
+      "total_found": 3,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "c09885996e71929e0a6253be512dcdd70aedf6824f64b4207649c526db21774a"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:37:50.249000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "ec4c97f5-ce54-4883-a643-a55190b77cff",
+   "generated_at": "2026-08-26T02:37:53.544760Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}
