@@ -21,3 +21,16 @@ Pre-work SHA (rollback point): 138bbb80b3e74bd59526bc208fe4c4d5e7b8f745
 | 15 | manual | G4 | DEBORAH MONROE / CG806844 | - | none: exception forked, surfaced as a case fact, ladder resumed forward, trail intact; then delivered, case closed, replay idempotent | - | **G4 GREEN** | evidence/TC-E2E-03/run-15 |
 | 16 | manual | G5 | WESLEY COFFEY / CQ801512 | - | none: mixed-class order split into 2 records; freight shipment walked its 7-rung ladder (PRO at origin terminal), parcel its 5-rung ladder; case closed only when BOTH terminal; replay idempotent | - | **G5 GREEN** | evidence/TC-E2E-03/run-16 |
 | 17 | manual | G6 | KEVIN CLAYTON / CD803506 | - | none: release renamed shipmentInfo physical fields (tracking_reference->consoleTrackingRef, current_status->consoleLadderStatus) and the parcel delivered label; full 1-24 rerun clean; raw Mongo doc verified physically renamed while API/console/harness stayed on logical names -- zero code touched | - | **G6 GREEN** | evidence/TC-E2E-03/run-17 |
+| 18 | manual | G7 | ANDRE BURGESS / CF804497 | - | none: full 1-24 clean on the reverted (canonical) config | - | **G7 GREEN** | evidence/TC-E2E-03/run-18 |
+
+## Gate summary
+
+| Gate | Meaning | Cleared by |
+|---|---|---|
+| G1 | TC-E2E-02 steps 1-15 still clean | run 1 (DUANE ALVARADO / CJ800022) |
+| G2 | parcel seed + ladder + fulfillment + close + idempotent replay | run 6 (ROBERTO JARVIS / CQ805596) |
+| G3 | freight: BOL seed, PRO at origin terminal, freight ladder, close | run 13 (PAMELA FARRELL / CJ803603) |
+| G4 | exception surfaces on the case, ladder resumes, trail intact | run 15 (DEBORAH MONROE / CG806844) |
+| G5 | mixed-class order: 2 records, 2 ladders, close only when both terminal | run 16 (WESLEY COFFEY / CQ801512) |
+| G6 | release renames physical fields + a label; zero code touched | run 17 (KEVIN CLAYTON / CD803506) + raw-doc proof |
+| G7 | full clean run, fresh customer, canonical config | run 18 (ANDRE BURGESS / CF804497) |

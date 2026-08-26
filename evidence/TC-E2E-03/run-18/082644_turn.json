@@ -1,0 +1,92 @@
+{
+ "sent": "customer wants to return an item, name is andre burges",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run18-3352b8c9",
+   "conversation_version": 1,
+   "client_turn_id": "qa-3c0a6c1f-6723-4a1a-8f8d-e1932e9f0e51",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 600017 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "bdd72b01-9e35-4dfe-be07-d9294bef6a10",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "bdd72b01-9e35-4dfe-be07-d9294bef6a10",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "a0b3870ac02308c8809d8dee1d04261e693c52a762c7dbe536420bc180532625",
+     "compiled_query_checksum": "32aa52abf681b63781ca68dcbe7bf5527e62dc61ed01cdc2ffea3d54c4401ef7",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "andre burges"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600017",
+        "data": {
+         "account_id": "GARDEN",
+         "customer_id": "600017",
+         "customer_name": "ANDRE BURGESS",
+         "source_updated_at": "2026-08-01T11:14:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_contains"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "25e94d7ca7a9ac8d5630214da53cefb1a9b23f5d73fc414e18e8a5d8fb19982d"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:56:41.291000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "bae3208c-56d6-4cfd-814e-6fb939ece7cb",
+   "generated_at": "2026-08-26T02:56:44.704320Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

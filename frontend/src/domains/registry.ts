@@ -27,6 +27,7 @@ import {
   Settings2,
   ShieldCheck,
   Ticket,
+  Truck,
   Waypoints,
 } from "lucide-react";
 
@@ -330,6 +331,21 @@ export const DOMAINS: readonly DomainDefinition[] = [
     // saying "no backend" over two working screens would be the same lie in the
     // other direction.
     sections: sections(OPERATIONS_SECTIONS, { Cases: FolderOpen, "Return sessions": History }),
+  },
+  {
+    path: "/shipments",
+    name: "Shipments",
+    description: "Return shipments on their status ladders: drive them by hand, watch fulfillment follow.",
+    purpose: "Record what the carrier did, and see the case close when everything is home.",
+    icon: Truck,
+    // No `shipments.*` capability exists yet; the console acts through the
+    // logistics endpoints, which check `returns.logistics.act` server-side.
+    // The domain is visible on the session read everyone operating returns has.
+    requires: "returns.session.read",
+    screenPhase: 22,
+    // One workspace: the list and the detail it opens. Filters narrow the
+    // list rather than switching what the screen is.
+    sections: [],
   },
 ];
 

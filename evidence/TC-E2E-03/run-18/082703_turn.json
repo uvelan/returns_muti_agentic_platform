@@ -1,0 +1,43 @@
+{
+ "sent": "Confirm order CF804497.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run18-3352b8c9",
+   "conversation_version": 4,
+   "client_turn_id": "qa-528fddf8-cc71-4acf-bbc5-84ea76c6e29e",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [],
+    "suggestions": [],
+    "requested_input": "You selected order CF804497. Confirm this order to raise the return?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run18-3352b8c9:qa-528fddf8-cc71-4acf-bbc5-84ea76c6e29e:1",
+   "case_id": null,
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "ANDRE BURGESS",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:57:00.902000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "9d6a2a39-95a6-4276-a682-a7d7bc6f6138",
+   "generated_at": "2026-08-26T02:57:03.442676Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

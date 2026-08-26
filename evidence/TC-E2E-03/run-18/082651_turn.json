@@ -1,0 +1,388 @@
+{
+ "sent": "Confirm the customer ANDRE BURGESS on account GARDEN.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run18-3352b8c9",
+   "conversation_version": 2,
+   "client_turn_id": "qa-1e7e4f50-9633-4c43-a197-21c1dfa47ecc",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CF804497 / 2026-08-01T0 / DALLAS / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "9bea0cf6-ed1c-43cf-b8dd-08983d751583",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CN800117 / 2026-04-21T0 / DALLAS / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "9bea0cf6-ed1c-43cf-b8dd-08983d751583",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CC809632 / 2026-03-06T0 / DALLAS / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "9bea0cf6-ed1c-43cf-b8dd-08983d751583",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CC801832 / 2025-09-21T0 / DALLAS / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "9bea0cf6-ed1c-43cf-b8dd-08983d751583",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CL809436 / 2025-06-16T0 / DALLAS / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "9bea0cf6-ed1c-43cf-b8dd-08983d751583",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CH808026 / 2025-05-02T0 / DALLAS / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "9bea0cf6-ed1c-43cf-b8dd-08983d751583",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 7: CO808175 / 2025-04-01T0 / DALLAS / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "9bea0cf6-ed1c-43cf-b8dd-08983d751583",
+        "result_path": [
+         "rows",
+         "6"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-7",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 8: CE804794 / 2025-03-13T0 / DALLAS / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "9bea0cf6-ed1c-43cf-b8dd-08983d751583",
+        "result_path": [
+         "rows",
+         "7"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "9bea0cf6-ed1c-43cf-b8dd-08983d751583",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "1f1161c8c2b0a2fe6019ab3c64a7310b41c0803c080d867c32c432f657741c81",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "GARDEN*CF804497",
+        "account_id": "GARDEN",
+        "sales_order_number": "CF804497",
+        "customer_id": "600017",
+        "customer_name": "ANDRE BURGESS",
+        "customer_po_number": "MAINTENANCE",
+        "job_name": "TRUCK STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "686",
+        "ship_from_warehouse_id": "686",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-08-01T00:00:00.000000000",
+        "invoice_date": "2026-08-01T00:00:00.000000000",
+        "shipped_at": "2026-08-01T00:00:00.000000000",
+        "commit_date": "2026-08-01T00:00:00.000000000",
+        "ship_to_name": "ANDRE BURGESS",
+        "ship_to_phone": "404-555-8935",
+        "ship_to_city": "DALLAS",
+        "ship_to_state": "TX",
+        "ship_to_postal_code": "75276",
+        "source_updated_at": "2026-08-01T11:14:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CN800117",
+        "account_id": "GARDEN",
+        "sales_order_number": "CN800117",
+        "customer_id": "600017",
+        "customer_name": "ANDRE BURGESS",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "JOB",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1305",
+        "ship_from_warehouse_id": "1305",
+        "shipping_method": "EXPRESS PARCEL",
+        "order_date": "2026-04-21T00:00:00.000000000",
+        "invoice_date": "2026-04-21T00:00:00.000000000",
+        "shipped_at": "2026-04-23T00:00:00.000000000",
+        "commit_date": "2026-04-21T00:00:00.000000000",
+        "ship_to_name": "ANDRE BURGESS",
+        "ship_to_phone": "404-555-8935",
+        "ship_to_city": "DALLAS",
+        "ship_to_state": "TX",
+        "ship_to_postal_code": "75276",
+        "source_updated_at": "2026-04-21T15:38:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CC809632",
+        "account_id": "GARDEN",
+        "sales_order_number": "CC809632",
+        "customer_id": "600017",
+        "customer_name": "ANDRE BURGESS",
+        "customer_po_number": "SHOP STOCK",
+        "job_name": "REPLACEMENT",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "144",
+        "ship_from_warehouse_id": "144",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-03-06T00:00:00.000000000",
+        "invoice_date": "2026-03-06T00:00:00.000000000",
+        "shipped_at": "2026-03-07T00:00:00.000000000",
+        "commit_date": "2026-03-06T00:00:00.000000000",
+        "ship_to_name": "ANDRE BURGESS",
+        "ship_to_phone": "404-555-8935",
+        "ship_to_city": "DALLAS",
+        "ship_to_state": "TX",
+        "ship_to_postal_code": "75276",
+        "source_updated_at": "2026-03-06T11:10:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CC801832",
+        "account_id": "GARDEN",
+        "sales_order_number": "CC801832",
+        "customer_id": "600017",
+        "customer_name": "ANDRE BURGESS",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "NEW CONSTRUCTION",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2624",
+        "ship_from_warehouse_id": "2624",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-09-21T00:00:00.000000000",
+        "invoice_date": "2025-09-21T00:00:00.000000000",
+        "shipped_at": "2025-09-24T00:00:00.000000000",
+        "commit_date": "2025-09-21T00:00:00.000000000",
+        "ship_to_name": "ANDRE BURGESS",
+        "ship_to_phone": "404-555-8935",
+        "ship_to_city": "DALLAS",
+        "ship_to_state": "TX",
+        "ship_to_postal_code": "75276",
+        "source_updated_at": "2025-09-21T16:52:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CL809436",
+        "account_id": "GARDEN",
+        "sales_order_number": "CL809436",
+        "customer_id": "600017",
+        "customer_name": "ANDRE BURGESS",
+        "customer_po_number": "SHOP STOCK",
+        "job_name": "SERVICE CALL",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2028",
+        "ship_from_warehouse_id": "2028",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2025-06-16T00:00:00.000000000",
+        "invoice_date": "2025-06-16T00:00:00.000000000",
+        "shipped_at": "2025-06-17T00:00:00.000000000",
+        "commit_date": "2025-06-16T00:00:00.000000000",
+        "ship_to_name": "ANDRE BURGESS",
+        "ship_to_phone": "404-555-8935",
+        "ship_to_city": "DALLAS",
+        "ship_to_state": "TX",
+        "ship_to_postal_code": "75276",
+        "source_updated_at": "2025-06-16T15:21:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CH808026",
+        "account_id": "GARDEN",
+        "sales_order_number": "CH808026",
+        "customer_id": "600017",
+        "customer_name": "ANDRE BURGESS",
+        "customer_po_number": "SHOP STOCK",
+        "job_name": "JOB",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "596",
+        "ship_from_warehouse_id": "596",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2025-05-02T00:00:00.000000000",
+        "invoice_date": "2025-05-02T00:00:00.000000000",
+        "shipped_at": "2025-05-04T00:00:00.000000000",
+        "commit_date": "2025-05-02T00:00:00.000000000",
+        "ship_to_name": "ANDRE BURGESS",
+        "ship_to_phone": "404-555-8935",
+        "ship_to_city": "DALLAS",
+        "ship_to_state": "TX",
+        "ship_to_postal_code": "75276",
+        "source_updated_at": "2025-05-02T11:50:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CO808175",
+        "account_id": "GARDEN",
+        "sales_order_number": "CO808175",
+        "customer_id": "600017",
+        "customer_name": "ANDRE BURGESS",
+        "customer_po_number": "NEW CONSTRUCTION",
+        "job_name": "JOB",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "686",
+        "ship_from_warehouse_id": "686",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-04-01T00:00:00.000000000",
+        "invoice_date": "2025-04-01T00:00:00.000000000",
+        "shipped_at": "2025-04-03T00:00:00.000000000",
+        "commit_date": "2025-04-01T00:00:00.000000000",
+        "ship_to_name": "ANDRE BURGESS",
+        "ship_to_phone": "404-555-8935",
+        "ship_to_city": "DALLAS",
+        "ship_to_state": "TX",
+        "ship_to_postal_code": "75276",
+        "source_updated_at": "2025-04-01T15:35:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CE804794",
+        "account_id": "GARDEN",
+        "sales_order_number": "CE804794",
+        "customer_id": "600017",
+        "customer_name": "ANDRE BURGESS",
+        "customer_po_number": "WARRANTY",
+        "job_name": "STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1950",
+        "ship_from_warehouse_id": "1950",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-03-13T00:00:00.000000000",
+        "invoice_date": "2025-03-13T00:00:00.000000000",
+        "shipped_at": "2025-03-15T00:00:00.000000000",
+        "commit_date": "2025-03-13T00:00:00.000000000",
+        "ship_to_name": "ANDRE BURGESS",
+        "ship_to_phone": "404-555-8935",
+        "ship_to_city": "DALLAS",
+        "ship_to_state": "TX",
+        "ship_to_postal_code": "75276",
+        "source_updated_at": "2025-03-13T08:22:00.000000000"
+       }
+      ],
+      "count": 8
+     },
+     "result_checksum": "d015ff16d02af29b1d63d8b38696ad6e44739309e34bc47959d3bf13ca97473e"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "ANDRE BURGESS",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:56:46.977000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "bee547c9-b06e-46e7-949c-6569e76d3843",
+   "generated_at": "2026-08-26T02:56:51.369135Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

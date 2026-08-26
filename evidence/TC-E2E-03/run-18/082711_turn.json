@@ -1,0 +1,51 @@
+{
+ "sent": "yes confirm it",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run18-3352b8c9",
+   "conversation_version": 5,
+   "client_turn_id": "qa-7475382f-218b-44e1-8920-2e9206b9e4c2",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "What is the reason for the return?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "What is the reason for the return?"
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "73bcba5e-0d43-4a28-862b-0a4e287d5848",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "ANDRE BURGESS",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:57:00.902000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "a8a8d047-c5cc-4a76-9bb1-547ae92ff1e3",
+   "generated_at": "2026-08-26T02:57:11.086345Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

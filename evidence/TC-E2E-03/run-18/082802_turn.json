@@ -1,0 +1,100 @@
+{
+ "sent": "what is the RMA and where does the parcel go?",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run18-3352b8c9",
+   "conversation_version": 10,
+   "client_turn_id": "qa-9d9a4df7-2b82-407b-988b-f93fd2f9c35a",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "RMA RMA-73BCBA5E0D434A28862B0A4E287D5848 is issued for this return.",
+      "evidence_refs": [],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "tracking reference: TRK-RMA73BCBA5E0D434A28862B0A4E287D5848",
+      "evidence_refs": [],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "label reference: LBL-RMA73BCBA5E0D434A28862B0A4E287D5848",
+      "evidence_refs": [],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-8",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "case status: BUSINESS_COMPLETE",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "73bcba5e-0d43-4a28-862b-0a4e287d5848",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "ANDRE BURGESS",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "return_reason",
+     "value": "DAMAGED",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "ordered_quantity",
+     "value": 1,
+     "status": "USABLE",
+     "label": "quantity being returned",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "branch_location",
+     "value": "GARDEN",
+     "status": "USABLE",
+     "label": "branch handling the return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "proof_reference",
+     "value": null,
+     "status": "INVALID",
+     "label": "proof of condition reference",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:57:59.948000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "10f76924-deb0-4852-8d47-d9a7850d3c90",
+   "generated_at": "2026-08-26T02:58:02.469988Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

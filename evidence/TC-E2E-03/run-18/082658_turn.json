@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CF804497",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run18-3352b8c9",
+   "conversation_version": 3,
+   "client_turn_id": "qa-6592824b-2ff5-4e83-b9ad-63f44f9708b8",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CF804497 / [REDACTED] / DALLAS / 2026-08-01",
+      "evidence_refs": [
+       {
+        "query_execution_id": "9f8abe1e-ac0c-4c11-b15f-dceb5a61e7ee",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "9f8abe1e-ac0c-4c11-b15f-dceb5a61e7ee",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "8c55823c0a834d0875de8cca3a14b02740ad77b11b662f167e08181738ce7268",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CF804497"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CF804497",
+        "data": {
+         "order_key": "GARDEN*CF804497",
+         "account_id": "GARDEN",
+         "sales_order_number": "CF804497",
+         "customer_id": "600017",
+         "customer_name": "ANDRE BURGESS",
+         "customer_po_number": "MAINTENANCE",
+         "job_name": "TRUCK STOCK",
+         "order_status": "INVOICED",
+         "sales_type": "CASH",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "686",
+         "ship_from_warehouse_id": "686",
+         "shipping_method": "CUSTOMER PICKUP",
+         "order_date": "2026-08-01T00:00:00.000000000",
+         "invoice_date": "2026-08-01T00:00:00.000000000",
+         "shipped_at": "2026-08-01T00:00:00.000000000",
+         "commit_date": "2026-08-01T00:00:00.000000000",
+         "ship_to_name": "ANDRE BURGESS",
+         "ship_to_phone": "404-555-8935",
+         "ship_to_city": "DALLAS",
+         "ship_to_state": "TX",
+         "ship_to_postal_code": "75276",
+         "source_updated_at": "2026-08-01T11:14:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "ab2cfeeb60e1ed19a809100428c61c35b199c3f673c38513536e87de8fd6e741"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "ANDRE BURGESS",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:56:54.129000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "e9ff225c-232d-4af3-b1e6-6d7811767df0",
+   "generated_at": "2026-08-26T02:56:58.702410Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

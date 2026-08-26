@@ -1,0 +1,72 @@
+{
+ "sent": "through the GARDEN branch",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run18-3352b8c9",
+   "conversation_version": 8,
+   "client_turn_id": "qa-51c642a7-ac52-404b-980b-93ecc3b92d70",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "Any proof reference for the condition (photo/receipt id)? Reply 'none' if not available.",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "Any proof reference for the condition (photo/receipt id)? Reply 'none' if not available."
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "73bcba5e-0d43-4a28-862b-0a4e287d5848",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "ANDRE BURGESS",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "return_reason",
+     "value": "DAMAGED",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "ordered_quantity",
+     "value": 1,
+     "status": "USABLE",
+     "label": "quantity being returned",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "branch_location",
+     "value": "GARDEN",
+     "status": "USABLE",
+     "label": "branch handling the return",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:57:28.193000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "0cec5910-4973-429b-a96a-63300953ed4c",
+   "generated_at": "2026-08-26T02:57:30.309249Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}
