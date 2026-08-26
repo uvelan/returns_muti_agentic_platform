@@ -23,6 +23,11 @@ export const DOMAIN_SCREENS: Partial<Record<string, ComponentType>> = {
   "/config": lazy(() =>
     import("./config/ConfigurationPage").then((m) => ({ default: m.ConfigurationPage })),
   ),
+  "/shipments": lazy(() =>
+    import("./shipments/ShipmentConsolePage").then((m) => ({
+      default: m.ShipmentConsolePage,
+    })),
+  ),
   "/operations": lazy(() =>
     import("./operations/OperationsPage").then((m) => ({ default: m.OperationsPage })),
   ),

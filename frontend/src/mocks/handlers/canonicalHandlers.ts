@@ -706,6 +706,9 @@ export const canonicalHandlers = [
           // not a sequence chosen here: a mock that ranked the fields
           // differently from the release would exercise the wrong order and
           // hide exactly the defect this list exists to prevent.
+          // Empty means the deployment stated no columns; the candidate table
+          // falls back to its built-in identity set, which is the shipped default.
+          candidateColumns: [],
           factCatalogue: {
             orderedFields: [
               "order_number",
