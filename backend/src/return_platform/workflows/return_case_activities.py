@@ -418,6 +418,7 @@ class ReturnCaseActivities:
         bay_placement: CaseBayPlacementPort | None = None,
         order_line_details: OrderLineDetailPort | None = None,
         configuration: Callable[[], ReturnPlatformConfiguration | None] | None = None,
+        shipment_tracking: Any | None = None,
     ) -> None:
         self._repository = repository
         self._support = support_service
@@ -426,6 +427,9 @@ class ReturnCaseActivities:
         self._return_store = return_store
         self._bay_placement = bay_placement
         self._order_line_details_port = order_line_details
+        #: `ShipmentTrackingStore`, when the deployment tracks return shipments.
+        #: Optional so every existing worker and test double keeps constructing.
+        self._shipment_tracking = shipment_tracking
         # A callable, not a value: Track E's activation loop replaces the
         # process's configuration in place, and an activity that captured the
         # release it started with would go on using a holiday list a release
@@ -1613,6 +1617,7 @@ class ReturnCaseActivities:
             await self._append_record_facts(request, plan)
             await self._assign_items_to_record(request, plan)
 
+        await self._seed_return_shipments(request, plans)
         await self._record_support_answer(request, issued=bool(plans))
         completion = await self._assess_completion(request.case_id)
         return SupportOutcomeReceipt(
@@ -1623,6 +1628,70 @@ class ReturnCaseActivities:
             awaiting=completion[2],
             revision=completion[3],
         )
+
+
+    async def _seed_return_shipments(
+        self, request: RecordSupportOutcomeInput, plans: list[Any]
+    ) -> None:
+        """One shipment document per RMA that carries a tracking number.
+
+        Seeded here because this is the moment the Support reply becomes
+        records: one document per return record, never per case, idempotent on
+        (return record id, tracking number) so a redelivered reply inserts
+        nothing. An RMA with no tracking number seeds nothing -- inventing or
+        placeholdering one is forbidden; the record stays awaiting tracking and
+        the reminder policy chases Support.
+
+        Best-effort like the bay facts: a seeding failure is logged and never
+        fails the outcome -- the authoritative record write above already
+        committed, and a retry of this activity re-runs the idempotent seed.
+        """
+        if self._shipment_tracking is None:
+            return
+        from return_platform.operations.shipment_tracking import ShipmentSeed
+
+        facts = await self._repository.latest_case_facts(request.case_id)
+        destination_warehouse = _fact_text(facts, "bay_warehouse_reference")
+        destination_bay = _fact_text(facts, "bay_reference")
+        for plan in plans:
+            merged = plan.merged
+            tracking = _text_of(merged.get("trackingReference"))
+            if not tracking:
+                logger.info(
+                    "return_shipment_awaiting_tracking",
+                    extra={
+                        "case_id": request.case_id,
+                        "return_record_id": plan.record_id,
+                        "rma": _text_of(merged.get("returnReference")),
+                    },
+                )
+                continue
+            try:
+                await self._shipment_tracking.seed(ShipmentSeed(
+                    case_id=request.case_id,
+                    return_record_id=plan.record_id,
+                    rma_reference=_text_of(merged.get("returnReference")) or "",
+                    tracking_reference=tracking,
+                    return_method=_text_of(merged.get("returnMethod")),
+                    carrier=_text_of(merged.get("carrier")),
+                    label_reference=_text_of(merged.get("labelReference")),
+                    bol_reference=_text_of(merged.get("shippingInstructionReference")),
+                    destination_warehouse=destination_warehouse,
+                    destination_bay=destination_bay,
+                    provenance={
+                        "agent": "return-support",
+                        "channel": "CHANNEL_B",
+                        "source": "SUPPORT_REPLY",
+                        "method": "PARSED",
+                        "supportEventId": getattr(request, "support_event_id", None),
+                    },
+                ))
+            except Exception:  # noqa: BLE001 - see the docstring
+                logger.warning(
+                    "return_shipment_seed_failed",
+                    extra={"case_id": request.case_id, "return_record_id": plan.record_id},
+                    exc_info=True,
+                )
 
     async def _record_support_answer(
         self, request: RecordSupportOutcomeInput, *, issued: bool

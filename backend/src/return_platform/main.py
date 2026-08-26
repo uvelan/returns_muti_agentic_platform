@@ -53,6 +53,7 @@ from return_platform.api.return_agents import router as return_agents_router
 from return_platform.api.return_artifacts import router as return_artifacts_router
 from return_platform.api.return_history import router as return_history_router
 from return_platform.api.return_shipments import router as return_shipments_router
+from return_platform.api.shipment_console import router as shipment_console_router
 from return_platform.api.return_support import router as return_support_router
 from return_platform.api.returns import router as returns_router
 from return_platform.api.rma_tickets import router as rma_tickets_router
@@ -1419,6 +1420,7 @@ def create_app(
     # and was proven on real infrastructure with no way in; a carrier event could
     # reach it only from a Python caller, and production had none.
     fastapi_app.include_router(return_shipments_router)
+    fastapi_app.include_router(shipment_console_router)
     fastapi_app.include_router(return_history_router)
     fastapi_app.include_router(source_bindings_router)
     fastapi_app.include_router(schema_releases_router)

@@ -42,6 +42,7 @@ from return_platform.dynamic_knowledge.integration.targeted_sync import (
 )
 from return_platform.dynamic_knowledge.release_store import SchemaReleaseStore
 from return_platform.operations.order_lines.case_detail import SourceOrderLineDetails
+from return_platform.operations.shipment_tracking import ShipmentTrackingStore
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_support.service import ReturnSupportService
 from return_platform.operations.seed_manifest import (
@@ -191,6 +192,18 @@ async def _run() -> None:
             # below and this closure is only ever called from a running
             # activity, which is well after `worker.run()` starts.
             configuration=lambda: activation.state.return_configuration.configuration,
+            # Return-shipment documents, seeded when a Support outcome lands.
+            # The collection name and the field names come from the activated
+            # release (`shipment_tracking`), so a rename is a release edit --
+            # nothing here knows the collection is called shipmentInfo today.
+            shipment_tracking=ShipmentTrackingStore(
+                collection_of=lambda name: source_mongo[
+                    settings.source_mongo_database or settings.mongo_database
+                ][name],
+                configuration=lambda: (
+                    activation.state.return_configuration.configuration.shipment_tracking
+                ),
+            ),
         )
         worker = create_return_workflow_worker(
             temporal, repository, case_activities=case_activities

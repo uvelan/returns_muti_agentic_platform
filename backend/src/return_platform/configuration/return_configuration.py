@@ -703,6 +703,99 @@ class SupportConfiguration(StrictConfigModel):
     external_ticket_outbox_topic: NonBlank
 
 
+class ShipmentStatusConfiguration(StrictConfigModel):
+    """One rung of a return-shipment ladder, as the operator declares it.
+
+    The catalog is configuration and nothing else: adding a status, renaming a
+    label, or changing what may follow what is a release edit. A status code
+    appearing as a literal in Python or JSX is a defect by the catalog's own
+    contract -- every reader takes the codes from here.
+
+    `exception_state` marks a side-state: a shipment can enter and leave it,
+    and it never advances the ordinal. `terminal` ends the ladder; the update
+    surface disables once one is reached and reopening carries a reason.
+    """
+
+    code: NonBlank
+    label: NonBlank
+    #: `parcel` or `freight` -- which ladder this rung belongs to. Not an enum
+    #: in code: a third ladder is an operator decision.
+    ladder: NonBlank
+    #: Position on the ladder's rail. Exception side-states carry the ordinal
+    #: of the rung they fork from, purely for drawing; they never advance it.
+    ordinal: int = Field(ge=0)
+    terminal: bool = False
+    exception_state: bool = False
+    #: A design-token name (for example `success`, `warning`, `error`,
+    #: `progress`), resolved by the console's theme -- never a raw colour.
+    color_token: NonBlank = "progress"
+    #: The codes an ordinary update may move to from here. The console filters
+    #: its dropdown to this list; the API refuses anything else unless the
+    #: caller sets the audited override flag.
+    allowed_next: tuple[NonBlank, ...] = ()
+
+
+class ShipmentTrackingConfiguration(StrictConfigModel):
+    """The return-shipment status catalog and the store it is tracked in.
+
+    `collection` and `fields` exist so no collection or field name lives in
+    code: `shipmentInfo` is the current collection name, an operator can rename
+    a physical field in a release, and the store follows. `fields` maps the
+    platform's logical names to the stored keys; a logical name absent from the
+    map is stored under itself.
+
+    `freight_methods` decides the ladder: a return record whose return_method
+    is listed travels the freight ladder (PRO number as the tracking key, BOL
+    as the secondary lookup); everything else is parcel. The methods are the
+    same operator vocabulary `normalized_return_methods` declares.
+    """
+
+    statuses: tuple[ShipmentStatusConfiguration, ...] = Field(min_length=1)
+    #: Initial rung per ladder, minted when Support's reply seeds the shipment.
+    initial_status_parcel: NonBlank
+    initial_status_freight: NonBlank
+    freight_methods: tuple[NonBlank, ...] = ()
+    collection: NonBlank = "shipmentInfo"
+    fields: dict[str, NonBlank] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_catalog(self) -> ShipmentTrackingConfiguration:
+        by_ladder: dict[str, set[str]] = {}
+        for status in self.statuses:
+            ladder = status.ladder.strip().lower()
+            codes = by_ladder.setdefault(ladder, set())
+            if status.code in codes:
+                raise ValueError(
+                    f"shipment_tracking.statuses declares {status.code!r} twice on the "
+                    f"{ladder} ladder"
+                )
+            codes.add(status.code)
+        for status in self.statuses:
+            ladder_codes = by_ladder[status.ladder.strip().lower()]
+            unknown = [code for code in status.allowed_next if code not in ladder_codes]
+            if unknown:
+                raise ValueError(
+                    f"shipment_tracking.statuses[{status.code}].allowed_next names codes "
+                    f"not on its ladder: {', '.join(unknown)}"
+                )
+            if status.terminal and status.allowed_next:
+                raise ValueError(
+                    f"shipment_tracking.statuses[{status.code}] is terminal and cannot "
+                    "declare allowed_next; reopening is its own audited act"
+                )
+        for label, initial in (
+            ("initial_status_parcel", self.initial_status_parcel),
+            ("initial_status_freight", self.initial_status_freight),
+        ):
+            ladder = label.rsplit("_", 1)[1]
+            if initial not in by_ladder.get(ladder, set()):
+                raise ValueError(
+                    f"shipment_tracking.{label} names {initial!r}, which is not on the "
+                    f"{ladder} ladder"
+                )
+        return self
+
+
 class OmcConfiguration(StrictConfigModel):
     v2_customer_return_table: NonBlank
     v1_customer_return_table: NonBlank
@@ -1490,6 +1583,11 @@ class ReturnPlatformConfiguration(StrictConfigModel):
     # Defaulted so a release cut before the block still loads. The default is
     # empty rather than a guessed agent id -- see `CopilotConfiguration`.
     copilot: CopilotConfiguration = Field(default_factory=CopilotConfiguration)
+    #: The return-shipment status catalog and store mapping. Optional so a
+    #: release cut before the block still loads; `None` means the deployment
+    #: has not declared shipment tracking, and the seeding, console and event
+    #: surfaces all refuse loudly rather than invent a ladder.
+    shipment_tracking: ShipmentTrackingConfiguration | None = None
     #: The deterministic return eligibility rule set (`policy/`), versioned and
     #: released like every other section here.
     #:

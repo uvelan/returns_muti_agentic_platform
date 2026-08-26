@@ -15806,6 +15806,75 @@
         "title": "Severity",
         "type": "string"
       },
+      "ShipmentEventRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "eventAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eventat"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "override": {
+            "default": false,
+            "title": "Override",
+            "type": "boolean"
+          },
+          "overrideReason": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overridereason"
+          },
+          "status": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "ShipmentEventRequest",
+        "type": "object"
+      },
       "ShipmentProjection": {
         "additionalProperties": false,
         "description": "One package. Explicit fields only.\n\n`carrier` is a carrier, not `orderSource`; `serviceLevel` is a carrier\nservice, not a return method; `estimatedDeliveryAt` is an estimate somebody\ngave for this package, not `shippingPathExpectation` reinterpreted. All\nthree substitutions were live defects and none can be repeated here, because\nno source field for any of them exists on this model.\n\n**Two of the three are `None` on every assembled case today, and honestly\nso.** `carrier` gained a producer: Support states it on the RMA and it\ntravels `ReturnOutcomeRecord` -> `SupportReturnRecord` ->\n`RETURN_RECORD_MERGED_FIELDS` -> `ReturnRecordView` -> here. Nothing\ncase-keyed produces a service level or a return-leg delivery estimate --\nthe only service level is `PickupRequest.serviceLevel`, which is the service\na freight *collection* was booked at rather than the service a parcel moves\nunder, and no estimate is computed or received at all;\n`assembly.project_shipments` names the missing producer for each one. They stay declared for the reason the eight producerless\n`WarehouseProjection` fields do: the contract is where a producer lands, and\na field the model cannot express is a field a writer cannot deliver.\n\n**No `labelArtifacts`.** Documents hang off the return record and name their\npackage through `ReturnArtifactProjection.shipmentId`; this package's are\n`record.active_artifacts_for_shipment(type, shipment.shipmentId)`. A label\nthat exists before any package must still be expressible, and one home for\nthe fact is what stops it being attributed to the wrong package.",
@@ -23747,6 +23816,220 @@
         "summary": "Get Session",
         "tags": [
           "Session"
+        ]
+      }
+    },
+    "/api/shipment-status-catalog": {
+      "get": {
+        "description": "The release's catalog, verbatim, for the console to build its UI from.",
+        "operationId": "shipment_status_catalog_api_shipment_status_catalog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Shipment Status Catalog",
+        "tags": [
+          "Shipment Console"
+        ]
+      }
+    },
+    "/api/shipments": {
+      "get": {
+        "operationId": "list_shipments_api_shipments_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "case",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Case"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_list_dict_str__Any___"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Shipments",
+        "tags": [
+          "Shipment Console"
+        ]
+      }
+    },
+    "/api/shipments/{identifier}": {
+      "get": {
+        "description": "By shipment id, tracking number, PRO number, BOL, RMA or case id.",
+        "operationId": "get_shipment_api_shipments__identifier__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identifier",
+            "required": true,
+            "schema": {
+              "title": "Identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Shipment",
+        "tags": [
+          "Shipment Console"
+        ]
+      }
+    },
+    "/api/shipments/{shipment_id}/events": {
+      "post": {
+        "description": "Append one status event; the current status is recomputed, never edited.\n\nThe transition must be one of the catalog's `allowed_next` for the current\nstatus unless `override` is set, and the override travels on the event. The\naccepted event is then driven through the platform's shipment-state chain\nso the case, the graph and the associate's conversation follow.",
+        "operationId": "append_shipment_event_api_shipments__shipment_id__events_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "shipment_id",
+            "required": true,
+            "schema": {
+              "title": "Shipment Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShipmentEventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Append Shipment Event",
+        "tags": [
+          "Shipment Console"
         ]
       }
     },
