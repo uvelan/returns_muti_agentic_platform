@@ -255,6 +255,20 @@ class Run:
             self.fail(6, "bay assignment did not engage in parallel within 60s")
         self.ok(6, f"case {self.case_id} confirmed; bay assignment engaged in parallel")
 
+
+    def _freight_keywords(self) -> tuple[str, ...]:
+        """The release's own freight keywords -- never a list of this file's."""
+        runtime = self.call("GET", "/api/config/runtime").get("data") or {}
+        derivation = ((runtime.get("configuration") or {}).get("return_policy") or {}).get(
+            "return_method_derivation") or {}
+        return tuple(str(k).upper() for k in derivation.get("freight_keywords") or [])
+
+    def _line_text(self, line: dict) -> str:
+        return " ".join(
+            str(line.get(key) or "")
+            for key in ("productDescription", "description", "sku", "productReference")
+        ).upper()
+
     def step_7(self) -> None:
         answers = [
             "the item arrived damaged",
@@ -287,17 +301,22 @@ class Run:
         reason = next((r for r in reasons if "DAMAG" in r.upper()), reasons[0] if reasons else None)
         condition = conditions[0] if conditions else None
         chosen = [lines[0]]
+        if getattr(self, "freight", False):
+            freight_words = self._freight_keywords()
+            line = next(
+                (l for l in lines
+                 if any(w in self._line_text(l) for w in freight_words)), None)
+            if line is None:
+                self.fail(7, "freight run needs a freight-class line on the order")
+            chosen = [line]
         if getattr(self, "multi", False):
-            freight_words = ("CONDENSER", "WHTR", "WATER HEATER", "BOILER", "FURNACE",
-                             "BATHTUB", "CAST IRON", "AIR HANDLER", "VANITY")
+            freight_words = self._freight_keywords()
             freight = next(
                 (l for l in lines
-                 if any(w in str(l.get("productDescription") or l.get("description") or "").upper()
-                        for w in freight_words)), None)
+                 if any(w in self._line_text(l) for w in freight_words)), None)
             parcel = next(
                 (l for l in lines
-                 if not any(w in str(l.get("productDescription") or l.get("description") or "").upper()
-                            for w in freight_words)), None)
+                 if not any(w in self._line_text(l) for w in freight_words)), None)
             if freight is None or parcel is None:
                 self.fail(7, "multi-item run needs one freight-class and one parcel-class line")
             chosen = [parcel, freight]
@@ -535,10 +554,12 @@ class Run:
                               f" != {expected_initial} for the {mode} ladder")
             if shipment.get("case_id") != self.case_id:
                 self.fail(16, f"{rma}: shipment names case {shipment.get('case_id')}")
-            if not shipment.get("tracking_reference"):
-                self.fail(16, f"{rma}: shipment carries no tracking reference")
-            if mode == "freight" and not shipment.get("pro_number"):
-                self.fail(16, f"{rma}: freight shipment carries no PRO number")
+            
+            if mode == "parcel" and not shipment.get("tracking_reference"):
+                self.fail(16, f"{rma}: parcel shipment carries no tracking reference")
+            if mode == "freight" and not (
+                    shipment.get("pro_number") or shipment.get("bol_reference")):
+                self.fail(16, f"{rma}: freight shipment carries neither PRO nor BOL")
             if shipment.get("events"):
                 self.fail(17, f"{rma}: event log is not empty at seed time")
             self.archive(f"shipment_seeded_{rma}", shipment)
@@ -575,10 +596,16 @@ class Run:
             )
             if nxt is None:
                 self.fail(step_no, f"{rma}: no forward transition from {current}")
+            body = {"status": nxt, "location": f"stage {walked + 1}",
+                    "note": "TC-E2E-03 manual drive"}
+            if (mode == "freight"
+                    and not (self._shipment(rma)).get("pro_number")
+                    and codes[nxt]["ordinal"] >= 2):
+                # The carrier assigns the PRO once it has the freight; from
+                # here it is the tracking key and the BOL stays the secondary.
+                body["proNumber"] = f"PRO{rma.replace('-', '')[-9:]}"
             updated = self.call(
-                "POST", f"/api/shipments/{shipment_id}/events",
-                {"status": nxt, "location": f"stage {walked + 1}",
-                 "note": "TC-E2E-03 manual drive"},
+                "POST", f"/api/shipments/{shipment_id}/events", body,
             ).get("data") or {}
             if updated.get("current_status") != nxt:
                 self.fail(step_no, f"{rma}: event did not advance to {nxt}")
@@ -731,11 +758,14 @@ def main() -> None:
     parser.add_argument("--multi", action="store_true")
     parser.add_argument("--bay-timeout", action="store_true")
     parser.add_argument("--tc03", action="store_true")
+    parser.add_argument("--freight", action="store_true")
+    parser.add_argument("--exception-drill", action="store_true")
     args = parser.parse_args()
 
     run = Run(args.run, args.customer, args.misspelled, args.account, args.order)
     run.multi = args.multi
     run.bay_timeout = args.bay_timeout
+    run.freight = args.freight
     if args.resume_conversation:
         run.conversation = args.resume_conversation
         run.case_id = args.resume_case
@@ -751,8 +781,10 @@ def main() -> None:
         (16, run.step_16_downstream),
     ]
     if args.tc03:
+        stages += [(17, run.step_17_shipment_seeded)]
+        if args.exception_drill:
+            stages += [(22, run.step_22_exception)]
         stages += [
-            (17, run.step_17_shipment_seeded),
             (20, run.step_18_20_drive_and_fulfill),
             (24, run.step_24_idempotency),
         ]

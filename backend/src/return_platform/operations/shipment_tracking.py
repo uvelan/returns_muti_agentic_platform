@@ -159,9 +159,13 @@ class ShipmentTrackingStore:
         seed without a tracking number must never reach here -- the caller
         leaves the record awaiting tracking instead of inventing one.
         """
-        if not seed.tracking_reference:
-            raise ValueError("a shipment cannot be seeded without a tracking reference")
         mode = self.mode_for(seed.return_method)
+        if mode == "parcel" and not seed.tracking_reference:
+            raise ValueError("a parcel shipment cannot be seeded without a tracking reference")
+        if mode == "freight" and not (seed.tracking_reference or seed.bol_reference):
+            # Freight has no PRO until the carrier assigns one at the origin
+            # terminal; the BOL is the identity Support issues at bol_created.
+            raise ValueError("a freight shipment needs a BOL or a PRO to be seeded")
         f = self._f
         now = datetime.now(UTC)
         document: dict[str, Any] = {
@@ -170,7 +174,7 @@ class ShipmentTrackingStore:
             f("case_id"): seed.case_id,
             f("return_record_id"): seed.return_record_id,
             f("rma_reference"): seed.rma_reference,
-            f("tracking_reference"): seed.tracking_reference,
+            f("tracking_reference"): seed.tracking_reference or None,
             f("carrier"): seed.carrier,
             f("mode"): mode,
             f("label_reference"): seed.label_reference,
@@ -183,15 +187,21 @@ class ShipmentTrackingStore:
             f("provenance"): seed.provenance,
         }
         if mode == "freight":
-            # The PRO number is the freight tracking key; the BOL is the
-            # secondary lookup and never the primary identity.
-            document[f("pro_number")] = seed.tracking_reference
+            # The PRO number is the freight tracking key once the carrier
+            # assigns it at the origin terminal; until then it is honestly
+            # absent, and the BOL is the lookup key Support issued.
+            document[f("pro_number")] = seed.tracking_reference or None
             document[f("bol_reference")] = seed.bol_reference
+        identity_field, identity_value = (
+            ("tracking_reference", seed.tracking_reference)
+            if seed.tracking_reference
+            else ("bol_reference", seed.bol_reference)
+        )
         result = await self._collection().update_one(
             {
                 f("kind"): "returnShipment",
                 f("return_record_id"): seed.return_record_id,
-                f("tracking_reference"): seed.tracking_reference,
+                f(identity_field): identity_value,
             },
             {"$setOnInsert": document},
             upsert=True,
@@ -286,6 +296,7 @@ class ShipmentTrackingStore:
         event_at: datetime | None = None,
         override: bool = False,
         override_reason: str | None = None,
+        pro_number: str | None = None,
     ) -> dict[str, Any]:
         """Append one status event and recompute the current status.
 
@@ -324,14 +335,21 @@ class ShipmentTrackingStore:
         if override:
             event[f("override")] = True
             event[f("override_reason")] = override_reason
+        sets: dict[str, Any] = {
+            f("current_status"): status,
+            f("updated_at"): datetime.now(UTC),
+        }
+        if pro_number:
+            # The carrier assigned the PRO; it becomes the freight tracking
+            # key from here on, and travels on the event that delivered it.
+            sets[f("pro_number")] = pro_number
+            sets[f("tracking_reference")] = pro_number
+            event[f("pro_number")] = pro_number
         updated = await self._collection().find_one_and_update(
             {f("kind"): "returnShipment", f("shipment_id"): shipment_id},
             {
                 "$push": {f("events"): event},
-                "$set": {
-                    f("current_status"): status,
-                    f("updated_at"): datetime.now(UTC),
-                },
+                "$set": sets,
             },
             return_document=ReturnDocument.AFTER,
         )

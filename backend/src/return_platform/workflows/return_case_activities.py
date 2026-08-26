@@ -1656,7 +1656,14 @@ class ReturnCaseActivities:
         for plan in plans:
             merged = plan.merged
             tracking = _text_of(merged.get("trackingReference"))
-            if not tracking:
+            bol = _text_of(merged.get("shippingInstructionReference"))
+            method = _text_of(merged.get("returnMethod"))
+            mode = self._shipment_tracking.mode_for(method)
+            # A parcel with no tracking number is awaiting Support; a freight
+            # movement has no PRO yet by nature and seeds on its BOL. Neither
+            # identity is ever invented.
+            if (mode == "parcel" and not tracking) or (
+                    mode == "freight" and not (tracking or bol)):
                 logger.info(
                     "return_shipment_awaiting_tracking",
                     extra={
@@ -1678,11 +1685,11 @@ class ReturnCaseActivities:
                         or getattr(plan.incoming, "return_reference", None)
                         or ""
                     ),
-                    tracking_reference=tracking,
-                    return_method=_text_of(merged.get("returnMethod")),
+                    tracking_reference=tracking or "",
+                    return_method=method,
                     carrier=_text_of(merged.get("carrier")),
                     label_reference=_text_of(merged.get("labelReference")),
-                    bol_reference=_text_of(merged.get("shippingInstructionReference")),
+                    bol_reference=bol,
                     destination_warehouse=destination_warehouse,
                     destination_bay=destination_bay,
                     provenance={

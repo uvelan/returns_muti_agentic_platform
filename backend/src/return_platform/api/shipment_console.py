@@ -62,6 +62,9 @@ class ShipmentEventRequest(BaseModel):
     #: default; its use and reason are written onto the event itself.
     override: bool = False
     overrideReason: str | None = Field(default=None, max_length=256)
+    #: Freight only: the PRO the carrier assigned, typically recorded with the
+    #: at-origin-terminal event. Becomes the shipment's tracking key.
+    proNumber: str | None = Field(default=None, max_length=64)
 
 
 def _meta(request: Request) -> ResponseMeta:
@@ -181,6 +184,7 @@ async def append_shipment_event(
             event_at=payload.eventAt,
             override=payload.override,
             override_reason=payload.overrideReason,
+            pro_number=payload.proNumber,
         )
     except KeyError:
         raise HTTPException(
@@ -204,8 +208,16 @@ async def append_shipment_event(
     # too. `tracking_type` follows the ladder: the mode's configured type.
     f = store._f  # noqa: SLF001 - the store owns the mapping; the router renders it
     rma = str(updated.get(f("rma_reference")) or "")
-    tracking = str(updated.get(f("tracking_reference")) or "")
     mode = str(updated.get(f("mode")) or "parcel")
+    # The authoritative row is keyed on a tracking reference: the PRO once the
+    # carrier assigned one, the parcel tracking number, or -- for freight still
+    # travelling under its paperwork -- the BOL. Nothing is invented.
+    tracking = str(
+        updated.get(f("pro_number"))
+        or updated.get(f("tracking_reference"))
+        or updated.get(f("bol_reference"))
+        or ""
+    )
     if rma and tracking:
         service = await _shipment_state_service(request)
         event_at = (payload.eventAt or datetime.now(UTC)).astimezone(UTC).replace(tzinfo=None)
