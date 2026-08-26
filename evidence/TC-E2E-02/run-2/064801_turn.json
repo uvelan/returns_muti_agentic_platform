@@ -1,0 +1,147 @@
+{
+ "sent": "customer wants to return an item, name is ronald okonkwoo",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run2-86842309",
+   "conversation_version": 1,
+   "client_turn_id": "qa-8ab5714d-a77f-422f-82c8-a3504c79932e",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 600144 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "bf1b0f5c-3e53-4fb5-9b88-a9b663b05d89",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 2: 600145 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "bf1b0f5c-3e53-4fb5-9b88-a9b663b05d89",
+        "result_path": [
+         "candidates",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 3: 600146 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "bf1b0f5c-3e53-4fb5-9b88-a9b663b05d89",
+        "result_path": [
+         "candidates",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "bf1b0f5c-3e53-4fb5-9b88-a9b663b05d89",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "cc3906f59136864ab2c4b57f74cc76815bab06411a0c3a06ffa1b1a436f93ac4",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "ronald okonkwoo"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600144",
+        "data": {
+         "account_id": "SACRAMENTO",
+         "customer_id": "600144",
+         "customer_name": "RONALD OKONKWO"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600145",
+        "data": {
+         "account_id": "SACRAMENTO",
+         "customer_id": "600145",
+         "customer_name": "RONALD OKONKWO"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600146",
+        "data": {
+         "account_id": "LENZ",
+         "customer_id": "600146",
+         "customer_name": "RONALD OKONKWO"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 3,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "636be8ec0969e92529218abd457a4909345f3632da01d5ce72eb709d791d49a1"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T01:17:57.504000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "df5ff110-1c54-44d8-8177-1d288a480f59",
+   "generated_at": "2026-08-26T01:18:00.944832Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

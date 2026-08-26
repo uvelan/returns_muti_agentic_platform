@@ -1,0 +1,112 @@
+[
+ {
+  "id": "30d5b6ad-1c24-402a-a1bf-e8a07ad54068",
+  "threadId": "1379c2f8-fda3-451f-9b98-8aed81faf9ee",
+  "sequence": 1,
+  "senderRole": "AGENT",
+  "senderId": "return-workflow-agent",
+  "messageType": "REQUEST",
+  "messageText": "RETURN SUPPORT REQUEST\n\nCase:\n- Case ID: 39e5934d-77dd-4ba8-a977-ec06e80159d0\n- Work Item ID: 1c00f906-09ca-4793-b09e-c8eb0f139939\n- Created Date/Time: 2026-08-26T01:16:50.953000+00:00\n- Workflow Status at Handoff: GATHERING_INFO\n\nCustomer:\n- Customer Name: DUANE ALVARADO\n- Customer Reference: 600175\n- Branch Associate: Not available\n- Branch Associate Email: Not available\n- Branch Associate Phone: Not available\n\nOrder:\n- Order Number: CJ800022\n- Line/Order-Line Number: 1\n  - Product Name: OXY R GAS EXCHANGE\n  - Colour: Not available\n  - SKU: MOXYRE\n  - Confirmed Return Quantity: 1\n  - Return Reason: SHIPPING_DAMAGE\n  - Product Condition: NEW_IN_ORIGINAL_PACKAGING\n\nReturn Details:\n- Return Method: BRANCH_UPS\n- Requested Resolution: Not available\n- Product Presence: Not available\n- Associate Notes: Not available\n\nBay Assignment:\n- Assignment Status: PHYSICAL_RECEIPT_REQUIRED\n- Recommended Bay: Not available\n- Warehouse/Branch: 133\n- Return Location: Not available\n- Handling/Staging Instructions: Not available\n- Unresolved Reason: PHYSICAL_RECEIPT_REQUIRED\n\nVerification:\n- Order Confirmation: Confirmed\n- Required Return Information: Incomplete\n- Policy Evaluation: APPROVE on the STANDARD_RETURN route\n- Bay Assignment Source: Bay Assignment Agent\n\nRequested Support Action:\n- Review the complete return request.\n- Review or confirm the bay recommendation.\n- Resolve manual bay assignment: no bay could be recommended.\n- Verify all Support-owned conditions, including warranty when applicable.\n- Create or decline the RMA through the authoritative Support workflow.\n",
+  "attachmentIds": [],
+  "businessPayload": {
+   "bayAssignment": {
+    "bayReference": null,
+    "handlingInstructions": null,
+    "returnLocation": null,
+    "source": "BAY_ASSIGNMENT_AGENT",
+    "status": "PHYSICAL_RECEIPT_REQUIRED",
+    "unresolvedReason": "PHYSICAL_RECEIPT_REQUIRED",
+    "warehouseReference": "133"
+   },
+   "caseId": "39e5934d-77dd-4ba8-a977-ec06e80159d0",
+   "createdAt": "2026-08-26T01:16:50.953000+00:00",
+   "customer": {
+    "contactEmail": null,
+    "contactName": null,
+    "contactPhone": null,
+    "name": "DUANE ALVARADO",
+    "reference": "600175"
+   },
+   "order": {
+    "items": [
+     {
+      "colour": null,
+      "condition": "NEW_IN_ORIGINAL_PACKAGING",
+      "lineReference": "1",
+      "productName": "OXY R GAS EXCHANGE",
+      "productReference": "2002294",
+      "quantity": 1,
+      "reason": "SHIPPING_DAMAGE",
+      "returnMethod": "BRANCH_UPS",
+      "sku": "MOXYRE"
+     }
+    ],
+    "reference": "CJ800022"
+   },
+   "returnDetails": {
+    "additional": {},
+    "associateNotes": null,
+    "method": "BRANCH_UPS",
+    "productPresence": null,
+    "requestedResolution": null
+   },
+   "schemaVersion": "support-handoff-v1",
+   "verification": {
+    "orderConfirmed": true,
+    "policyEvaluation": {
+     "decision": "APPROVE",
+     "route": "STANDARD_RETURN",
+     "skippedReason": null,
+     "state": "EVALUATED"
+    },
+    "requiredReturnInformationComplete": false
+   },
+   "workItemId": "1c00f906-09ca-4793-b09e-c8eb0f139939",
+   "workflowStatusAtHandoff": "GATHERING_INFO"
+  },
+  "createdAt": "2026-08-26T01:16:52.962000"
+ },
+ {
+  "id": "4649232e-3308-430b-ad61-30bb5ed6d0a8",
+  "threadId": "1379c2f8-fda3-451f-9b98-8aed81faf9ee",
+  "sequence": 2,
+  "senderRole": "AGENT",
+  "senderId": "support-response-agent",
+  "messageType": "RETURN_CREATION",
+  "messageText": "Return created for case 39e5934d-77dd-4ba8-a977-ec06e80159d0: RMA RMA-39E5934D77DD4BA8A977EC06E80159D0 (BRANCH_UPS), tracking TRK-RMA39E5934D77DD4BA8A977EC06E80159D0, label LBL-RMA39E5934D77DD4BA8A977EC06E80159D0.\n[RMA-39E5934D77DD4BA8A977EC06E80159D0 / BRANCH_UPS]\n- 1 x OXY R GAS EXCHANGE (line 1)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nAttach the return label to each package.",
+  "attachmentIds": [],
+  "businessPayload": {
+   "supportAgentEventId": "support-response-agent:1c00f906-09ca-4793-b09e-c8eb0f139939",
+   "decision": {
+    "agent": "Support Response Agent",
+    "agentVersion": "1.0",
+    "configurationVersion": "FERGUSON-RETURN-ASSUMPTIONS-1.0",
+    "decisionType": "SUPPORT_RESPONSE",
+    "decision": "RETURN_PLANNED",
+    "explanation": "Artifacts follow the released requirement table for each shipping-class group; recording them is the executor's act, not this assessment's.",
+    "confidenceMillionths": 950000,
+    "evidenceReferences": [
+     "CASE:39e5934d-77dd-4ba8-a977-ec06e80159d0",
+     "ORDER_LINE:1"
+    ],
+    "warnings": [],
+    "executionMode": "DETERMINISTIC",
+    "metadata": {}
+   },
+   "plan": {
+    "returnReference": "RMA-39E5934D77DD4BA8A977EC06E80159D0",
+    "trackingReference": "TRK-RMA39E5934D77DD4BA8A977EC06E80159D0",
+    "labelReference": "LBL-RMA39E5934D77DD4BA8A977EC06E80159D0",
+    "returnLocation": null,
+    "shippingInstructionReference": "SHIP-RMA39E5934D77DD4BA8A977EC06E80159D0",
+    "returnMethod": "BRANCH_UPS",
+    "carrier": "UPS",
+    "orderLineReferences": [
+     "1"
+    ],
+    "instructions": "- 1 x OXY R GAS EXCHANGE (line 1)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nAttach the return label to each package."
+   }
+  },
+  "createdAt": "2026-08-26T01:17:04.271000"
+ }
+]

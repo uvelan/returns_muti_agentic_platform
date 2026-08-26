@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CL808436",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run5-a26186cc",
+   "conversation_version": 3,
+   "client_turn_id": "qa-4c11b202-d73c-4caf-a3ab-5e8a5348fc15",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CL808436 / [REDACTED] / ELK GROVE / 2026-07-31",
+      "evidence_refs": [
+       {
+        "query_execution_id": "043b2b79-c683-4f30-86ee-262591d21bff",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "043b2b79-c683-4f30-86ee-262591d21bff",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "f2b47cb3b46ef28979b916f2fc3335843d3707239899e55baee7d158c5d91ce8",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CL808436"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CL808436",
+        "data": {
+         "order_key": "LAKEWOOD*CL808436",
+         "account_id": "LAKEWOOD",
+         "sales_order_number": "CL808436",
+         "customer_id": "600392",
+         "customer_name": "HILARY ECKHART",
+         "customer_po_number": "NEW CONSTRUCTION",
+         "job_name": "WARRANTY",
+         "order_status": "INVOICED",
+         "sales_type": "CASH",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "1950",
+         "ship_from_warehouse_id": "1950",
+         "shipping_method": "MAIL",
+         "order_date": "2026-07-31T00:00:00.000000000",
+         "invoice_date": "2026-07-31T00:00:00.000000000",
+         "shipped_at": "2026-08-03T00:00:00.000000000",
+         "commit_date": "2026-07-31T00:00:00.000000000",
+         "ship_to_name": "HILARY ECKHART",
+         "ship_to_phone": "205-555-6697",
+         "ship_to_city": "ELK GROVE",
+         "ship_to_state": "CA",
+         "ship_to_postal_code": "95689",
+         "source_updated_at": "2026-07-31T11:17:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "312f26d0a33d00a54bd7f1eda710132f9e46926d8c33da03032acbdf761be41e"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "HILARY ECKHART",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T01:28:40.145000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "9e7fdc43-c4bb-4659-a2e6-1cda93eb2844",
+   "generated_at": "2026-08-26T01:28:44.410966Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

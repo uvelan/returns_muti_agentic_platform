@@ -130,13 +130,17 @@ class FulfillmentProgress:
         ):
             return
         case = await self._repository.get_case(case_id)
-        if case is None or str(case.get("status") or "") == CaseStatus.CLOSED.value:
+        if case is None:
             return
-        await self._repository.update_case(
-            case_id,
-            {"status": CaseStatus.CLOSED.value},
-            expected_version=int(case.get("version") or 0),
-        )
+        if str(case.get("status") or "") != CaseStatus.CLOSED.value:
+            await self._repository.update_case(
+                case_id,
+                {"status": CaseStatus.CLOSED.value},
+                expected_version=int(case.get("version") or 0),
+            )
+        # Recorded even when the workflow already closed the case at
+        # business-complete: paperwork-done and packages-landed are different
+        # facts, and Operations reads this one to say fulfillment finished.
         await self._append_fact(
             fact_id=f"case-fulfilled-{case_id}",
             case_id=case_id,

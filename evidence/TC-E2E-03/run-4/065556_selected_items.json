@@ -1,0 +1,44 @@
+{
+ "data": {
+  "caseId": "dcc846be-b6a5-40ee-a17b-2e4cc3763372",
+  "revision": 33,
+  "changed": true,
+  "items": [
+   {
+    "returnItemId": "15b0d9ee-cd40-4c7f-aa4e-26636a21b68c",
+    "orderLineReference": "1",
+    "productReference": "760286",
+    "quantity": 1,
+    "reason": "SHIPPING_DAMAGE",
+    "condition": "NEW_IN_ORIGINAL_PACKAGING",
+    "packageReference": null
+   }
+  ],
+  "lines": [
+   {
+    "lineReference": "1",
+    "sku": "PF102F100",
+    "description": "100 COIL PLAS STRP",
+    "colour": null,
+    "orderedQuantity": 4,
+    "unitPrice": "61.945",
+    "productReference": "760286",
+    "returnableQuantity": 4,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 1,
+    "dataInconsistency": null
+   }
+  ]
+ },
+ "page": null,
+ "meta": {
+  "schema_version": "1.0",
+  "request_id": "1c63305d-5fe3-4056-a166-e52827a48538",
+  "generated_at": "2026-08-26T01:25:56.224115Z",
+  "freshness": "LIVE",
+  "partial": false,
+  "warnings": []
+ }
+}

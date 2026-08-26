@@ -1,0 +1,347 @@
+{
+ "sent": "Confirm the customer RUSSELL FITZGERALD on account LENZ.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run4-ecc1e9d6",
+   "conversation_version": 2,
+   "client_turn_id": "qa-dbc2bc7c-2bcb-4e88-8e0a-c4c62a4125c1",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CA808587 / 2026-07-31T0 / PHOENIX / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "7429fdb8-da98-43fc-a7af-a94e14ad6ebb",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CF806734 / 2026-07-21T0 / PHOENIX / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "7429fdb8-da98-43fc-a7af-a94e14ad6ebb",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CL802116 / 2026-03-05T0 / PHOENIX / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "7429fdb8-da98-43fc-a7af-a94e14ad6ebb",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CC801563 / 2026-02-28T0 / PHOENIX / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "7429fdb8-da98-43fc-a7af-a94e14ad6ebb",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CW801609 / 2026-01-22T0 / PHOENIX / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "7429fdb8-da98-43fc-a7af-a94e14ad6ebb",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CZ808636 / 2025-10-22T0 / PHOENIX / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "7429fdb8-da98-43fc-a7af-a94e14ad6ebb",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 7: CF808446 / 2025-05-18T0 / PHOENIX / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "7429fdb8-da98-43fc-a7af-a94e14ad6ebb",
+        "result_path": [
+         "rows",
+         "6"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "7429fdb8-da98-43fc-a7af-a94e14ad6ebb",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "107a1e1a9aa0ca6400f4cf157ec16533c15961475e4b45474e981afcf3246c32",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "LENZ*CA808587",
+        "account_id": "LENZ",
+        "sales_order_number": "CA808587",
+        "customer_id": "600809",
+        "customer_name": "RUSSELL FITZGERALD",
+        "customer_po_number": "TRUCK STOCK",
+        "job_name": "TRUCK STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-07-31T00:00:00.000000000",
+        "invoice_date": "2026-07-31T00:00:00.000000000",
+        "shipped_at": "2026-08-01T00:00:00.000000000",
+        "commit_date": "2026-07-31T00:00:00.000000000",
+        "ship_to_name": "RUSSELL FITZGERALD",
+        "ship_to_phone": "404-555-7336",
+        "ship_to_city": "PHOENIX",
+        "ship_to_state": "AZ",
+        "ship_to_postal_code": "85078",
+        "source_updated_at": "2026-07-31T13:39:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CF806734",
+        "account_id": "LENZ",
+        "sales_order_number": "CF806734",
+        "customer_id": "600809",
+        "customer_name": "RUSSELL FITZGERALD",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "133",
+        "ship_from_warehouse_id": "133",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-07-21T00:00:00.000000000",
+        "invoice_date": "2026-07-21T00:00:00.000000000",
+        "shipped_at": "2026-07-23T00:00:00.000000000",
+        "commit_date": "2026-07-21T00:00:00.000000000",
+        "ship_to_name": "RUSSELL FITZGERALD",
+        "ship_to_phone": "404-555-7336",
+        "ship_to_city": "PHOENIX",
+        "ship_to_state": "AZ",
+        "ship_to_postal_code": "85078",
+        "source_updated_at": "2026-07-21T11:41:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CL802116",
+        "account_id": "LENZ",
+        "sales_order_number": "CL802116",
+        "customer_id": "600809",
+        "customer_name": "RUSSELL FITZGERALD",
+        "customer_po_number": "JOB",
+        "job_name": "REPLACEMENT",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-03-05T00:00:00.000000000",
+        "invoice_date": "2026-03-05T00:00:00.000000000",
+        "shipped_at": "2026-03-05T00:00:00.000000000",
+        "commit_date": "2026-03-05T00:00:00.000000000",
+        "ship_to_name": "RUSSELL FITZGERALD",
+        "ship_to_phone": "404-555-7336",
+        "ship_to_city": "PHOENIX",
+        "ship_to_state": "AZ",
+        "ship_to_postal_code": "85078",
+        "source_updated_at": "2026-03-05T14:35:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CC801563",
+        "account_id": "LENZ",
+        "sales_order_number": "CC801563",
+        "customer_id": "600809",
+        "customer_name": "RUSSELL FITZGERALD",
+        "customer_po_number": "SHOP STOCK",
+        "job_name": "TRUCK STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-02-28T00:00:00.000000000",
+        "invoice_date": "2026-02-28T00:00:00.000000000",
+        "shipped_at": "2026-03-03T00:00:00.000000000",
+        "commit_date": "2026-02-28T00:00:00.000000000",
+        "ship_to_name": "RUSSELL FITZGERALD",
+        "ship_to_phone": "404-555-7336",
+        "ship_to_city": "PHOENIX",
+        "ship_to_state": "AZ",
+        "ship_to_postal_code": "85078",
+        "source_updated_at": "2026-02-28T13:38:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CW801609",
+        "account_id": "LENZ",
+        "sales_order_number": "CW801609",
+        "customer_id": "600809",
+        "customer_name": "RUSSELL FITZGERALD",
+        "customer_po_number": "NEW CONSTRUCTION",
+        "job_name": "JOB",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2210",
+        "ship_from_warehouse_id": "2210",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2026-01-22T00:00:00.000000000",
+        "invoice_date": "2026-01-22T00:00:00.000000000",
+        "shipped_at": "2026-01-25T00:00:00.000000000",
+        "commit_date": "2026-01-22T00:00:00.000000000",
+        "ship_to_name": "RUSSELL FITZGERALD",
+        "ship_to_phone": "404-555-7336",
+        "ship_to_city": "PHOENIX",
+        "ship_to_state": "AZ",
+        "ship_to_postal_code": "85078",
+        "source_updated_at": "2026-01-22T18:07:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CZ808636",
+        "account_id": "LENZ",
+        "sales_order_number": "CZ808636",
+        "customer_id": "600809",
+        "customer_name": "RUSSELL FITZGERALD",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "SHOP STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2210",
+        "ship_from_warehouse_id": "2210",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-10-22T00:00:00.000000000",
+        "invoice_date": "2025-10-22T00:00:00.000000000",
+        "shipped_at": "2025-10-22T00:00:00.000000000",
+        "commit_date": "2025-10-22T00:00:00.000000000",
+        "ship_to_name": "RUSSELL FITZGERALD",
+        "ship_to_phone": "404-555-7336",
+        "ship_to_city": "PHOENIX",
+        "ship_to_state": "AZ",
+        "ship_to_postal_code": "85078",
+        "source_updated_at": "2025-10-22T07:09:00.000000000"
+       },
+       {
+        "order_key": "LENZ*CF808446",
+        "account_id": "LENZ",
+        "sales_order_number": "CF808446",
+        "customer_id": "600809",
+        "customer_name": "RUSSELL FITZGERALD",
+        "customer_po_number": "JOB",
+        "job_name": "SERVICE CALL",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-05-18T00:00:00.000000000",
+        "invoice_date": "2025-05-18T00:00:00.000000000",
+        "shipped_at": "2025-05-21T00:00:00.000000000",
+        "commit_date": "2025-05-18T00:00:00.000000000",
+        "ship_to_name": "RUSSELL FITZGERALD",
+        "ship_to_phone": "404-555-7336",
+        "ship_to_city": "PHOENIX",
+        "ship_to_state": "AZ",
+        "ship_to_postal_code": "85078",
+        "source_updated_at": "2025-05-18T16:50:00.000000000"
+       }
+      ],
+      "count": 7
+     },
+     "result_checksum": "05f4f8a2485772b573adfa21d912f86b1372af511cb4bce985afe06b81d73ce1"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "RUSSELL FITZGERALD",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T01:25:02.627000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "acbd0a2d-301e-4c60-8d80-7e78666809dc",
+   "generated_at": "2026-08-26T01:25:06.477143Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

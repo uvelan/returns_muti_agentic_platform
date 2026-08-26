@@ -1,0 +1,74 @@
+{
+ "data": {
+  "caseId": "fcaa9d83-9e9d-4e52-b9b1-bc05aaeaeda1",
+  "revision": 33,
+  "changed": true,
+  "items": [
+   {
+    "returnItemId": "b5284c07-1866-4787-bdfe-2ba3924669ea",
+    "orderLineReference": "1",
+    "productReference": "4000120",
+    "quantity": 1,
+    "reason": "SHIPPING_DAMAGE",
+    "condition": "NEW_IN_ORIGINAL_PACKAGING",
+    "packageReference": null
+   }
+  ],
+  "lines": [
+   {
+    "lineReference": "1",
+    "sku": "XDFDFLTS",
+    "description": "1-1/2X6 BLK MI 150# NIP",
+    "colour": null,
+    "orderedQuantity": 1,
+    "unitPrice": "12.506",
+    "productReference": "4000120",
+    "returnableQuantity": 1,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 1,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "2",
+    "sku": "XQWNVPCSS",
+    "description": "1-1/4 WROT COP CXC TEE",
+    "colour": null,
+    "orderedQuantity": 2,
+    "unitPrice": "4.842",
+    "productReference": "4000516",
+    "returnableQuantity": 2,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "3",
+    "sku": "U7958875326",
+    "description": "6 FUNC W/ 60 HOSE 2.5 GPM H/SHWR CP",
+    "colour": null,
+    "orderedQuantity": 24,
+    "unitPrice": "88.624",
+    "productReference": "4000246",
+    "returnableQuantity": 24,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   }
+  ]
+ },
+ "page": null,
+ "meta": {
+  "schema_version": "1.0",
+  "request_id": "a9ccdc53-812d-4218-9c5f-054251a54e3f",
+  "generated_at": "2026-08-26T01:19:02.223422Z",
+  "freshness": "LIVE",
+  "partial": false,
+  "warnings": []
+ }
+}

@@ -1,0 +1,112 @@
+[
+ {
+  "id": "db080833-d8a3-4af4-97e6-b704efb5d13d",
+  "threadId": "55e4291e-0d5f-40ad-9a5a-9e2c543b084a",
+  "sequence": 1,
+  "senderRole": "AGENT",
+  "senderId": "return-workflow-agent",
+  "messageType": "REQUEST",
+  "messageText": "RETURN SUPPORT REQUEST\n\nCase:\n- Case ID: dcc846be-b6a5-40ee-a17b-2e4cc3763372\n- Work Item ID: 193b0e12-2ba5-43c9-8c40-93adeda1f203\n- Created Date/Time: 2026-08-26T01:25:55.526000+00:00\n- Workflow Status at Handoff: GATHERING_INFO\n\nCustomer:\n- Customer Name: RUSSELL FITZGERALD\n- Customer Reference: 600809\n- Branch Associate: Not available\n- Branch Associate Email: Not available\n- Branch Associate Phone: Not available\n\nOrder:\n- Order Number: CA808587\n- Line/Order-Line Number: 1\n  - Product Name: 100 COIL PLAS STRP\n  - Colour: Not available\n  - SKU: PF102F100\n  - Confirmed Return Quantity: 1\n  - Return Reason: SHIPPING_DAMAGE\n  - Product Condition: NEW_IN_ORIGINAL_PACKAGING\n\nReturn Details:\n- Return Method: BRANCH_UPS\n- Requested Resolution: Not available\n- Product Presence: Not available\n- Associate Notes: Not available\n\nBay Assignment:\n- Assignment Status: PHYSICAL_RECEIPT_REQUIRED\n- Recommended Bay: Not available\n- Warehouse/Branch: 3526\n- Return Location: Not available\n- Handling/Staging Instructions: Not available\n- Unresolved Reason: PHYSICAL_RECEIPT_REQUIRED\n\nVerification:\n- Order Confirmation: Confirmed\n- Required Return Information: Incomplete\n- Policy Evaluation: APPROVE on the STANDARD_RETURN route\n- Bay Assignment Source: Bay Assignment Agent\n\nRequested Support Action:\n- Review the complete return request.\n- Review or confirm the bay recommendation.\n- Resolve manual bay assignment: no bay could be recommended.\n- Verify all Support-owned conditions, including warranty when applicable.\n- Create or decline the RMA through the authoritative Support workflow.\n",
+  "attachmentIds": [],
+  "businessPayload": {
+   "bayAssignment": {
+    "bayReference": null,
+    "handlingInstructions": null,
+    "returnLocation": null,
+    "source": "BAY_ASSIGNMENT_AGENT",
+    "status": "PHYSICAL_RECEIPT_REQUIRED",
+    "unresolvedReason": "PHYSICAL_RECEIPT_REQUIRED",
+    "warehouseReference": "3526"
+   },
+   "caseId": "dcc846be-b6a5-40ee-a17b-2e4cc3763372",
+   "createdAt": "2026-08-26T01:25:55.526000+00:00",
+   "customer": {
+    "contactEmail": null,
+    "contactName": null,
+    "contactPhone": null,
+    "name": "RUSSELL FITZGERALD",
+    "reference": "600809"
+   },
+   "order": {
+    "items": [
+     {
+      "colour": null,
+      "condition": "NEW_IN_ORIGINAL_PACKAGING",
+      "lineReference": "1",
+      "productName": "100 COIL PLAS STRP",
+      "productReference": "760286",
+      "quantity": 1,
+      "reason": "SHIPPING_DAMAGE",
+      "returnMethod": "BRANCH_UPS",
+      "sku": "PF102F100"
+     }
+    ],
+    "reference": "CA808587"
+   },
+   "returnDetails": {
+    "additional": {},
+    "associateNotes": null,
+    "method": "BRANCH_UPS",
+    "productPresence": null,
+    "requestedResolution": null
+   },
+   "schemaVersion": "support-handoff-v1",
+   "verification": {
+    "orderConfirmed": true,
+    "policyEvaluation": {
+     "decision": "APPROVE",
+     "route": "STANDARD_RETURN",
+     "skippedReason": null,
+     "state": "EVALUATED"
+    },
+    "requiredReturnInformationComplete": false
+   },
+   "workItemId": "193b0e12-2ba5-43c9-8c40-93adeda1f203",
+   "workflowStatusAtHandoff": "GATHERING_INFO"
+  },
+  "createdAt": "2026-08-26T01:25:56.578000"
+ },
+ {
+  "id": "990c4b09-7f8d-404b-9cc4-8556f8e959ff",
+  "threadId": "55e4291e-0d5f-40ad-9a5a-9e2c543b084a",
+  "sequence": 2,
+  "senderRole": "AGENT",
+  "senderId": "support-response-agent",
+  "messageType": "RETURN_CREATION",
+  "messageText": "Return created for case dcc846be-b6a5-40ee-a17b-2e4cc3763372: RMA RMA-DCC846BEB6A540EEA17B2E4CC3763372 (BRANCH_UPS), tracking TRK-RMADCC846BEB6A540EEA17B2E4CC3763372, label LBL-RMADCC846BEB6A540EEA17B2E4CC3763372.\n[RMA-DCC846BEB6A540EEA17B2E4CC3763372 / BRANCH_UPS]\n- 1 x 100 COIL PLAS STRP (line 1)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nAttach the return label to each package.",
+  "attachmentIds": [],
+  "businessPayload": {
+   "supportAgentEventId": "support-response-agent:193b0e12-2ba5-43c9-8c40-93adeda1f203",
+   "decision": {
+    "agent": "Support Response Agent",
+    "agentVersion": "1.0",
+    "configurationVersion": "FERGUSON-RETURN-ASSUMPTIONS-1.0",
+    "decisionType": "SUPPORT_RESPONSE",
+    "decision": "RETURN_PLANNED",
+    "explanation": "Artifacts follow the released requirement table for each shipping-class group; recording them is the executor's act, not this assessment's.",
+    "confidenceMillionths": 950000,
+    "evidenceReferences": [
+     "CASE:dcc846be-b6a5-40ee-a17b-2e4cc3763372",
+     "ORDER_LINE:1"
+    ],
+    "warnings": [],
+    "executionMode": "DETERMINISTIC",
+    "metadata": {}
+   },
+   "plan": {
+    "returnReference": "RMA-DCC846BEB6A540EEA17B2E4CC3763372",
+    "trackingReference": "TRK-RMADCC846BEB6A540EEA17B2E4CC3763372",
+    "labelReference": "LBL-RMADCC846BEB6A540EEA17B2E4CC3763372",
+    "returnLocation": null,
+    "shippingInstructionReference": "SHIP-RMADCC846BEB6A540EEA17B2E4CC3763372",
+    "returnMethod": "BRANCH_UPS",
+    "carrier": "UPS",
+    "orderLineReferences": [
+     "1"
+    ],
+    "instructions": "- 1 x 100 COIL PLAS STRP (line 1)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nAttach the return label to each package."
+   }
+  },
+  "createdAt": "2026-08-26T01:26:09.452000"
+ }
+]

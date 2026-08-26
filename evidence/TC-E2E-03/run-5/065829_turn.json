@@ -1,0 +1,91 @@
+{
+ "sent": "customer wants to return an item, name is hilary eckhert",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run5-a26186cc",
+   "conversation_version": 1,
+   "client_turn_id": "qa-bc221b91-d204-439c-a80d-594bd230bbf7",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 600392 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "6c204cce-61be-4084-ac27-87edc3ad8643",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "6c204cce-61be-4084-ac27-87edc3ad8643",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "5c3900a614068d0813ff87e58ef98e70132ad3760c6b07420b5b76d7732f68fd",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "hilary eckhert"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600392",
+        "data": {
+         "account_id": "LAKEWOOD",
+         "customer_id": "600392",
+         "customer_name": "HILARY ECKHART"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "1986478d46f213d569373669a8f0c1838b4ec31d1674cb02c6821cbe585170c9"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T01:28:25.397000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "5f071996-17f8-4a57-9183-191f17dd2fa0",
+   "generated_at": "2026-08-26T01:28:29.677339Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

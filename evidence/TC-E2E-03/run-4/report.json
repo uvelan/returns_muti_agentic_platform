@@ -1,0 +1,100 @@
+[
+ {
+  "step": 1,
+  "state": "PASS",
+  "note": "flow started on a partial misspelled name; no crash"
+ },
+ {
+  "step": 2,
+  "state": "PASS",
+  "note": "bounded fuzzy list (3), target present, matches=['customer_name_fuzzy']"
+ },
+ {
+  "step": 3,
+  "state": "PASS",
+  "note": "customer confirmed in-conversation (fact provenance asserted on case later)"
+ },
+ {
+  "step": 4,
+  "state": "PASS",
+  "note": "customer's orders listed from graph (7), config-driven fields"
+ },
+ {
+  "step": 5,
+  "state": "PASS",
+  "note": "explicit confirmation prompt: 'You selected order CA808587. Confirm this order to raise the return?'"
+ },
+ {
+  "step": 3,
+  "state": "PASS",
+  "note": "customer + order locked to case; append-only facts carry provenance"
+ },
+ {
+  "step": 6,
+  "state": "PASS",
+  "note": "case dcc846be-b6a5-40ee-a17b-2e4cc3763372 confirmed; bay assignment engaged in parallel"
+ },
+ {
+  "step": 7,
+  "state": "PASS",
+  "note": "details elicited (3 questions, none repeated, no shipping-class question); line selected reason=SHIPPING_DAMAGE"
+ },
+ {
+  "step": 8,
+  "state": "PASS",
+  "note": "return workflow drafted the support request (status AWAITING_SUPPORT)"
+ },
+ {
+  "step": 9,
+  "state": "PASS",
+  "note": "bay answered: PHYSICAL_RECEIPT_REQUIRED"
+ },
+ {
+  "step": 10,
+  "state": "PASS",
+  "note": "drafted template present in support thread (1 message(s))"
+ },
+ {
+  "step": 11,
+  "state": "PASS",
+  "note": "support response agent processed the work item"
+ },
+ {
+  "step": 12,
+  "state": "PASS",
+  "note": "support reply posted in the same conversation"
+ },
+ {
+  "step": 13,
+  "state": "PASS",
+  "note": "RMA RMA-DCC846BEB6A540EEA17B2E4CC3763372 recorded on the return"
+ },
+ {
+  "step": 14,
+  "state": "PASS",
+  "note": "RMA and shipping details relayed into the original conversation"
+ },
+ {
+  "step": 15,
+  "state": "PASS",
+  "note": "operations projection consistent; case dcc846be-b6a5-40ee-a17b-2e4cc3763372 links conversation disc-tc02-run4-ecc1e9d6"
+ },
+ {
+  "step": 16,
+  "state": "PASS",
+  "note": "omc row + graph sync verified for RMA-DCC846BEB6A540EEA17B2E4CC3763372; one case id across chat/support/omc/graph; nothing posted to branch inventory"
+ },
+ {
+  "step": 16,
+  "state": "PASS",
+  "note": "1 shipment document(s) seeded with the right ladder, identifiers and initial status"
+ },
+ {
+  "step": 17,
+  "state": "PASS",
+  "note": "console list shows the shipment(s); event logs empty"
+ },
+ {
+  "failure": "HTTP 500 /api/shipments/6dfbae80-03ce-4a25-8873-955da9ffe80a/events: {\"data\":null,\"page\":null,\"meta\":{\"schema_version\":\"1.0\",\"request_id\":\"9b6a67fd-1112-499f-a412-699ff4b80345\",\"generated_at\":\"2026-08-26T01:26:51.338645Z\",\"freshness\":\"LIVE\",\"partial\":true,\"warnings\":[{\"source\":\"SYSTEM\",\"code\":\"INTERNAL_ERROR\",\"message\":\"An unexpected system error occurred.\"}]}}"
+ }
+]

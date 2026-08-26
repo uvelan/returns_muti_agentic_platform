@@ -1,0 +1,43 @@
+{
+ "sent": "Confirm order CG808900.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run2-86842309",
+   "conversation_version": 4,
+   "client_turn_id": "qa-de807db0-b39a-40bd-ac82-472e1bec2168",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [],
+    "suggestions": [],
+    "requested_input": "You selected order CG808900. Confirm this order to raise the return?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run2-86842309:qa-de807db0-b39a-40bd-ac82-472e1bec2168:1",
+   "case_id": null,
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "RONALD OKONKWO",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T01:18:14.823000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "ee109fe3-8b34-42e4-8709-f5c321ff59cb",
+   "generated_at": "2026-08-26T01:18:17.521389Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

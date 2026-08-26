@@ -1,0 +1,104 @@
+{
+ "data": {
+  "caseId": "17c42d56-95a4-4381-9c04-4bc30b17f7e7",
+  "revision": 33,
+  "changed": true,
+  "items": [
+   {
+    "returnItemId": "a71e376b-d369-46ef-9fcd-a073e2807197",
+    "orderLineReference": "1",
+    "productReference": "8328136",
+    "quantity": 1,
+    "reason": "SHIPPING_DAMAGE",
+    "condition": "NEW_IN_ORIGINAL_PACKAGING",
+    "packageReference": null
+   }
+  ],
+  "lines": [
+   {
+    "lineReference": "1",
+    "sku": "Z130000726",
+    "description": "7 AIRTITE ADHE TKOF 16/BX",
+    "colour": null,
+    "orderedQuantity": 1,
+    "unitPrice": "12.153",
+    "productReference": "8328136",
+    "returnableQuantity": 1,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 1,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "2",
+    "sku": "S3301044",
+    "description": "A42A 1 URN KIT LC",
+    "colour": null,
+    "orderedQuantity": 2,
+    "unitPrice": "22.908",
+    "productReference": "264120",
+    "returnableQuantity": 2,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "3",
+    "sku": "RH2TY3617STANNJ",
+    "description": "3T A/H 208V W/ CONS TORQ MTR R-454B",
+    "colour": null,
+    "orderedQuantity": 1,
+    "unitPrice": "1609.139",
+    "productReference": "10429953",
+    "returnableQuantity": 1,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "4",
+    "sku": "ZFT4321",
+    "description": "2 BRZ 150# THRD RS UB GATE VLV",
+    "colour": null,
+    "orderedQuantity": 6,
+    "unitPrice": "37.95",
+    "productReference": "4000121",
+    "returnableQuantity": 6,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "5",
+    "sku": "D853855",
+    "description": "1-1/4X1-1/2 17GA BRS W/ CLNOUT P TRAP",
+    "colour": null,
+    "orderedQuantity": 2,
+    "unitPrice": "28.178",
+    "productReference": "4000223",
+    "returnableQuantity": 2,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   }
+  ]
+ },
+ "page": null,
+ "meta": {
+  "schema_version": "1.0",
+  "request_id": "3f38ab9c-6ff7-4c3f-9fa1-6d69be386726",
+  "generated_at": "2026-08-26T01:29:31.803380Z",
+  "freshness": "LIVE",
+  "partial": false,
+  "warnings": []
+ }
+}

@@ -17,12 +17,12 @@
  {
   "step": 4,
   "state": "PASS",
-  "note": "customer's orders listed from graph (10), config-driven fields"
+  "note": "customer's orders listed from graph (9), config-driven fields"
  },
  {
   "step": 5,
   "state": "PASS",
-  "note": "explicit confirmation prompt: 'You selected order CG807268. Confirm this order to raise the return?'"
+  "note": "explicit confirmation prompt: 'You selected order CJ800022. Confirm this order to raise the return?'"
  },
  {
   "step": 3,
@@ -32,9 +32,51 @@
  {
   "step": 6,
   "state": "PASS",
-  "note": "case a4102754-4d70-4e1b-a778-37787cdf2cea confirmed; bay assignment engaged in parallel"
+  "note": "case 39e5934d-77dd-4ba8-a977-ec06e80159d0 confirmed; bay assignment engaged in parallel"
  },
  {
-  "failure": "HTTP 422 /api/v2/order-agent/conversations/disc-tc02-run1-5fae369e/turns: {\"data\":null,\"page\":null,\"meta\":{\"schema_version\":\"1.0\",\"request_id\":\"fb9a5570-fa86-42e7-8c7c-51dfb0f444e7\",\"generated_at\":\"2026-08-25T16:43:03.633441Z\",\"freshness\":\"LIVE\",\"partial\":true,\"warnings\":[{\"source\":\"API\",\"code\":\"ORDER_AGENT_CLARIFICATION_BUDGET_EXCEEDED\",\"message\":\"The request exceeded the configured clarification limits.\"}]}}"
+  "step": 7,
+  "state": "PASS",
+  "note": "details elicited (3 questions, none repeated, no shipping-class question); line selected reason=SHIPPING_DAMAGE"
+ },
+ {
+  "step": 8,
+  "state": "PASS",
+  "note": "return workflow drafted the support request (status AWAITING_SUPPORT)"
+ },
+ {
+  "step": 9,
+  "state": "PASS",
+  "note": "bay answered: PHYSICAL_RECEIPT_REQUIRED"
+ },
+ {
+  "step": 10,
+  "state": "PASS",
+  "note": "drafted template present in support thread (1 message(s))"
+ },
+ {
+  "step": 11,
+  "state": "PASS",
+  "note": "support response agent processed the work item"
+ },
+ {
+  "step": 12,
+  "state": "PASS",
+  "note": "support reply posted in the same conversation"
+ },
+ {
+  "step": 13,
+  "state": "PASS",
+  "note": "RMA RMA-39E5934D77DD4BA8A977EC06E80159D0 recorded on the return"
+ },
+ {
+  "step": 14,
+  "state": "PASS",
+  "note": "RMA and shipping details relayed into the original conversation"
+ },
+ {
+  "step": 15,
+  "state": "PASS",
+  "note": "operations projection consistent; case 39e5934d-77dd-4ba8-a977-ec06e80159d0 links conversation disc-tc02-run1-c0d4fc53"
  }
 ]

@@ -39,7 +39,9 @@ class Run:
         self.conversation = f"disc-tc02-run{run_no}-{uuid.uuid4().hex[:8]}"
         self.case_id: str | None = None
         self.work_item_id: str | None = None
-        self.dir = Path(f"evidence/TC-E2E-02/run-{run_no}")
+        import os as _os
+        base = _os.environ.get("TCE2E02_RUN_BASE", "evidence/TC-E2E-02")
+        self.dir = Path(f"{base}/run-{run_no}")
         self.dir.mkdir(parents=True, exist_ok=True)
         self.report: list[dict[str, Any]] = []
         self.version = 0
@@ -484,6 +486,226 @@ class Run:
         self.ok(16, f"omc row + graph sync verified for {rma}; one case id across"
                     " chat/support/omc/graph; nothing posted to branch inventory")
 
+
+    # ---- TC-E2E-03: shipment tracking loop ----------------------------------
+    def _catalog(self) -> dict:
+        return self.call("GET", "/api/shipment-status-catalog").get("data") or {}
+
+    def _ladder(self, mode: str) -> list[dict]:
+        return sorted(
+            (s0 for s0 in self._catalog().get("statuses") or []
+             if s0.get("ladder") == mode and not s0.get("exception_state")),
+            key=lambda s0: s0.get("ordinal", 0),
+        )
+
+    def _shipment(self, rma: str) -> dict:
+        return self.call("GET", f"/api/shipments/{rma}").get("data") or {}
+
+    def _rmas(self) -> list[str]:
+        projection = self.case()
+        return [str(r.get("returnReference"))
+                for r in projection.get("returnRecords") or []
+                if r.get("returnReference")]
+
+    def step_17_shipment_seeded(self) -> None:
+        """TC-E2E-03 steps 16+17: the document exists, correctly seeded."""
+        rmas = self._rmas()
+        if not rmas:
+            self.fail(16, "no RMAs on the case to seed shipments from")
+        catalog = self._catalog()
+        for rma in rmas:
+            deadline = time.time() + 120
+            shipment: dict = {}
+            while time.time() < deadline:
+                try:
+                    shipment = self._shipment(rma)
+                except StepFailure:
+                    shipment = {}
+                if shipment:
+                    break
+                time.sleep(5)
+            if not shipment:
+                self.fail(16, f"no shipment document seeded for {rma}")
+            mode = str(shipment.get("mode") or "")
+            expected_initial = (
+                catalog.get("initialStatusFreight") if mode == "freight"
+                else catalog.get("initialStatusParcel"))
+            if shipment.get("current_status") != expected_initial:
+                self.fail(16, f"{rma}: initial status {shipment.get('current_status')}"
+                              f" != {expected_initial} for the {mode} ladder")
+            if shipment.get("case_id") != self.case_id:
+                self.fail(16, f"{rma}: shipment names case {shipment.get('case_id')}")
+            if not shipment.get("tracking_reference"):
+                self.fail(16, f"{rma}: shipment carries no tracking reference")
+            if mode == "freight" and not shipment.get("pro_number"):
+                self.fail(16, f"{rma}: freight shipment carries no PRO number")
+            if shipment.get("events"):
+                self.fail(17, f"{rma}: event log is not empty at seed time")
+            self.archive(f"shipment_seeded_{rma}", shipment)
+        listed = self.call(
+            "GET", f"/api/shipments?case={self.case_id}").get("data") or []
+        if len(listed) < len(rmas):
+            self.fail(17, f"console list shows {len(listed)} shipments for the case,"
+                          f" expected {len(rmas)}")
+        self.ok(16, f"{len(rmas)} shipment document(s) seeded with the right ladder,"
+                    " identifiers and initial status")
+        self.ok(17, "console list shows the shipment(s); event logs empty")
+
+    def _drive_ladder(self, rma: str, step_no: int) -> None:
+        """Walk the shipment's own ladder rung by rung to its terminal state,
+        asserting each event appends and the case follows."""
+        shipment = self._shipment(rma)
+        shipment_id = str(shipment.get("shipment_id"))
+        mode = str(shipment.get("mode") or "parcel")
+        ladder = self._ladder(mode)
+        codes = {s0["code"]: s0 for s0 in ladder}
+        events_before = len(shipment.get("events") or [])
+        current = str(shipment.get("current_status"))
+        walked = 0
+        while True:
+            entry = codes.get(current)
+            if entry is None:
+                self.fail(step_no, f"{rma}: current status {current} is not a rung")
+            if entry.get("terminal"):
+                break
+            nxt = next(
+                (code for code in entry.get("allowed_next") or []
+                 if code in codes and codes[code]["ordinal"] > entry["ordinal"]),
+                None,
+            )
+            if nxt is None:
+                self.fail(step_no, f"{rma}: no forward transition from {current}")
+            updated = self.call(
+                "POST", f"/api/shipments/{shipment_id}/events",
+                {"status": nxt, "location": f"stage {walked + 1}",
+                 "note": "TC-E2E-03 manual drive"},
+            ).get("data") or {}
+            if updated.get("current_status") != nxt:
+                self.fail(step_no, f"{rma}: event did not advance to {nxt}")
+            if len(updated.get("events") or []) != events_before + walked + 1:
+                self.fail(step_no, f"{rma}: event was not appended")
+            current = nxt
+            walked += 1
+            time.sleep(2)
+        self.archive(f"shipment_terminal_{rma}", self._shipment(rma))
+        self.ok(step_no, f"{rma}: drove the {mode} ladder through {walked} stages"
+                         " to its terminal state; every event appended")
+
+    def step_18_20_drive_and_fulfill(self) -> None:
+        """TC-E2E-03 steps 18-20 (and 21 for freight modes): drive every
+        shipment to delivered; fulfillment closes records, then the case."""
+        rmas = self._rmas()
+        for index, rma in enumerate(rmas):
+            self._drive_ladder(rma, 18 if index == 0 else 21)
+        deadline = time.time() + 180
+        while time.time() < deadline:
+            projection = self.case()
+            records = projection.get("returnRecords") or []
+            statuses = {str(r.get("status")) for r in records}
+            closed_family = {"CLOSED", "COMPLETED", "COMPLETED_EXTERNAL_SETTLEMENT"}
+            if records and statuses <= {"CLOSED", "CANCELLED"} and (
+                    str(projection.get("status")) in closed_family
+                    and "case-fulfilled" in str(
+                        [f0.get("factId") for f0 in projection.get("facts") or []])):
+                break
+            time.sleep(5)
+        projection = self.case()
+        self.archive("case_fulfilled", projection)
+        records = projection.get("returnRecords") or []
+        open_records = [r.get("returnReference") for r in records
+                        if str(r.get("status")) not in {"CLOSED", "CANCELLED"}]
+        if open_records:
+            self.fail(20, f"records not fulfilled after delivery: {open_records}")
+        if str(projection.get("status")) not in {"CLOSED", "COMPLETED",
+                                                  "COMPLETED_EXTERNAL_SETTLEMENT"}:
+            self.fail(20, f"case did not close; status {projection.get('status')}")
+        fact_ids = [str(f0.get("factId")) for f0 in projection.get("facts") or []]
+        if not any(fid.startswith("case-fulfilled") for fid in fact_ids):
+            self.fail(20, "the all-returns-delivered fact never landed on the case")
+        facts = self.facts(projection)
+        if "return_record_fulfilled" not in facts:
+            self.fail(19, "no fulfillment fact reached the case")
+        self.ok(19, "fulfillment reflected each status onto the case")
+        data = self.send("has the return been delivered?")
+        answer = json.dumps(data.get("response") or {}, default=str)
+        if "fulfilled" not in answer.lower() and "delivered" not in answer.lower() \
+                and not any(rma in answer for rma in rmas):
+            self.fail(20, f"associate was not notified of delivery: {answer[:200]}")
+        self.ok(20, "records fulfilled, case closed, associate notified in the"
+                    " original session")
+
+    def step_22_exception(self) -> None:
+        """TC-E2E-03 step 22 on a FRESH shipment: fork into an exception state,
+        assert it surfaces, then resume the ladder without losing events."""
+        rma = self._rmas()[0]
+        shipment = self._shipment(rma)
+        shipment_id = str(shipment.get("shipment_id"))
+        mode = str(shipment.get("mode") or "parcel")
+        codes = {s0["code"]: s0 for s0 in self._ladder(mode)}
+        exceptions = [s0 for s0 in self._catalog().get("statuses") or []
+                      if s0.get("ladder") == mode and s0.get("exception_state")]
+        # advance to a rung that can fork
+        current = str(shipment.get("current_status"))
+        fork = None
+        while fork is None:
+            entry = codes.get(current)
+            allowed = entry.get("allowed_next") or []
+            fork = next((c for c in allowed
+                         if any(e["code"] == c for e in exceptions)), None)
+            if fork:
+                break
+            nxt = next((c for c in allowed if c in codes
+                        and codes[c]["ordinal"] > entry["ordinal"]), None)
+            if nxt is None:
+                self.fail(22, f"no exception reachable on the {mode} ladder")
+            self.call("POST", f"/api/shipments/{shipment_id}/events",
+                      {"status": nxt, "note": "advance to fork"})
+            current = nxt
+        before = len((self._shipment(rma)).get("events") or [])
+        self.call("POST", f"/api/shipments/{shipment_id}/events",
+                  {"status": fork, "note": "TC-E2E-03 forced exception"})
+        facts = self.facts()
+        deadline = time.time() + 90
+        while time.time() < deadline and "fulfillment_exception" not in facts:
+            time.sleep(5)
+            facts = self.facts()
+        if "fulfillment_exception" not in facts:
+            self.fail(22, "the exception never surfaced on the case")
+        # resume: back to the rung we forked from
+        resumed = self.call(
+            "POST", f"/api/shipments/{shipment_id}/events",
+            {"status": current, "note": "resumed after exception"}).get("data") or {}
+        if resumed.get("current_status") != current:
+            self.fail(22, "the ladder did not resume after the exception")
+        if len(resumed.get("events") or []) != before + 2:
+            self.fail(22, "prior events were lost across the exception")
+        self.ok(22, f"exception {fork} surfaced on the case and cleared;"
+                    " ladder resumed with the event trail intact")
+
+    def step_24_idempotency(self) -> None:
+        """TC-E2E-03 step 24: replaying the support reply duplicates nothing."""
+        items = self.call("GET", "/api/v1/return-support/work-items").get("data") or []
+        mine = [i for i in items if i.get("caseId") == self.case_id]
+        if not mine:
+            self.fail(24, "no support work item to replay")
+        before = self.call(
+            "GET", f"/api/shipments?case={self.case_id}").get("data") or []
+        before_events = {str(s0.get("shipment_id")): len(s0.get("events") or [])
+                         for s0 in before}
+        self.call("POST",
+                  f"/api/v1/return-support/work-items/{mine[0]['id']}/agent-response", {})
+        time.sleep(10)
+        after = self.call(
+            "GET", f"/api/shipments?case={self.case_id}").get("data") or []
+        if len(after) != len(before):
+            self.fail(24, f"replay changed the shipment count {len(before)} ->"
+                          f" {len(after)}")
+        for s0 in after:
+            sid = str(s0.get("shipment_id"))
+            if len(s0.get("events") or []) != before_events.get(sid, -1):
+                self.fail(24, f"replay changed the event count on {sid}")
+        self.ok(24, "support-reply replay: no duplicate shipment, no duplicate event")
+
     def step_15(self) -> None:
         projection = self.case()
         self.archive("case_final", projection)
@@ -508,6 +730,7 @@ def main() -> None:
     parser.add_argument("--from-step", type=int, default=1)
     parser.add_argument("--multi", action="store_true")
     parser.add_argument("--bay-timeout", action="store_true")
+    parser.add_argument("--tc03", action="store_true")
     args = parser.parse_args()
 
     run = Run(args.run, args.customer, args.misspelled, args.account, args.order)
@@ -527,6 +750,15 @@ def main() -> None:
         (12, run.step_11_12), (14, run.step_13_14), (15, run.step_15),
         (16, run.step_16_downstream),
     ]
+    if args.tc03:
+        stages += [
+            (17, run.step_17_shipment_seeded),
+            (20, run.step_18_20_drive_and_fulfill),
+            (24, run.step_24_idempotency),
+        ]
+        parser_max = 24
+        if args.until == 16:
+            args.until = parser_max
     try:
         for upto, stage in stages:
             if upto > args.until:

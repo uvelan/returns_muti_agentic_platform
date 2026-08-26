@@ -305,7 +305,9 @@ def decide_reasoning(payload: dict) -> str:
                            f"RMA {rma} is issued for this return.")]
             for i, key in enumerate(
                 ("tracking_reference", "label_reference", "return_location",
-                 "return_instructions"), start=1,
+                 "return_instructions", "fulfillment_status",
+                 "return_record_fulfilled", "fulfillment_exception",
+                 "case_status"), start=1,
             ):
                 if case_facts.get(key):
                     details.append(_statement(

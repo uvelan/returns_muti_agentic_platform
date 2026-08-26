@@ -1,0 +1,183 @@
+{
+ "sent": "Confirm the customer CARLOS ROARK on account LAKEWOOD.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run3-d5cb3c34",
+   "conversation_version": 2,
+   "client_turn_id": "qa-d2d074ae-c91b-4c4d-8524-fb67a9f50c40",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CL808800 / 2026-07-31T0 / SPOKANE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "92797e89-4cb6-453a-8ead-778958c017d5",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CS807225 / 2025-07-23T0 / SPOKANE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "92797e89-4cb6-453a-8ead-778958c017d5",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CQ805952 / 2025-04-19T0 / SPOKANE / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "92797e89-4cb6-453a-8ead-778958c017d5",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "92797e89-4cb6-453a-8ead-778958c017d5",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "9cb82e7ca7bea3cbd3a457f977edebff15022ebbbc7a02db58b6f17d456af577",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "LAKEWOOD*CL808800",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CL808800",
+        "customer_id": "601307",
+        "customer_name": "CARLOS ROARK",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1844",
+        "ship_from_warehouse_id": "1844",
+        "shipping_method": "MAIL",
+        "order_date": "2026-07-31T00:00:00.000000000",
+        "invoice_date": "2026-07-31T00:00:00.000000000",
+        "shipped_at": "2026-08-02T00:00:00.000000000",
+        "commit_date": "2026-07-31T00:00:00.000000000",
+        "ship_to_name": "CARLOS ROARK",
+        "ship_to_phone": "469-555-5080",
+        "ship_to_city": "SPOKANE",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "99270",
+        "source_updated_at": "2026-07-31T17:14:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CS807225",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CS807225",
+        "customer_id": "601307",
+        "customer_name": "CARLOS ROARK",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "SERVICE CALL",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1844",
+        "ship_from_warehouse_id": "1844",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-07-23T00:00:00.000000000",
+        "invoice_date": "2025-07-23T00:00:00.000000000",
+        "shipped_at": "2025-07-25T00:00:00.000000000",
+        "commit_date": "2025-07-23T00:00:00.000000000",
+        "ship_to_name": "CARLOS ROARK",
+        "ship_to_phone": "469-555-5080",
+        "ship_to_city": "SPOKANE",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "99270",
+        "source_updated_at": "2025-07-23T11:35:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CQ805952",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CQ805952",
+        "customer_id": "601307",
+        "customer_name": "CARLOS ROARK",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "REPLACEMENT",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "596",
+        "ship_from_warehouse_id": "596",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-04-19T00:00:00.000000000",
+        "invoice_date": "2025-04-19T00:00:00.000000000",
+        "shipped_at": "2025-04-20T00:00:00.000000000",
+        "commit_date": "2025-04-19T00:00:00.000000000",
+        "ship_to_name": "CARLOS ROARK",
+        "ship_to_phone": "469-555-5080",
+        "ship_to_city": "SPOKANE",
+        "ship_to_state": "WA",
+        "ship_to_postal_code": "99270",
+        "source_updated_at": "2025-04-19T17:03:00.000000000"
+       }
+      ],
+      "count": 3
+     },
+     "result_checksum": "9c2fdb24043cbb6465a738d6ed727a0f33411bb25543691c4502de205318ab8a"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "CARLOS ROARK",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T01:24:36.035000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "b0661e5a-ee40-4044-ba7f-74f5d1c0ccb9",
+   "generated_at": "2026-08-26T01:24:39.169872Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

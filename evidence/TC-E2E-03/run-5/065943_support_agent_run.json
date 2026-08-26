@@ -1,0 +1,20 @@
+{
+ "data": {
+  "workItemId": "fcd5a03e-c276-477f-84d5-45795a286827",
+  "caseId": "17c42d56-95a4-4381-9c04-4bc30b17f7e7",
+  "outcome": "RESPONDED",
+  "returnReference": "RMA-17C42D5695A443819C044BC30B17F7E7",
+  "supportEventId": "support-response-agent:fcd5a03e-c276-477f-84d5-45795a286827",
+  "missingFields": [],
+  "detail": null
+ },
+ "page": null,
+ "meta": {
+  "schema_version": "1.0",
+  "request_id": "fa26f867-eea5-46a6-96a9-774066e45c91",
+  "generated_at": "2026-08-26T01:29:43.458732Z",
+  "freshness": "LIVE",
+  "partial": false,
+  "warnings": []
+ }
+}

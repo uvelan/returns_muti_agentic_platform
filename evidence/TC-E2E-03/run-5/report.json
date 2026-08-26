@@ -1,0 +1,110 @@
+[
+ {
+  "step": 1,
+  "state": "PASS",
+  "note": "flow started on a partial misspelled name; no crash"
+ },
+ {
+  "step": 2,
+  "state": "PASS",
+  "note": "bounded fuzzy list (1), target present, matches=['customer_name_fuzzy']"
+ },
+ {
+  "step": 3,
+  "state": "PASS",
+  "note": "customer confirmed in-conversation (fact provenance asserted on case later)"
+ },
+ {
+  "step": 4,
+  "state": "PASS",
+  "note": "customer's orders listed from graph (6), config-driven fields"
+ },
+ {
+  "step": 5,
+  "state": "PASS",
+  "note": "explicit confirmation prompt: 'You selected order CL808436. Confirm this order to raise the return?'"
+ },
+ {
+  "step": 3,
+  "state": "PASS",
+  "note": "customer + order locked to case; append-only facts carry provenance"
+ },
+ {
+  "step": 6,
+  "state": "PASS",
+  "note": "case 17c42d56-95a4-4381-9c04-4bc30b17f7e7 confirmed; bay assignment engaged in parallel"
+ },
+ {
+  "step": 7,
+  "state": "PASS",
+  "note": "details elicited (3 questions, none repeated, no shipping-class question); line selected reason=SHIPPING_DAMAGE"
+ },
+ {
+  "step": 8,
+  "state": "PASS",
+  "note": "return workflow drafted the support request (status AWAITING_SUPPORT)"
+ },
+ {
+  "step": 9,
+  "state": "PASS",
+  "note": "bay answered: PHYSICAL_RECEIPT_REQUIRED"
+ },
+ {
+  "step": 10,
+  "state": "PASS",
+  "note": "drafted template present in support thread (1 message(s))"
+ },
+ {
+  "step": 11,
+  "state": "PASS",
+  "note": "support response agent processed the work item"
+ },
+ {
+  "step": 12,
+  "state": "PASS",
+  "note": "support reply posted in the same conversation"
+ },
+ {
+  "step": 13,
+  "state": "PASS",
+  "note": "RMA RMA-17C42D5695A443819C044BC30B17F7E7 recorded on the return"
+ },
+ {
+  "step": 14,
+  "state": "PASS",
+  "note": "RMA and shipping details relayed into the original conversation"
+ },
+ {
+  "step": 15,
+  "state": "PASS",
+  "note": "operations projection consistent; case 17c42d56-95a4-4381-9c04-4bc30b17f7e7 links conversation disc-tc02-run5-a26186cc"
+ },
+ {
+  "step": 16,
+  "state": "PASS",
+  "note": "omc row + graph sync verified for RMA-17C42D5695A443819C044BC30B17F7E7; one case id across chat/support/omc/graph; nothing posted to branch inventory"
+ },
+ {
+  "step": 16,
+  "state": "PASS",
+  "note": "1 shipment document(s) seeded with the right ladder, identifiers and initial status"
+ },
+ {
+  "step": 17,
+  "state": "PASS",
+  "note": "console list shows the shipment(s); event logs empty"
+ },
+ {
+  "step": 18,
+  "state": "PASS",
+  "note": "RMA-17C42D5695A443819C044BC30B17F7E7: drove the parcel ladder through 5 stages to its terminal state; every event appended"
+ },
+ {
+  "step": 20,
+  "state": "FAIL",
+  "note": "case did not close; status COMPLETED_EXTERNAL_SETTLEMENT"
+ },
+ {
+  "failure": "step 20: case did not close; status COMPLETED_EXTERNAL_SETTLEMENT"
+ }
+]

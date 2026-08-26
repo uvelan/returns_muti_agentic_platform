@@ -1,0 +1,89 @@
+{
+ "data": {
+  "caseId": "39e5934d-77dd-4ba8-a977-ec06e80159d0",
+  "revision": 33,
+  "changed": true,
+  "items": [
+   {
+    "returnItemId": "62d8b345-05e0-4214-bf10-de9966b9374c",
+    "orderLineReference": "1",
+    "productReference": "2002294",
+    "quantity": 1,
+    "reason": "SHIPPING_DAMAGE",
+    "condition": "NEW_IN_ORIGINAL_PACKAGING",
+    "packageReference": null
+   }
+  ],
+  "lines": [
+   {
+    "lineReference": "1",
+    "sku": "MOXYRE",
+    "description": "OXY R GAS EXCHANGE",
+    "colour": null,
+    "orderedQuantity": 3,
+    "unitPrice": "11.002",
+    "productReference": "2002294",
+    "returnableQuantity": 3,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 1,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "2",
+    "sku": "SOUTDB602410",
+    "description": "24X10X60 BEAD TRNK DUCT",
+    "colour": null,
+    "orderedQuantity": 5,
+    "unitPrice": "75.891",
+    "productReference": "8259893",
+    "returnableQuantity": 5,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "3",
+    "sku": "HFB218W",
+    "description": "7X25 R8 SILV FLEX AIR DUCT",
+    "colour": null,
+    "orderedQuantity": 2,
+    "unitPrice": "94.862",
+    "productReference": "4088174",
+    "returnableQuantity": 2,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "4",
+    "sku": "SSD4958",
+    "description": "2 CI W/ NB STRN FLR DRN",
+    "colour": null,
+    "orderedQuantity": 1,
+    "unitPrice": "33.982",
+    "productReference": "4000449",
+    "returnableQuantity": 1,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   }
+  ]
+ },
+ "page": null,
+ "meta": {
+  "schema_version": "1.0",
+  "request_id": "ab3c59f3-3ab1-4186-9500-11dc782585d0",
+  "generated_at": "2026-08-26T01:16:52.403101Z",
+  "freshness": "LIVE",
+  "partial": false,
+  "warnings": []
+ }
+}

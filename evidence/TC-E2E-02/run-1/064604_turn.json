@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CJ800022",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run1-c0d4fc53",
+   "conversation_version": 3,
+   "client_turn_id": "qa-c98a4830-f8fb-460e-8140-e59e5fb882f5",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CJ800022 / [REDACTED] / SAN ANTONIO / 2026-07-31",
+      "evidence_refs": [
+       {
+        "query_execution_id": "5efde505-5648-4723-9d94-a8bfde45c0b7",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "5efde505-5648-4723-9d94-a8bfde45c0b7",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "71acf92534b3a4555fd579eb935defe0762d67af7459cc84803371dcd4f710e8",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CJ800022"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CJ800022",
+        "data": {
+         "order_key": "LAKEWOOD*CJ800022",
+         "account_id": "LAKEWOOD",
+         "sales_order_number": "CJ800022",
+         "customer_id": "600175",
+         "customer_name": "DUANE ALVARADO",
+         "customer_po_number": "NEW CONSTRUCTION",
+         "job_name": "WARRANTY",
+         "order_status": "CALLCSR",
+         "sales_type": "CASH",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "133",
+         "ship_from_warehouse_id": "133",
+         "shipping_method": "CUSTOMER PICKUP",
+         "order_date": "2026-07-31T00:00:00.000000000",
+         "invoice_date": "2026-07-31T00:00:00.000000000",
+         "shipped_at": "2026-08-03T00:00:00.000000000",
+         "commit_date": "2026-07-31T00:00:00.000000000",
+         "ship_to_name": "DUANE ALVARADO",
+         "ship_to_phone": "312-555-7912",
+         "ship_to_city": "SAN ANTONIO",
+         "ship_to_state": "TX",
+         "ship_to_postal_code": "78285",
+         "source_updated_at": "2026-07-31T11:54:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "780484aaba2e495250133e01c2f04f7c968ef013a9bbfbe94746d0e3b3253e5f"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "DUANE ALVARADO",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T01:16:00.867000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "ab20a916-e38f-46d1-8709-732d3b7a66c2",
+   "generated_at": "2026-08-26T01:16:04.488694Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

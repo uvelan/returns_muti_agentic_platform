@@ -1,0 +1,147 @@
+{
+ "sent": "customer wants to return an item, name is russel fitzgerald",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run4-ecc1e9d6",
+   "conversation_version": 1,
+   "client_turn_id": "qa-7d926e71-4d19-4f6f-8600-330eb20cc57e",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 600810 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "f0d1d6af-24b5-47e0-9ea4-3fc3c70ddbbf",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 2: 600811 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "f0d1d6af-24b5-47e0-9ea4-3fc3c70ddbbf",
+        "result_path": [
+         "candidates",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 3: 600809 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "f0d1d6af-24b5-47e0-9ea4-3fc3c70ddbbf",
+        "result_path": [
+         "candidates",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "f0d1d6af-24b5-47e0-9ea4-3fc3c70ddbbf",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "af344970eeb676ca130a19359b305e157a54bb72e61450b521aa54e45b441c6f",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "russel fitzgerald"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600810",
+        "data": {
+         "account_id": "PHOENIX",
+         "customer_id": "600810",
+         "customer_name": "RUSSELL FITZGERALD"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600811",
+        "data": {
+         "account_id": "NASH",
+         "customer_id": "600811",
+         "customer_name": "RUSSELL FITZGERALD"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600809",
+        "data": {
+         "account_id": "LENZ",
+         "customer_id": "600809",
+         "customer_name": "RUSSELL FITZGERALD"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 3,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "978bf71d7bd384fdb55c157dfa5397dba6e8b1724adab8ce4ffac53755d8763c"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T01:24:56.198000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "41bd3ca2-9885-4494-8e79-542b1a2f778d",
+   "generated_at": "2026-08-26T01:25:00.365995Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

@@ -1,0 +1,429 @@
+{
+ "sent": "Confirm the customer DUANE ALVARADO on account LAKEWOOD.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run1-c0d4fc53",
+   "conversation_version": 2,
+   "client_turn_id": "qa-849cfba1-94d9-43d4-a236-fd48dd5a639d",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CJ800022 / 2026-07-31T0 / SAN ANTONIO / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "0d0931f9-285e-4b49-8876-240e927651db",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CA801883 / 2026-06-19T0 / SAN ANTONIO / INVOICE-PAID",
+      "evidence_refs": [
+       {
+        "query_execution_id": "0d0931f9-285e-4b49-8876-240e927651db",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CA807404 / 2026-01-21T0 / SAN ANTONIO / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "0d0931f9-285e-4b49-8876-240e927651db",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CD803146 / 2025-11-26T0 / SAN ANTONIO / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "0d0931f9-285e-4b49-8876-240e927651db",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CO803471 / 2025-10-22T0 / SAN ANTONIO / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "0d0931f9-285e-4b49-8876-240e927651db",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CF800783 / 2025-08-10T0 / SAN ANTONIO / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "0d0931f9-285e-4b49-8876-240e927651db",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 7: CX802933 / 2025-06-08T0 / SAN ANTONIO / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "0d0931f9-285e-4b49-8876-240e927651db",
+        "result_path": [
+         "rows",
+         "6"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-7",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 8: CK803482 / 2025-02-23T0 / SAN ANTONIO / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "0d0931f9-285e-4b49-8876-240e927651db",
+        "result_path": [
+         "rows",
+         "7"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-8",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 9: CR808695 / 2025-01-12T0 / SAN ANTONIO / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "0d0931f9-285e-4b49-8876-240e927651db",
+        "result_path": [
+         "rows",
+         "8"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "0d0931f9-285e-4b49-8876-240e927651db",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "3d3c1a147c4b33429b631842aab6a706eb9e8cd885d3fcb7b2d4296714ba80da",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "LAKEWOOD*CJ800022",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CJ800022",
+        "customer_id": "600175",
+        "customer_name": "DUANE ALVARADO",
+        "customer_po_number": "NEW CONSTRUCTION",
+        "job_name": "WARRANTY",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "133",
+        "ship_from_warehouse_id": "133",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-07-31T00:00:00.000000000",
+        "invoice_date": "2026-07-31T00:00:00.000000000",
+        "shipped_at": "2026-08-03T00:00:00.000000000",
+        "commit_date": "2026-07-31T00:00:00.000000000",
+        "ship_to_name": "DUANE ALVARADO",
+        "ship_to_phone": "312-555-7912",
+        "ship_to_city": "SAN ANTONIO",
+        "ship_to_state": "TX",
+        "ship_to_postal_code": "78285",
+        "source_updated_at": "2026-07-31T11:54:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CA801883",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CA801883",
+        "customer_id": "600175",
+        "customer_name": "DUANE ALVARADO",
+        "customer_po_number": "NEW CONSTRUCTION",
+        "job_name": "NEW CONSTRUCTION",
+        "order_status": "INVOICE-PAID",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2",
+        "ship_from_warehouse_id": "2",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-06-19T00:00:00.000000000",
+        "invoice_date": "2026-06-19T00:00:00.000000000",
+        "shipped_at": "2026-06-19T00:00:00.000000000",
+        "commit_date": "2026-06-19T00:00:00.000000000",
+        "ship_to_name": "DUANE ALVARADO",
+        "ship_to_phone": "312-555-7912",
+        "ship_to_city": "SAN ANTONIO",
+        "ship_to_state": "TX",
+        "ship_to_postal_code": "78285",
+        "source_updated_at": "2026-06-19T16:19:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CA807404",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CA807404",
+        "customer_id": "600175",
+        "customer_name": "DUANE ALVARADO",
+        "customer_po_number": "SHOP STOCK",
+        "job_name": "RESIDENTIAL",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2026-01-21T00:00:00.000000000",
+        "invoice_date": "2026-01-21T00:00:00.000000000",
+        "shipped_at": "2026-01-23T00:00:00.000000000",
+        "commit_date": "2026-01-21T00:00:00.000000000",
+        "ship_to_name": "DUANE ALVARADO",
+        "ship_to_phone": "312-555-7912",
+        "ship_to_city": "SAN ANTONIO",
+        "ship_to_state": "TX",
+        "ship_to_postal_code": "78285",
+        "source_updated_at": "2026-01-21T17:03:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CD803146",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CD803146",
+        "customer_id": "600175",
+        "customer_name": "DUANE ALVARADO",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "MAINTENANCE",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1441",
+        "ship_from_warehouse_id": "1441",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-11-26T00:00:00.000000000",
+        "invoice_date": "2025-11-26T00:00:00.000000000",
+        "shipped_at": "2025-11-27T00:00:00.000000000",
+        "commit_date": "2025-11-26T00:00:00.000000000",
+        "ship_to_name": "DUANE ALVARADO",
+        "ship_to_phone": "312-555-7912",
+        "ship_to_city": "SAN ANTONIO",
+        "ship_to_state": "TX",
+        "ship_to_postal_code": "78285",
+        "source_updated_at": "2025-11-26T09:44:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CO803471",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CO803471",
+        "customer_id": "600175",
+        "customer_name": "DUANE ALVARADO",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "MAINTENANCE",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "144",
+        "ship_from_warehouse_id": "144",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-10-22T00:00:00.000000000",
+        "invoice_date": "2025-10-22T00:00:00.000000000",
+        "shipped_at": "2025-10-23T00:00:00.000000000",
+        "commit_date": "2025-10-22T00:00:00.000000000",
+        "ship_to_name": "DUANE ALVARADO",
+        "ship_to_phone": "312-555-7912",
+        "ship_to_city": "SAN ANTONIO",
+        "ship_to_state": "TX",
+        "ship_to_postal_code": "78285",
+        "source_updated_at": "2025-10-22T15:42:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CF800783",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CF800783",
+        "customer_id": "600175",
+        "customer_name": "DUANE ALVARADO",
+        "customer_po_number": "NEW CONSTRUCTION",
+        "job_name": "NEW CONSTRUCTION",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1556",
+        "ship_from_warehouse_id": "1556",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-08-10T00:00:00.000000000",
+        "invoice_date": "2025-08-10T00:00:00.000000000",
+        "shipped_at": "2025-08-13T00:00:00.000000000",
+        "commit_date": "2025-08-10T00:00:00.000000000",
+        "ship_to_name": "DUANE ALVARADO",
+        "ship_to_phone": "312-555-7912",
+        "ship_to_city": "SAN ANTONIO",
+        "ship_to_state": "TX",
+        "ship_to_postal_code": "78285",
+        "source_updated_at": "2025-08-10T18:18:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CX802933",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CX802933",
+        "customer_id": "600175",
+        "customer_name": "DUANE ALVARADO",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "RESIDENTIAL",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2680",
+        "ship_from_warehouse_id": "2680",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-06-08T00:00:00.000000000",
+        "invoice_date": "2025-06-08T00:00:00.000000000",
+        "shipped_at": "2025-06-10T00:00:00.000000000",
+        "commit_date": "2025-06-08T00:00:00.000000000",
+        "ship_to_name": "DUANE ALVARADO",
+        "ship_to_phone": "312-555-7912",
+        "ship_to_city": "SAN ANTONIO",
+        "ship_to_state": "TX",
+        "ship_to_postal_code": "78285",
+        "source_updated_at": "2025-06-08T08:48:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CK803482",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CK803482",
+        "customer_id": "600175",
+        "customer_name": "DUANE ALVARADO",
+        "customer_po_number": "NEW CONSTRUCTION",
+        "job_name": "TRUCK STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "31",
+        "ship_from_warehouse_id": "31",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2025-02-23T00:00:00.000000000",
+        "invoice_date": "2025-02-23T00:00:00.000000000",
+        "shipped_at": "2025-02-25T00:00:00.000000000",
+        "commit_date": "2025-02-23T00:00:00.000000000",
+        "ship_to_name": "DUANE ALVARADO",
+        "ship_to_phone": "312-555-7912",
+        "ship_to_city": "SAN ANTONIO",
+        "ship_to_state": "TX",
+        "ship_to_postal_code": "78285",
+        "source_updated_at": "2025-02-23T09:32:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CR808695",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CR808695",
+        "customer_id": "600175",
+        "customer_name": "DUANE ALVARADO",
+        "customer_po_number": "RESIDENTIAL",
+        "job_name": "SHOP STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2",
+        "ship_from_warehouse_id": "2",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-01-12T00:00:00.000000000",
+        "invoice_date": "2025-01-12T00:00:00.000000000",
+        "shipped_at": "2025-01-14T00:00:00.000000000",
+        "commit_date": "2025-01-12T00:00:00.000000000",
+        "ship_to_name": "DUANE ALVARADO",
+        "ship_to_phone": "312-555-7912",
+        "ship_to_city": "SAN ANTONIO",
+        "ship_to_state": "TX",
+        "ship_to_postal_code": "78285",
+        "source_updated_at": "2025-01-12T16:20:00.000000000"
+       }
+      ],
+      "count": 9
+     },
+     "result_checksum": "6647c0aecff2b08eb889b838ee05bd926fb05881577bca22cd74d0c06e778174"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "DUANE ALVARADO",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T01:15:53.702000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "9b545a2c-0a24-4bc0-80e9-b78a08e72dc3",
+   "generated_at": "2026-08-26T01:15:57.270795Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

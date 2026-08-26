@@ -1,0 +1,1 @@
+{"business_capability": "order-discovery", "action_type": "CONFIRM_ORDER", "decision_summary": "The associate confirmed order CJ800022; raising the case.", "order_confirmation": {"candidate_set_id": "f30068c7-ac42-4297-98d5-74a3089aa8f8", "candidate_id": "CJ800022", "order_reference": "CJ800022"}}

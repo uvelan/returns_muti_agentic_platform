@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CG808900",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run2-86842309",
+   "conversation_version": 3,
+   "client_turn_id": "qa-4904b22a-bbeb-4e17-942d-477d43d2eefe",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CG808900 / [REDACTED] / LAKEWOOD / 2026-07-31",
+      "evidence_refs": [
+       {
+        "query_execution_id": "36270d58-5f5d-4832-bf2a-34fb71bc26d7",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "36270d58-5f5d-4832-bf2a-34fb71bc26d7",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "79805b0f98851c829dd7ee0025efbac11f610643479b42c865c92e6aa97db9e9",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CG808900"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CG808900",
+        "data": {
+         "order_key": "LENZ*CG808900",
+         "account_id": "LENZ",
+         "sales_order_number": "CG808900",
+         "customer_id": "600146",
+         "customer_name": "RONALD OKONKWO",
+         "customer_po_number": "RESIDENTIAL",
+         "job_name": "STOCK",
+         "order_status": "INVOICED",
+         "sales_type": "INV",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "2",
+         "ship_from_warehouse_id": "2",
+         "shipping_method": "CUSTOMER PICKUP",
+         "order_date": "2026-07-31T00:00:00.000000000",
+         "invoice_date": "2026-07-31T00:00:00.000000000",
+         "shipped_at": "2026-07-31T00:00:00.000000000",
+         "commit_date": "2026-07-31T00:00:00.000000000",
+         "ship_to_name": "RONALD OKONKWO",
+         "ship_to_phone": "312-555-7260",
+         "ship_to_city": "LAKEWOOD",
+         "ship_to_state": "CO",
+         "ship_to_postal_code": "80262",
+         "source_updated_at": "2026-07-31T12:35:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "8d0888ceb6da146ad4a797c6caa635fee0719be03c96c60d67d3b1937bf5a38c"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "RONALD OKONKWO",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T01:18:08.507000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "01afe528-b820-40c3-9b29-7de8d4e7d900",
+   "generated_at": "2026-08-26T01:18:12.626513Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}
