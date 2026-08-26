@@ -355,6 +355,28 @@ class ReturnShipmentStateService:
                 carrier=_reference(row.get("carrier_code")),
             )
 
+
+    async def _append_once(self, **fact) -> None:
+        """Append one derived-id fact, absorbing the already-recorded case.
+
+        The docstring on `_record_on_case` always promised a retry of the same
+        reading 'rewrites the same fact'; `append_case_fact` is insert-only,
+        so the second reading with the same derived id raised
+        DuplicateKeyError and failed the whole update -- which surfaced the
+        moment the console recorded two events faster than the graph
+        projection advanced between them. The duplicate IS the documented
+        no-op: the same observation about the same parcel is already durable.
+        """
+        from pymongo.errors import DuplicateKeyError
+
+        try:
+            await self._repository.append_case_fact(**fact)
+        except DuplicateKeyError:
+            logger.debug(
+                "return_shipment_fact_already_recorded",
+                extra={"case_id": fact.get("case_id"), "fact_id": fact.get("fact_id")},
+            )
+
     async def _record_on_case(self, case_id: str, reading: CaseShipmentReading) -> None:
         """Two facts: the state, and what it was concluded from.
 
@@ -370,7 +392,7 @@ class ReturnShipmentStateService:
         grow the log without adding information.
         """
         key = f"{reading.return_reference}-{reading.tracking_reference}"
-        await self._repository.append_case_fact(
+        await self._append_once(
             fact_id=f"fulfillment-status-{key}-{reading.status.value}",
             case_id=case_id,
             fact_name=FULFILLMENT_STATUS_FACT,
@@ -383,7 +405,7 @@ class ReturnShipmentStateService:
             source_system="RETURN_SHIPMENT",
             source_path="RETURN_SHIPMENT_GRAPH_READ",
         )
-        await self._repository.append_case_fact(
+        await self._append_once(
             fact_id=f"shipment-evidence-{key}-{reading.evidence_reference}",
             case_id=case_id,
             fact_name=FULFILLMENT_EVIDENCE_FACT,
