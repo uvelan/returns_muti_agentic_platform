@@ -1,0 +1,1 @@
+{"business_capability": "order-discovery", "action_type": "CONFIRM_ORDER", "decision_summary": "The associate confirmed order CP804566; raising the case.", "order_confirmation": {"candidate_set_id": "6368d548-761c-4c6e-b7d5-317b7ea12133", "candidate_id": "CP804566", "order_reference": "CP804566"}}

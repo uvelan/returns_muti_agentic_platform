@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CA806592",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run21-7b44680d",
+   "conversation_version": 3,
+   "client_turn_id": "qa-6b105d76-6060-4fa5-9072-5f50a1d62d67",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CA806592 / [REDACTED] / TULSA / 2026-08-01",
+      "evidence_refs": [
+       {
+        "query_execution_id": "ff2520a4-6496-49ef-9e6e-93e8a264b60f",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "ff2520a4-6496-49ef-9e6e-93e8a264b60f",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "6d519d882b396bc2c17b75e43fb1c496d55cfe600f71b20e0ef6248f6142b8f1",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CA806592"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CA806592",
+        "data": {
+         "order_key": "LAKEWOOD*CA806592",
+         "account_id": "LAKEWOOD",
+         "sales_order_number": "CA806592",
+         "customer_id": "600493",
+         "customer_name": "CONNIE FERRARO",
+         "customer_po_number": "JOB",
+         "job_name": "RESIDENTIAL",
+         "order_status": "CALLCSR",
+         "sales_type": "CASH",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "31",
+         "ship_from_warehouse_id": "31",
+         "shipping_method": "CUSTOMER PICKUP",
+         "order_date": "2026-08-01T00:00:00.000000000",
+         "invoice_date": "2026-08-01T00:00:00.000000000",
+         "shipped_at": "2026-08-03T00:00:00.000000000",
+         "commit_date": "2026-08-01T00:00:00.000000000",
+         "ship_to_name": "CONNIE FERRARO",
+         "ship_to_phone": "469-555-8734",
+         "ship_to_city": "TULSA",
+         "ship_to_state": "OK",
+         "ship_to_postal_code": "74124",
+         "source_updated_at": "2026-08-01T10:30:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "c3229f26f69e6fb5a179c3da493d612c4118377618fe9435bc39250dee901585"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "CONNIE FERRARO",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T03:51:32.990000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "6442cd7d-570e-4a27-8d28-a3f16a6b9927",
+   "generated_at": "2026-08-26T03:51:36.572519Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

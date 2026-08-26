@@ -1,0 +1,51 @@
+{
+ "sent": "yes confirm it",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run21-7b44680d",
+   "conversation_version": 5,
+   "client_turn_id": "qa-36dfacc1-aeaf-43e8-bee7-f9c182f03253",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "What is the reason for the return?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "What is the reason for the return?"
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "bb765668-8d5c-4903-b103-e00084d47dc2",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "CONNIE FERRARO",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T03:51:38.936000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "b1b8b103-2e3d-4611-a815-09f62eb1e334",
+   "generated_at": "2026-08-26T03:51:48.751113Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

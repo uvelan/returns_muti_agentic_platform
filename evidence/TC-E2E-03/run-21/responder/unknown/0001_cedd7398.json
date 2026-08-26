@@ -1,0 +1,12 @@
+{
+ "request_id": "cedd73983a9b463389f6749e5560fe18",
+ "messages": [
+  {
+   "role": "user",
+   "content": "ping"
+  }
+ ],
+ "metadata": {
+  "probe": true
+ }
+}

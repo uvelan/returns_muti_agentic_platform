@@ -1,0 +1,43 @@
+{
+ "sent": "Confirm order CP804566.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run20-ae26dfb7",
+   "conversation_version": 4,
+   "client_turn_id": "qa-a2b2e64b-122e-4190-ad90-e1b790f9dff9",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [],
+    "suggestions": [],
+    "requested_input": "You selected order CP804566. Confirm this order to raise the return?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run20-ae26dfb7:qa-a2b2e64b-122e-4190-ad90-e1b790f9dff9:1",
+   "case_id": null,
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "BLAKE BALDWIN",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T03:33:16.959000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "a0639dd9-3846-4fe2-86e3-c86006856e27",
+   "generated_at": "2026-08-26T03:33:21.607411Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

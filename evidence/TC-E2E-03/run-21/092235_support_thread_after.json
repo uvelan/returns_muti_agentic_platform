@@ -1,0 +1,112 @@
+[
+ {
+  "id": "deac50c0-ed47-445a-893d-612dc3bd8387",
+  "threadId": "58931c8e-bcea-4994-ad11-128cfac0794c",
+  "sequence": 1,
+  "senderRole": "AGENT",
+  "senderId": "return-workflow-agent",
+  "messageType": "REQUEST",
+  "messageText": "RETURN SUPPORT REQUEST\n\nCase:\n- Case ID: bb765668-8d5c-4903-b103-e00084d47dc2\n- Work Item ID: 4b041b69-fe5b-4a85-b62a-734fa54bfba4\n- Created Date/Time: 2026-08-26T03:52:20.562000+00:00\n- Workflow Status at Handoff: GATHERING_INFO\n\nCustomer:\n- Customer Name: CONNIE FERRARO\n- Customer Reference: 600493\n- Branch Associate: Not available\n- Branch Associate Email: Not available\n- Branch Associate Phone: Not available\n\nOrder:\n- Order Number: CA806592\n- Line/Order-Line Number: 1\n  - Product Name: WHISPERVALUE DC FAN CNDST SNSR\n  - Colour: Not available\n  - SKU: PANFV0510VSC1\n  - Confirmed Return Quantity: 1\n  - Return Reason: SHIPPING_DAMAGE\n  - Product Condition: NEW_IN_ORIGINAL_PACKAGING\n\nReturn Details:\n- Return Method: BRANCH_UPS\n- Requested Resolution: Not available\n- Product Presence: Not available\n- Associate Notes: Not available\n\nBay Assignment:\n- Assignment Status: PHYSICAL_RECEIPT_REQUIRED\n- Recommended Bay: Not available\n- Warehouse/Branch: 31\n- Return Location: Not available\n- Handling/Staging Instructions: Not available\n- Unresolved Reason: PHYSICAL_RECEIPT_REQUIRED\n\nVerification:\n- Order Confirmation: Confirmed\n- Required Return Information: Incomplete\n- Policy Evaluation: APPROVE on the STANDARD_RETURN route\n- Bay Assignment Source: Bay Assignment Agent\n\nRequested Support Action:\n- Review the complete return request.\n- Review or confirm the bay recommendation.\n- Resolve manual bay assignment: no bay could be recommended.\n- Verify all Support-owned conditions, including warranty when applicable.\n- Create or decline the RMA through the authoritative Support workflow.\n",
+  "attachmentIds": [],
+  "businessPayload": {
+   "bayAssignment": {
+    "bayReference": null,
+    "handlingInstructions": null,
+    "returnLocation": null,
+    "source": "BAY_ASSIGNMENT_AGENT",
+    "status": "PHYSICAL_RECEIPT_REQUIRED",
+    "unresolvedReason": "PHYSICAL_RECEIPT_REQUIRED",
+    "warehouseReference": "31"
+   },
+   "caseId": "bb765668-8d5c-4903-b103-e00084d47dc2",
+   "createdAt": "2026-08-26T03:52:20.562000+00:00",
+   "customer": {
+    "contactEmail": null,
+    "contactName": null,
+    "contactPhone": null,
+    "name": "CONNIE FERRARO",
+    "reference": "600493"
+   },
+   "order": {
+    "items": [
+     {
+      "colour": null,
+      "condition": "NEW_IN_ORIGINAL_PACKAGING",
+      "lineReference": "1",
+      "productName": "WHISPERVALUE DC FAN CNDST SNSR",
+      "productReference": "7347390",
+      "quantity": 1,
+      "reason": "SHIPPING_DAMAGE",
+      "returnMethod": "BRANCH_UPS",
+      "sku": "PANFV0510VSC1"
+     }
+    ],
+    "reference": "CA806592"
+   },
+   "returnDetails": {
+    "additional": {},
+    "associateNotes": null,
+    "method": "BRANCH_UPS",
+    "productPresence": null,
+    "requestedResolution": null
+   },
+   "schemaVersion": "support-handoff-v1",
+   "verification": {
+    "orderConfirmed": true,
+    "policyEvaluation": {
+     "decision": "APPROVE",
+     "route": "STANDARD_RETURN",
+     "skippedReason": null,
+     "state": "EVALUATED"
+    },
+    "requiredReturnInformationComplete": false
+   },
+   "workItemId": "4b041b69-fe5b-4a85-b62a-734fa54bfba4",
+   "workflowStatusAtHandoff": "GATHERING_INFO"
+  },
+  "createdAt": "2026-08-26T03:52:21.672000"
+ },
+ {
+  "id": "bc389b0f-0078-4ef3-b9b2-323d660beb6d",
+  "threadId": "58931c8e-bcea-4994-ad11-128cfac0794c",
+  "sequence": 2,
+  "senderRole": "AGENT",
+  "senderId": "support-response-agent",
+  "messageType": "RETURN_CREATION",
+  "messageText": "Return created for case bb765668-8d5c-4903-b103-e00084d47dc2: RMA RMA-BB7656688D5C4903B103E00084D47DC2 (BRANCH_UPS), tracking TRK-RMABB7656688D5C4903B103E00084D47DC2, label LBL-RMABB7656688D5C4903B103E00084D47DC2.\n[RMA-BB7656688D5C4903B103E00084D47DC2 / BRANCH_UPS]\n- 1 x WHISPERVALUE DC FAN CNDST SNSR (line 1)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nAttach the return label to each package.",
+  "attachmentIds": [],
+  "businessPayload": {
+   "supportAgentEventId": "support-response-agent:4b041b69-fe5b-4a85-b62a-734fa54bfba4",
+   "decision": {
+    "agent": "Support Response Agent",
+    "agentVersion": "1.0",
+    "configurationVersion": "FERGUSON-RETURN-ASSUMPTIONS-1.0",
+    "decisionType": "SUPPORT_RESPONSE",
+    "decision": "RETURN_PLANNED",
+    "explanation": "Artifacts follow the released requirement table for each shipping-class group; recording them is the executor's act, not this assessment's.",
+    "confidenceMillionths": 950000,
+    "evidenceReferences": [
+     "CASE:bb765668-8d5c-4903-b103-e00084d47dc2",
+     "ORDER_LINE:1"
+    ],
+    "warnings": [],
+    "executionMode": "DETERMINISTIC",
+    "metadata": {}
+   },
+   "plan": {
+    "returnReference": "RMA-BB7656688D5C4903B103E00084D47DC2",
+    "trackingReference": "TRK-RMABB7656688D5C4903B103E00084D47DC2",
+    "labelReference": "LBL-RMABB7656688D5C4903B103E00084D47DC2",
+    "returnLocation": null,
+    "shippingInstructionReference": "SHIP-RMABB7656688D5C4903B103E00084D47DC2",
+    "returnMethod": "BRANCH_UPS",
+    "carrier": "UPS",
+    "orderLineReferences": [
+     "1"
+    ],
+    "instructions": "- 1 x WHISPERVALUE DC FAN CNDST SNSR (line 1)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nAttach the return label to each package."
+   }
+  },
+  "createdAt": "2026-08-26T03:52:31.739000"
+ }
+]

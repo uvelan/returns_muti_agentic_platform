@@ -1,0 +1,25 @@
+[
+ {
+  "step": 1,
+  "state": "PASS",
+  "note": "flow started on a partial misspelled name; no crash"
+ },
+ {
+  "step": 2,
+  "state": "PASS",
+  "note": "bounded fuzzy list (2), target present, matches=['customer_name_fuzzy']"
+ },
+ {
+  "step": 3,
+  "state": "PASS",
+  "note": "customer confirmed in-conversation (fact provenance asserted on case later)"
+ },
+ {
+  "step": 4,
+  "state": "PASS",
+  "note": "customer's orders listed from graph (12), config-driven fields"
+ },
+ {
+  "failure": "HTTP 503 /api/v2/order-agent/conversations/disc-tc02-run19-87af741d/turns: {\"data\":null,\"page\":null,\"meta\":{\"schema_version\":\"1.0\",\"request_id\":\"42b946bb-c758-4e8b-ba21-8c9f7075459f\",\"generated_at\":\"2026-08-26T03:31:41.207796Z\",\"freshness\":\"LIVE\",\"partial\":true,\"warnings\":[{\"source\":\"API\",\"code\":\"ORDER_AGENT_WORKFLOW_FAILED\",\"message\":\"The Order Discovery workflow could not process the request.\"}]}}"
+ }
+]

@@ -1,0 +1,119 @@
+{
+ "sent": "customer wants to return an item, name is blake baldwn",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run20-ae26dfb7",
+   "conversation_version": 1,
+   "client_turn_id": "qa-0cd45503-1c1b-4906-94fe-bd40b39a51cf",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 600032 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "c1089648-85ac-4162-9927-088f5fe16cff",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 2: 600033 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "c1089648-85ac-4162-9927-088f5fe16cff",
+        "result_path": [
+         "candidates",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "c1089648-85ac-4162-9927-088f5fe16cff",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "873be032655f8d738d3175fc47e40e363f666b0391dc0a53af01a28c8ab4c3d2",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "blake baldwn"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600032",
+        "data": {
+         "account_id": "LAKEWOOD",
+         "customer_id": "600032",
+         "customer_name": "BLAKE BALDWIN"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600033",
+        "data": {
+         "account_id": "DALLAS",
+         "customer_id": "600033",
+         "customer_name": "BLAKE BALDWIN"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "590ee96bca9fdb682ae21406653f5ef70c2952b61b3be65519de607240099b0c"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T03:32:59.111000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "a00e25e3-2116-4edd-ad3c-e54c70c3911d",
+   "generated_at": "2026-08-26T03:33:02.592670Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

@@ -1,0 +1,43 @@
+{
+ "sent": "Confirm order CA806592.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run21-7b44680d",
+   "conversation_version": 4,
+   "client_turn_id": "qa-3741f15a-4a1f-4e80-b16f-cbbcafc45671",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [],
+    "suggestions": [],
+    "requested_input": "You selected order CA806592. Confirm this order to raise the return?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run21-7b44680d:qa-3741f15a-4a1f-4e80-b16f-cbbcafc45671:1",
+   "case_id": null,
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "CONNIE FERRARO",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T03:51:38.936000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "09a0be0d-53b5-4040-9aa0-7b6787f4b7c0",
+   "generated_at": "2026-08-26T03:51:41.366649Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

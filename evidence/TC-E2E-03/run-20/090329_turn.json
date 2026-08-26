@@ -1,0 +1,51 @@
+{
+ "sent": "yes confirm it",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run20-ae26dfb7",
+   "conversation_version": 5,
+   "client_turn_id": "qa-2ff1ad16-1f45-47c7-a594-926ce4f098e4",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "What is the reason for the return?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "What is the reason for the return?"
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "413e3924-9896-438f-aa31-ecb106bdce3d",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "BLAKE BALDWIN",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T03:33:16.959000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "f22d5384-16fc-4c2c-b3c1-d07d629878b4",
+   "generated_at": "2026-08-26T03:33:29.846850Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

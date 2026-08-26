@@ -1,0 +1,1 @@
+{"business_capability": "order-discovery", "action_type": "ORDER_SEARCH", "decision_summary": "Searching by order number CA806592.", "search_intent": {"searchMode": "DISCOVER", "confidence": 0.9, "orderNumbers": ["CA806592"]}}

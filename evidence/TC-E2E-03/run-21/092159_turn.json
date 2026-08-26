@@ -1,0 +1,58 @@
+{
+ "sent": "the item arrived damaged",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run21-7b44680d",
+   "conversation_version": 6,
+   "client_turn_id": "qa-9d0a3f47-7c24-49e6-88c2-2e88df129409",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "How many units are being returned?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "How many units are being returned?"
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "bb765668-8d5c-4903-b103-e00084d47dc2",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "CONNIE FERRARO",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "return_reason",
+     "value": "DAMAGED",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T03:51:55.777000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "1e3651d7-7231-4df3-8ac1-8c3c0c4283a6",
+   "generated_at": "2026-08-26T03:51:59.134073Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

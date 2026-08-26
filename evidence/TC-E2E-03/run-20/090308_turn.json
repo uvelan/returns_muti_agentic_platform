@@ -1,0 +1,520 @@
+{
+ "sent": "Confirm the customer BLAKE BALDWIN on account LAKEWOOD.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run20-ae26dfb7",
+   "conversation_version": 2,
+   "client_turn_id": "qa-5a2eb822-67d3-47af-9306-681e50058299",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CI808547 / 2026-07-20T0 / LEXINGTON / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "747d1fff-bad1-4f83-86da-1783e6a8a70a",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CP804566 / 2026-08-01T0 / LEXINGTON / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "747d1fff-bad1-4f83-86da-1783e6a8a70a",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CE803188 / 2026-07-25T0 / LEXINGTON / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "747d1fff-bad1-4f83-86da-1783e6a8a70a",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CA804548 / 2026-03-02T0 / LEXINGTON / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "747d1fff-bad1-4f83-86da-1783e6a8a70a",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CT807993 / 2026-02-22T0 / LEXINGTON / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "747d1fff-bad1-4f83-86da-1783e6a8a70a",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CA800468 / 2026-02-08T0 / LEXINGTON / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "747d1fff-bad1-4f83-86da-1783e6a8a70a",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 7: CX800848 / 2025-12-04T0 / LEXINGTON / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "747d1fff-bad1-4f83-86da-1783e6a8a70a",
+        "result_path": [
+         "rows",
+         "6"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-7",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 8: CP807419 / 2025-11-06T0 / LEXINGTON / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "747d1fff-bad1-4f83-86da-1783e6a8a70a",
+        "result_path": [
+         "rows",
+         "7"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-8",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 9: CH802269 / 2025-10-05T0 / LEXINGTON / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "747d1fff-bad1-4f83-86da-1783e6a8a70a",
+        "result_path": [
+         "rows",
+         "8"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-9",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 10: CC806544 / 2025-08-20T0 / LEXINGTON / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "747d1fff-bad1-4f83-86da-1783e6a8a70a",
+        "result_path": [
+         "rows",
+         "9"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "747d1fff-bad1-4f83-86da-1783e6a8a70a",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "8a9b6731f7473ae89e5393817d7c76cd017c88c7b7600be8ce500dfbba09cd12",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "LAKEWOOD*CI808547",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CI808547",
+        "customer_id": "600032",
+        "customer_name": "BLAKE BALDWIN",
+        "customer_po_number": "WARRANTY",
+        "job_name": "JOB",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "686",
+        "ship_from_warehouse_id": "686",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-07-20T00:00:00.000000000",
+        "invoice_date": "2026-07-20T00:00:00.000000000",
+        "shipped_at": "2026-07-20T00:00:00.000000000",
+        "commit_date": "2026-07-20T00:00:00.000000000",
+        "ship_to_name": "BLAKE BALDWIN",
+        "ship_to_phone": "303-555-3652",
+        "ship_to_city": "LEXINGTON",
+        "ship_to_state": "KY",
+        "ship_to_postal_code": "40511",
+        "source_updated_at": "2026-07-20T08:57:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CP804566",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CP804566",
+        "customer_id": "600032",
+        "customer_name": "BLAKE BALDWIN",
+        "customer_po_number": "JOB",
+        "job_name": "STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "795",
+        "ship_from_warehouse_id": "795",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-08-01T00:00:00.000000000",
+        "invoice_date": "2026-08-01T00:00:00.000000000",
+        "shipped_at": "2026-08-02T00:00:00.000000000",
+        "commit_date": "2026-08-01T00:00:00.000000000",
+        "ship_to_name": "BLAKE BALDWIN",
+        "ship_to_phone": "303-555-3652",
+        "ship_to_city": "LEXINGTON",
+        "ship_to_state": "KY",
+        "ship_to_postal_code": "40511",
+        "source_updated_at": "2026-08-01T16:23:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CE803188",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CE803188",
+        "customer_id": "600032",
+        "customer_name": "BLAKE BALDWIN",
+        "customer_po_number": "TRUCK STOCK",
+        "job_name": "WARRANTY",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "603",
+        "ship_from_warehouse_id": "603",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-07-25T00:00:00.000000000",
+        "invoice_date": "2026-07-25T00:00:00.000000000",
+        "shipped_at": "2026-07-26T00:00:00.000000000",
+        "commit_date": "2026-07-25T00:00:00.000000000",
+        "ship_to_name": "BLAKE BALDWIN",
+        "ship_to_phone": "303-555-3652",
+        "ship_to_city": "LEXINGTON",
+        "ship_to_state": "KY",
+        "ship_to_postal_code": "40511",
+        "source_updated_at": "2026-07-25T10:11:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CA804548",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CA804548",
+        "customer_id": "600032",
+        "customer_name": "BLAKE BALDWIN",
+        "customer_po_number": "RESIDENTIAL",
+        "job_name": "SHOP STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "596",
+        "ship_from_warehouse_id": "596",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-03-02T00:00:00.000000000",
+        "invoice_date": "2026-03-02T00:00:00.000000000",
+        "shipped_at": "2026-03-05T00:00:00.000000000",
+        "commit_date": "2026-03-02T00:00:00.000000000",
+        "ship_to_name": "BLAKE BALDWIN",
+        "ship_to_phone": "303-555-3652",
+        "ship_to_city": "LEXINGTON",
+        "ship_to_state": "KY",
+        "ship_to_postal_code": "40511",
+        "source_updated_at": "2026-03-02T14:53:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CT807993",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CT807993",
+        "customer_id": "600032",
+        "customer_name": "BLAKE BALDWIN",
+        "customer_po_number": "JOB",
+        "job_name": "MAINTENANCE",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2624",
+        "ship_from_warehouse_id": "2624",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-02-22T00:00:00.000000000",
+        "invoice_date": "2026-02-22T00:00:00.000000000",
+        "shipped_at": "2026-02-23T00:00:00.000000000",
+        "commit_date": "2026-02-22T00:00:00.000000000",
+        "ship_to_name": "BLAKE BALDWIN",
+        "ship_to_phone": "303-555-3652",
+        "ship_to_city": "LEXINGTON",
+        "ship_to_state": "KY",
+        "ship_to_postal_code": "40511",
+        "source_updated_at": "2026-02-22T08:00:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CA800468",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CA800468",
+        "customer_id": "600032",
+        "customer_name": "BLAKE BALDWIN",
+        "customer_po_number": "STOCK",
+        "job_name": "WAREHOUSE",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "603",
+        "ship_from_warehouse_id": "603",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-02-08T00:00:00.000000000",
+        "invoice_date": "2026-02-08T00:00:00.000000000",
+        "shipped_at": "2026-02-10T00:00:00.000000000",
+        "commit_date": "2026-02-08T00:00:00.000000000",
+        "ship_to_name": "BLAKE BALDWIN",
+        "ship_to_phone": "303-555-3652",
+        "ship_to_city": "LEXINGTON",
+        "ship_to_state": "KY",
+        "ship_to_postal_code": "40511",
+        "source_updated_at": "2026-02-08T15:09:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CX800848",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CX800848",
+        "customer_id": "600032",
+        "customer_name": "BLAKE BALDWIN",
+        "customer_po_number": "TRUCK STOCK",
+        "job_name": "TRUCK STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1781",
+        "ship_from_warehouse_id": "1781",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-12-04T00:00:00.000000000",
+        "invoice_date": "2025-12-04T00:00:00.000000000",
+        "shipped_at": "2025-12-06T00:00:00.000000000",
+        "commit_date": "2025-12-04T00:00:00.000000000",
+        "ship_to_name": "BLAKE BALDWIN",
+        "ship_to_phone": "303-555-3652",
+        "ship_to_city": "LEXINGTON",
+        "ship_to_state": "KY",
+        "ship_to_postal_code": "40511",
+        "source_updated_at": "2025-12-04T15:03:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CP807419",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CP807419",
+        "customer_id": "600032",
+        "customer_name": "BLAKE BALDWIN",
+        "customer_po_number": "TRUCK STOCK",
+        "job_name": "TRUCK STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "686",
+        "ship_from_warehouse_id": "686",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-11-06T00:00:00.000000000",
+        "invoice_date": "2025-11-06T00:00:00.000000000",
+        "shipped_at": "2025-11-06T00:00:00.000000000",
+        "commit_date": "2025-11-06T00:00:00.000000000",
+        "ship_to_name": "BLAKE BALDWIN",
+        "ship_to_phone": "303-555-3652",
+        "ship_to_city": "LEXINGTON",
+        "ship_to_state": "KY",
+        "ship_to_postal_code": "40511",
+        "source_updated_at": "2025-11-06T10:55:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CH802269",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CH802269",
+        "customer_id": "600032",
+        "customer_name": "BLAKE BALDWIN",
+        "customer_po_number": "STOCK",
+        "job_name": "JOB",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "133",
+        "ship_from_warehouse_id": "133",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-10-05T00:00:00.000000000",
+        "invoice_date": "2025-10-05T00:00:00.000000000",
+        "shipped_at": "2025-10-08T00:00:00.000000000",
+        "commit_date": "2025-10-05T00:00:00.000000000",
+        "ship_to_name": "BLAKE BALDWIN",
+        "ship_to_phone": "303-555-3652",
+        "ship_to_city": "LEXINGTON",
+        "ship_to_state": "KY",
+        "ship_to_postal_code": "40511",
+        "source_updated_at": "2025-10-05T10:27:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CC806544",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CC806544",
+        "customer_id": "600032",
+        "customer_name": "BLAKE BALDWIN",
+        "customer_po_number": "WARRANTY",
+        "job_name": "TRUCK STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-08-20T00:00:00.000000000",
+        "invoice_date": "2025-08-20T00:00:00.000000000",
+        "shipped_at": "2025-08-20T00:00:00.000000000",
+        "commit_date": "2025-08-20T00:00:00.000000000",
+        "ship_to_name": "BLAKE BALDWIN",
+        "ship_to_phone": "303-555-3652",
+        "ship_to_city": "LEXINGTON",
+        "ship_to_state": "KY",
+        "ship_to_postal_code": "40511",
+        "source_updated_at": "2025-08-20T14:03:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CI803899",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CI803899",
+        "customer_id": "600032",
+        "customer_name": "BLAKE BALDWIN",
+        "customer_po_number": "NEW CONSTRUCTION",
+        "job_name": "MAINTENANCE",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1305",
+        "ship_from_warehouse_id": "1305",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-04-05T00:00:00.000000000",
+        "invoice_date": "2025-04-05T00:00:00.000000000",
+        "shipped_at": "2025-04-07T00:00:00.000000000",
+        "commit_date": "2025-04-05T00:00:00.000000000",
+        "ship_to_name": "BLAKE BALDWIN",
+        "ship_to_phone": "303-555-3652",
+        "ship_to_city": "LEXINGTON",
+        "ship_to_state": "KY",
+        "ship_to_postal_code": "40511",
+        "source_updated_at": "2025-04-05T15:38:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CN809842",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CN809842",
+        "customer_id": "600032",
+        "customer_name": "BLAKE BALDWIN",
+        "customer_po_number": "NEW CONSTRUCTION",
+        "job_name": "SERVICE CALL",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "133",
+        "ship_from_warehouse_id": "133",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-02-05T00:00:00.000000000",
+        "invoice_date": "2025-02-05T00:00:00.000000000",
+        "shipped_at": "2025-02-05T00:00:00.000000000",
+        "commit_date": "2025-02-05T00:00:00.000000000",
+        "ship_to_name": "BLAKE BALDWIN",
+        "ship_to_phone": "303-555-3652",
+        "ship_to_city": "LEXINGTON",
+        "ship_to_state": "KY",
+        "ship_to_postal_code": "40511",
+        "source_updated_at": "2025-02-05T09:26:00.000000000"
+       }
+      ],
+      "count": 12
+     },
+     "result_checksum": "acf7e53c34038cd03c5415e6bb47288f2b70cc1fa8ba13ad7062636a9b369060"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "BLAKE BALDWIN",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T03:33:04.912000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "95d4e509-937d-4a7a-818c-bba9e59957f1",
+   "generated_at": "2026-08-26T03:33:08.424845Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

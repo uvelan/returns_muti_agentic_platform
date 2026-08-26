@@ -1,0 +1,65 @@
+{
+ "sent": "1 unit",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run20-ae26dfb7",
+   "conversation_version": 7,
+   "client_turn_id": "qa-c7e809fb-3b41-4a5d-8003-93586c6d6255",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "Which branch or location is the customer returning it through?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "Which branch or location is the customer returning it through?"
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "413e3924-9896-438f-aa31-ecb106bdce3d",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "BLAKE BALDWIN",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "return_reason",
+     "value": "DAMAGED",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "ordered_quantity",
+     "value": 1,
+     "status": "USABLE",
+     "label": "quantity being returned",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T03:33:47.127000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "dfc0d5f7-5330-4ecc-b6be-189b3b3e0e19",
+   "generated_at": "2026-08-26T03:33:51.189630Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

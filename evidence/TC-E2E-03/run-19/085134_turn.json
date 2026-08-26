@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CP804566",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run19-87af741d",
+   "conversation_version": 3,
+   "client_turn_id": "qa-d49aefc1-ede5-40f7-8b37-6e3405d15f9b",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CP804566 / [REDACTED] / LEXINGTON / 2026-08-01",
+      "evidence_refs": [
+       {
+        "query_execution_id": "1d0f5be2-020f-4212-876a-c5a7f12fb85d",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "1d0f5be2-020f-4212-876a-c5a7f12fb85d",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "282eba384b792421c05823038705dd7702a96f8254c1767798fd80646e3fa2ef",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CP804566"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CP804566",
+        "data": {
+         "order_key": "LAKEWOOD*CP804566",
+         "account_id": "LAKEWOOD",
+         "sales_order_number": "CP804566",
+         "customer_id": "600032",
+         "customer_name": "BLAKE BALDWIN",
+         "customer_po_number": "JOB",
+         "job_name": "STOCK",
+         "order_status": "INVOICED",
+         "sales_type": "CASH",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "795",
+         "ship_from_warehouse_id": "795",
+         "shipping_method": "CUSTOMER PICKUP",
+         "order_date": "2026-08-01T00:00:00.000000000",
+         "invoice_date": "2026-08-01T00:00:00.000000000",
+         "shipped_at": "2026-08-02T00:00:00.000000000",
+         "commit_date": "2026-08-01T00:00:00.000000000",
+         "ship_to_name": "BLAKE BALDWIN",
+         "ship_to_phone": "303-555-3652",
+         "ship_to_city": "LEXINGTON",
+         "ship_to_state": "KY",
+         "ship_to_postal_code": "40511",
+         "source_updated_at": "2026-08-01T16:23:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "6578f97deb9138057305bba09306e778271d98001bc9f3fd2099fb2a4c7329bd"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "BLAKE BALDWIN",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T03:20:49.455000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "124cda49-4ae9-48d2-b69d-141dbd9f8160",
+   "generated_at": "2026-08-26T03:21:34.497879Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}
