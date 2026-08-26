@@ -698,11 +698,18 @@ class Run:
             facts = self.facts()
         if "fulfillment_exception" not in facts:
             self.fail(22, "the exception never surfaced on the case")
-        # resume: back to the rung we forked from
+        # resume: forward, to one of the rungs the exception itself allows --
+        # the catalog never walks a shipment backwards
+        fork_entry = next(e for e in exceptions if e["code"] == fork)
+        resume_to = next(
+            (c for c in fork_entry.get("allowed_next") or [] if c in codes),
+            None)
+        if resume_to is None:
+            self.fail(22, f"exception {fork} allows no rung to resume to")
         resumed = self.call(
             "POST", f"/api/shipments/{shipment_id}/events",
-            {"status": current, "note": "resumed after exception"}).get("data") or {}
-        if resumed.get("current_status") != current:
+            {"status": resume_to, "note": "resumed after exception"}).get("data") or {}
+        if resumed.get("current_status") != resume_to:
             self.fail(22, "the ladder did not resume after the exception")
         if len(resumed.get("events") or []) != before + 2:
             self.fail(22, "prior events were lost across the exception")
