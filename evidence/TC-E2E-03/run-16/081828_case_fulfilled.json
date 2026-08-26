@@ -1,0 +1,669 @@
+{
+ "caseId": "bf4e1340-e112-4cad-9c8c-ac54a3abdd1d",
+ "tenantId": "default",
+ "principalId": "dev-operator",
+ "conversationId": "disc-tc02-run16-1eb527c9",
+ "status": "COMPLETED_EXTERNAL_SETTLEMENT",
+ "revision": 81,
+ "updatedAt": "2026-08-26T02:48:19.068000Z",
+ "customer": {
+  "customerReference": "601202",
+  "accountReference": null,
+  "displayName": "WESLEY COFFEY",
+  "branchReference": null
+ },
+ "confirmedOrder": {
+  "orderReference": "CQ801512",
+  "orderSource": null,
+  "sourceWebOrderNumber": null,
+  "trilogieOrderNumber": null,
+  "confirmationKey": "default|disc-tc02-run16-1eb527c9|CQ801512|",
+  "candidateSetId": null,
+  "candidateId": null,
+  "confirmedAt": "2026-08-26T02:42:13.886000Z"
+ },
+ "selectedItems": null,
+ "facts": [
+  {
+   "factId": "bay-requested-bf4e1340-e112-4cad-9c8c-ac54a3abdd1d",
+   "factName": "bay_assignment_requested",
+   "value": true,
+   "agentId": "bay-assignment-agent",
+   "channel": "SYSTEM",
+   "sourceSystem": null,
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:15.622000Z",
+   "recordedAt": "2026-08-26T02:42:15.622000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "bay_capacity_evidence-bf4e1340-e112-4cad-9c8c-ac54a3abdd1d",
+   "factName": "bay_capacity_evidence",
+   "value": "DECLARED",
+   "agentId": "bay-assignment-agent",
+   "channel": "SYSTEM",
+   "sourceSystem": null,
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:17.118000Z",
+   "recordedAt": "2026-08-26T02:42:17.118000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "bay_evidence_reference-bf4e1340-e112-4cad-9c8c-ac54a3abdd1d",
+   "factName": "bay_evidence_reference",
+   "value": "WAREHOUSE_ABSENT:WAREHOUSE_NOT_IN_GRAPH",
+   "agentId": "bay-assignment-agent",
+   "channel": "SYSTEM",
+   "sourceSystem": null,
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:17.086000Z",
+   "recordedAt": "2026-08-26T02:42:17.086000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "bay_reason-bf4e1340-e112-4cad-9c8c-ac54a3abdd1d",
+   "factName": "bay_reason",
+   "value": "PHYSICAL_RECEIPT_REQUIRED",
+   "agentId": "bay-assignment-agent",
+   "channel": "SYSTEM",
+   "sourceSystem": null,
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:17.005000Z",
+   "recordedAt": "2026-08-26T02:42:17.005000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "bay_warehouse_reference-bf4e1340-e112-4cad-9c8c-ac54a3abdd1d",
+   "factName": "bay_warehouse_reference",
+   "value": "3526",
+   "agentId": "bay-assignment-agent",
+   "channel": "SYSTEM",
+   "sourceSystem": null,
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:16.974000Z",
+   "recordedAt": "2026-08-26T02:42:16.974000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "carrier-08962449-f499-41cc-a862-a84bf7c0c411-support-response-agent:eb9ea754-418f-4f84-8ab5-eb6224f659b7",
+   "factName": "carrier",
+   "value": "UPS",
+   "agentId": "return-support",
+   "channel": "CHANNEL_B",
+   "sourceSystem": "RETURN_SUPPORT",
+   "acquisitionMethod": "OBSERVED",
+   "observedAt": "2026-08-26T02:43:23.533000Z",
+   "recordedAt": "2026-08-26T02:43:23.533000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "case-fulfilled-bf4e1340-e112-4cad-9c8c-ac54a3abdd1d",
+   "factName": "case_status",
+   "value": "ALL_RETURNS_DELIVERED",
+   "agentId": "fulfillment-tracking-agent",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_SHIPMENT",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:48:19.068000Z",
+   "recordedAt": "2026-08-26T02:48:19.068000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "818aca0b-47e4-45e7-a430-833401744f8d",
+   "factName": "confirmed_order_reference",
+   "value": "CQ801512",
+   "agentId": "order-discovery-agent",
+   "channel": "CHANNEL_A",
+   "sourceSystem": null,
+   "acquisitionMethod": "STATED",
+   "observedAt": "2026-08-26T02:42:13.886000Z",
+   "recordedAt": "2026-08-26T02:42:13.886000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "82fb6404-3643-4c70-8428-ca1e6c0465ea:customer:id",
+   "factName": "customer_id",
+   "value": "601202",
+   "agentId": "return-workflow-agent",
+   "channel": "SYSTEM",
+   "sourceSystem": "SALES_ORDER_SOURCE",
+   "acquisitionMethod": "OBSERVED",
+   "observedAt": "2026-08-26T02:42:15.083000Z",
+   "recordedAt": "2026-08-26T02:42:15.083000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "82fb6404-3643-4c70-8428-ca1e6c0465ea:customer:name",
+   "factName": "customer_name",
+   "value": "WESLEY COFFEY",
+   "agentId": "return-workflow-agent",
+   "channel": "SYSTEM",
+   "sourceSystem": "SALES_ORDER_SOURCE",
+   "acquisitionMethod": "OBSERVED",
+   "observedAt": "2026-08-26T02:42:15.058000Z",
+   "recordedAt": "2026-08-26T02:42:15.058000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "fulfillment-exception-RMA-BF4E1340E1124CAD9C8CAC54A3ABDD1D2-resolved-out_for_delivery",
+   "factName": "fulfillment_exception",
+   "value": "RMA-BF4E1340E1124CAD9C8CAC54A3ABDD1D2: RESOLVED (out_for_delivery)",
+   "agentId": "fulfillment-tracking-agent",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_SHIPMENT",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:48:14.205000Z",
+   "recordedAt": "2026-08-26T02:48:14.205000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "fulfillment-status-RMA-BF4E1340E1124CAD9C8CAC54A3ABDD1D2-TRK-RMABF4E1340E1124CAD9C8CAC54A3ABDD1D2-AWAITING_HANDOFF",
+   "factName": "fulfillment_status",
+   "value": "AWAITING_HANDOFF",
+   "agentId": "fulfillment-tracking-agent",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_SHIPMENT",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:47:59.241000Z",
+   "recordedAt": "2026-08-26T02:47:59.241000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "label_reference-08962449-f499-41cc-a862-a84bf7c0c411-support-response-agent:eb9ea754-418f-4f84-8ab5-eb6224f659b7",
+   "factName": "label_reference",
+   "value": "LBL-RMABF4E1340E1124CAD9C8CAC54A3ABDD1D2",
+   "agentId": "return-support",
+   "channel": "CHANNEL_B",
+   "sourceSystem": "RETURN_SUPPORT",
+   "acquisitionMethod": "OBSERVED",
+   "observedAt": "2026-08-26T02:43:23.486000Z",
+   "recordedAt": "2026-08-26T02:43:23.486000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "policy_applied_rules-f0ff0263-e94d-4500-b259-fcf8b8b588cf",
+   "factName": "policy_applied_rules",
+   "value": "POLICY_RELEASE_VALIDATED,STOCK_CLASS_FROM_CONFIGURATION,STANDARD_STOCK_ITEM,CONDITION_FACTS_NOT_EVALUATED,WITHIN_30_DAYS,RESTOCKING_FEE_APPLIES",
+   "agentId": "return-eligibility-policy",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_ELIGIBILITY_POLICY",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:17.599000Z",
+   "recordedAt": "2026-08-26T02:42:17.599000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "policy_authority-f0ff0263-e94d-4500-b259-fcf8b8b588cf",
+   "factName": "policy_authority",
+   "value": "FERGUSON_PUBLIC_TERMS",
+   "agentId": "return-eligibility-policy",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_ELIGIBILITY_POLICY",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:17.994000Z",
+   "recordedAt": "2026-08-26T02:42:17.994000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "policy_conditions-f0ff0263-e94d-4500-b259-fcf8b8b588cf",
+   "factName": "policy_conditions",
+   "value": "RESTOCKING_FEE_APPLIES",
+   "agentId": "return-eligibility-policy",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_ELIGIBILITY_POLICY",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:17.566000Z",
+   "recordedAt": "2026-08-26T02:42:17.566000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "policy_configuration_release_id-f0ff0263-e94d-4500-b259-fcf8b8b588cf",
+   "factName": "policy_configuration_release_id",
+   "value": "order-discovery-release-414faac-e05adf502510",
+   "agentId": "return-eligibility-policy",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_ELIGIBILITY_POLICY",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:18.135000Z",
+   "recordedAt": "2026-08-26T02:42:18.135000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "policy_decision-f0ff0263-e94d-4500-b259-fcf8b8b588cf",
+   "factName": "policy_decision",
+   "value": "APPROVE",
+   "agentId": "return-eligibility-policy",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_ELIGIBILITY_POLICY",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:18.204000Z",
+   "recordedAt": "2026-08-26T02:42:18.204000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "policy_effective_decision-f0ff0263-e94d-4500-b259-fcf8b8b588cf",
+   "factName": "policy_effective_decision",
+   "value": "APPROVE",
+   "agentId": "return-eligibility-policy",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_ELIGIBILITY_POLICY",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:18.235000Z",
+   "recordedAt": "2026-08-26T02:42:18.235000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "policy_evaluated_at-f0ff0263-e94d-4500-b259-fcf8b8b588cf",
+   "factName": "policy_evaluated_at",
+   "value": "2026-08-26T02:42:17.218010+00:00",
+   "agentId": "return-eligibility-policy",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_ELIGIBILITY_POLICY",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:18.104000Z",
+   "recordedAt": "2026-08-26T02:42:18.104000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "policy_evaluation_state-f0ff0263-e94d-4500-b259-fcf8b8b588cf",
+   "factName": "policy_evaluation_state",
+   "value": "EVALUATED",
+   "agentId": "return-eligibility-policy",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_ELIGIBILITY_POLICY",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:17.432000Z",
+   "recordedAt": "2026-08-26T02:42:17.432000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "policy_facts_admitted-f0ff0263-e94d-4500-b259-fcf8b8b588cf",
+   "factName": "policy_facts_admitted",
+   "value": "confirmed_order_purchase_date",
+   "agentId": "return-eligibility-policy",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_ELIGIBILITY_POLICY",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:18.183000Z",
+   "recordedAt": "2026-08-26T02:42:18.183000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "policy_id-f0ff0263-e94d-4500-b259-fcf8b8b588cf",
+   "factName": "policy_id",
+   "value": "ferguson-standard-return-policy",
+   "agentId": "return-eligibility-policy",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_ELIGIBILITY_POLICY",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:17.911000Z",
+   "recordedAt": "2026-08-26T02:42:17.911000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "policy_reason_codes-f0ff0263-e94d-4500-b259-fcf8b8b588cf",
+   "factName": "policy_reason_codes",
+   "value": "WITHIN_STANDARD_RETURN_WINDOW",
+   "agentId": "return-eligibility-policy",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_ELIGIBILITY_POLICY",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:17.536000Z",
+   "recordedAt": "2026-08-26T02:42:17.536000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "policy_restocking_fee_applies-f0ff0263-e94d-4500-b259-fcf8b8b588cf",
+   "factName": "policy_restocking_fee_applies",
+   "value": true,
+   "agentId": "return-eligibility-policy",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_ELIGIBILITY_POLICY",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:18.267000Z",
+   "recordedAt": "2026-08-26T02:42:18.267000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "policy_restocking_fee_rate_basis_points-f0ff0263-e94d-4500-b259-fcf8b8b588cf",
+   "factName": "policy_restocking_fee_rate_basis_points",
+   "value": 1500,
+   "agentId": "return-eligibility-policy",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_ELIGIBILITY_POLICY",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:18.346000Z",
+   "recordedAt": "2026-08-26T02:42:18.346000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "policy_restocking_fee_rate_source-f0ff0263-e94d-4500-b259-fcf8b8b588cf",
+   "factName": "policy_restocking_fee_rate_source",
+   "value": "SELLER_CONFIGURATION",
+   "agentId": "return-eligibility-policy",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_ELIGIBILITY_POLICY",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:18.382000Z",
+   "recordedAt": "2026-08-26T02:42:18.382000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "policy_restocking_fee_waived-f0ff0263-e94d-4500-b259-fcf8b8b588cf",
+   "factName": "policy_restocking_fee_waived",
+   "value": false,
+   "agentId": "return-eligibility-policy",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_ELIGIBILITY_POLICY",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:18.314000Z",
+   "recordedAt": "2026-08-26T02:42:18.314000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "policy_route-f0ff0263-e94d-4500-b259-fcf8b8b588cf",
+   "factName": "policy_route",
+   "value": "STANDARD_RETURN",
+   "agentId": "return-eligibility-policy",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_ELIGIBILITY_POLICY",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:17.455000Z",
+   "recordedAt": "2026-08-26T02:42:17.455000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "policy_source_document-f0ff0263-e94d-4500-b259-fcf8b8b588cf",
+   "factName": "policy_source_document",
+   "value": "Ferguson Terms and Conditions of Sale",
+   "agentId": "return-eligibility-policy",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_ELIGIBILITY_POLICY",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:18.025000Z",
+   "recordedAt": "2026-08-26T02:42:18.025000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "policy_source_revision-f0ff0263-e94d-4500-b259-fcf8b8b588cf",
+   "factName": "policy_source_revision",
+   "value": "Terms and Conditions of Sale - Rev. May 2025",
+   "agentId": "return-eligibility-policy",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_ELIGIBILITY_POLICY",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:18.073000Z",
+   "recordedAt": "2026-08-26T02:42:18.073000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "policy_version-f0ff0263-e94d-4500-b259-fcf8b8b588cf",
+   "factName": "policy_version",
+   "value": "2026-08-15",
+   "agentId": "return-eligibility-policy",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_ELIGIBILITY_POLICY",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:42:17.963000Z",
+   "recordedAt": "2026-08-26T02:42:17.963000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "return-graph-generation-bf4e1340-e112-4cad-9c8c-ac54a3abdd1d-5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "factName": "return_graph_generation_id",
+   "value": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "agentId": "return-workflow-agent",
+   "channel": "SYSTEM",
+   "sourceSystem": null,
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:43:24.406000Z",
+   "recordedAt": "2026-08-26T02:43:24.406000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "return_method-08962449-f499-41cc-a862-a84bf7c0c411-support-response-agent:eb9ea754-418f-4f84-8ab5-eb6224f659b7",
+   "factName": "return_method",
+   "value": "BRANCH_UPS",
+   "agentId": "return-support",
+   "channel": "CHANNEL_B",
+   "sourceSystem": "RETURN_SUPPORT",
+   "acquisitionMethod": "OBSERVED",
+   "observedAt": "2026-08-26T02:43:23.517000Z",
+   "recordedAt": "2026-08-26T02:43:23.517000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "return-record-fulfilled-RMA-BF4E1340E1124CAD9C8CAC54A3ABDD1D2",
+   "factName": "return_record_fulfilled",
+   "value": "RMA-BF4E1340E1124CAD9C8CAC54A3ABDD1D2",
+   "agentId": "fulfillment-tracking-agent",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_SHIPMENT",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:48:19.036000Z",
+   "recordedAt": "2026-08-26T02:48:19.036000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "rma-08962449-f499-41cc-a862-a84bf7c0c411",
+   "factName": "return_reference",
+   "value": "RMA-BF4E1340E1124CAD9C8CAC54A3ABDD1D2",
+   "agentId": "return-support",
+   "channel": "CHANNEL_B",
+   "sourceSystem": "RETURN_SUPPORT",
+   "acquisitionMethod": "OBSERVED",
+   "observedAt": "2026-08-26T02:43:23.439000Z",
+   "recordedAt": "2026-08-26T02:43:23.439000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "shipment-evidence-RMA-BF4E1340E1124CAD9C8CAC54A3ABDD1D2-TRK-RMABF4E1340E1124CAD9C8CAC54A3ABDD1D2-SHIPMENT_ABSENT:5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "factName": "shipment_evidence",
+   "value": "SHIPMENT_ABSENT:5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "agentId": "fulfillment-tracking-agent",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_SHIPMENT",
+   "acquisitionMethod": "OBSERVED",
+   "observedAt": "2026-08-26T02:47:59.299000Z",
+   "recordedAt": "2026-08-26T02:47:59.299000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "shipping_instruction_reference-08962449-f499-41cc-a862-a84bf7c0c411-support-response-agent:eb9ea754-418f-4f84-8ab5-eb6224f659b7",
+   "factName": "shipping_instruction_reference",
+   "value": "SHIP-RMABF4E1340E1124CAD9C8CAC54A3ABDD1D2",
+   "agentId": "return-support",
+   "channel": "CHANNEL_B",
+   "sourceSystem": "RETURN_SUPPORT",
+   "acquisitionMethod": "OBSERVED",
+   "observedAt": "2026-08-26T02:43:23.501000Z",
+   "recordedAt": "2026-08-26T02:43:23.501000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "support_outcome-bf4e1340-e112-4cad-9c8c-ac54a3abdd1d-support-response-agent:eb9ea754-418f-4f84-8ab5-eb6224f659b7",
+   "factName": "support_outcome",
+   "value": "AUTHORIZED",
+   "agentId": "return-support",
+   "channel": "CHANNEL_B",
+   "sourceSystem": "RETURN_SUPPORT",
+   "acquisitionMethod": "OBSERVED",
+   "observedAt": "2026-08-26T02:43:23.673000Z",
+   "recordedAt": "2026-08-26T02:43:23.673000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "support_sla_basis-bf4e1340-e112-4cad-9c8c-ac54a3abdd1d",
+   "factName": "support_sla_basis",
+   "value": "SUPPORT_ACKNOWLEDGEMENT",
+   "agentId": "return-case-workflow",
+   "channel": "SYSTEM",
+   "sourceSystem": "RETURN_CASE_WORKFLOW",
+   "acquisitionMethod": "DERIVED",
+   "observedAt": "2026-08-26T02:43:10.273000Z",
+   "recordedAt": "2026-08-26T02:43:10.273000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "tracking_reference-08962449-f499-41cc-a862-a84bf7c0c411-support-response-agent:eb9ea754-418f-4f84-8ab5-eb6224f659b7",
+   "factName": "tracking_reference",
+   "value": "TRK-RMABF4E1340E1124CAD9C8CAC54A3ABDD1D2",
+   "agentId": "return-support",
+   "channel": "CHANNEL_B",
+   "sourceSystem": "RETURN_SUPPORT",
+   "acquisitionMethod": "OBSERVED",
+   "observedAt": "2026-08-26T02:43:23.454000Z",
+   "recordedAt": "2026-08-26T02:43:23.454000Z",
+   "supersedesFactId": null
+  }
+ ],
+ "policyEvaluation": {
+  "route": "STANDARD_RETURN",
+  "originalDecision": "APPROVE",
+  "effectiveDecision": "APPROVE",
+  "override": null,
+  "reasonCodes": [
+   "WITHIN_STANDARD_RETURN_WINDOW"
+  ],
+  "conditions": [
+   "RESTOCKING_FEE_APPLIES"
+  ],
+  "appliedRules": [
+   "POLICY_RELEASE_VALIDATED",
+   "STOCK_CLASS_FROM_CONFIGURATION",
+   "STANDARD_STOCK_ITEM",
+   "CONDITION_FACTS_NOT_EVALUATED",
+   "WITHIN_30_DAYS",
+   "RESTOCKING_FEE_APPLIES"
+  ],
+  "policyId": "ferguson-standard-return-policy",
+  "policyVersion": "2026-08-15",
+  "evaluatedAt": "2026-08-26T02:42:17.218010Z",
+  "rateBasisPoints": 1500,
+  "rateSource": "SELLER_CONFIGURATION"
+ },
+ "support": {
+  "workItemId": "eb9ea754-418f-4f84-8ab5-eb6224f659b7",
+  "threadId": "d75de5d4-16a0-4fad-8acc-f2791fe9bdaf",
+  "queue": "RETURNS_SUPPORT",
+  "status": "ACKNOWLEDGED",
+  "subject": "Return CQ801512 line 1, 2 \u00b7 2 lines \u00b7 WESLEY COFFEY",
+  "priority": "NORMAL",
+  "assignedTo": null,
+  "slaDueAt": "2026-08-26T02:48:10.209000Z",
+  "openedAt": "2026-08-26T02:43:10.209000Z",
+  "resolvedAt": null
+ },
+ "returnRecords": [
+  {
+   "returnRecordId": "0fb524de-804d-4280-941a-cc5d6a5d2e3e",
+   "returnReference": "RMA-BF4E1340E1124CAD9C8CAC54A3ABDD1D1",
+   "status": "CLOSED",
+   "returnMethod": "BRANCH_LTL",
+   "returnLocation": null,
+   "approvedItems": [
+    {
+     "returnItemId": "00627495-7809-47c0-af58-5fd7fd626613",
+     "orderLineReference": "2",
+     "productReference": "4000369",
+     "quantityApproved": 1,
+     "disposition": null,
+     "itemStatus": null
+    }
+   ],
+   "shipments": [
+    {
+     "shipmentId": "SHIP-RMABF4E1340E1124CAD9C8CAC54A3ABDD1D1",
+     "shipmentStatus": null,
+     "carrier": null,
+     "serviceLevel": null,
+     "trackingNumber": "SHIP-RMABF4E1340E1124CAD9C8CAC54A3ABDD1D1",
+     "estimatedDeliveryAt": null,
+     "createdAt": "2026-08-26T02:47:03.755000Z",
+     "updatedAt": "2026-08-26T02:47:03.755000Z"
+    },
+    {
+     "shipmentId": "PROA3ABDD1D1",
+     "shipmentStatus": null,
+     "carrier": null,
+     "serviceLevel": null,
+     "trackingNumber": "PROA3ABDD1D1",
+     "estimatedDeliveryAt": null,
+     "createdAt": "2026-08-26T02:47:10.763000Z",
+     "updatedAt": "2026-08-26T02:47:10.763000Z"
+    }
+   ],
+   "artifacts": null
+  },
+  {
+   "returnRecordId": "08962449-f499-41cc-a862-a84bf7c0c411",
+   "returnReference": "RMA-BF4E1340E1124CAD9C8CAC54A3ABDD1D2",
+   "status": "CLOSED",
+   "returnMethod": "BRANCH_UPS",
+   "returnLocation": null,
+   "approvedItems": [
+    {
+     "returnItemId": "bae1eaeb-5ea6-4d74-8c85-05210eaa7828",
+     "orderLineReference": "1",
+     "productReference": "37326",
+     "quantityApproved": 1,
+     "disposition": null,
+     "itemStatus": null
+    }
+   ],
+   "shipments": [
+    {
+     "shipmentId": "TRK-RMABF4E1340E1124CAD9C8CAC54A3ABDD1D2",
+     "shipmentStatus": null,
+     "carrier": "UPS",
+     "serviceLevel": null,
+     "trackingNumber": "TRK-RMABF4E1340E1124CAD9C8CAC54A3ABDD1D2",
+     "estimatedDeliveryAt": null,
+     "createdAt": "2026-08-26T02:47:58.896000Z",
+     "updatedAt": "2026-08-26T02:47:58.896000Z"
+    }
+   ],
+   "artifacts": [
+    {
+     "artifactId": "LBL-RMABF4E1340E1124CAD9C8CAC54A3ABDD1D2",
+     "artifactType": "SHIPPING_LABEL",
+     "shipmentId": "TRK-RMABF4E1340E1124CAD9C8CAC54A3ABDD1D2",
+     "fileName": null,
+     "mediaType": null,
+     "version": null,
+     "active": true,
+     "supersededBy": null,
+     "expiresAt": null,
+     "createdAt": null
+    }
+   ]
+  }
+ ],
+ "pickup": null,
+ "warehouse": {
+  "facilityId": "3526",
+  "facilityName": null,
+  "bayId": null,
+  "bayReason": "PHYSICAL_RECEIPT_REQUIRED",
+  "receivedAt": null,
+  "receivedQuantity": null,
+  "inspectionStatus": null,
+  "condition": null,
+  "disposition": null,
+  "qaStatus": null,
+  "warehouseStatus": null
+ },
+ "settlement": {
+  "status": "NOT_INTEGRATED",
+  "creditMemoReference": null,
+  "settledAmount": null,
+  "settledAt": null
+ },
+ "stage": "COMPLETED",
+ "awaiting": [
+  "BOL",
+  "PICKUP"
+ ],
+ "businessComplete": false,
+ "isTerminal": true
+}

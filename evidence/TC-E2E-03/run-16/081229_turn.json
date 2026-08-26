@@ -1,0 +1,65 @@
+{
+ "sent": "1 unit",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run16-1eb527c9",
+   "conversation_version": 7,
+   "client_turn_id": "qa-f6f68c44-b43c-4229-9868-96b2cf76aab0",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "Which branch or location is the customer returning it through?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "Which branch or location is the customer returning it through?"
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "bf4e1340-e112-4cad-9c8c-ac54a3abdd1d",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "WESLEY COFFEY",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "return_reason",
+     "value": "DAMAGED",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "ordered_quantity",
+     "value": 1,
+     "status": "USABLE",
+     "label": "quantity being returned",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:42:27.818000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "2ff98745-bc41-47e0-990d-ca3243ac33d6",
+   "generated_at": "2026-08-26T02:42:29.813875Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

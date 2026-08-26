@@ -1,0 +1,68 @@
+{
+ "data": {
+  "caseId": "bf4e1340-e112-4cad-9c8c-ac54a3abdd1d",
+  "revision": 33,
+  "changed": true,
+  "items": [
+   {
+    "returnItemId": "bae1eaeb-5ea6-4d74-8c85-05210eaa7828",
+    "orderLineReference": "1",
+    "productReference": "37326",
+    "quantity": 1,
+    "reason": "SHIPPING_DAMAGE",
+    "condition": "NEW_IN_ORIGINAL_PACKAGING",
+    "packageReference": null
+   },
+   {
+    "returnItemId": "00627495-7809-47c0-af58-5fd7fd626613",
+    "orderLineReference": "2",
+    "productReference": "4000369",
+    "quantity": 1,
+    "reason": "SHIPPING_DAMAGE",
+    "condition": "NEW_IN_ORIGINAL_PACKAGING",
+    "packageReference": null
+   }
+  ],
+  "lines": [
+   {
+    "lineReference": "1",
+    "sku": "CLTS9F",
+    "description": "3/4 WROT FTGXC LT ST 90 ELL 7/8 OD",
+    "colour": null,
+    "orderedQuantity": 1,
+    "unitPrice": "15.025",
+    "productReference": "37326",
+    "returnableQuantity": 1,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 1,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "2",
+    "sku": "JRX1368",
+    "description": "EL CLOSED FRONT PLAS SLOW CLOSE TOILET",
+    "colour": null,
+    "orderedQuantity": 1,
+    "unitPrice": "21.927",
+    "productReference": "4000369",
+    "returnableQuantity": 1,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 1,
+    "dataInconsistency": null
+   }
+  ]
+ },
+ "page": null,
+ "meta": {
+  "schema_version": "1.0",
+  "request_id": "c7de69ca-0076-4be9-95ff-735953e734de",
+  "generated_at": "2026-08-26T02:43:09.859388Z",
+  "freshness": "LIVE",
+  "partial": false,
+  "warnings": []
+ }
+}

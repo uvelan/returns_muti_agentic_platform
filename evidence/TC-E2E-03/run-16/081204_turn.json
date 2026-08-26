@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CQ801512",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run16-1eb527c9",
+   "conversation_version": 3,
+   "client_turn_id": "qa-340c0340-a57b-4f74-857b-d62a55dc80f2",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CQ801512 / [REDACTED] / CHICAGO / 2026-07-31",
+      "evidence_refs": [
+       {
+        "query_execution_id": "d455c979-6357-40ae-be15-8de83f91045a",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "d455c979-6357-40ae-be15-8de83f91045a",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "1b12c7bdbbc344ebb79b6a5d1f659c4d25c749104511ded1d6b360387402dd92",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CQ801512"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CQ801512",
+        "data": {
+         "order_key": "LAKEWOOD*CQ801512",
+         "account_id": "LAKEWOOD",
+         "sales_order_number": "CQ801512",
+         "customer_id": "601202",
+         "customer_name": "WESLEY COFFEY",
+         "customer_po_number": "SHOP STOCK",
+         "job_name": "STOCK",
+         "order_status": "CALLCSR",
+         "sales_type": "INV",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "3526",
+         "ship_from_warehouse_id": "3526",
+         "shipping_method": "WILL CALL",
+         "order_date": "2026-07-31T00:00:00.000000000",
+         "invoice_date": "2026-07-31T00:00:00.000000000",
+         "shipped_at": "2026-08-01T00:00:00.000000000",
+         "commit_date": "2026-07-31T00:00:00.000000000",
+         "ship_to_name": "WESLEY COFFEY",
+         "ship_to_phone": "512-555-1952",
+         "ship_to_city": "CHICAGO",
+         "ship_to_state": "IL",
+         "ship_to_postal_code": "60657",
+         "source_updated_at": "2026-07-31T12:54:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "36a65105bd0db4710b5fc0bf89bd4dcef4ef6dce8d8f6e93cc8100436f4a3166"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "WESLEY COFFEY",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:42:01.418000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "f49630fa-db24-4ee4-a1c2-33855e7b3995",
+   "generated_at": "2026-08-26T02:42:04.542263Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

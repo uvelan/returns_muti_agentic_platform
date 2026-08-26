@@ -1,0 +1,26 @@
+{
+ "bol_reference": "SHIP-RMABF4E1340E1124CAD9C8CAC54A3ABDD1D1",
+ "kind": "returnShipment",
+ "return_record_id": "0fb524de-804d-4280-941a-cc5d6a5d2e3e",
+ "carrier": null,
+ "case_id": "bf4e1340-e112-4cad-9c8c-ac54a3abdd1d",
+ "created_at": "2026-08-26T02:43:23.593000",
+ "current_status": "bol_created",
+ "destination_bay": null,
+ "destination_warehouse": "3526",
+ "events": [],
+ "label_reference": null,
+ "mode": "freight",
+ "pro_number": null,
+ "provenance": {
+  "agent": "return-support",
+  "channel": "CHANNEL_B",
+  "source": "SUPPORT_REPLY",
+  "method": "PARSED",
+  "supportEventId": "support-response-agent:eb9ea754-418f-4f84-8ab5-eb6224f659b7"
+ },
+ "rma_reference": "RMA-BF4E1340E1124CAD9C8CAC54A3ABDD1D1",
+ "shipment_id": "4cdfd638-b55d-4d9d-992b-4308a5e38210",
+ "tracking_reference": null,
+ "updated_at": "2026-08-26T02:43:23.593000"
+}

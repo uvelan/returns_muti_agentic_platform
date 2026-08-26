@@ -1,0 +1,429 @@
+{
+ "sent": "Confirm the customer WESLEY COFFEY on account LAKEWOOD.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run16-1eb527c9",
+   "conversation_version": 2,
+   "client_turn_id": "qa-b8a0ec62-abb7-4ac9-8054-c1a29f8bec05",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CQ801512 / 2026-07-31T0 / CHICAGO / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "97544ab9-4bff-4fdf-b80e-98c18e403597",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CZ802362 / 2026-01-23T0 / CHICAGO / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "97544ab9-4bff-4fdf-b80e-98c18e403597",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CL802928 / 2026-01-26T0 / CHICAGO / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "97544ab9-4bff-4fdf-b80e-98c18e403597",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CQ800759 / 2025-10-26T0 / CHICAGO / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "97544ab9-4bff-4fdf-b80e-98c18e403597",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CL801000 / 2025-08-30T0 / CHICAGO / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "97544ab9-4bff-4fdf-b80e-98c18e403597",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CW803479 / 2025-08-20T0 / CHICAGO / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "97544ab9-4bff-4fdf-b80e-98c18e403597",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 7: CS802593 / 2025-08-09T0 / CHICAGO / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "97544ab9-4bff-4fdf-b80e-98c18e403597",
+        "result_path": [
+         "rows",
+         "6"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-7",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 8: CH805632 / 2025-03-21T0 / CHICAGO / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "97544ab9-4bff-4fdf-b80e-98c18e403597",
+        "result_path": [
+         "rows",
+         "7"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-8",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 9: CE805353 / 2025-02-25T0 / CHICAGO / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "97544ab9-4bff-4fdf-b80e-98c18e403597",
+        "result_path": [
+         "rows",
+         "8"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "97544ab9-4bff-4fdf-b80e-98c18e403597",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "803222e848f8c1f38421d9eac7fe670813f662d5b5bd01a741171200b3f0df0f",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "LAKEWOOD*CQ801512",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CQ801512",
+        "customer_id": "601202",
+        "customer_name": "WESLEY COFFEY",
+        "customer_po_number": "SHOP STOCK",
+        "job_name": "STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-07-31T00:00:00.000000000",
+        "invoice_date": "2026-07-31T00:00:00.000000000",
+        "shipped_at": "2026-08-01T00:00:00.000000000",
+        "commit_date": "2026-07-31T00:00:00.000000000",
+        "ship_to_name": "WESLEY COFFEY",
+        "ship_to_phone": "512-555-1952",
+        "ship_to_city": "CHICAGO",
+        "ship_to_state": "IL",
+        "ship_to_postal_code": "60657",
+        "source_updated_at": "2026-07-31T12:54:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CZ802362",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CZ802362",
+        "customer_id": "601202",
+        "customer_name": "WESLEY COFFEY",
+        "customer_po_number": "TRUCK STOCK",
+        "job_name": "NEW CONSTRUCTION",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "686",
+        "ship_from_warehouse_id": "686",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-01-23T00:00:00.000000000",
+        "invoice_date": "2026-01-23T00:00:00.000000000",
+        "shipped_at": "2026-01-23T00:00:00.000000000",
+        "commit_date": "2026-01-23T00:00:00.000000000",
+        "ship_to_name": "WESLEY COFFEY",
+        "ship_to_phone": "512-555-1952",
+        "ship_to_city": "CHICAGO",
+        "ship_to_state": "IL",
+        "ship_to_postal_code": "60657",
+        "source_updated_at": "2026-01-23T11:33:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CL802928",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CL802928",
+        "customer_id": "601202",
+        "customer_name": "WESLEY COFFEY",
+        "customer_po_number": "NEW CONSTRUCTION",
+        "job_name": "SERVICE CALL",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2210",
+        "ship_from_warehouse_id": "2210",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-01-26T00:00:00.000000000",
+        "invoice_date": "2026-01-26T00:00:00.000000000",
+        "shipped_at": "2026-01-27T00:00:00.000000000",
+        "commit_date": "2026-01-26T00:00:00.000000000",
+        "ship_to_name": "WESLEY COFFEY",
+        "ship_to_phone": "512-555-1952",
+        "ship_to_city": "CHICAGO",
+        "ship_to_state": "IL",
+        "ship_to_postal_code": "60657",
+        "source_updated_at": "2026-01-26T13:47:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CQ800759",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CQ800759",
+        "customer_id": "601202",
+        "customer_name": "WESLEY COFFEY",
+        "customer_po_number": "STOCK",
+        "job_name": "NEW CONSTRUCTION",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2624",
+        "ship_from_warehouse_id": "2624",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-10-26T00:00:00.000000000",
+        "invoice_date": "2025-10-26T00:00:00.000000000",
+        "shipped_at": "2025-10-27T00:00:00.000000000",
+        "commit_date": "2025-10-26T00:00:00.000000000",
+        "ship_to_name": "WESLEY COFFEY",
+        "ship_to_phone": "512-555-1952",
+        "ship_to_city": "CHICAGO",
+        "ship_to_state": "IL",
+        "ship_to_postal_code": "60657",
+        "source_updated_at": "2025-10-26T13:04:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CL801000",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CL801000",
+        "customer_id": "601202",
+        "customer_name": "WESLEY COFFEY",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "WAREHOUSE",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1305",
+        "ship_from_warehouse_id": "1305",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2025-08-30T00:00:00.000000000",
+        "invoice_date": "2025-08-30T00:00:00.000000000",
+        "shipped_at": "2025-08-31T00:00:00.000000000",
+        "commit_date": "2025-08-30T00:00:00.000000000",
+        "ship_to_name": "WESLEY COFFEY",
+        "ship_to_phone": "512-555-1952",
+        "ship_to_city": "CHICAGO",
+        "ship_to_state": "IL",
+        "ship_to_postal_code": "60657",
+        "source_updated_at": "2025-08-30T18:43:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CW803479",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CW803479",
+        "customer_id": "601202",
+        "customer_name": "WESLEY COFFEY",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "REPLACEMENT",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "686",
+        "ship_from_warehouse_id": "686",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-08-20T00:00:00.000000000",
+        "invoice_date": "2025-08-20T00:00:00.000000000",
+        "shipped_at": "2025-08-23T00:00:00.000000000",
+        "commit_date": "2025-08-20T00:00:00.000000000",
+        "ship_to_name": "WESLEY COFFEY",
+        "ship_to_phone": "512-555-1952",
+        "ship_to_city": "CHICAGO",
+        "ship_to_state": "IL",
+        "ship_to_postal_code": "60657",
+        "source_updated_at": "2025-08-20T10:45:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CS802593",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CS802593",
+        "customer_id": "601202",
+        "customer_name": "WESLEY COFFEY",
+        "customer_po_number": "MAINTENANCE",
+        "job_name": "NEW CONSTRUCTION",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "37",
+        "ship_from_warehouse_id": "37",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-08-09T00:00:00.000000000",
+        "invoice_date": "2025-08-09T00:00:00.000000000",
+        "shipped_at": "2025-08-12T00:00:00.000000000",
+        "commit_date": "2025-08-09T00:00:00.000000000",
+        "ship_to_name": "WESLEY COFFEY",
+        "ship_to_phone": "512-555-1952",
+        "ship_to_city": "CHICAGO",
+        "ship_to_state": "IL",
+        "ship_to_postal_code": "60657",
+        "source_updated_at": "2025-08-09T11:55:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CH805632",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CH805632",
+        "customer_id": "601202",
+        "customer_name": "WESLEY COFFEY",
+        "customer_po_number": "RESIDENTIAL",
+        "job_name": "NEW CONSTRUCTION",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2",
+        "ship_from_warehouse_id": "2",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-03-21T00:00:00.000000000",
+        "invoice_date": "2025-03-21T00:00:00.000000000",
+        "shipped_at": "2025-03-22T00:00:00.000000000",
+        "commit_date": "2025-03-21T00:00:00.000000000",
+        "ship_to_name": "WESLEY COFFEY",
+        "ship_to_phone": "512-555-1952",
+        "ship_to_city": "CHICAGO",
+        "ship_to_state": "IL",
+        "ship_to_postal_code": "60657",
+        "source_updated_at": "2025-03-21T17:54:00.000000000"
+       },
+       {
+        "order_key": "LAKEWOOD*CE805353",
+        "account_id": "LAKEWOOD",
+        "sales_order_number": "CE805353",
+        "customer_id": "601202",
+        "customer_name": "WESLEY COFFEY",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "WARRANTY",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "133",
+        "ship_from_warehouse_id": "133",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-02-25T00:00:00.000000000",
+        "invoice_date": "2025-02-25T00:00:00.000000000",
+        "shipped_at": "2025-02-25T00:00:00.000000000",
+        "commit_date": "2025-02-25T00:00:00.000000000",
+        "ship_to_name": "WESLEY COFFEY",
+        "ship_to_phone": "512-555-1952",
+        "ship_to_city": "CHICAGO",
+        "ship_to_state": "IL",
+        "ship_to_postal_code": "60657",
+        "source_updated_at": "2025-02-25T16:54:00.000000000"
+       }
+      ],
+      "count": 9
+     },
+     "result_checksum": "e66e2ef3a7550c93f9c35d86651c67162429e0ac9f7921b50a4d346873f027a5"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "WESLEY COFFEY",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:41:55.945000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "04d9df23-bf97-4b3f-a2c7-ce971c110ef7",
+   "generated_at": "2026-08-26T02:41:59.188545Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

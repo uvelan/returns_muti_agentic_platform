@@ -1,0 +1,51 @@
+{
+ "sent": "yes confirm it",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run16-1eb527c9",
+   "conversation_version": 5,
+   "client_turn_id": "qa-c43a26cd-d3c7-4cfc-8da3-cc004c957a2e",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "What is the reason for the return?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "What is the reason for the return?"
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "bf4e1340-e112-4cad-9c8c-ac54a3abdd1d",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "WESLEY COFFEY",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:42:06.796000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "24631e87-be09-4766-8ed0-8ddfe012deab",
+   "generated_at": "2026-08-26T02:42:16.732283Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

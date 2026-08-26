@@ -1,0 +1,91 @@
+{
+ "sent": "customer wants to return an item, name is wesley cofey",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run16-1eb527c9",
+   "conversation_version": 1,
+   "client_turn_id": "qa-627560e7-f995-4077-b252-edae09e58058",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 601202 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "2535beea-c569-4ac3-b076-2e3c0da02f56",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "2535beea-c569-4ac3-b076-2e3c0da02f56",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "b112af2a708c30a11696c0f76bc0c627e2846d3b568bbcbea74db9d66cc90090",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "wesley cofey"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "601202",
+        "data": {
+         "account_id": "LAKEWOOD",
+         "customer_id": "601202",
+         "customer_name": "WESLEY COFFEY"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "426c0e7af24bd4e65c9bc2c5babbfe20302993a5cf7b4cd733367df269fb36d7"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:41:49.657000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "9ba08da6-e5f4-49bb-8ae4-62ebcf07e1ab",
+   "generated_at": "2026-08-26T02:41:53.267587Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}
