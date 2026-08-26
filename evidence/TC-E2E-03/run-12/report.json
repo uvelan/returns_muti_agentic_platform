@@ -1,0 +1,30 @@
+[
+ {
+  "step": 1,
+  "state": "PASS",
+  "note": "flow started on a partial misspelled name; no crash"
+ },
+ {
+  "step": 2,
+  "state": "PASS",
+  "note": "bounded fuzzy list (2), target present, matches=['customer_name_contains']"
+ },
+ {
+  "step": 3,
+  "state": "PASS",
+  "note": "customer confirmed in-conversation (fact provenance asserted on case later)"
+ },
+ {
+  "step": 4,
+  "state": "PASS",
+  "note": "customer's orders listed from graph (8), config-driven fields"
+ },
+ {
+  "step": 5,
+  "state": "PASS",
+  "note": "explicit confirmation prompt: 'You selected order CJ803603. Confirm this order to raise the return?'"
+ },
+ {
+  "failure": "HTTP 503 /api/v2/order-agent/conversations/disc-tc02-run12-d8dcf243/turns: {\"data\":null,\"page\":null,\"meta\":{\"schema_version\":\"1.0\",\"request_id\":\"d48a9de7-6ae5-4f0b-b4b3-8a43ae307dff\",\"generated_at\":\"2026-08-26T02:24:59.636988Z\",\"freshness\":\"LIVE\",\"partial\":true,\"warnings\":[{\"source\":\"API\",\"code\":\"ORDER_AGENT_WORKFLOW_FAILED\",\"message\":\"The Order Discovery workflow could not process the request.\"}]}}"
+ }
+]

@@ -1,0 +1,121 @@
+{
+ "sent": "customer wants to return an item, name is pamela farrel",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run12-d8dcf243",
+   "conversation_version": 1,
+   "client_turn_id": "qa-bf56ff0c-316f-4b1a-9280-19ffdc16d64e",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 600896 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "bc63e741-4a61-4ae4-af57-8b6c25e635a9",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 2: 600895 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "bc63e741-4a61-4ae4-af57-8b6c25e635a9",
+        "result_path": [
+         "candidates",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "bc63e741-4a61-4ae4-af57-8b6c25e635a9",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "6128253ccb1a9c1a265635049484406f2e7e85e70fbcb1cd3e06eb6f36253e22",
+     "compiled_query_checksum": "32aa52abf681b63781ca68dcbe7bf5527e62dc61ed01cdc2ffea3d54c4401ef7",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "pamela farrel"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600896",
+        "data": {
+         "account_id": "GARDEN",
+         "customer_id": "600896",
+         "customer_name": "PAMELA FARRELL",
+         "source_updated_at": "2026-07-30T17:03:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_contains"
+        ]
+       },
+       {
+        "candidate_id": "600895",
+        "data": {
+         "account_id": "LAKEWOOD",
+         "customer_id": "600895",
+         "customer_name": "PAMELA FARRELL",
+         "source_updated_at": "2026-06-23T10:00:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "customer_name_contains"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "4090858fe0cb07183dd6ebbef1a4c65716c8b1fed875e6150ffbd78a5aacf5c9"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:13:46.887000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "e1261f42-56df-4b2b-8a68-6d63423c04b8",
+   "generated_at": "2026-08-26T02:13:54.390472Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

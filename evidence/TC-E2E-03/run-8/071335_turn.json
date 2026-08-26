@@ -1,0 +1,43 @@
+{
+ "sent": "Confirm order CJ803603.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run8-1447a0de",
+   "conversation_version": 4,
+   "client_turn_id": "qa-d992b4e0-1134-4cc5-9459-60433d558e32",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [],
+    "suggestions": [],
+    "requested_input": "You selected order CJ803603. Confirm this order to raise the return?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run8-1447a0de:qa-d992b4e0-1134-4cc5-9459-60433d558e32:1",
+   "case_id": null,
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "PAMELA FARRELL",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T01:43:33.660000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "aa72c104-5345-4f6c-b5ee-e1771701d0d5",
+   "generated_at": "2026-08-26T01:43:35.334151Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

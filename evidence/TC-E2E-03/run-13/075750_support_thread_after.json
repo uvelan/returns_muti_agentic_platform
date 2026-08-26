@@ -1,0 +1,112 @@
+[
+ {
+  "id": "d82216a3-2e82-4af5-ac2a-9e9d9f232ee0",
+  "threadId": "b0579ef1-197e-4881-8e6e-faaa462f81a2",
+  "sequence": 1,
+  "senderRole": "AGENT",
+  "senderId": "return-workflow-agent",
+  "messageType": "REQUEST",
+  "messageText": "RETURN SUPPORT REQUEST\n\nCase:\n- Case ID: 0ce55cfb-ec8c-44ae-b996-4f42c0ea38c6\n- Work Item ID: 82b5fc5b-e407-46f1-916e-e911efcb0acd\n- Created Date/Time: 2026-08-26T02:27:34.882000+00:00\n- Workflow Status at Handoff: GATHERING_INFO\n\nCustomer:\n- Customer Name: PAMELA FARRELL\n- Customer Reference: 600896\n- Branch Associate: Not available\n- Branch Associate Email: Not available\n- Branch Associate Phone: Not available\n\nOrder:\n- Order Number: CJ803603\n- Line/Order-Line Number: 2\n  - Product Name: RF 1.6 GPF 2PC TOILET BLK\n  - Colour: Not available\n  - SKU: D197061420\n  - Confirmed Return Quantity: 1\n  - Return Reason: SHIPPING_DAMAGE\n  - Product Condition: NEW_IN_ORIGINAL_PACKAGING\n\nReturn Details:\n- Return Method: BRANCH_LTL\n- Requested Resolution: Not available\n- Product Presence: Not available\n- Associate Notes: Not available\n\nBay Assignment:\n- Assignment Status: PHYSICAL_RECEIPT_REQUIRED\n- Recommended Bay: Not available\n- Warehouse/Branch: 1549\n- Return Location: Not available\n- Handling/Staging Instructions: Not available\n- Unresolved Reason: PHYSICAL_RECEIPT_REQUIRED\n\nVerification:\n- Order Confirmation: Confirmed\n- Required Return Information: Incomplete\n- Policy Evaluation: APPROVE on the STANDARD_RETURN route\n- Bay Assignment Source: Bay Assignment Agent\n\nRequested Support Action:\n- Review the complete return request.\n- Review or confirm the bay recommendation.\n- Resolve manual bay assignment: no bay could be recommended.\n- Verify all Support-owned conditions, including warranty when applicable.\n- Create or decline the RMA through the authoritative Support workflow.\n",
+  "attachmentIds": [],
+  "businessPayload": {
+   "bayAssignment": {
+    "bayReference": null,
+    "handlingInstructions": null,
+    "returnLocation": null,
+    "source": "BAY_ASSIGNMENT_AGENT",
+    "status": "PHYSICAL_RECEIPT_REQUIRED",
+    "unresolvedReason": "PHYSICAL_RECEIPT_REQUIRED",
+    "warehouseReference": "1549"
+   },
+   "caseId": "0ce55cfb-ec8c-44ae-b996-4f42c0ea38c6",
+   "createdAt": "2026-08-26T02:27:34.882000+00:00",
+   "customer": {
+    "contactEmail": null,
+    "contactName": null,
+    "contactPhone": null,
+    "name": "PAMELA FARRELL",
+    "reference": "600896"
+   },
+   "order": {
+    "items": [
+     {
+      "colour": null,
+      "condition": "NEW_IN_ORIGINAL_PACKAGING",
+      "lineReference": "2",
+      "productName": "RF 1.6 GPF 2PC TOILET BLK",
+      "productReference": "4000478",
+      "quantity": 1,
+      "reason": "SHIPPING_DAMAGE",
+      "returnMethod": "BRANCH_LTL",
+      "sku": "D197061420"
+     }
+    ],
+    "reference": "CJ803603"
+   },
+   "returnDetails": {
+    "additional": {},
+    "associateNotes": null,
+    "method": "BRANCH_LTL",
+    "productPresence": null,
+    "requestedResolution": null
+   },
+   "schemaVersion": "support-handoff-v1",
+   "verification": {
+    "orderConfirmed": true,
+    "policyEvaluation": {
+     "decision": "APPROVE",
+     "route": "STANDARD_RETURN",
+     "skippedReason": null,
+     "state": "EVALUATED"
+    },
+    "requiredReturnInformationComplete": false
+   },
+   "workItemId": "82b5fc5b-e407-46f1-916e-e911efcb0acd",
+   "workflowStatusAtHandoff": "GATHERING_INFO"
+  },
+  "createdAt": "2026-08-26T02:27:35.576000"
+ },
+ {
+  "id": "871f7298-7d67-4760-8207-572b9d5fe875",
+  "threadId": "b0579ef1-197e-4881-8e6e-faaa462f81a2",
+  "sequence": 2,
+  "senderRole": "AGENT",
+  "senderId": "support-response-agent",
+  "messageType": "RETURN_CREATION",
+  "messageText": "Return created for case 0ce55cfb-ec8c-44ae-b996-4f42c0ea38c6: RMA RMA-0CE55CFBEC8C44AEB9964F42C0EA38C6 (BRANCH_LTL).\n[RMA-0CE55CFBEC8C44AEB9964F42C0EA38C6 / BRANCH_LTL]\n- 1 x RF 1.6 GPF 2PC TOILET BLK (line 2)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nKeep the bill of lading with the shipment for the carrier.\nA carrier pickup will be scheduled; keep the goods staged and accessible.",
+  "attachmentIds": [],
+  "businessPayload": {
+   "supportAgentEventId": "support-response-agent:82b5fc5b-e407-46f1-916e-e911efcb0acd",
+   "decision": {
+    "agent": "Support Response Agent",
+    "agentVersion": "1.0",
+    "configurationVersion": "FERGUSON-RETURN-ASSUMPTIONS-1.0",
+    "decisionType": "SUPPORT_RESPONSE",
+    "decision": "RETURN_PLANNED",
+    "explanation": "Artifacts follow the released requirement table for each shipping-class group; recording them is the executor's act, not this assessment's.",
+    "confidenceMillionths": 950000,
+    "evidenceReferences": [
+     "CASE:0ce55cfb-ec8c-44ae-b996-4f42c0ea38c6",
+     "ORDER_LINE:2"
+    ],
+    "warnings": [],
+    "executionMode": "DETERMINISTIC",
+    "metadata": {}
+   },
+   "plan": {
+    "returnReference": "RMA-0CE55CFBEC8C44AEB9964F42C0EA38C6",
+    "trackingReference": null,
+    "labelReference": null,
+    "returnLocation": null,
+    "shippingInstructionReference": "SHIP-RMA0CE55CFBEC8C44AEB9964F42C0EA38C6",
+    "returnMethod": "BRANCH_LTL",
+    "carrier": null,
+    "orderLineReferences": [
+     "2"
+    ],
+    "instructions": "- 1 x RF 1.6 GPF 2PC TOILET BLK (line 2)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nKeep the bill of lading with the shipment for the carrier.\nA carrier pickup will be scheduled; keep the goods staged and accessible."
+   }
+  },
+  "createdAt": "2026-08-26T02:27:47.567000"
+ }
+]

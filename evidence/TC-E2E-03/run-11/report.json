@@ -1,0 +1,40 @@
+[
+ {
+  "step": 1,
+  "state": "PASS",
+  "note": "flow started on a partial misspelled name; no crash"
+ },
+ {
+  "step": 2,
+  "state": "PASS",
+  "note": "bounded fuzzy list (3), target present, matches=['customer_name_fuzzy']"
+ },
+ {
+  "step": 3,
+  "state": "PASS",
+  "note": "customer confirmed in-conversation (fact provenance asserted on case later)"
+ },
+ {
+  "step": 4,
+  "state": "PASS",
+  "note": "customer's orders listed from graph (6), config-driven fields"
+ },
+ {
+  "step": 5,
+  "state": "PASS",
+  "note": "explicit confirmation prompt: 'You selected order CW805270. Confirm this order to raise the return?'"
+ },
+ {
+  "step": 3,
+  "state": "PASS",
+  "note": "customer + order locked to case; append-only facts carry provenance"
+ },
+ {
+  "step": 6,
+  "state": "FAIL",
+  "note": "bay assignment did not engage in parallel within 60s"
+ },
+ {
+  "failure": "step 6: bay assignment did not engage in parallel within 60s"
+ }
+]

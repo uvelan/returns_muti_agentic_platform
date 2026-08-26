@@ -1,0 +1,107 @@
+{
+ "sent": "has the return been delivered?",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run13-d1b29b36",
+   "conversation_version": 11,
+   "client_turn_id": "qa-1bb97e51-cb0a-40a6-ba86-dd244277025c",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "RMA RMA-0CE55CFBEC8C44AEB9964F42C0EA38C6 is issued for this return.",
+      "evidence_refs": [],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "fulfillment status: AWAITING_HANDOFF",
+      "evidence_refs": [],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "return record fulfilled: RMA-0CE55CFBEC8C44AEB9964F42C0EA38C6",
+      "evidence_refs": [],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-7",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "fulfillment exception: RMA-0CE55CFBEC8C44AEB9964F42C0EA38C6: RESOLVED (out_for_delivery)",
+      "evidence_refs": [],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-8",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "case status: ALL_RETURNS_DELIVERED",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "0ce55cfb-ec8c-44ae-b996-4f42c0ea38c6",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "PAMELA FARRELL",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "return_reason",
+     "value": "DAMAGED",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "ordered_quantity",
+     "value": 1,
+     "status": "USABLE",
+     "label": "quantity being returned",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "branch_location",
+     "value": "GARDEN",
+     "status": "USABLE",
+     "label": "branch handling the return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "proof_reference",
+     "value": null,
+     "status": "INVALID",
+     "label": "proof of condition reference",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:29:22.518000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "a1d8b33f-a49a-4ca2-802f-5ab1d87d72ac",
+   "generated_at": "2026-08-26T02:29:24.100580Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

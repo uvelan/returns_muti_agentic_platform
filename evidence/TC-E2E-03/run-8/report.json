@@ -1,0 +1,45 @@
+[
+ {
+  "step": 1,
+  "state": "PASS",
+  "note": "flow started on a partial misspelled name; no crash"
+ },
+ {
+  "step": 2,
+  "state": "PASS",
+  "note": "bounded fuzzy list (2), target present, matches=['customer_name_contains']"
+ },
+ {
+  "step": 3,
+  "state": "PASS",
+  "note": "customer confirmed in-conversation (fact provenance asserted on case later)"
+ },
+ {
+  "step": 4,
+  "state": "PASS",
+  "note": "customer's orders listed from graph (8), config-driven fields"
+ },
+ {
+  "step": 5,
+  "state": "PASS",
+  "note": "explicit confirmation prompt: 'You selected order CJ803603. Confirm this order to raise the return?'"
+ },
+ {
+  "step": 3,
+  "state": "PASS",
+  "note": "customer + order locked to case; append-only facts carry provenance"
+ },
+ {
+  "step": 6,
+  "state": "PASS",
+  "note": "case 356e7d87-b559-489e-ba48-36c3413d059b confirmed; bay assignment engaged in parallel"
+ },
+ {
+  "step": 7,
+  "state": "FAIL",
+  "note": "freight run needs a freight-class line on the order"
+ },
+ {
+  "failure": "step 7: freight run needs a freight-class line on the order"
+ }
+]

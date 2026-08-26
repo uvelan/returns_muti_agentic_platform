@@ -1,0 +1,147 @@
+{
+ "sent": "customer wants to return an item, name is ryan schuler",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run11-c1e77321",
+   "conversation_version": 1,
+   "client_turn_id": "qa-3ab4de6b-315b-46f0-aac1-e35bdf63ec70",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 600452 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "548f4af8-d559-47b7-b57a-c15742baa8d2",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 2: 600451 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "548f4af8-d559-47b7-b57a-c15742baa8d2",
+        "result_path": [
+         "candidates",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 3: 600450 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "548f4af8-d559-47b7-b57a-c15742baa8d2",
+        "result_path": [
+         "candidates",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "548f4af8-d559-47b7-b57a-c15742baa8d2",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "63f0629f73ec494e957b297dffe08da4445413c5083286837e33bd53188013cf",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "ryan schuler"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600452",
+        "data": {
+         "account_id": "PLYMOUTH",
+         "customer_id": "600452",
+         "customer_name": "RYAN SCHUYLER"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600451",
+        "data": {
+         "account_id": "GARDEN",
+         "customer_id": "600451",
+         "customer_name": "RYAN SCHUYLER"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600450",
+        "data": {
+         "account_id": "PHOENIX",
+         "customer_id": "600450",
+         "customer_name": "RYAN SCHUYLER"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 3,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "bbb340c8e607ba6d955d52ee33fb6db46651dbf75cf6e7c43649e93c14db50eb"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:08:30.197000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "d202b0bf-8bf2-4f7a-9fbb-4fd5ed8a205b",
+   "generated_at": "2026-08-26T02:08:40.479912Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

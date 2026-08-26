@@ -1,0 +1,70 @@
+{
+ "caseId": "45ef0720-be1c-4e73-81ab-95143acf9bac",
+ "tenantId": "default",
+ "principalId": "dev-operator",
+ "conversationId": "disc-tc02-run11-c1e77321",
+ "status": "GATHERING_INFO",
+ "revision": 3,
+ "updatedAt": "2026-08-26T02:10:52.756000Z",
+ "customer": {
+  "customerReference": null,
+  "accountReference": null,
+  "displayName": "RYAN SCHUYLER",
+  "branchReference": null
+ },
+ "confirmedOrder": {
+  "orderReference": "CW805270",
+  "orderSource": null,
+  "sourceWebOrderNumber": null,
+  "trilogieOrderNumber": null,
+  "confirmationKey": "default|disc-tc02-run11-c1e77321|CW805270|",
+  "candidateSetId": null,
+  "candidateId": null,
+  "confirmedAt": "2026-08-26T02:10:31.114000Z"
+ },
+ "selectedItems": null,
+ "facts": [
+  {
+   "factId": "1e7801c1-ccc4-403d-abff-8b97e25abe74",
+   "factName": "confirmed_order_reference",
+   "value": "CW805270",
+   "agentId": "order-discovery-agent",
+   "channel": "CHANNEL_A",
+   "sourceSystem": null,
+   "acquisitionMethod": "STATED",
+   "observedAt": "2026-08-26T02:10:31.114000Z",
+   "recordedAt": "2026-08-26T02:10:31.114000Z",
+   "supersedesFactId": null
+  },
+  {
+   "factId": "b81e5256-04aa-4219-b7cb-c06cd13b9b75",
+   "factName": "customer_name",
+   "value": "RYAN SCHUYLER",
+   "agentId": "order-discovery-agent",
+   "channel": "CHANNEL_A",
+   "sourceSystem": null,
+   "acquisitionMethod": "STATED",
+   "observedAt": "2026-08-26T02:10:33.427000Z",
+   "recordedAt": "2026-08-26T02:10:33.427000Z",
+   "supersedesFactId": null
+  }
+ ],
+ "policyEvaluation": null,
+ "support": null,
+ "returnRecords": null,
+ "pickup": null,
+ "warehouse": null,
+ "settlement": {
+  "status": "NOT_INTEGRATED",
+  "creditMemoReference": null,
+  "settledAmount": null,
+  "settledAt": null
+ },
+ "stage": "ORDER_CONFIRMATION",
+ "awaiting": [
+  "POLICY",
+  "RETURN_METHOD"
+ ],
+ "businessComplete": false,
+ "isTerminal": false
+}

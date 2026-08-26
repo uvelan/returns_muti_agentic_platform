@@ -1,0 +1,1 @@
+{"business_capability": "order-discovery", "action_type": "CONFIRM_ORDER", "decision_summary": "The associate confirmed order CF809189; raising the case.", "order_confirmation": {"candidate_set_id": "375b3fac-7953-403e-88ce-793b1642cdd5", "candidate_id": "CF809189", "order_reference": "CF809189"}}

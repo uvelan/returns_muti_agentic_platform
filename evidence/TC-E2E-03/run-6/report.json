@@ -1,0 +1,82 @@
+[
+ {
+  "step": 1,
+  "state": "PASS",
+  "note": "flow started on a partial misspelled name; no crash"
+ },
+ {
+  "step": 2,
+  "state": "PASS",
+  "note": "bounded fuzzy list (1), target present, matches=['customer_name_fuzzy']"
+ },
+ {
+  "step": 3,
+  "state": "PASS",
+  "note": "customer confirmed in-conversation (fact provenance asserted on case later)"
+ },
+ {
+  "step": 4,
+  "state": "PASS",
+  "note": "customer's orders listed from graph (11), config-driven fields"
+ },
+ {
+  "step": 5,
+  "state": "PASS",
+  "note": "explicit confirmation prompt: 'You selected order CQ805596. Confirm this order to raise the return?'"
+ },
+ {
+  "step": 3,
+  "state": "PASS",
+  "note": "customer + order locked to case; append-only facts carry provenance"
+ },
+ {
+  "step": 6,
+  "state": "PASS",
+  "note": "case b1bbe192-e98d-4bb7-a9db-d8abbc1b0152 confirmed; bay assignment engaged in parallel"
+ },
+ {
+  "step": 7,
+  "state": "PASS",
+  "note": "details elicited (3 questions, none repeated, no shipping-class question); line selected reason=SHIPPING_DAMAGE"
+ },
+ {
+  "step": 8,
+  "state": "PASS",
+  "note": "return workflow drafted the support request (status AWAITING_SUPPORT)"
+ },
+ {
+  "step": 9,
+  "state": "PASS",
+  "note": "bay answered: PHYSICAL_RECEIPT_REQUIRED"
+ },
+ {
+  "step": 10,
+  "state": "PASS",
+  "note": "drafted template present in support thread (1 message(s))"
+ },
+ {
+  "step": 11,
+  "state": "PASS",
+  "note": "support response agent processed the work item"
+ },
+ {
+  "step": 12,
+  "state": "PASS",
+  "note": "support reply posted in the same conversation"
+ },
+ {
+  "step": 13,
+  "state": "PASS",
+  "note": "RMA RMA-B1BBE192E98D4BB7A9DBD8ABBC1B0152 recorded on the return"
+ },
+ {
+  "step": 14,
+  "state": "PASS",
+  "note": "RMA and shipping details relayed into the original conversation"
+ },
+ {
+  "step": 15,
+  "state": "PASS",
+  "note": "operations projection consistent; case b1bbe192-e98d-4bb7-a9db-d8abbc1b0152 links conversation disc-tc02-run6-814a470a"
+ }
+]

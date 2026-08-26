@@ -1,0 +1,119 @@
+{
+ "sent": "customer wants to return an item, name is eugene sinclare",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run9-8004fc9e",
+   "conversation_version": 1,
+   "client_turn_id": "qa-fb0f352f-68a1-46ba-bc45-833e6bbcd46c",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 600357 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "5322442f-0b73-4ce0-91e2-4f4b771b2c51",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 2: 600356 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "5322442f-0b73-4ce0-91e2-4f4b771b2c51",
+        "result_path": [
+         "candidates",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "5322442f-0b73-4ce0-91e2-4f4b771b2c51",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "4b7612785205c7abd409309af66faf7e2eee6b3b673dce53138acc8218d7bbba",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "eugene sinclare"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "600357",
+        "data": {
+         "account_id": "SACRAMENTO",
+         "customer_id": "600357",
+         "customer_name": "EUGENE SINCLAIR"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "600356",
+        "data": {
+         "account_id": "LENZ",
+         "customer_id": "600356",
+         "customer_name": "EUGENE SINCLAIR"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 2,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "0fba2b2eefb4728822a1baf51b066b144622df49694b3ba9e52caee2ba5ecb79"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T01:44:51.248000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "6d108147-d07a-4b1c-8a2e-7a4f550d48ba",
+   "generated_at": "2026-08-26T01:44:56.523159Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

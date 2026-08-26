@@ -1,0 +1,306 @@
+{
+ "sent": "Confirm the customer RYAN SCHUYLER on account GARDEN.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run11-c1e77321",
+   "conversation_version": 2,
+   "client_turn_id": "qa-0fa7ba98-a15a-4b9d-b124-ddc55fda3c95",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CW805270 / 2026-07-30T0 / TULSA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "c2c883ff-6489-45df-97a8-78899e8465bf",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CS809255 / 2026-04-18T0 / TULSA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "c2c883ff-6489-45df-97a8-78899e8465bf",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CQ806897 / 2026-01-04T0 / TULSA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "c2c883ff-6489-45df-97a8-78899e8465bf",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CZ804126 / 2025-11-24T0 / TULSA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "c2c883ff-6489-45df-97a8-78899e8465bf",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CX809568 / 2025-03-19T0 / TULSA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "c2c883ff-6489-45df-97a8-78899e8465bf",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CN803066 / 2025-02-04T0 / TULSA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "c2c883ff-6489-45df-97a8-78899e8465bf",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "c2c883ff-6489-45df-97a8-78899e8465bf",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "48ec79fcb20972035c3232de08af9af2b9006464ffb8f0638eb35fa000990553",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "GARDEN*CW805270",
+        "account_id": "GARDEN",
+        "sales_order_number": "CW805270",
+        "customer_id": "600451",
+        "customer_name": "RYAN SCHUYLER",
+        "customer_po_number": "JOB",
+        "job_name": "STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1549",
+        "ship_from_warehouse_id": "1549",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-07-30T00:00:00.000000000",
+        "invoice_date": "2026-07-30T00:00:00.000000000",
+        "shipped_at": "2026-08-02T00:00:00.000000000",
+        "commit_date": "2026-07-30T00:00:00.000000000",
+        "ship_to_name": "RYAN SCHUYLER",
+        "ship_to_phone": "512-555-0120",
+        "ship_to_city": "TULSA",
+        "ship_to_state": "OK",
+        "ship_to_postal_code": "74118",
+        "source_updated_at": "2026-07-30T09:03:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CS809255",
+        "account_id": "GARDEN",
+        "sales_order_number": "CS809255",
+        "customer_id": "600451",
+        "customer_name": "RYAN SCHUYLER",
+        "customer_po_number": "MAINTENANCE",
+        "job_name": "RESIDENTIAL",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-04-18T00:00:00.000000000",
+        "invoice_date": "2026-04-18T00:00:00.000000000",
+        "shipped_at": "2026-04-20T00:00:00.000000000",
+        "commit_date": "2026-04-18T00:00:00.000000000",
+        "ship_to_name": "RYAN SCHUYLER",
+        "ship_to_phone": "512-555-0120",
+        "ship_to_city": "TULSA",
+        "ship_to_state": "OK",
+        "ship_to_postal_code": "74118",
+        "source_updated_at": "2026-04-18T07:28:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CQ806897",
+        "account_id": "GARDEN",
+        "sales_order_number": "CQ806897",
+        "customer_id": "600451",
+        "customer_name": "RYAN SCHUYLER",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "SHOP STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-01-04T00:00:00.000000000",
+        "invoice_date": "2026-01-04T00:00:00.000000000",
+        "shipped_at": "2026-01-06T00:00:00.000000000",
+        "commit_date": "2026-01-04T00:00:00.000000000",
+        "ship_to_name": "RYAN SCHUYLER",
+        "ship_to_phone": "512-555-0120",
+        "ship_to_city": "TULSA",
+        "ship_to_state": "OK",
+        "ship_to_postal_code": "74118",
+        "source_updated_at": "2026-01-04T08:44:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CZ804126",
+        "account_id": "GARDEN",
+        "sales_order_number": "CZ804126",
+        "customer_id": "600451",
+        "customer_name": "RYAN SCHUYLER",
+        "customer_po_number": "MAINTENANCE",
+        "job_name": "STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "195",
+        "ship_from_warehouse_id": "195",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-11-24T00:00:00.000000000",
+        "invoice_date": "2025-11-24T00:00:00.000000000",
+        "shipped_at": "2025-11-24T00:00:00.000000000",
+        "commit_date": "2025-11-24T00:00:00.000000000",
+        "ship_to_name": "RYAN SCHUYLER",
+        "ship_to_phone": "512-555-0120",
+        "ship_to_city": "TULSA",
+        "ship_to_state": "OK",
+        "ship_to_postal_code": "74118",
+        "source_updated_at": "2025-11-24T15:21:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CX809568",
+        "account_id": "GARDEN",
+        "sales_order_number": "CX809568",
+        "customer_id": "600451",
+        "customer_name": "RYAN SCHUYLER",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "RESIDENTIAL",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "37",
+        "ship_from_warehouse_id": "37",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2025-03-19T00:00:00.000000000",
+        "invoice_date": "2025-03-19T00:00:00.000000000",
+        "shipped_at": "2025-03-22T00:00:00.000000000",
+        "commit_date": "2025-03-19T00:00:00.000000000",
+        "ship_to_name": "RYAN SCHUYLER",
+        "ship_to_phone": "512-555-0120",
+        "ship_to_city": "TULSA",
+        "ship_to_state": "OK",
+        "ship_to_postal_code": "74118",
+        "source_updated_at": "2025-03-19T14:07:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CN803066",
+        "account_id": "GARDEN",
+        "sales_order_number": "CN803066",
+        "customer_id": "600451",
+        "customer_name": "RYAN SCHUYLER",
+        "customer_po_number": "RESIDENTIAL",
+        "job_name": "SHOP STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "31",
+        "ship_from_warehouse_id": "31",
+        "shipping_method": "MAIL",
+        "order_date": "2025-02-04T00:00:00.000000000",
+        "invoice_date": "2025-02-04T00:00:00.000000000",
+        "shipped_at": "2025-02-06T00:00:00.000000000",
+        "commit_date": "2025-02-04T00:00:00.000000000",
+        "ship_to_name": "RYAN SCHUYLER",
+        "ship_to_phone": "512-555-0120",
+        "ship_to_city": "TULSA",
+        "ship_to_state": "OK",
+        "ship_to_postal_code": "74118",
+        "source_updated_at": "2025-02-04T08:55:00.000000000"
+       }
+      ],
+      "count": 6
+     },
+     "result_checksum": "30fcd50b1272836cdace027b15b0f3ba80d5de98ec29a53d479bd35bdbb0b91d"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "RYAN SCHUYLER",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:08:43.235000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "3b970b7a-27df-42ac-90d1-01db8f4ee331",
+   "generated_at": "2026-08-26T02:08:49.946706Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

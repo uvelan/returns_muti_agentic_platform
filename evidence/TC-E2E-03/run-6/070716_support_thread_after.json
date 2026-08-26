@@ -1,0 +1,112 @@
+[
+ {
+  "id": "e8081686-f864-4010-9545-3f4bb255b1f7",
+  "threadId": "8ddb1cb5-14ff-4129-abab-7c46f628c8ba",
+  "sequence": 1,
+  "senderRole": "AGENT",
+  "senderId": "return-workflow-agent",
+  "messageType": "REQUEST",
+  "messageText": "RETURN SUPPORT REQUEST\n\nCase:\n- Case ID: b1bbe192-e98d-4bb7-a9db-d8abbc1b0152\n- Work Item ID: 51d91be0-9e07-4da6-b7b7-982ce7ea77c8\n- Created Date/Time: 2026-08-26T01:37:02.026000+00:00\n- Workflow Status at Handoff: GATHERING_INFO\n\nCustomer:\n- Customer Name: ROBERTO JARVIS\n- Customer Reference: 600737\n- Branch Associate: Not available\n- Branch Associate Email: Not available\n- Branch Associate Phone: Not available\n\nOrder:\n- Order Number: CQ805596\n- Line/Order-Line Number: 1\n  - Product Name: 6 ADJ W/ SQ STRN FLR DRN\n  - Colour: Not available\n  - SKU: P727521\n  - Confirmed Return Quantity: 1\n  - Return Reason: SHIPPING_DAMAGE\n  - Product Condition: NEW_IN_ORIGINAL_PACKAGING\n\nReturn Details:\n- Return Method: BRANCH_UPS\n- Requested Resolution: Not available\n- Product Presence: Not available\n- Associate Notes: Not available\n\nBay Assignment:\n- Assignment Status: PHYSICAL_RECEIPT_REQUIRED\n- Recommended Bay: Not available\n- Warehouse/Branch: 686\n- Return Location: Not available\n- Handling/Staging Instructions: Not available\n- Unresolved Reason: PHYSICAL_RECEIPT_REQUIRED\n\nVerification:\n- Order Confirmation: Confirmed\n- Required Return Information: Incomplete\n- Policy Evaluation: APPROVE on the STANDARD_RETURN route\n- Bay Assignment Source: Bay Assignment Agent\n\nRequested Support Action:\n- Review the complete return request.\n- Review or confirm the bay recommendation.\n- Resolve manual bay assignment: no bay could be recommended.\n- Verify all Support-owned conditions, including warranty when applicable.\n- Create or decline the RMA through the authoritative Support workflow.\n",
+  "attachmentIds": [],
+  "businessPayload": {
+   "bayAssignment": {
+    "bayReference": null,
+    "handlingInstructions": null,
+    "returnLocation": null,
+    "source": "BAY_ASSIGNMENT_AGENT",
+    "status": "PHYSICAL_RECEIPT_REQUIRED",
+    "unresolvedReason": "PHYSICAL_RECEIPT_REQUIRED",
+    "warehouseReference": "686"
+   },
+   "caseId": "b1bbe192-e98d-4bb7-a9db-d8abbc1b0152",
+   "createdAt": "2026-08-26T01:37:02.026000+00:00",
+   "customer": {
+    "contactEmail": null,
+    "contactName": null,
+    "contactPhone": null,
+    "name": "ROBERTO JARVIS",
+    "reference": "600737"
+   },
+   "order": {
+    "items": [
+     {
+      "colour": null,
+      "condition": "NEW_IN_ORIGINAL_PACKAGING",
+      "lineReference": "1",
+      "productName": "6 ADJ W/ SQ STRN FLR DRN",
+      "productReference": "4000107",
+      "quantity": 1,
+      "reason": "SHIPPING_DAMAGE",
+      "returnMethod": "BRANCH_UPS",
+      "sku": "P727521"
+     }
+    ],
+    "reference": "CQ805596"
+   },
+   "returnDetails": {
+    "additional": {},
+    "associateNotes": null,
+    "method": "BRANCH_UPS",
+    "productPresence": null,
+    "requestedResolution": null
+   },
+   "schemaVersion": "support-handoff-v1",
+   "verification": {
+    "orderConfirmed": true,
+    "policyEvaluation": {
+     "decision": "APPROVE",
+     "route": "STANDARD_RETURN",
+     "skippedReason": null,
+     "state": "EVALUATED"
+    },
+    "requiredReturnInformationComplete": false
+   },
+   "workItemId": "51d91be0-9e07-4da6-b7b7-982ce7ea77c8",
+   "workflowStatusAtHandoff": "GATHERING_INFO"
+  },
+  "createdAt": "2026-08-26T01:37:03.062000"
+ },
+ {
+  "id": "933936c0-973e-4ded-a33b-05be447639e6",
+  "threadId": "8ddb1cb5-14ff-4129-abab-7c46f628c8ba",
+  "sequence": 2,
+  "senderRole": "AGENT",
+  "senderId": "support-response-agent",
+  "messageType": "RETURN_CREATION",
+  "messageText": "Return created for case b1bbe192-e98d-4bb7-a9db-d8abbc1b0152: RMA RMA-B1BBE192E98D4BB7A9DBD8ABBC1B0152 (BRANCH_UPS), tracking TRK-RMAB1BBE192E98D4BB7A9DBD8ABBC1B0152, label LBL-RMAB1BBE192E98D4BB7A9DBD8ABBC1B0152.\n[RMA-B1BBE192E98D4BB7A9DBD8ABBC1B0152 / BRANCH_UPS]\n- 1 x 6 ADJ W/ SQ STRN FLR DRN (line 1)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nAttach the return label to each package.",
+  "attachmentIds": [],
+  "businessPayload": {
+   "supportAgentEventId": "support-response-agent:51d91be0-9e07-4da6-b7b7-982ce7ea77c8",
+   "decision": {
+    "agent": "Support Response Agent",
+    "agentVersion": "1.0",
+    "configurationVersion": "FERGUSON-RETURN-ASSUMPTIONS-1.0",
+    "decisionType": "SUPPORT_RESPONSE",
+    "decision": "RETURN_PLANNED",
+    "explanation": "Artifacts follow the released requirement table for each shipping-class group; recording them is the executor's act, not this assessment's.",
+    "confidenceMillionths": 950000,
+    "evidenceReferences": [
+     "CASE:b1bbe192-e98d-4bb7-a9db-d8abbc1b0152",
+     "ORDER_LINE:1"
+    ],
+    "warnings": [],
+    "executionMode": "DETERMINISTIC",
+    "metadata": {}
+   },
+   "plan": {
+    "returnReference": "RMA-B1BBE192E98D4BB7A9DBD8ABBC1B0152",
+    "trackingReference": "TRK-RMAB1BBE192E98D4BB7A9DBD8ABBC1B0152",
+    "labelReference": "LBL-RMAB1BBE192E98D4BB7A9DBD8ABBC1B0152",
+    "returnLocation": null,
+    "shippingInstructionReference": "SHIP-RMAB1BBE192E98D4BB7A9DBD8ABBC1B0152",
+    "returnMethod": "BRANCH_UPS",
+    "carrier": "UPS",
+    "orderLineReferences": [
+     "1"
+    ],
+    "instructions": "- 1 x 6 ADJ W/ SQ STRN FLR DRN (line 1)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nAttach the return label to each package."
+   }
+  },
+  "createdAt": "2026-08-26T01:37:13.011000"
+ }
+]

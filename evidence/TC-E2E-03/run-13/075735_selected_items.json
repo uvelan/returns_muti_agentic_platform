@@ -1,0 +1,59 @@
+{
+ "data": {
+  "caseId": "0ce55cfb-ec8c-44ae-b996-4f42c0ea38c6",
+  "revision": 33,
+  "changed": true,
+  "items": [
+   {
+    "returnItemId": "dc17a61e-b57c-4fec-bd6a-6d82acd6bb08",
+    "orderLineReference": "2",
+    "productReference": "4000478",
+    "quantity": 1,
+    "reason": "SHIPPING_DAMAGE",
+    "condition": "NEW_IN_ORIGINAL_PACKAGING",
+    "packageReference": null
+   }
+  ],
+  "lines": [
+   {
+    "lineReference": "1",
+    "sku": "IFHMA5B48L0CA",
+    "description": "4.0T FANCOIL ECM MPOS ALUM R454B",
+    "colour": null,
+    "orderedQuantity": 1,
+    "unitPrice": "3166.581",
+    "productReference": "10402666",
+    "returnableQuantity": 1,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 0,
+    "dataInconsistency": null
+   },
+   {
+    "lineReference": "2",
+    "sku": "D197061420",
+    "description": "RF 1.6 GPF 2PC TOILET BLK",
+    "colour": null,
+    "orderedQuantity": 1,
+    "unitPrice": "102.847",
+    "productReference": "4000478",
+    "returnableQuantity": 1,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 1,
+    "dataInconsistency": null
+   }
+  ]
+ },
+ "page": null,
+ "meta": {
+  "schema_version": "1.0",
+  "request_id": "9ef9d5c6-1b6d-42b1-891b-b81a32c586df",
+  "generated_at": "2026-08-26T02:27:35.046972Z",
+  "freshness": "LIVE",
+  "partial": false,
+  "warnings": []
+ }
+}

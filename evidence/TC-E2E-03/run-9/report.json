@@ -1,0 +1,95 @@
+[
+ {
+  "step": 1,
+  "state": "PASS",
+  "note": "flow started on a partial misspelled name; no crash"
+ },
+ {
+  "step": 2,
+  "state": "PASS",
+  "note": "bounded fuzzy list (2), target present, matches=['customer_name_fuzzy']"
+ },
+ {
+  "step": 3,
+  "state": "PASS",
+  "note": "customer confirmed in-conversation (fact provenance asserted on case later)"
+ },
+ {
+  "step": 4,
+  "state": "PASS",
+  "note": "customer's orders listed from graph (14), config-driven fields"
+ },
+ {
+  "step": 5,
+  "state": "PASS",
+  "note": "explicit confirmation prompt: 'You selected order CF809189. Confirm this order to raise the return?'"
+ },
+ {
+  "step": 3,
+  "state": "PASS",
+  "note": "customer + order locked to case; append-only facts carry provenance"
+ },
+ {
+  "step": 6,
+  "state": "PASS",
+  "note": "case f4bc75e0-757d-4f25-8e4a-d0e2104973e9 confirmed; bay assignment engaged in parallel"
+ },
+ {
+  "step": 7,
+  "state": "PASS",
+  "note": "details elicited (3 questions, none repeated, no shipping-class question); line selected reason=SHIPPING_DAMAGE"
+ },
+ {
+  "step": 8,
+  "state": "PASS",
+  "note": "return workflow drafted the support request (status AWAITING_SUPPORT)"
+ },
+ {
+  "step": 9,
+  "state": "PASS",
+  "note": "bay answered: PHYSICAL_RECEIPT_REQUIRED"
+ },
+ {
+  "step": 10,
+  "state": "PASS",
+  "note": "drafted template present in support thread (1 message(s))"
+ },
+ {
+  "step": 11,
+  "state": "PASS",
+  "note": "support response agent processed the work item"
+ },
+ {
+  "step": 12,
+  "state": "PASS",
+  "note": "support reply posted in the same conversation"
+ },
+ {
+  "step": 13,
+  "state": "PASS",
+  "note": "RMA RMA-F4BC75E0757D4F258E4AD0E2104973E9 recorded on the return"
+ },
+ {
+  "step": 14,
+  "state": "PASS",
+  "note": "RMA and shipping details relayed into the original conversation"
+ },
+ {
+  "step": 15,
+  "state": "PASS",
+  "note": "operations projection consistent; case f4bc75e0-757d-4f25-8e4a-d0e2104973e9 links conversation disc-tc02-run9-8004fc9e"
+ },
+ {
+  "step": 16,
+  "state": "PASS",
+  "note": "omc row + graph sync verified for RMA-F4BC75E0757D4F258E4AD0E2104973E9; one case id across chat/support/omc/graph; nothing posted to branch inventory"
+ },
+ {
+  "step": 16,
+  "state": "FAIL",
+  "note": "no shipment document seeded for RMA-F4BC75E0757D4F258E4AD0E2104973E9"
+ },
+ {
+  "failure": "step 16: no shipment document seeded for RMA-F4BC75E0757D4F258E4AD0E2104973E9"
+ }
+]

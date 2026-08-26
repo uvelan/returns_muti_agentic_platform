@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CQ805596",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run6-814a470a",
+   "conversation_version": 3,
+   "client_turn_id": "qa-fe754bc9-f7b9-4c77-8fa6-e2a16f13d709",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CQ805596 / [REDACTED] / GARDEN GROVE / 2026-07-31",
+      "evidence_refs": [
+       {
+        "query_execution_id": "c69c322f-1167-41f8-8766-4cda7ac31768",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "c69c322f-1167-41f8-8766-4cda7ac31768",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "2088bdba79597c888f57f8aee7a1acf43be550b38421e0bde2c0883ca896b7b1",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CQ805596"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CQ805596",
+        "data": {
+         "order_key": "CHARLOTTE*CQ805596",
+         "account_id": "CHARLOTTE",
+         "sales_order_number": "CQ805596",
+         "customer_id": "600737",
+         "customer_name": "ROBERTO JARVIS",
+         "customer_po_number": "REPLACEMENT",
+         "job_name": "WAREHOUSE",
+         "order_status": "INVOICED",
+         "sales_type": "INV",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "686",
+         "ship_from_warehouse_id": "686",
+         "shipping_method": "CUSTOMER PICKUP",
+         "order_date": "2026-07-31T00:00:00.000000000",
+         "invoice_date": "2026-07-31T00:00:00.000000000",
+         "shipped_at": "2026-07-31T00:00:00.000000000",
+         "commit_date": "2026-07-31T00:00:00.000000000",
+         "ship_to_name": "ROBERTO JARVIS",
+         "ship_to_phone": "404-555-6479",
+         "ship_to_city": "GARDEN GROVE",
+         "ship_to_state": "CA",
+         "ship_to_postal_code": "92899",
+         "source_updated_at": "2026-07-31T11:51:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "ab6edb8546dfe031c5a433dab45d32d947739da4adf2550f7c1e4acf6f7fe501"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "ROBERTO JARVIS",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T01:36:16.861000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "85a0b528-a4e5-4f61-8184-a5e7d35887af",
+   "generated_at": "2026-08-26T01:36:21.009165Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CF809189",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run9-8004fc9e",
+   "conversation_version": 3,
+   "client_turn_id": "qa-81d79b3b-5638-4a5f-b09b-2a1d46d73a6f",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CF809189 / [REDACTED] / GREENSBORO / 2026-07-30",
+      "evidence_refs": [
+       {
+        "query_execution_id": "7cdf1ea7-12ed-4a63-b9fa-fb218599720d",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "7cdf1ea7-12ed-4a63-b9fa-fb218599720d",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "fafd4629b4ce87f20ae0cdaefe2ce9b58fd9ab26a8f71fde6bfd9084ebd0e170",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CF809189"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CF809189",
+        "data": {
+         "order_key": "SACRAMENTO*CF809189",
+         "account_id": "SACRAMENTO",
+         "sales_order_number": "CF809189",
+         "customer_id": "600357",
+         "customer_name": "EUGENE SINCLAIR",
+         "customer_po_number": "SERVICE CALL",
+         "job_name": "TRUCK STOCK",
+         "order_status": "CALLCSR",
+         "sales_type": "CASH",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "133",
+         "ship_from_warehouse_id": "133",
+         "shipping_method": "WILL CALL",
+         "order_date": "2026-07-30T00:00:00.000000000",
+         "invoice_date": "2026-07-30T00:00:00.000000000",
+         "shipped_at": "2026-08-01T00:00:00.000000000",
+         "commit_date": "2026-07-30T00:00:00.000000000",
+         "ship_to_name": "EUGENE SINCLAIR",
+         "ship_to_phone": "212-555-4672",
+         "ship_to_city": "GREENSBORO",
+         "ship_to_state": "NC",
+         "ship_to_postal_code": "27416",
+         "source_updated_at": "2026-07-30T11:39:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "840ebfdcf5145dcf5976ab4bf3ad7904033dd64a96842a806842ec7b1e4893b7"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "EUGENE SINCLAIR",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T01:45:05.605000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "f44964b1-41f3-44a7-9c91-95c703ea1f10",
+   "generated_at": "2026-08-26T01:45:10.077923Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

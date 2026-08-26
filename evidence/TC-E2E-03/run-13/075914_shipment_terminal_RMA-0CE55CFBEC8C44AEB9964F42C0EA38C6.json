@@ -1,0 +1,91 @@
+{
+ "return_record_id": "205480b9-6a23-400d-830a-5063ba6b8298",
+ "bol_reference": "SHIP-RMA0CE55CFBEC8C44AEB9964F42C0EA38C6",
+ "kind": "returnShipment",
+ "carrier": null,
+ "case_id": "0ce55cfb-ec8c-44ae-b996-4f42c0ea38c6",
+ "created_at": "2026-08-26T02:27:49.043000",
+ "current_status": "delivered",
+ "destination_bay": null,
+ "destination_warehouse": "1549",
+ "events": [
+  {
+   "event_id": "6b30210f-7344-4e90-87f1-5e609cd06f85",
+   "status": "pending_pickup",
+   "location": "stage 1",
+   "note": "TC-E2E-03 manual drive",
+   "event_at": "2026-08-26T02:28:27.165000",
+   "recorded_at": "2026-08-26T02:28:27.165000",
+   "actor": "dev-operator"
+  },
+  {
+   "event_id": "202bab30-00db-4c4a-93e2-5a2bc29357aa",
+   "status": "picked_up",
+   "location": "stage 2",
+   "note": "TC-E2E-03 manual drive",
+   "event_at": "2026-08-26T02:28:34.275000",
+   "recorded_at": "2026-08-26T02:28:34.275000",
+   "actor": "dev-operator",
+   "pro_number": "PRO2C0EA38C6"
+  },
+  {
+   "event_id": "4adfda27-f123-4cf6-adc8-8673e0ed1941",
+   "status": "at_origin_terminal",
+   "location": "stage 3",
+   "note": "TC-E2E-03 manual drive",
+   "event_at": "2026-08-26T02:28:41.995000",
+   "recorded_at": "2026-08-26T02:28:41.995000",
+   "actor": "dev-operator"
+  },
+  {
+   "event_id": "e2e26b51-42bb-46bd-97fa-734e37b8cae6",
+   "status": "in_transit",
+   "location": "stage 4",
+   "note": "TC-E2E-03 manual drive",
+   "event_at": "2026-08-26T02:28:49.136000",
+   "recorded_at": "2026-08-26T02:28:49.136000",
+   "actor": "dev-operator"
+  },
+  {
+   "event_id": "458c7a02-58bd-4921-923c-942ae063053e",
+   "status": "at_destination_terminal",
+   "location": "stage 5",
+   "note": "TC-E2E-03 manual drive",
+   "event_at": "2026-08-26T02:28:55.987000",
+   "recorded_at": "2026-08-26T02:28:55.987000",
+   "actor": "dev-operator"
+  },
+  {
+   "event_id": "a854d927-e76c-4f20-be51-8f447e3ae02e",
+   "status": "out_for_delivery",
+   "location": "stage 6",
+   "note": "TC-E2E-03 manual drive",
+   "event_at": "2026-08-26T02:29:02.631000",
+   "recorded_at": "2026-08-26T02:29:02.631000",
+   "actor": "dev-operator"
+  },
+  {
+   "event_id": "9fe16258-6b98-49c5-bb80-9985b1c2e280",
+   "status": "delivered",
+   "location": "stage 7",
+   "note": "TC-E2E-03 manual drive",
+   "event_at": "2026-08-26T02:29:09.078000",
+   "recorded_at": "2026-08-26T02:29:09.078000",
+   "actor": "dev-operator"
+  }
+ ],
+ "label_reference": null,
+ "mode": "freight",
+ "pro_number": "PRO2C0EA38C6",
+ "provenance": {
+  "agent": "return-support",
+  "channel": "CHANNEL_B",
+  "source": "SUPPORT_REPLY",
+  "method": "PARSED",
+  "supportEventId": "support-response-agent:82b5fc5b-e407-46f1-916e-e911efcb0acd"
+ },
+ "rma_reference": "RMA-0CE55CFBEC8C44AEB9964F42C0EA38C6",
+ "shipment_id": "0d6799cf-8eaf-4bc0-a67e-20d4bbf4bbd7",
+ "tracking_reference": "PRO2C0EA38C6",
+ "updated_at": "2026-08-26T02:29:09.078000"
+}

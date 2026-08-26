@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CX801296",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run7-15d9c001",
+   "conversation_version": 3,
+   "client_turn_id": "qa-3793b54e-67f4-4e48-8c84-18361e4fbb74",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CX801296 / [REDACTED] / BALTIMORE / 2026-07-26",
+      "evidence_refs": [
+       {
+        "query_execution_id": "7271028e-6937-4259-8f2a-1103bbb9d50b",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "7271028e-6937-4259-8f2a-1103bbb9d50b",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "fefba1c682e023d286b21549099d8f17e476c6a782cb66b3e335d13897b19ce1",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CX801296"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CX801296",
+        "data": {
+         "order_key": "MINNWW*CX801296",
+         "account_id": "MINNWW",
+         "sales_order_number": "CX801296",
+         "customer_id": "600043",
+         "customer_name": "NEIL HATHAWAY",
+         "customer_po_number": "REPLACEMENT",
+         "job_name": "SERVICE CALL",
+         "order_status": "CALLCSR",
+         "sales_type": "CASH",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "596",
+         "ship_from_warehouse_id": "596",
+         "shipping_method": "CUSTOMER PICKUP",
+         "order_date": "2026-07-26T00:00:00.000000000",
+         "invoice_date": "2026-07-26T00:00:00.000000000",
+         "shipped_at": "2026-07-29T00:00:00.000000000",
+         "commit_date": "2026-07-26T00:00:00.000000000",
+         "ship_to_name": "NEIL HATHAWAY",
+         "ship_to_phone": "469-555-7362",
+         "ship_to_city": "BALTIMORE",
+         "ship_to_state": "MD",
+         "ship_to_postal_code": "21269",
+         "source_updated_at": "2026-07-26T07:35:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "10f84afc53bcffdbcf1d7a7d29624559e1698853ab7432566e0e25e4aac42ea3"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "NEIL HATHAWAY",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T01:40:04.806000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "893b5c65-0aef-4c3d-be05-a4e8f0008e03",
+   "generated_at": "2026-08-26T01:40:08.888956Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

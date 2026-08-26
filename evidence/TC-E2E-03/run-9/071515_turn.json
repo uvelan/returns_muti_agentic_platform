@@ -1,0 +1,43 @@
+{
+ "sent": "Confirm order CF809189.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run9-8004fc9e",
+   "conversation_version": 4,
+   "client_turn_id": "qa-6c9ffca4-e285-43ed-acb9-11ba218880d7",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [],
+    "suggestions": [],
+    "requested_input": "You selected order CF809189. Confirm this order to raise the return?"
+   },
+   "pending_clarification_thread_id": "order-discovery:disc-tc02-run9-8004fc9e:qa-6c9ffca4-e285-43ed-acb9-11ba218880d7:1",
+   "case_id": null,
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "EUGENE SINCLAIR",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T01:45:13.367000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "5760e794-0695-4791-b935-fb118248fb02",
+   "generated_at": "2026-08-26T01:45:15.585817Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

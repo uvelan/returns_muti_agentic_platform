@@ -1,0 +1,570 @@
+{
+ "sent": "Confirm the customer EUGENE SINCLAIR on account SACRAMENTO.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run9-8004fc9e",
+   "conversation_version": 2,
+   "client_turn_id": "qa-c4bc6669-8883-412e-8cc6-b19fcd034859",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CF809189 / 2026-07-30T0 / GREENSBORO / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "7814f5d2-db23-429b-b03f-ffc608ff71ab",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CZ808929 / 2026-01-26T0 / GREENSBORO / INVOICE-PAID",
+      "evidence_refs": [
+       {
+        "query_execution_id": "7814f5d2-db23-429b-b03f-ffc608ff71ab",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CP807583 / 2026-01-22T0 / GREENSBORO / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "7814f5d2-db23-429b-b03f-ffc608ff71ab",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CH807197 / 2026-01-14T0 / GREENSBORO / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "7814f5d2-db23-429b-b03f-ffc608ff71ab",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CA802716 / 2025-12-03T0 / GREENSBORO / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "7814f5d2-db23-429b-b03f-ffc608ff71ab",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CN804686 / 2025-11-04T0 / GREENSBORO / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "7814f5d2-db23-429b-b03f-ffc608ff71ab",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 7: CX801655 / 2025-10-20T0 / GREENSBORO / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "7814f5d2-db23-429b-b03f-ffc608ff71ab",
+        "result_path": [
+         "rows",
+         "6"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-7",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 8: CO804671 / 2025-10-12T0 / GREENSBORO / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "7814f5d2-db23-429b-b03f-ffc608ff71ab",
+        "result_path": [
+         "rows",
+         "7"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-8",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 9: CJ800379 / 2025-10-12T0 / GREENSBORO / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "7814f5d2-db23-429b-b03f-ffc608ff71ab",
+        "result_path": [
+         "rows",
+         "8"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-9",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 10: CH802550 / 2025-07-15T0 / GREENSBORO / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "7814f5d2-db23-429b-b03f-ffc608ff71ab",
+        "result_path": [
+         "rows",
+         "9"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "7814f5d2-db23-429b-b03f-ffc608ff71ab",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "e0d8488682162c4e363e96da44a699ae2f344709a260a78f292bc17e70132915",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "SACRAMENTO*CF809189",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CF809189",
+        "customer_id": "600357",
+        "customer_name": "EUGENE SINCLAIR",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "TRUCK STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "133",
+        "ship_from_warehouse_id": "133",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-07-30T00:00:00.000000000",
+        "invoice_date": "2026-07-30T00:00:00.000000000",
+        "shipped_at": "2026-08-01T00:00:00.000000000",
+        "commit_date": "2026-07-30T00:00:00.000000000",
+        "ship_to_name": "EUGENE SINCLAIR",
+        "ship_to_phone": "212-555-4672",
+        "ship_to_city": "GREENSBORO",
+        "ship_to_state": "NC",
+        "ship_to_postal_code": "27416",
+        "source_updated_at": "2026-07-30T11:39:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CZ808929",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CZ808929",
+        "customer_id": "600357",
+        "customer_name": "EUGENE SINCLAIR",
+        "customer_po_number": "TRUCK STOCK",
+        "job_name": "RESIDENTIAL",
+        "order_status": "INVOICE-PAID",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2",
+        "ship_from_warehouse_id": "2",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-01-26T00:00:00.000000000",
+        "invoice_date": "2026-01-26T00:00:00.000000000",
+        "shipped_at": "2026-01-29T00:00:00.000000000",
+        "commit_date": "2026-01-26T00:00:00.000000000",
+        "ship_to_name": "EUGENE SINCLAIR",
+        "ship_to_phone": "212-555-4672",
+        "ship_to_city": "GREENSBORO",
+        "ship_to_state": "NC",
+        "ship_to_postal_code": "27416",
+        "source_updated_at": "2026-01-26T09:30:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CP807583",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CP807583",
+        "customer_id": "600357",
+        "customer_name": "EUGENE SINCLAIR",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "JOB",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "603",
+        "ship_from_warehouse_id": "603",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-01-22T00:00:00.000000000",
+        "invoice_date": "2026-01-22T00:00:00.000000000",
+        "shipped_at": "2026-01-22T00:00:00.000000000",
+        "commit_date": "2026-01-22T00:00:00.000000000",
+        "ship_to_name": "EUGENE SINCLAIR",
+        "ship_to_phone": "212-555-4672",
+        "ship_to_city": "GREENSBORO",
+        "ship_to_state": "NC",
+        "ship_to_postal_code": "27416",
+        "source_updated_at": "2026-01-22T18:41:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CH807197",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CH807197",
+        "customer_id": "600357",
+        "customer_name": "EUGENE SINCLAIR",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "TRUCK STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1549",
+        "ship_from_warehouse_id": "1549",
+        "shipping_method": "OUR TRUCK",
+        "order_date": "2026-01-14T00:00:00.000000000",
+        "invoice_date": "2026-01-14T00:00:00.000000000",
+        "shipped_at": "2026-01-16T00:00:00.000000000",
+        "commit_date": "2026-01-14T00:00:00.000000000",
+        "ship_to_name": "EUGENE SINCLAIR",
+        "ship_to_phone": "212-555-4672",
+        "ship_to_city": "GREENSBORO",
+        "ship_to_state": "NC",
+        "ship_to_postal_code": "27416",
+        "source_updated_at": "2026-01-14T08:28:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CA802716",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CA802716",
+        "customer_id": "600357",
+        "customer_name": "EUGENE SINCLAIR",
+        "customer_po_number": "TRUCK STOCK",
+        "job_name": "SERVICE CALL",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "596",
+        "ship_from_warehouse_id": "596",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-12-03T00:00:00.000000000",
+        "invoice_date": "2025-12-03T00:00:00.000000000",
+        "shipped_at": "2025-12-06T00:00:00.000000000",
+        "commit_date": "2025-12-03T00:00:00.000000000",
+        "ship_to_name": "EUGENE SINCLAIR",
+        "ship_to_phone": "212-555-4672",
+        "ship_to_city": "GREENSBORO",
+        "ship_to_state": "NC",
+        "ship_to_postal_code": "27416",
+        "source_updated_at": "2025-12-03T09:47:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CN804686",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CN804686",
+        "customer_id": "600357",
+        "customer_name": "EUGENE SINCLAIR",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "SHOP STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-11-04T00:00:00.000000000",
+        "invoice_date": "2025-11-04T00:00:00.000000000",
+        "shipped_at": "2025-11-07T00:00:00.000000000",
+        "commit_date": "2025-11-04T00:00:00.000000000",
+        "ship_to_name": "EUGENE SINCLAIR",
+        "ship_to_phone": "212-555-4672",
+        "ship_to_city": "GREENSBORO",
+        "ship_to_state": "NC",
+        "ship_to_postal_code": "27416",
+        "source_updated_at": "2025-11-04T14:29:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CX801655",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CX801655",
+        "customer_id": "600357",
+        "customer_name": "EUGENE SINCLAIR",
+        "customer_po_number": "NEW CONSTRUCTION",
+        "job_name": "STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1844",
+        "ship_from_warehouse_id": "1844",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-10-20T00:00:00.000000000",
+        "invoice_date": "2025-10-20T00:00:00.000000000",
+        "shipped_at": "2025-10-22T00:00:00.000000000",
+        "commit_date": "2025-10-20T00:00:00.000000000",
+        "ship_to_name": "EUGENE SINCLAIR",
+        "ship_to_phone": "212-555-4672",
+        "ship_to_city": "GREENSBORO",
+        "ship_to_state": "NC",
+        "ship_to_postal_code": "27416",
+        "source_updated_at": "2025-10-20T09:24:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CO804671",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CO804671",
+        "customer_id": "600357",
+        "customer_name": "EUGENE SINCLAIR",
+        "customer_po_number": "STOCK",
+        "job_name": "WAREHOUSE",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "603",
+        "ship_from_warehouse_id": "603",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-10-12T00:00:00.000000000",
+        "invoice_date": "2025-10-12T00:00:00.000000000",
+        "shipped_at": "2025-10-13T00:00:00.000000000",
+        "commit_date": "2025-10-12T00:00:00.000000000",
+        "ship_to_name": "EUGENE SINCLAIR",
+        "ship_to_phone": "212-555-4672",
+        "ship_to_city": "GREENSBORO",
+        "ship_to_state": "NC",
+        "ship_to_postal_code": "27416",
+        "source_updated_at": "2025-10-12T17:01:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CJ800379",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CJ800379",
+        "customer_id": "600357",
+        "customer_name": "EUGENE SINCLAIR",
+        "customer_po_number": "SHOP STOCK",
+        "job_name": "SHOP STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "144",
+        "ship_from_warehouse_id": "144",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-10-12T00:00:00.000000000",
+        "invoice_date": "2025-10-12T00:00:00.000000000",
+        "shipped_at": "2025-10-15T00:00:00.000000000",
+        "commit_date": "2025-10-12T00:00:00.000000000",
+        "ship_to_name": "EUGENE SINCLAIR",
+        "ship_to_phone": "212-555-4672",
+        "ship_to_city": "GREENSBORO",
+        "ship_to_state": "NC",
+        "ship_to_postal_code": "27416",
+        "source_updated_at": "2025-10-12T07:19:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CH802550",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CH802550",
+        "customer_id": "600357",
+        "customer_name": "EUGENE SINCLAIR",
+        "customer_po_number": "RESIDENTIAL",
+        "job_name": "JOB",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "686",
+        "ship_from_warehouse_id": "686",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-07-15T00:00:00.000000000",
+        "invoice_date": "2025-07-15T00:00:00.000000000",
+        "shipped_at": "2025-07-17T00:00:00.000000000",
+        "commit_date": "2025-07-15T00:00:00.000000000",
+        "ship_to_name": "EUGENE SINCLAIR",
+        "ship_to_phone": "212-555-4672",
+        "ship_to_city": "GREENSBORO",
+        "ship_to_state": "NC",
+        "ship_to_postal_code": "27416",
+        "source_updated_at": "2025-07-15T13:15:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CL804044",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CL804044",
+        "customer_id": "600357",
+        "customer_name": "EUGENE SINCLAIR",
+        "customer_po_number": "REPLACEMENT",
+        "job_name": "JOB",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1950",
+        "ship_from_warehouse_id": "1950",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-04-19T00:00:00.000000000",
+        "invoice_date": "2025-04-19T00:00:00.000000000",
+        "shipped_at": "2025-04-22T00:00:00.000000000",
+        "commit_date": "2025-04-19T00:00:00.000000000",
+        "ship_to_name": "EUGENE SINCLAIR",
+        "ship_to_phone": "212-555-4672",
+        "ship_to_city": "GREENSBORO",
+        "ship_to_state": "NC",
+        "ship_to_postal_code": "27416",
+        "source_updated_at": "2025-04-19T13:02:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CI806370",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CI806370",
+        "customer_id": "600357",
+        "customer_name": "EUGENE SINCLAIR",
+        "customer_po_number": "REPLACEMENT",
+        "job_name": "WARRANTY",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-04-27T00:00:00.000000000",
+        "invoice_date": "2025-04-27T00:00:00.000000000",
+        "shipped_at": "2025-04-27T00:00:00.000000000",
+        "commit_date": "2025-04-27T00:00:00.000000000",
+        "ship_to_name": "EUGENE SINCLAIR",
+        "ship_to_phone": "212-555-4672",
+        "ship_to_city": "GREENSBORO",
+        "ship_to_state": "NC",
+        "ship_to_postal_code": "27416",
+        "source_updated_at": "2025-04-27T09:39:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CN805756",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CN805756",
+        "customer_id": "600357",
+        "customer_name": "EUGENE SINCLAIR",
+        "customer_po_number": "SERVICE CALL",
+        "job_name": "REPLACEMENT",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-01-22T00:00:00.000000000",
+        "invoice_date": "2025-01-22T00:00:00.000000000",
+        "shipped_at": "2025-01-23T00:00:00.000000000",
+        "commit_date": "2025-01-22T00:00:00.000000000",
+        "ship_to_name": "EUGENE SINCLAIR",
+        "ship_to_phone": "212-555-4672",
+        "ship_to_city": "GREENSBORO",
+        "ship_to_state": "NC",
+        "ship_to_postal_code": "27416",
+        "source_updated_at": "2025-01-22T16:05:00.000000000"
+       },
+       {
+        "order_key": "SACRAMENTO*CV803524",
+        "account_id": "SACRAMENTO",
+        "sales_order_number": "CV803524",
+        "customer_id": "600357",
+        "customer_name": "EUGENE SINCLAIR",
+        "customer_po_number": "STOCK",
+        "job_name": "STOCK",
+        "order_status": "INVOICE-PAID",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1556",
+        "ship_from_warehouse_id": "1556",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-01-25T00:00:00.000000000",
+        "invoice_date": "2025-01-25T00:00:00.000000000",
+        "shipped_at": "2025-01-26T00:00:00.000000000",
+        "commit_date": "2025-01-25T00:00:00.000000000",
+        "ship_to_name": "EUGENE SINCLAIR",
+        "ship_to_phone": "212-555-4672",
+        "ship_to_city": "GREENSBORO",
+        "ship_to_state": "NC",
+        "ship_to_postal_code": "27416",
+        "source_updated_at": "2025-01-25T14:31:00.000000000"
+       }
+      ],
+      "count": 14
+     },
+     "result_checksum": "3f6c7e423709a78e5aab2ee8b165eb7d6f89849ac95016608270a9db216b4ec7"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "EUGENE SINCLAIR",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T01:44:59.522000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "901d1473-52fe-4839-8847-c10252124bf9",
+   "generated_at": "2026-08-26T01:45:03.398633Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

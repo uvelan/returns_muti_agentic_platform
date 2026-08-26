@@ -1,0 +1,121 @@
+{
+ "sent": "has the return been delivered?",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run6-814a470a",
+   "conversation_version": 11,
+   "client_turn_id": "qa-4e349b0d-32dc-4361-880a-e276d79f5bae",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "RMA RMA-B1BBE192E98D4BB7A9DBD8ABBC1B0152 is issued for this return.",
+      "evidence_refs": [],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "tracking reference: TRK-RMAB1BBE192E98D4BB7A9DBD8ABBC1B0152",
+      "evidence_refs": [],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "label reference: LBL-RMAB1BBE192E98D4BB7A9DBD8ABBC1B0152",
+      "evidence_refs": [],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "fulfillment status: AWAITING_HANDOFF",
+      "evidence_refs": [],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "return record fulfilled: RMA-B1BBE192E98D4BB7A9DBD8ABBC1B0152",
+      "evidence_refs": [],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-7",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "fulfillment exception: RMA-B1BBE192E98D4BB7A9DBD8ABBC1B0152: RESOLVED (out_for_delivery)",
+      "evidence_refs": [],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-8",
+      "statement_type": "REASONED_SUGGESTION",
+      "text": "case status: ALL_RETURNS_DELIVERED",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "b1bbe192-e98d-4bb7-a9db-d8abbc1b0152",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "ROBERTO JARVIS",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "return_reason",
+     "value": "DAMAGED",
+     "status": "USABLE",
+     "label": "reason for return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "ordered_quantity",
+     "value": 1,
+     "status": "USABLE",
+     "label": "quantity being returned",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "branch_location",
+     "value": "CHARLOTTE",
+     "status": "USABLE",
+     "label": "branch handling the return",
+     "acquisition": "STATED"
+    },
+    {
+     "name": "proof_reference",
+     "value": null,
+     "status": "INVALID",
+     "label": "proof of condition reference",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T01:38:21.223000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "1def85b4-ed9f-4a41-a87c-8f5badb47f30",
+   "generated_at": "2026-08-26T01:38:24.898432Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

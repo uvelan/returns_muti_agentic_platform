@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CW805270",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run11-c1e77321",
+   "conversation_version": 3,
+   "client_turn_id": "qa-5d49265d-a5ab-44f1-8df6-3cb7d21a377e",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CW805270 / [REDACTED] / TULSA / 2026-07-30",
+      "evidence_refs": [
+       {
+        "query_execution_id": "090b77c4-cdca-483a-a3bd-b02beb45a9a4",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "090b77c4-cdca-483a-a3bd-b02beb45a9a4",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "03bca03036a19f152d2f0957b5e1a969a726fc76a1bf576d913d007220b0560d",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CW805270"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CW805270",
+        "data": {
+         "order_key": "GARDEN*CW805270",
+         "account_id": "GARDEN",
+         "sales_order_number": "CW805270",
+         "customer_id": "600451",
+         "customer_name": "RYAN SCHUYLER",
+         "customer_po_number": "JOB",
+         "job_name": "STOCK",
+         "order_status": "CALLCSR",
+         "sales_type": "CASH",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "1549",
+         "ship_from_warehouse_id": "1549",
+         "shipping_method": "CUSTOMER PICKUP",
+         "order_date": "2026-07-30T00:00:00.000000000",
+         "invoice_date": "2026-07-30T00:00:00.000000000",
+         "shipped_at": "2026-08-02T00:00:00.000000000",
+         "commit_date": "2026-07-30T00:00:00.000000000",
+         "ship_to_name": "RYAN SCHUYLER",
+         "ship_to_phone": "512-555-0120",
+         "ship_to_city": "TULSA",
+         "ship_to_state": "OK",
+         "ship_to_postal_code": "74118",
+         "source_updated_at": "2026-07-30T09:03:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "2497c12c774ea59894c6710c70de4c95744c49ece628e8ec2e9c01cd798df696"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "RYAN SCHUYLER",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:08:52.246000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "3f2fb664-161b-4065-a146-41bf4a30b7e0",
+   "generated_at": "2026-08-26T02:09:14.784964Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

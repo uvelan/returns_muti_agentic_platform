@@ -1,0 +1,112 @@
+[
+ {
+  "id": "1100141a-d388-4150-8310-b5b89ecbe85c",
+  "threadId": "fdb19481-0295-48e4-9844-38fe81c06796",
+  "sequence": 1,
+  "senderRole": "AGENT",
+  "senderId": "return-workflow-agent",
+  "messageType": "REQUEST",
+  "messageText": "RETURN SUPPORT REQUEST\n\nCase:\n- Case ID: f4bc75e0-757d-4f25-8e4a-d0e2104973e9\n- Work Item ID: 3534d7ef-8f24-4da2-a24f-ac0f231e5309\n- Created Date/Time: 2026-08-26T01:45:52.987000+00:00\n- Workflow Status at Handoff: GATHERING_INFO\n\nCustomer:\n- Customer Name: EUGENE SINCLAIR\n- Customer Reference: 600357\n- Branch Associate: Not available\n- Branch Associate Email: Not available\n- Branch Associate Phone: Not available\n\nOrder:\n- Order Number: CF809189\n- Line/Order-Line Number: 4\n  - Product Name: EL 1.28 GPF 1PC TOILET WHT\n  - Colour: Not available\n  - SKU: S826942\n  - Confirmed Return Quantity: 1\n  - Return Reason: SHIPPING_DAMAGE\n  - Product Condition: NEW_IN_ORIGINAL_PACKAGING\n\nReturn Details:\n- Return Method: BRANCH_LTL\n- Requested Resolution: Not available\n- Product Presence: Not available\n- Associate Notes: Not available\n\nBay Assignment:\n- Assignment Status: PHYSICAL_RECEIPT_REQUIRED\n- Recommended Bay: Not available\n- Warehouse/Branch: 133\n- Return Location: Not available\n- Handling/Staging Instructions: Not available\n- Unresolved Reason: PHYSICAL_RECEIPT_REQUIRED\n\nVerification:\n- Order Confirmation: Confirmed\n- Required Return Information: Incomplete\n- Policy Evaluation: APPROVE on the STANDARD_RETURN route\n- Bay Assignment Source: Bay Assignment Agent\n\nRequested Support Action:\n- Review the complete return request.\n- Review or confirm the bay recommendation.\n- Resolve manual bay assignment: no bay could be recommended.\n- Verify all Support-owned conditions, including warranty when applicable.\n- Create or decline the RMA through the authoritative Support workflow.\n",
+  "attachmentIds": [],
+  "businessPayload": {
+   "bayAssignment": {
+    "bayReference": null,
+    "handlingInstructions": null,
+    "returnLocation": null,
+    "source": "BAY_ASSIGNMENT_AGENT",
+    "status": "PHYSICAL_RECEIPT_REQUIRED",
+    "unresolvedReason": "PHYSICAL_RECEIPT_REQUIRED",
+    "warehouseReference": "133"
+   },
+   "caseId": "f4bc75e0-757d-4f25-8e4a-d0e2104973e9",
+   "createdAt": "2026-08-26T01:45:52.987000+00:00",
+   "customer": {
+    "contactEmail": null,
+    "contactName": null,
+    "contactPhone": null,
+    "name": "EUGENE SINCLAIR",
+    "reference": "600357"
+   },
+   "order": {
+    "items": [
+     {
+      "colour": null,
+      "condition": "NEW_IN_ORIGINAL_PACKAGING",
+      "lineReference": "4",
+      "productName": "EL 1.28 GPF 1PC TOILET WHT",
+      "productReference": "4000079",
+      "quantity": 1,
+      "reason": "SHIPPING_DAMAGE",
+      "returnMethod": "BRANCH_LTL",
+      "sku": "S826942"
+     }
+    ],
+    "reference": "CF809189"
+   },
+   "returnDetails": {
+    "additional": {},
+    "associateNotes": null,
+    "method": "BRANCH_LTL",
+    "productPresence": null,
+    "requestedResolution": null
+   },
+   "schemaVersion": "support-handoff-v1",
+   "verification": {
+    "orderConfirmed": true,
+    "policyEvaluation": {
+     "decision": "APPROVE",
+     "route": "STANDARD_RETURN",
+     "skippedReason": null,
+     "state": "EVALUATED"
+    },
+    "requiredReturnInformationComplete": false
+   },
+   "workItemId": "3534d7ef-8f24-4da2-a24f-ac0f231e5309",
+   "workflowStatusAtHandoff": "GATHERING_INFO"
+  },
+  "createdAt": "2026-08-26T01:45:53.504000"
+ },
+ {
+  "id": "54a7345b-404c-496f-83da-cb116e38f4b1",
+  "threadId": "fdb19481-0295-48e4-9844-38fe81c06796",
+  "sequence": 2,
+  "senderRole": "AGENT",
+  "senderId": "support-response-agent",
+  "messageType": "RETURN_CREATION",
+  "messageText": "Return created for case f4bc75e0-757d-4f25-8e4a-d0e2104973e9: RMA RMA-F4BC75E0757D4F258E4AD0E2104973E9 (BRANCH_LTL).\n[RMA-F4BC75E0757D4F258E4AD0E2104973E9 / BRANCH_LTL]\n- 1 x EL 1.28 GPF 1PC TOILET WHT (line 4)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nKeep the bill of lading with the shipment for the carrier.\nA carrier pickup will be scheduled; keep the goods staged and accessible.",
+  "attachmentIds": [],
+  "businessPayload": {
+   "supportAgentEventId": "support-response-agent:3534d7ef-8f24-4da2-a24f-ac0f231e5309",
+   "decision": {
+    "agent": "Support Response Agent",
+    "agentVersion": "1.0",
+    "configurationVersion": "FERGUSON-RETURN-ASSUMPTIONS-1.0",
+    "decisionType": "SUPPORT_RESPONSE",
+    "decision": "RETURN_PLANNED",
+    "explanation": "Artifacts follow the released requirement table for each shipping-class group; recording them is the executor's act, not this assessment's.",
+    "confidenceMillionths": 950000,
+    "evidenceReferences": [
+     "CASE:f4bc75e0-757d-4f25-8e4a-d0e2104973e9",
+     "ORDER_LINE:4"
+    ],
+    "warnings": [],
+    "executionMode": "DETERMINISTIC",
+    "metadata": {}
+   },
+   "plan": {
+    "returnReference": "RMA-F4BC75E0757D4F258E4AD0E2104973E9",
+    "trackingReference": null,
+    "labelReference": null,
+    "returnLocation": null,
+    "shippingInstructionReference": "SHIP-RMAF4BC75E0757D4F258E4AD0E2104973E9",
+    "returnMethod": "BRANCH_LTL",
+    "carrier": null,
+    "orderLineReferences": [
+     "4"
+    ],
+    "instructions": "- 1 x EL 1.28 GPF 1PC TOILET WHT (line 4)\n  Condition reported as New_In_Original_Packaging: pack to prevent further damage.\nKeep the bill of lading with the shipment for the carrier.\nA carrier pickup will be scheduled; keep the goods staged and accessible."
+   }
+  },
+  "createdAt": "2026-08-26T01:46:04.553000"
+ }
+]

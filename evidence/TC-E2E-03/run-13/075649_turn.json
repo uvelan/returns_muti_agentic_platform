@@ -1,0 +1,119 @@
+{
+ "sent": "the return is against order CJ803603",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run13-d1b29b36",
+   "conversation_version": 3,
+   "client_turn_id": "qa-e0c858ff-cc0b-4bcd-ae04-ebd52ba48793",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: CJ803603 / [REDACTED] / BAKERSFIELD / 2026-07-30",
+      "evidence_refs": [
+       {
+        "query_execution_id": "85ca6de1-c3bc-4730-afee-e052e451f44c",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "85ca6de1-c3bc-4730-afee-e052e451f44c",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "e1a6e0a99b3b1ff62f1922eb59d22bf847ddae9dc34383c409e20eec4d802ea3",
+     "compiled_query_checksum": "45811821e4aa33042f064c5f7b8e7fb17e5d8948f361ebd8b52faa34a89661fe",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.9,
+       "wantsMoreResults": false,
+       "orderNumbers": [
+        "CJ803603"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "CJ803603",
+        "data": {
+         "order_key": "GARDEN*CJ803603",
+         "account_id": "GARDEN",
+         "sales_order_number": "CJ803603",
+         "customer_id": "600896",
+         "customer_name": "PAMELA FARRELL",
+         "customer_po_number": "JOB",
+         "job_name": "TRUCK STOCK",
+         "order_status": "INVOICED",
+         "sales_type": "CASH",
+         "source_system_code": "SOE",
+         "sell_warehouse_id": "1549",
+         "ship_from_warehouse_id": "1549",
+         "shipping_method": "CUSTOMER PICKUP",
+         "order_date": "2026-07-30T00:00:00.000000000",
+         "invoice_date": "2026-07-30T00:00:00.000000000",
+         "shipped_at": "2026-08-02T00:00:00.000000000",
+         "commit_date": "2026-07-30T00:00:00.000000000",
+         "ship_to_name": "PAMELA FARRELL",
+         "ship_to_phone": "469-555-6871",
+         "ship_to_city": "BAKERSFIELD",
+         "ship_to_state": "CA",
+         "ship_to_postal_code": "93394",
+         "source_updated_at": "2026-07-30T17:03:00.000000000"
+        },
+        "score": 1.0,
+        "matches": [
+         "sales_order_number_exact"
+        ]
+       }
+      ],
+      "total_found": 1,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "c66661200ef016fb04e24df97861f8a2ad4217ed36f528cecde2f13aa9fddd6d"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "PAMELA FARRELL",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:26:44.251000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "31ebd7f8-9cd5-4ac7-aa7f-908c745cb167",
+   "generated_at": "2026-08-26T02:26:49.173231Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}
