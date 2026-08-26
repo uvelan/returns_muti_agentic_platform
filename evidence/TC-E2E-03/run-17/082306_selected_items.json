@@ -1,0 +1,44 @@
+{
+ "data": {
+  "caseId": "fbc5bf75-2465-4879-b5e1-c7e3dd1e484d",
+  "revision": 33,
+  "changed": true,
+  "items": [
+   {
+    "returnItemId": "43d360b8-c0bf-4255-914b-234c48437f99",
+    "orderLineReference": "1",
+    "productReference": "49061",
+    "quantity": 1,
+    "reason": "SHIPPING_DAMAGE",
+    "condition": "NEW_IN_ORIGINAL_PACKAGING",
+    "packageReference": null
+   }
+  ],
+  "lines": [
+   {
+    "lineReference": "1",
+    "sku": "GBRNDK",
+    "description": "LF 1/2X2 BRS NIP GBL",
+    "colour": null,
+    "orderedQuantity": 1,
+    "unitPrice": "73.509",
+    "productReference": "49061",
+    "returnableQuantity": 1,
+    "completedReturnQuantity": 0,
+    "openAuthorizedQuantity": 0,
+    "activeReservationQuantity": 0,
+    "selfReservedQuantity": 1,
+    "dataInconsistency": null
+   }
+  ]
+ },
+ "page": null,
+ "meta": {
+  "schema_version": "1.0",
+  "request_id": "ebaf18f8-bf1d-419e-a590-4c3ae1381515",
+  "generated_at": "2026-08-26T02:53:06.490311Z",
+  "freshness": "LIVE",
+  "partial": false,
+  "warnings": []
+ }
+}

@@ -1,0 +1,545 @@
+{
+ "sent": "Confirm the customer KEVIN CLAYTON on account GARDEN.",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run17-853c08a6",
+   "conversation_version": 2,
+   "client_turn_id": "qa-3d07cb7b-c5d0-45f1-8739-987baabb676a",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 1: CD803506 / 2026-08-01T0 / ATLANTA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "1be596d3-db88-400e-8da4-1bdb1616e22f",
+        "result_path": [
+         "rows",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 2: CZ809511 / 2026-03-23T0 / ATLANTA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "1be596d3-db88-400e-8da4-1bdb1616e22f",
+        "result_path": [
+         "rows",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 3: CC808936 / 2026-03-14T0 / ATLANTA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "1be596d3-db88-400e-8da4-1bdb1616e22f",
+        "result_path": [
+         "rows",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-3",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 4: CW800112 / 2025-12-15T0 / ATLANTA / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "1be596d3-db88-400e-8da4-1bdb1616e22f",
+        "result_path": [
+         "rows",
+         "3"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-4",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 5: CW806113 / 2025-08-31T0 / ATLANTA / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "1be596d3-db88-400e-8da4-1bdb1616e22f",
+        "result_path": [
+         "rows",
+         "4"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-5",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 6: CS809521 / 2025-02-20T0 / ATLANTA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "1be596d3-db88-400e-8da4-1bdb1616e22f",
+        "result_path": [
+         "rows",
+         "5"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-6",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 7: CN805284 / 2025-01-14T0 / ATLANTA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "1be596d3-db88-400e-8da4-1bdb1616e22f",
+        "result_path": [
+         "rows",
+         "6"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-7",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 8: CA804823 / 2026-05-20T0 / ATLANTA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "1be596d3-db88-400e-8da4-1bdb1616e22f",
+        "result_path": [
+         "rows",
+         "7"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-8",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 9: CK807417 / 2026-02-25T0 / ATLANTA / CALLCSR",
+      "evidence_refs": [
+       {
+        "query_execution_id": "1be596d3-db88-400e-8da4-1bdb1616e22f",
+        "result_path": [
+         "rows",
+         "8"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-9",
+      "statement_type": "GRAPH_FACT",
+      "text": "Order 10: CD802057 / 2026-02-19T0 / ATLANTA / INVOICED",
+      "evidence_refs": [
+       {
+        "query_execution_id": "1be596d3-db88-400e-8da4-1bdb1616e22f",
+        "result_path": [
+         "rows",
+         "9"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Tell me the order number the customer is returning against."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "1be596d3-db88-400e-8da4-1bdb1616e22f",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "28361e3a77e6c4391fe41b6621c45d164bb5593e8124692f238b344797bb51ac",
+     "compiled_query_checksum": "796162bec0e2991743dc374e43a0fc19db25ba61bb5a30bd29eddeace9f36351",
+     "result": {
+      "rows": [
+       {
+        "order_key": "GARDEN*CD803506",
+        "account_id": "GARDEN",
+        "sales_order_number": "CD803506",
+        "customer_id": "601101",
+        "customer_name": "KEVIN CLAYTON",
+        "customer_po_number": "MAINTENANCE",
+        "job_name": "SHOP STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "603",
+        "ship_from_warehouse_id": "603",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-08-01T00:00:00.000000000",
+        "invoice_date": "2026-08-01T00:00:00.000000000",
+        "shipped_at": "2026-08-04T00:00:00.000000000",
+        "commit_date": "2026-08-01T00:00:00.000000000",
+        "ship_to_name": "KEVIN CLAYTON",
+        "ship_to_phone": "212-555-0990",
+        "ship_to_city": "ATLANTA",
+        "ship_to_state": "GA",
+        "ship_to_postal_code": "30398",
+        "source_updated_at": "2026-08-01T16:04:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CZ809511",
+        "account_id": "GARDEN",
+        "sales_order_number": "CZ809511",
+        "customer_id": "601101",
+        "customer_name": "KEVIN CLAYTON",
+        "customer_po_number": "WARRANTY",
+        "job_name": "REPLACEMENT",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1781",
+        "ship_from_warehouse_id": "1781",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-03-23T00:00:00.000000000",
+        "invoice_date": "2026-03-23T00:00:00.000000000",
+        "shipped_at": "2026-03-23T00:00:00.000000000",
+        "commit_date": "2026-03-23T00:00:00.000000000",
+        "ship_to_name": "KEVIN CLAYTON",
+        "ship_to_phone": "212-555-0990",
+        "ship_to_city": "ATLANTA",
+        "ship_to_state": "GA",
+        "ship_to_postal_code": "30398",
+        "source_updated_at": "2026-03-23T15:26:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CC808936",
+        "account_id": "GARDEN",
+        "sales_order_number": "CC808936",
+        "customer_id": "601101",
+        "customer_name": "KEVIN CLAYTON",
+        "customer_po_number": "JOB",
+        "job_name": "TRUCK STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1556",
+        "ship_from_warehouse_id": "1556",
+        "shipping_method": "WILL CALL",
+        "order_date": "2026-03-14T00:00:00.000000000",
+        "invoice_date": "2026-03-14T00:00:00.000000000",
+        "shipped_at": "2026-03-16T00:00:00.000000000",
+        "commit_date": "2026-03-14T00:00:00.000000000",
+        "ship_to_name": "KEVIN CLAYTON",
+        "ship_to_phone": "212-555-0990",
+        "ship_to_city": "ATLANTA",
+        "ship_to_state": "GA",
+        "ship_to_postal_code": "30398",
+        "source_updated_at": "2026-03-14T12:38:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CW800112",
+        "account_id": "GARDEN",
+        "sales_order_number": "CW800112",
+        "customer_id": "601101",
+        "customer_name": "KEVIN CLAYTON",
+        "customer_po_number": "JOB",
+        "job_name": "SHOP STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2",
+        "ship_from_warehouse_id": "2",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-12-15T00:00:00.000000000",
+        "invoice_date": "2025-12-15T00:00:00.000000000",
+        "shipped_at": "2025-12-16T00:00:00.000000000",
+        "commit_date": "2025-12-15T00:00:00.000000000",
+        "ship_to_name": "KEVIN CLAYTON",
+        "ship_to_phone": "212-555-0990",
+        "ship_to_city": "ATLANTA",
+        "ship_to_state": "GA",
+        "ship_to_postal_code": "30398",
+        "source_updated_at": "2025-12-15T09:51:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CW806113",
+        "account_id": "GARDEN",
+        "sales_order_number": "CW806113",
+        "customer_id": "601101",
+        "customer_name": "KEVIN CLAYTON",
+        "customer_po_number": "WAREHOUSE",
+        "job_name": "WAREHOUSE",
+        "order_status": "INVOICED",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1844",
+        "ship_from_warehouse_id": "1844",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-08-31T00:00:00.000000000",
+        "invoice_date": "2025-08-31T00:00:00.000000000",
+        "shipped_at": "2025-09-03T00:00:00.000000000",
+        "commit_date": "2025-08-31T00:00:00.000000000",
+        "ship_to_name": "KEVIN CLAYTON",
+        "ship_to_phone": "212-555-0990",
+        "ship_to_city": "ATLANTA",
+        "ship_to_state": "GA",
+        "ship_to_postal_code": "30398",
+        "source_updated_at": "2025-08-31T08:30:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CS809521",
+        "account_id": "GARDEN",
+        "sales_order_number": "CS809521",
+        "customer_id": "601101",
+        "customer_name": "KEVIN CLAYTON",
+        "customer_po_number": "RESIDENTIAL",
+        "job_name": "JOB",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "1549",
+        "ship_from_warehouse_id": "1549",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-02-20T00:00:00.000000000",
+        "invoice_date": "2025-02-20T00:00:00.000000000",
+        "shipped_at": "2025-02-21T00:00:00.000000000",
+        "commit_date": "2025-02-20T00:00:00.000000000",
+        "ship_to_name": "KEVIN CLAYTON",
+        "ship_to_phone": "212-555-0990",
+        "ship_to_city": "ATLANTA",
+        "ship_to_state": "GA",
+        "ship_to_postal_code": "30398",
+        "source_updated_at": "2025-02-20T15:42:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CN805284",
+        "account_id": "GARDEN",
+        "sales_order_number": "CN805284",
+        "customer_id": "601101",
+        "customer_name": "KEVIN CLAYTON",
+        "customer_po_number": "MAINTENANCE",
+        "job_name": "NEW CONSTRUCTION",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "686",
+        "ship_from_warehouse_id": "686",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-01-14T00:00:00.000000000",
+        "invoice_date": "2025-01-14T00:00:00.000000000",
+        "shipped_at": "2025-01-16T00:00:00.000000000",
+        "commit_date": "2025-01-14T00:00:00.000000000",
+        "ship_to_name": "KEVIN CLAYTON",
+        "ship_to_phone": "212-555-0990",
+        "ship_to_city": "ATLANTA",
+        "ship_to_state": "GA",
+        "ship_to_postal_code": "30398",
+        "source_updated_at": "2025-01-14T18:39:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CA804823",
+        "account_id": "GARDEN",
+        "sales_order_number": "CA804823",
+        "customer_id": "601102",
+        "customer_name": "KEVIN CLAYTON",
+        "customer_po_number": "JOB",
+        "job_name": "STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-05-20T00:00:00.000000000",
+        "invoice_date": "2026-05-20T00:00:00.000000000",
+        "shipped_at": "2026-05-23T00:00:00.000000000",
+        "commit_date": "2026-05-20T00:00:00.000000000",
+        "ship_to_name": "KEVIN CLAYTON",
+        "ship_to_phone": "212-555-0990",
+        "ship_to_city": "ATLANTA",
+        "ship_to_state": "GA",
+        "ship_to_postal_code": "30398",
+        "source_updated_at": "2026-05-20T12:24:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CK807417",
+        "account_id": "GARDEN",
+        "sales_order_number": "CK807417",
+        "customer_id": "601102",
+        "customer_name": "KEVIN CLAYTON",
+        "customer_po_number": "MAINTENANCE",
+        "job_name": "SHOP STOCK",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "603",
+        "ship_from_warehouse_id": "603",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-02-25T00:00:00.000000000",
+        "invoice_date": "2026-02-25T00:00:00.000000000",
+        "shipped_at": "2026-02-28T00:00:00.000000000",
+        "commit_date": "2026-02-25T00:00:00.000000000",
+        "ship_to_name": "KEVIN CLAYTON",
+        "ship_to_phone": "212-555-0990",
+        "ship_to_city": "ATLANTA",
+        "ship_to_state": "GA",
+        "ship_to_postal_code": "30398",
+        "source_updated_at": "2026-02-25T16:59:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CD802057",
+        "account_id": "GARDEN",
+        "sales_order_number": "CD802057",
+        "customer_id": "601102",
+        "customer_name": "KEVIN CLAYTON",
+        "customer_po_number": "REPLACEMENT",
+        "job_name": "TRUCK STOCK",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "2210",
+        "ship_from_warehouse_id": "2210",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2026-02-19T00:00:00.000000000",
+        "invoice_date": "2026-02-19T00:00:00.000000000",
+        "shipped_at": "2026-02-20T00:00:00.000000000",
+        "commit_date": "2026-02-19T00:00:00.000000000",
+        "ship_to_name": "KEVIN CLAYTON",
+        "ship_to_phone": "212-555-0990",
+        "ship_to_city": "ATLANTA",
+        "ship_to_state": "GA",
+        "ship_to_postal_code": "30398",
+        "source_updated_at": "2026-02-19T13:30:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CW803133",
+        "account_id": "GARDEN",
+        "sales_order_number": "CW803133",
+        "customer_id": "601102",
+        "customer_name": "KEVIN CLAYTON",
+        "customer_po_number": "REPLACEMENT",
+        "job_name": "WARRANTY",
+        "order_status": "INVOICED",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "686",
+        "ship_from_warehouse_id": "686",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-12-17T00:00:00.000000000",
+        "invoice_date": "2025-12-17T00:00:00.000000000",
+        "shipped_at": "2025-12-18T00:00:00.000000000",
+        "commit_date": "2025-12-17T00:00:00.000000000",
+        "ship_to_name": "KEVIN CLAYTON",
+        "ship_to_phone": "212-555-0990",
+        "ship_to_city": "ATLANTA",
+        "ship_to_state": "GA",
+        "ship_to_postal_code": "30398",
+        "source_updated_at": "2025-12-17T12:47:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CE803351",
+        "account_id": "GARDEN",
+        "sales_order_number": "CE803351",
+        "customer_id": "601102",
+        "customer_name": "KEVIN CLAYTON",
+        "customer_po_number": "REPLACEMENT",
+        "job_name": "RESIDENTIAL",
+        "order_status": "CALLCSR",
+        "sales_type": "INV",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "144",
+        "ship_from_warehouse_id": "144",
+        "shipping_method": "CUSTOMER PICKUP",
+        "order_date": "2025-10-07T00:00:00.000000000",
+        "invoice_date": "2025-10-07T00:00:00.000000000",
+        "shipped_at": "2025-10-09T00:00:00.000000000",
+        "commit_date": "2025-10-07T00:00:00.000000000",
+        "ship_to_name": "KEVIN CLAYTON",
+        "ship_to_phone": "212-555-0990",
+        "ship_to_city": "ATLANTA",
+        "ship_to_state": "GA",
+        "ship_to_postal_code": "30398",
+        "source_updated_at": "2025-10-07T18:47:00.000000000"
+       },
+       {
+        "order_key": "GARDEN*CV809276",
+        "account_id": "GARDEN",
+        "sales_order_number": "CV809276",
+        "customer_id": "601102",
+        "customer_name": "KEVIN CLAYTON",
+        "customer_po_number": "RESIDENTIAL",
+        "job_name": "SERVICE CALL",
+        "order_status": "CALLCSR",
+        "sales_type": "CASH",
+        "source_system_code": "SOE",
+        "sell_warehouse_id": "3526",
+        "ship_from_warehouse_id": "3526",
+        "shipping_method": "WILL CALL",
+        "order_date": "2025-08-13T00:00:00.000000000",
+        "invoice_date": "2025-08-13T00:00:00.000000000",
+        "shipped_at": "2025-08-16T00:00:00.000000000",
+        "commit_date": "2025-08-13T00:00:00.000000000",
+        "ship_to_name": "KEVIN CLAYTON",
+        "ship_to_phone": "212-555-0990",
+        "ship_to_city": "ATLANTA",
+        "ship_to_state": "GA",
+        "ship_to_postal_code": "30398",
+        "source_updated_at": "2025-08-13T07:36:00.000000000"
+       }
+      ],
+      "count": 13
+     },
+     "result_checksum": "40a87660ac91d2de2b158b2c88299c9a7e7a11df113fbd4787f85cf654ad8903"
+    }
+   ],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "KEVIN CLAYTON",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:50:59.491000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "cfb08c3c-4af1-4467-8885-3e59b37bfb55",
+   "generated_at": "2026-08-26T02:51:02.993932Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

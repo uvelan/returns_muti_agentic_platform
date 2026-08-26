@@ -1,0 +1,147 @@
+{
+ "sent": "customer wants to return an item, name is kevin claytn",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run17-853c08a6",
+   "conversation_version": 1,
+   "client_turn_id": "qa-0df92794-be83-474f-9413-bd0cd259c804",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "COMPLETE",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 1: 601101 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "ce67928c-8116-48e6-812a-04d010c4d4b6",
+        "result_path": [
+         "candidates",
+         "0"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-1",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 2: 601103 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "ce67928c-8116-48e6-812a-04d010c4d4b6",
+        "result_path": [
+         "candidates",
+         "1"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     },
+     {
+      "statement_id": "st-2",
+      "statement_type": "GRAPH_FACT",
+      "text": "Match 3: 601102 / [REDACTED]",
+      "evidence_refs": [
+       {
+        "query_execution_id": "ce67928c-8116-48e6-812a-04d010c4d4b6",
+        "result_path": [
+         "candidates",
+         "2"
+        ],
+        "expected_value": null
+       }
+      ],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [
+     "Confirm the matching order or customer to continue the return."
+    ],
+    "requested_input": null
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": null,
+   "query_evidence": [
+    {
+     "query_execution_id": "ce67928c-8116-48e6-812a-04d010c4d4b6",
+     "schema_version": "2026.08.04",
+     "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+     "logical_plan_checksum": "23b5a273eeae75f4d80b5d90a3f57d5c9fc177a7085297d86d489ce51f89567e",
+     "compiled_query_checksum": "931b6844175174927920c692c58596fdb2d1f1bb314489ae23ace404be089313",
+     "result": {
+      "intent": {
+       "searchMode": "DISCOVER",
+       "confidence": 0.8,
+       "wantsMoreResults": false,
+       "customerNames": [
+        "kevin claytn"
+       ]
+      },
+      "candidates": [
+       {
+        "candidate_id": "601101",
+        "data": {
+         "account_id": "GARDEN",
+         "customer_id": "601101",
+         "customer_name": "KEVIN CLAYTON"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "601103",
+        "data": {
+         "account_id": "DALLAS",
+         "customer_id": "601103",
+         "customer_name": "KEVIN CLAYTON"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       },
+       {
+        "candidate_id": "601102",
+        "data": {
+         "account_id": "GARDEN",
+         "customer_id": "601102",
+         "customer_name": "KEVIN CLAYTON"
+        },
+        "score": 0.6,
+        "matches": [
+         "customer_name_fuzzy"
+        ]
+       }
+      ],
+      "total_found": 3,
+      "unsupported_signals": [],
+      "unrecognized_signals": [],
+      "invalid_signals": []
+     },
+     "result_checksum": "4cbff83ea759389094860abeea8a7b8f68b5b7f62ec5823e8f9ba1ba8d86393f"
+    }
+   ],
+   "captured_facts": [],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:50:51.984000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "81f39b26-c014-444c-a353-04591ecb7658",
+   "generated_at": "2026-08-26T02:50:56.966013Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

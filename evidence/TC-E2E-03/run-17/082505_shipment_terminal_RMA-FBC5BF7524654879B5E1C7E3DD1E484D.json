@@ -1,0 +1,70 @@
+{
+ "kind": "returnShipment",
+ "return_record_id": "143246c9-f9cd-467e-afa5-a4ff673b93a1",
+ "tracking_reference": "TRK-RMAFBC5BF7524654879B5E1C7E3DD1E484D",
+ "carrier": "UPS",
+ "case_id": "fbc5bf75-2465-4879-b5e1-c7e3dd1e484d",
+ "current_status": "delivered",
+ "created_at": "2026-08-26T02:53:59.053000",
+ "destination_bay": null,
+ "destination_warehouse": "603",
+ "events": [
+  {
+   "event_id": "942a146c-12d2-413e-8a9f-f951311268a0",
+   "status": "picked_up",
+   "location": "stage 1",
+   "note": "TC-E2E-03 manual drive",
+   "event_at": "2026-08-26T02:54:44.526000",
+   "recorded_at": "2026-08-26T02:54:44.526000",
+   "actor": "dev-operator"
+  },
+  {
+   "event_id": "707ca7cd-dc96-4746-8762-b7e60f83e707",
+   "status": "in_transit",
+   "location": "stage 2",
+   "note": "TC-E2E-03 manual drive",
+   "event_at": "2026-08-26T02:54:48.924000",
+   "recorded_at": "2026-08-26T02:54:48.924000",
+   "actor": "dev-operator"
+  },
+  {
+   "event_id": "2c92f640-c219-4e7a-a71d-9c869f0e022d",
+   "status": "arrived_at_facility",
+   "location": "stage 3",
+   "note": "TC-E2E-03 manual drive",
+   "event_at": "2026-08-26T02:54:53.163000",
+   "recorded_at": "2026-08-26T02:54:53.163000",
+   "actor": "dev-operator"
+  },
+  {
+   "event_id": "6fa6984f-9151-4674-8c06-b68fca7468af",
+   "status": "out_for_delivery",
+   "location": "stage 4",
+   "note": "TC-E2E-03 manual drive",
+   "event_at": "2026-08-26T02:54:57.387000",
+   "recorded_at": "2026-08-26T02:54:57.387000",
+   "actor": "dev-operator"
+  },
+  {
+   "event_id": "311f31ad-8626-4581-87d3-724986050b25",
+   "status": "delivered",
+   "location": "stage 5",
+   "note": "TC-E2E-03 manual drive",
+   "event_at": "2026-08-26T02:55:01.637000",
+   "recorded_at": "2026-08-26T02:55:01.637000",
+   "actor": "dev-operator"
+  }
+ ],
+ "label_reference": "LBL-RMAFBC5BF7524654879B5E1C7E3DD1E484D",
+ "mode": "parcel",
+ "provenance": {
+  "agent": "return-support",
+  "channel": "CHANNEL_B",
+  "source": "SUPPORT_REPLY",
+  "method": "PARSED",
+  "supportEventId": "support-response-agent:10bae528-6a3d-44af-b830-077dc343b390"
+ },
+ "rma_reference": "RMA-FBC5BF7524654879B5E1C7E3DD1E484D",
+ "shipment_id": "69cc4e14-4359-4539-b2d9-14bc35c2cdf6",
+ "updated_at": "2026-08-26T02:55:01.637000"
+}

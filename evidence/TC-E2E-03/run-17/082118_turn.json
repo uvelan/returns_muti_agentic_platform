@@ -1,0 +1,51 @@
+{
+ "sent": "yes confirm it",
+ "result": {
+  "data": {
+   "conversation_id": "disc-tc02-run17-853c08a6",
+   "conversation_version": 5,
+   "client_turn_id": "qa-23f5c3fe-4996-41d8-b089-b1649acebca6",
+   "graph_generation_id": "5a394ff8-b27f-4288-81f3-38f24a2d4192",
+   "response": {
+    "status": "NEEDS_CLARIFICATION",
+    "business_capability": "order-discovery",
+    "statements": [
+     {
+      "statement_id": "st-0",
+      "statement_type": "CLARIFICATION_QUESTION",
+      "text": "What is the reason for the return?",
+      "evidence_refs": [],
+      "source_message_id": null
+     }
+    ],
+    "suggestions": [],
+    "requested_input": "What is the reason for the return?"
+   },
+   "pending_clarification_thread_id": null,
+   "case_id": "fbc5bf75-2465-4879-b5e1-c7e3dd1e484d",
+   "query_evidence": [],
+   "captured_facts": [
+    {
+     "name": "customer_name",
+     "value": "KEVIN CLAYTON",
+     "status": "USABLE",
+     "label": "name on the order",
+     "acquisition": "STATED"
+    }
+   ],
+   "model_provider": "MANUAL",
+   "model_name": "manual-human-v1",
+   "as_of": "2026-08-26T02:51:10.736000Z",
+   "session_timezone": "UTC"
+  },
+  "page": null,
+  "meta": {
+   "schema_version": "1.0",
+   "request_id": "c4951062-b6e1-404b-8a9c-e8c9aa4c6636",
+   "generated_at": "2026-08-26T02:51:18.220993Z",
+   "freshness": "LIVE",
+   "partial": false,
+   "warnings": []
+  }
+ }
+}

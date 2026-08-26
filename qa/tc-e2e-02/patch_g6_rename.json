@@ -1,0 +1,242 @@
+{
+  "shipment_tracking": {
+    "statuses": [
+      {
+        "code": "label_created",
+        "label": "Label created",
+        "ladder": "parcel",
+        "ordinal": 0,
+        "color_token": "progress",
+        "allowed_next": [
+          "picked_up",
+          "exception",
+          "return_to_sender"
+        ]
+      },
+      {
+        "code": "picked_up",
+        "label": "Picked up",
+        "ladder": "parcel",
+        "ordinal": 1,
+        "color_token": "progress",
+        "allowed_next": [
+          "in_transit",
+          "exception",
+          "return_to_sender"
+        ]
+      },
+      {
+        "code": "in_transit",
+        "label": "In transit",
+        "ladder": "parcel",
+        "ordinal": 2,
+        "color_token": "progress",
+        "allowed_next": [
+          "arrived_at_facility",
+          "out_for_delivery",
+          "exception",
+          "return_to_sender"
+        ]
+      },
+      {
+        "code": "arrived_at_facility",
+        "label": "Arrived at facility",
+        "ladder": "parcel",
+        "ordinal": 3,
+        "color_token": "progress",
+        "allowed_next": [
+          "in_transit",
+          "out_for_delivery",
+          "exception",
+          "return_to_sender"
+        ]
+      },
+      {
+        "code": "out_for_delivery",
+        "label": "Out for delivery",
+        "ladder": "parcel",
+        "ordinal": 4,
+        "color_token": "progress",
+        "allowed_next": [
+          "delivered",
+          "delivery_attempted",
+          "exception",
+          "return_to_sender"
+        ]
+      },
+      {
+        "code": "delivered",
+        "label": "Delivered to Facility (renamed)",
+        "ladder": "parcel",
+        "ordinal": 5,
+        "terminal": true,
+        "color_token": "success",
+        "allowed_next": []
+      },
+      {
+        "code": "delivery_attempted",
+        "label": "Delivery attempted",
+        "ladder": "parcel",
+        "ordinal": 4,
+        "exception_state": true,
+        "color_token": "warning",
+        "allowed_next": [
+          "out_for_delivery",
+          "in_transit",
+          "exception",
+          "return_to_sender"
+        ]
+      },
+      {
+        "code": "exception",
+        "label": "Exception",
+        "ladder": "parcel",
+        "ordinal": 2,
+        "exception_state": true,
+        "color_token": "error",
+        "allowed_next": [
+          "picked_up",
+          "in_transit",
+          "arrived_at_facility",
+          "out_for_delivery",
+          "return_to_sender"
+        ]
+      },
+      {
+        "code": "return_to_sender",
+        "label": "Return to sender",
+        "ladder": "parcel",
+        "ordinal": 5,
+        "terminal": true,
+        "color_token": "error",
+        "allowed_next": []
+      },
+      {
+        "code": "bol_created",
+        "label": "BOL created",
+        "ladder": "freight",
+        "ordinal": 0,
+        "color_token": "progress",
+        "allowed_next": [
+          "pending_pickup",
+          "exception"
+        ]
+      },
+      {
+        "code": "pending_pickup",
+        "label": "Pending pickup",
+        "ladder": "freight",
+        "ordinal": 1,
+        "color_token": "progress",
+        "allowed_next": [
+          "picked_up",
+          "exception"
+        ]
+      },
+      {
+        "code": "picked_up",
+        "label": "Picked up",
+        "ladder": "freight",
+        "ordinal": 2,
+        "color_token": "progress",
+        "allowed_next": [
+          "at_origin_terminal",
+          "exception",
+          "on_hand"
+        ]
+      },
+      {
+        "code": "at_origin_terminal",
+        "label": "At origin terminal",
+        "ladder": "freight",
+        "ordinal": 3,
+        "color_token": "progress",
+        "allowed_next": [
+          "in_transit",
+          "on_hand",
+          "exception"
+        ]
+      },
+      {
+        "code": "in_transit",
+        "label": "In transit",
+        "ladder": "freight",
+        "ordinal": 4,
+        "color_token": "progress",
+        "allowed_next": [
+          "at_destination_terminal",
+          "on_hand",
+          "exception"
+        ]
+      },
+      {
+        "code": "at_destination_terminal",
+        "label": "At destination terminal",
+        "ladder": "freight",
+        "ordinal": 5,
+        "color_token": "progress",
+        "allowed_next": [
+          "out_for_delivery",
+          "on_hand",
+          "exception"
+        ]
+      },
+      {
+        "code": "out_for_delivery",
+        "label": "Out for delivery",
+        "ladder": "freight",
+        "ordinal": 6,
+        "color_token": "progress",
+        "allowed_next": [
+          "delivered",
+          "on_hand",
+          "exception"
+        ]
+      },
+      {
+        "code": "delivered",
+        "label": "Delivered",
+        "ladder": "freight",
+        "ordinal": 7,
+        "terminal": true,
+        "color_token": "success",
+        "allowed_next": []
+      },
+      {
+        "code": "on_hand",
+        "label": "On hand at terminal",
+        "ladder": "freight",
+        "ordinal": 4,
+        "exception_state": true,
+        "color_token": "warning",
+        "allowed_next": [
+          "in_transit",
+          "at_destination_terminal",
+          "out_for_delivery",
+          "exception"
+        ]
+      },
+      {
+        "code": "exception",
+        "label": "Exception",
+        "ladder": "freight",
+        "ordinal": 4,
+        "exception_state": true,
+        "color_token": "error",
+        "allowed_next": [
+          "pending_pickup",
+          "picked_up",
+          "at_origin_terminal",
+          "in_transit",
+          "at_destination_terminal",
+          "out_for_delivery",
+          "on_hand"
+        ]
+      }
+    ],
+    "fields": {
+      "tracking_reference": "consoleTrackingRef",
+      "current_status": "consoleLadderStatus"
+    }
+  }
+}

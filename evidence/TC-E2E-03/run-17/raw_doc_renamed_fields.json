@@ -1,0 +1,23 @@
+{
+  "physical_keys": [
+    "_id",
+    "carrier",
+    "case_id",
+    "consoleLadderStatus",
+    "consoleTrackingRef",
+    "created_at",
+    "destination_bay",
+    "destination_warehouse",
+    "events",
+    "kind",
+    "label_reference",
+    "mode",
+    "provenance",
+    "return_record_id",
+    "rma_reference",
+    "shipment_id",
+    "updated_at"
+  ],
+  "consoleTrackingRef": "TRK-RMAFBC5BF7524654879B5E1C7E3DD1E484D",
+  "consoleLadderStatus": "delivered"
+}

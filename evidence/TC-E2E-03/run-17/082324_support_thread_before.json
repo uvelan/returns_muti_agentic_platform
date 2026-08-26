@@ -1,0 +1,69 @@
+[
+ {
+  "id": "996f4836-800d-41b6-b7a5-f131d783bcff",
+  "threadId": "97e15df7-791c-4269-af80-f4da7f580f7e",
+  "sequence": 1,
+  "senderRole": "AGENT",
+  "senderId": "return-workflow-agent",
+  "messageType": "REQUEST",
+  "messageText": "RETURN SUPPORT REQUEST\n\nCase:\n- Case ID: fbc5bf75-2465-4879-b5e1-c7e3dd1e484d\n- Work Item ID: 10bae528-6a3d-44af-b830-077dc343b390\n- Created Date/Time: 2026-08-26T02:53:05.439000+00:00\n- Workflow Status at Handoff: GATHERING_INFO\n\nCustomer:\n- Customer Name: KEVIN CLAYTON\n- Customer Reference: 601101\n- Branch Associate: Not available\n- Branch Associate Email: Not available\n- Branch Associate Phone: Not available\n\nOrder:\n- Order Number: CD803506\n- Line/Order-Line Number: 1\n  - Product Name: LF 1/2X2 BRS NIP GBL\n  - Colour: Not available\n  - SKU: GBRNDK\n  - Confirmed Return Quantity: 1\n  - Return Reason: SHIPPING_DAMAGE\n  - Product Condition: NEW_IN_ORIGINAL_PACKAGING\n\nReturn Details:\n- Return Method: BRANCH_UPS\n- Requested Resolution: Not available\n- Product Presence: Not available\n- Associate Notes: Not available\n\nBay Assignment:\n- Assignment Status: PHYSICAL_RECEIPT_REQUIRED\n- Recommended Bay: Not available\n- Warehouse/Branch: 603\n- Return Location: Not available\n- Handling/Staging Instructions: Not available\n- Unresolved Reason: PHYSICAL_RECEIPT_REQUIRED\n\nVerification:\n- Order Confirmation: Confirmed\n- Required Return Information: Incomplete\n- Policy Evaluation: APPROVE on the STANDARD_RETURN route\n- Bay Assignment Source: Bay Assignment Agent\n\nRequested Support Action:\n- Review the complete return request.\n- Review or confirm the bay recommendation.\n- Resolve manual bay assignment: no bay could be recommended.\n- Verify all Support-owned conditions, including warranty when applicable.\n- Create or decline the RMA through the authoritative Support workflow.\n",
+  "attachmentIds": [],
+  "businessPayload": {
+   "bayAssignment": {
+    "bayReference": null,
+    "handlingInstructions": null,
+    "returnLocation": null,
+    "source": "BAY_ASSIGNMENT_AGENT",
+    "status": "PHYSICAL_RECEIPT_REQUIRED",
+    "unresolvedReason": "PHYSICAL_RECEIPT_REQUIRED",
+    "warehouseReference": "603"
+   },
+   "caseId": "fbc5bf75-2465-4879-b5e1-c7e3dd1e484d",
+   "createdAt": "2026-08-26T02:53:05.439000+00:00",
+   "customer": {
+    "contactEmail": null,
+    "contactName": null,
+    "contactPhone": null,
+    "name": "KEVIN CLAYTON",
+    "reference": "601101"
+   },
+   "order": {
+    "items": [
+     {
+      "colour": null,
+      "condition": "NEW_IN_ORIGINAL_PACKAGING",
+      "lineReference": "1",
+      "productName": "LF 1/2X2 BRS NIP GBL",
+      "productReference": "49061",
+      "quantity": 1,
+      "reason": "SHIPPING_DAMAGE",
+      "returnMethod": "BRANCH_UPS",
+      "sku": "GBRNDK"
+     }
+    ],
+    "reference": "CD803506"
+   },
+   "returnDetails": {
+    "additional": {},
+    "associateNotes": null,
+    "method": "BRANCH_UPS",
+    "productPresence": null,
+    "requestedResolution": null
+   },
+   "schemaVersion": "support-handoff-v1",
+   "verification": {
+    "orderConfirmed": true,
+    "policyEvaluation": {
+     "decision": "APPROVE",
+     "route": "STANDARD_RETURN",
+     "skippedReason": null,
+     "state": "EVALUATED"
+    },
+    "requiredReturnInformationComplete": false
+   },
+   "workItemId": "10bae528-6a3d-44af-b830-077dc343b390",
+   "workflowStatusAtHandoff": "GATHERING_INFO"
+  },
+  "createdAt": "2026-08-26T02:53:14.565000"
+ }
+]
