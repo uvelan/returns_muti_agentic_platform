@@ -14874,6 +14874,13 @@
             "title": "Apibasepath",
             "type": "string"
           },
+          "candidateColumns": {
+            "items": {
+              "$ref": "#/components/schemas/RuntimeConfigCandidateColumn"
+            },
+            "title": "Candidatecolumns",
+            "type": "array"
+          },
           "capabilities": {
             "$ref": "#/components/schemas/RuntimeConfigCapabilities"
           },
@@ -14903,7 +14910,8 @@
           "capabilities",
           "agents",
           "selectionVocabulary",
-          "factCatalogue"
+          "factCatalogue",
+          "candidateColumns"
         ],
         "title": "RuntimeConfig",
         "type": "object"
@@ -14927,6 +14935,28 @@
           "orderDiscovery"
         ],
         "title": "RuntimeConfigAgents",
+        "type": "object"
+      },
+      "RuntimeConfigCandidateColumn": {
+        "description": "One column of the Copilot's candidate table, verbatim from the release.\n\n`copilot.candidate_columns`, served rather than compiled into the console\nfor the reason every block here is: which fields identify an order to an\nassociate is an operator decision, and it changes in a release, not in a\nfrontend deploy. `fields` is an alias chain -- the first name the row\ncarries supplies the value -- because order, line and customer searches\nreturn differently shaped rows that one column must read across.\n\n**An empty list means the deployment has not said**, and the client falls\nback to the identity columns it can defend rather than to rendering every\nfield the query selected.\n\nNon-secret: column labels and field names, no values.",
+        "properties": {
+          "fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "fields"
+        ],
+        "title": "RuntimeConfigCandidateColumn",
         "type": "object"
       },
       "RuntimeConfigCapabilities": {

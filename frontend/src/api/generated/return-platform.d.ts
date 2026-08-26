@@ -8831,6 +8831,8 @@ export interface components {
              * @constant
              */
             apiBasePath: "/api";
+            /** Candidatecolumns */
+            candidateColumns: components["schemas"]["RuntimeConfigCandidateColumn"][];
             capabilities: components["schemas"]["RuntimeConfigCapabilities"];
             /** Environment */
             environment: string;
@@ -8853,6 +8855,29 @@ export interface components {
         RuntimeConfigAgents: {
             /** Orderdiscovery */
             orderDiscovery: string | null;
+        };
+        /**
+         * RuntimeConfigCandidateColumn
+         * @description One column of the Copilot's candidate table, verbatim from the release.
+         *
+         *     `copilot.candidate_columns`, served rather than compiled into the console
+         *     for the reason every block here is: which fields identify an order to an
+         *     associate is an operator decision, and it changes in a release, not in a
+         *     frontend deploy. `fields` is an alias chain -- the first name the row
+         *     carries supplies the value -- because order, line and customer searches
+         *     return differently shaped rows that one column must read across.
+         *
+         *     **An empty list means the deployment has not said**, and the client falls
+         *     back to the identity columns it can defend rather than to rendering every
+         *     field the query selected.
+         *
+         *     Non-secret: column labels and field names, no values.
+         */
+        RuntimeConfigCandidateColumn: {
+            /** Fields */
+            fields: string[];
+            /** Label */
+            label: string;
         };
         /** RuntimeConfigCapabilities */
         RuntimeConfigCapabilities: {
