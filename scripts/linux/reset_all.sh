@@ -112,7 +112,25 @@ if [[ "${DATA_ONLY}" == true ]]; then
     # Containers and volumes are kept, so SQL Server does not re-initialise its
     # system databases -- the slow part of a full reset. Started first because
     # --data-only must work from a cold machine too, not only from a running one.
-    docker compose up -d
+    #
+    # `infra.sh start` rather than a bare `docker compose up -d`, for the reason
+    # its own header gives at length: `up -d` with no service names also starts
+    # `runtime-configuration-init`, which is built from
+    # `return-platform-backend:local`. On a host whose backend runs on the host
+    # -- which is every host this script starts in step 4 -- that image does not
+    # exist, so asking for infrastructure built the entire backend image first,
+    # and behind a TLS-intercepting proxy without EXTRA_CA_CERTS set it did not
+    # build at all: `pip install poetry` died on CERTIFICATE_VERIFY_FAILED and
+    # `set -Eeuo pipefail` took the reset down at step 2 -- AFTER step 1 had
+    # already stopped the host, leaving the platform down and the data untouched.
+    # Nothing is skipped by leaving that container out: `run_all_host.sh` in step
+    # 4 runs the same migrations and graph-configuration bootstrap on the host.
+    #
+    # `--wait` comes with it, and matters here beyond the image: the bare form
+    # returned as soon as the containers were created, so the SQL Server and
+    # Temporal resets on the next line raced a datastore that was not yet
+    # accepting connections.
+    scripts/infra.sh start
     # The dataset loader clears Mongo and Neo4j itself and knows nothing about
     # SQL Server or Temporal, so those two are cleared here instead of by
     # destroying the volumes. A case workflow left running against dropped Mongo
