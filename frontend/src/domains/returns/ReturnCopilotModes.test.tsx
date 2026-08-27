@@ -542,7 +542,7 @@ describe("the progress pane reads the case and nothing else", () => {
     expect(screen.getByText("IN_TRANSIT")).toBeInTheDocument();
     expect(screen.getByText("PREPAID_PARCEL")).toBeInTheDocument();
     expect(screen.getByText("Covers L1")).toBeInTheDocument();
-    expect(screen.getByText("4/6 milestones")).toBeInTheDocument();
+    expect(screen.getByText("5/7 milestones")).toBeInTheDocument();
   });
 
   it("draws the extracted fields it is given, and says so when there are none", () => {
@@ -599,7 +599,7 @@ describe("the progress pane reads the case and nothing else", () => {
 
     // Three: the order was identified, it was selected, and the case exists.
     // The bay is not a fourth.
-    expect(screen.getByText("3/6 milestones")).toBeInTheDocument();
+    expect(screen.getByText("3/7 milestones")).toBeInTheDocument();
     expect(screen.getByLabelText("Reached warehouse: not reached")).toBeInTheDocument();
     expect(screen.queryByText("NO_ELIGIBLE_BAY")).toBeNull();
   });
@@ -631,7 +631,7 @@ describe("what evidences each milestone", () => {
     expect(screen.getByLabelText("Orders identified: reached")).toBeInTheDocument();
     expect(screen.getByLabelText("Order selected: not reached")).toBeInTheDocument();
     expect(screen.getByLabelText("Case created: not reached")).toBeInTheDocument();
-    expect(screen.getByText("1/6 milestones")).toBeInTheDocument();
+    expect(screen.getByText("1/7 milestones")).toBeInTheDocument();
   });
 
   it("lights the order, the selection and the case as soon as one is confirmed", () => {
@@ -656,8 +656,12 @@ describe("what evidences each milestone", () => {
     // for an RMA or a Support work item -- two stages further on -- so a case
     // being actively worked reported its own creation as pending.
     expect(screen.getByLabelText("Case created: reached")).toBeInTheDocument();
-    expect(screen.getByLabelText("Shipment in progress: in progress")).toBeInTheDocument();
-    expect(screen.getByText("3/6 milestones")).toBeInTheDocument();
+    // The step in progress is now the RMA, not the shipment. That is the point
+    // of adding it: a confirmed case with no RMA was shown as working towards a
+    // shipment, when what it is actually waiting for is Support to issue one.
+    expect(screen.getByLabelText("RMA issued: in progress")).toBeInTheDocument();
+    expect(screen.getByLabelText("Shipment in progress: not reached")).toBeInTheDocument();
+    expect(screen.getByText("3/7 milestones")).toBeInTheDocument();
     expect(screen.getByText("SO-A1")).toBeInTheDocument();
   });
 
@@ -670,7 +674,7 @@ describe("what evidences each milestone", () => {
     expect(screen.getByLabelText("Case created: reached")).toBeInTheDocument();
     expect(screen.getByLabelText("Order selected: not reached")).toBeInTheDocument();
     expect(screen.getByLabelText("Orders identified: not reached")).toBeInTheDocument();
-    expect(screen.getByText("1/6 milestones")).toBeInTheDocument();
+    expect(screen.getByText("1/7 milestones")).toBeInTheDocument();
   });
 
   it("says Ready only when the platform has recorded nothing", () => {

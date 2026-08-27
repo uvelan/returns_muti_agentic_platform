@@ -139,6 +139,37 @@ const MILESTONES: readonly Milestone[] = [
     output: ({ projection }) => pairs(["Support ticket", projection?.support?.workItemId]),
   },
   {
+    label: "RMA issued",
+    agent: "Returns Support",
+    // **The step the rail did not have.** "Case created" is reached the moment
+    // the order is confirmed, and "Shipment in progress" not until a package is
+    // moving -- so the RMA, which Support issues and which gates everything
+    // after it, was invisible. A case sat at 3/6 saying nothing about what it
+    // was waiting for, while the case pane beside it said `AWAITING_SUPPORT`
+    // and the Support console offered "Issue RMAs".
+    //
+    // Reached on a return record existing, not on it carrying a reference: an
+    // RMA whose number has not come back yet is still an RMA Support raised,
+    // and `returnReference` is nullable for exactly that window.
+    reached: ({ projection }) => caseRecords(projection).length > 0,
+    // Deliberately does NOT repeat the RMA number. The per-record cards below
+    // already name every reference, so a milestone echoing the first one puts
+    // the same string on screen twice and says nothing the cards do not. What
+    // the step adds is that Support has raised something at all, and how many.
+    output: ({ projection }) => {
+      const records = caseRecords(projection);
+      const numbered = records.filter((record) => record.returnReference != null).length;
+      return pairs([
+        "Records",
+        records.length === 0
+          ? null
+          : numbered === records.length
+            ? String(records.length)
+            : `${String(records.length)} (${String(records.length - numbered)} pending)`,
+      ]);
+    },
+  },
+  {
     label: "Shipment in progress",
     agent: "Return Fulfillment",
     reached: ({ projection }) =>
@@ -331,7 +362,11 @@ export function ProgressTruthPane({
           // first few and reach none of the rest (WCAG 2.1.1).
           tabIndex={0}
           aria-label="Workflow progress"
-          className="flex-1 overflow-y-auto p-4 hide-scrollbar focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+          // Scrollbar left visible here, unlike the facts list below. This is
+          // the one region whose content is routinely taller than its box, and
+          // a hidden scrollbar on a clipped list is indistinguishable from a
+          // rail that has stopped rendering.
+          className="flex-1 overflow-y-auto p-4 thin-scrollbar focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
         >
           <h3 className="text-xs font-semibold uppercase tracking-wider text-outline mb-3">
             Workflow Progress
@@ -420,8 +455,19 @@ export function ProgressTruthPane({
         </div>
       </div>
 
-      {/* 2. BOTTOM DIV: Extracted & Verified Facts (Independent scroll, invisible scrollbar) */}
-      <div className="flex flex-1 min-h-0 flex-col overflow-hidden bg-surface-container-lowest">
+      {/* 2. BOTTOM DIV: Extracted & Verified Facts (Independent scroll, invisible scrollbar)
+       *
+       * Sized to its content up to a ceiling, rather than claiming half the pane.
+       * Both halves were `flex-1`, so a four-row fact list held back half the
+       * height whatever the stepper needed -- and the stepper needs more than
+       * half once a milestone carries detail. The list was cut mid-item, and
+       * `hide-scrollbar` removed the one affordance that would have said it
+       * scrolls, so a clipped rail read as a broken one.
+       *
+       * The ceiling keeps the facts from doing the same thing in reverse on a
+       * case that has gathered a dozen of them.
+       */}
+      <div className="flex max-h-[45%] shrink-0 min-h-0 flex-col overflow-hidden bg-surface-container-lowest">
         {/* Header for Facts */}
         <header className="flex h-[44px] shrink-0 items-center justify-between border-b border-outline-variant/20 px-4 bg-surface-container-low/50">
           <div className="flex items-center gap-1.5">

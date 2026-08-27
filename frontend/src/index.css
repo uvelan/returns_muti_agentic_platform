@@ -82,6 +82,23 @@
     box-shadow: 0 18px 45px -32px rgb(11 31 28 / 0.34), 0 1px 3px rgb(11 31 28 / 0.06);
   }
 
+  /* Narrow but present. For a region that is routinely taller than its box,
+   * where hiding the scrollbar makes a clipped list look like a broken one. */
+  .thin-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(0 0 0 / 0.18) transparent;
+  }
+  .thin-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .thin-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgb(0 0 0 / 0.18);
+    border-radius: 3px;
+  }
+  .thin-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
   .hide-scrollbar, .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
