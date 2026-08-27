@@ -194,6 +194,59 @@ def _extended_transcript(
     return transcript[-TRANSCRIPT_LIMIT:]
 
 
+def _resume_update(
+    *,
+    request: Any,
+    conversation_state: dict[str, Any],
+    paused_values: dict[str, Any],
+    as_of: datetime,
+    session_timezone: str,
+    correlation_id: str | None,
+) -> dict[str, Any]:
+    """What a resumed turn replaces in the paused checkpoint.
+
+    Resuming discards `initial_state` -- the checkpoint already holds the real
+    accumulated state -- so anything this turn brings with it has to travel in
+    the update, and for a long time only the correlation id and the grounding
+    did.
+
+    **The message travels too, and it is the fix for a real defect.** The
+    associate's answer reaches the graph as `Command(resume=...)` and lands in
+    `clarification_exchanges`, while `user_message` and `transcript` stayed as
+    the paused turn wrote them. So the model's context named the associate's
+    *previous* sentence as this turn's message, beside a transcript frozen at the
+    moment the pause began -- and the prompt directs the model to "look for the
+    answer in this turn's message and in contextJson.transcript" and to read the
+    transcript "before deciding anything". Both were stale on every resumed turn,
+    with the answer sitting in a third field.
+
+    Observed end to end: "Confirm the customer MERIDIAN HEATING & COOLING on
+    account ORL" arrived as `user_message: "find order for ALEX"` with an empty
+    transcript, and the agent re-asked the question it had just been answered.
+    Every resumed turn was one clarification behind, which no model can reason
+    its way out of.
+
+    `client_turn_id` travels with it because a fact reported on this turn cites
+    `source_message_id`; the paused turn's id would attribute the associate's
+    answer to the message before it.
+
+    The grounding is replaced only when the checkpoint has none. A resumed turn
+    keeps the as-of its attempt started under -- it is the instant the evidence
+    already in the checkpoint was filtered against, and moving it would leave
+    that evidence and the next date filter meaning different days.
+    """
+    update: dict[str, Any] = {
+        "correlation_id": correlation_id,
+        "user_message": request.message,
+        "client_turn_id": request.client_turn_id,
+        "transcript": _stored_transcript(conversation_state),
+    }
+    if not _has_pinned_grounding(paused_values):
+        update["as_of"] = as_of.isoformat()
+        update["session_timezone"] = session_timezone
+    return update
+
+
 def _cache_for_generation(
     cache: dict[str, Any] | None, graph_generation_id: str
 ) -> dict[str, Any] | None:
@@ -586,13 +639,14 @@ class DynamicOrderAgentCoordinator:
         # with no grounding at all.
         resume_update: dict[str, Any] = {}
         if resume_thread_id:
-            if not _has_pinned_grounding(paused_values):
-                resume_update["as_of"] = as_of.isoformat()
-                resume_update["session_timezone"] = session_timezone
-            # Always replaced, never back-filled: this turn is a different API
-            # request from the one that paused, and the telemetry has to name
-            # the request that is actually in flight.
-            resume_update["correlation_id"] = correlation_id
+            resume_update = _resume_update(
+                request=request,
+                conversation_state=conversation_state,
+                paused_values=paused_values,
+                as_of=as_of,
+                session_timezone=session_timezone,
+                correlation_id=correlation_id,
+            )
 
         # Resuming feeds the answer into the suspended `interrupt()` and discards
         # `initial_state` entirely -- the paused checkpoint already holds the real
