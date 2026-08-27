@@ -1102,7 +1102,17 @@ def _rank_deferred_matches(
     whether to hedge about spelling, and a candidate found this way must carry
     it.
     """
-    candidates: list[dict[str, Any]] = []
+    # Merged by candidate, exactly as `rank_search_results` merges the primary
+    # pass. This used to `extend`, so one customer arrived once per row and once
+    # per deferred search that found it -- and a contact has one ContactPoint per
+    # channel, so two people behind a shared given name were presented as eight
+    # candidates. `suggested_discriminators` then counted those eight as eight
+    # distinct values and recommended a question that splits nothing.
+    #
+    # The strongest score wins and the labels union: a row reached by two
+    # recoveries is better evidence than one reached by either, and the labels
+    # are what the reasoning prompt reads to decide whether to hedge.
+    merged: dict[str, dict[str, Any]] = {}
     for item, raw_result in zip(planned, raw_results, strict=False):
         rows = raw_result.get("rows", []) if isinstance(raw_result, dict) else []
         matches = narrow_fulltext_matches(rows, policy=policy)
@@ -1110,16 +1120,26 @@ def _rank_deferred_matches(
             continue
         best_score = matches[0][1]
         ceiling = item.search.deferred_score_ceiling
-        candidates.extend(
-            {
-                "candidate_id": candidate_key(row),
-                "data": row,
-                "score": round(ceiling * (score / best_score), 4),
-                "matches": [item.search.label],
-            }
-            for row, score in matches
-        )
-    candidates.sort(key=lambda candidate: candidate["score"], reverse=True)
+        for row, score in matches:
+            key = candidate_key(row)
+            scored = round(ceiling * (score / best_score), 4)
+            existing = merged.get(key)
+            if existing is None:
+                merged[key] = {
+                    "candidate_id": key,
+                    "data": row,
+                    "score": scored,
+                    "matches": [item.search.label],
+                }
+                continue
+            # Merge rather than overwrite, for the reason `rank_search_results`
+            # gives: a narrower field selection from a second plan must not drop
+            # what the first one returned.
+            existing["data"] = {**row, **existing["data"]}
+            existing["score"] = max(existing["score"], scored)
+            if item.search.label not in existing["matches"]:
+                existing["matches"].append(item.search.label)
+    candidates = sorted(merged.values(), key=lambda candidate: candidate["score"], reverse=True)
     return candidates[:MAX_CACHED_CANDIDATES]
 
 

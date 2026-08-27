@@ -212,11 +212,29 @@ def build_search_program(
     # and asking the graph twice spends a turn's query budget on one answer.
     asked: set[tuple[str, str, str, str]] = set()
 
-    for signal in parsed.searchable:
-        if signal.field.is_date_bound:
-            continue
-        for planned in _plans_for_signal(signal, parsed, policy=policy, asked=asked):
-            (deferred if planned.search.only_when_nothing_found else primary).append(planned)
+    # **Primaries first, and that ordering is the whole point.** One `asked` set
+    # spans every signal, so whichever field reaches a question first claims it
+    # -- and in catalogue order a *deferred* search could claim a question that a
+    # later field asks as a *primary*, silently demoting it to the recovery pass.
+    #
+    # Observed exactly that way. `customer_name` configures contact-name searches
+    # as a deferred fallback for "the name was a person"; `contact_name`, further
+    # down the catalogue, asks the identical question as its primary. With both
+    # signals populated the fallback registered first, `contact_name` contributed
+    # no primary at all, every primary came back empty, and the turn fell through
+    # to the deferred pass for a search that should have run in the first one.
+    #
+    # Two passes over the same signals fix it without a precedence rule to
+    # maintain: a deferred search can only ever claim a question no primary
+    # wanted, which is what "runs only when everything else failed" already means.
+    for deferred_pass in (False, True):
+        for signal in parsed.searchable:
+            if signal.field.is_date_bound:
+                continue
+            for planned in _plans_for_signal(
+                signal, parsed, policy=policy, asked=asked, deferred=deferred_pass
+            ):
+                (deferred if deferred_pass else primary).append(planned)
 
     for planned in _date_plans(parsed, catalogue):
         primary.append(planned)
@@ -293,13 +311,39 @@ def _plans_for_signal(
     *,
     policy: CustomerFulltextPolicy,
     asked: set[tuple[str, str, str, str]],
+    deferred: bool,
 ) -> list[PlannedSearch]:
+    """The plans one signal contributes to one bucket.
+
+    `deferred` selects the bucket rather than filtering afterwards, because the
+    `asked` set is populated as a side effect: a deferred search that was
+    generated and then discarded would still have claimed its question, which is
+    the demotion `build_search_program` runs two passes to prevent.
+    """
     planned: list[PlannedSearch] = []
     for search in signal.field.searches:
+        if search.only_when_nothing_found is not deferred:
+            continue
         if search.strategy == FULLTEXT_STRATEGY:
             fulltext = _fulltext_plan(signal, search, policy=policy)
-            if fulltext is not None:
-                planned.append(fulltext)
+            if fulltext is None:
+                continue
+            # Indexed reads are deduped too, and on the index rather than the
+            # field: two configured searches naming one index with one query are
+            # one question however they are spelled, and running both returned
+            # every matching row twice. `contact_name` and `customer_name`'s
+            # fallback both point at `contact_name_search_v1`, so an ambiguous
+            # name asked it twice and doubled its own candidate list.
+            question = (
+                search.entity_id,
+                str(search.fulltext_index),
+                FULLTEXT_STRATEGY,
+                fulltext.plan.fulltext_query or "",
+            )
+            if question in asked:
+                continue
+            asked.add(question)
+            planned.append(fulltext)
             continue
         narrowing = _narrowing_condition(search, parsed)
         for value in signal.values:

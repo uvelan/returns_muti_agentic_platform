@@ -702,6 +702,55 @@ def test_the_deferred_ceilings_rank_the_four_recoveries_against_each_other(
     )
 
 
+def test_a_deferred_search_never_takes_a_question_a_primary_asks(
+    catalogue: IdentificationCatalogue,
+) -> None:
+    """One `asked` set spans every signal, and catalogue order decided the winner.
+
+    `customer_name` defers contact-name searches for "the name was a person";
+    `contact_name`, further down the catalogue, asks the identical question as
+    its primary. The dedup that stops the graph being asked one question twice
+    let the *deferred* copy claim it, so with both signals populated
+    `contact_name` contributed no primary at all -- the whole turn ran its
+    primary pass against a single customer-name search, came back empty, and
+    fell through to recovery for a search that belonged in the first pass.
+
+    Asserted as membership rather than as a list: what matters is which bucket
+    the contact searches land in, not how many other searches the catalogue
+    happens to configure alongside them.
+    """
+    program = _program(catalogue, customerNames=["Alex"], contactNames=["Alex"])
+
+    primary = {item.search.label for item in program.primary}
+    assert "contact_first_name_contains" in primary
+    assert "contact_last_name_contains" in primary
+    # And the deferred copy of that same question is gone rather than duplicated.
+    deferred = [item for item in program.deferred if item.search.strategy == "CONTAINS"]
+    assert deferred == []
+
+
+def test_one_index_and_one_query_is_asked_once_however_it_is_configured(
+    catalogue: IdentificationCatalogue,
+) -> None:
+    """Indexed reads were exempt from the dedup, so they ran twice.
+
+    `contact_name` and `customer_name`'s fallback both name
+    `contact_name_search_v1`, and an ambiguous name populates both signals with
+    the same value -- so the same index was asked the same query twice and every
+    matching row came back twice, doubling the candidate list before anything
+    had a chance to rank it.
+    """
+    program = _program(catalogue, customerNames=["Alex"], contactNames=["Alex"])
+
+    indexed = [
+        item.plan.fulltext_index
+        for item in (*program.primary, *program.deferred)
+        if item.plan.operation is QueryOperation.FULLTEXT_SEARCH
+    ]
+
+    assert indexed.count("contact_name_search_v1") == 1
+
+
 def test_the_indexed_plan_bounds_returned_rows_and_never_the_corpus(
     production_schema: ActiveSchema, catalogue: IdentificationCatalogue
 ) -> None:
