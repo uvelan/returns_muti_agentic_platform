@@ -367,7 +367,12 @@ def test_every_plan_the_catalogue_produces_passes_the_guard_and_compiles(
         freeTextTerms=["ORD-10001"],
     )
     assert len(program.primary) >= 15
-    assert len(program.deferred) == 1
+    # That there ARE deferred searches, not how many. `== 1` pinned the shipped
+    # catalogue to a single recovery pass, so configuring a second one -- the
+    # contact-name fallback on `customer_name` -- failed here despite every plan
+    # it produces passing the guard and compiling in the loop below, which is
+    # what this test is actually for.
+    assert program.deferred
 
     guard_context = _guard_context(production_schema)
     compiler = CypherCompiler()
@@ -573,9 +578,128 @@ def test_the_misspelling_search_is_deferred_until_everything_else_fails(
     """It must not run alongside the exact passes and dilute them."""
     program = _program(catalogue, customerNames=["Jhon Smi"])
 
+    # The invariant is *where* the fuzzy search runs, not that it is the only
+    # thing deferred. `customer_name` now also defers a contact-name fallback for
+    # the case where the name was a person and no company matched, and pinning
+    # the deferred list to one element made that configuration change fail a test
+    # about dilution that it does not affect.
     assert [item.plan.operation for item in program.primary] == [QueryOperation.SEARCH]
-    assert [item.plan.operation for item in program.deferred] == [QueryOperation.FULLTEXT_SEARCH]
-    assert program.deferred[0].search.label == "customer_name_fuzzy"
+    assert QueryOperation.FULLTEXT_SEARCH not in [item.plan.operation for item in program.primary]
+    fuzzy = [item for item in program.deferred if item.search.label == "customer_name_fuzzy"]
+    assert [item.plan.operation for item in fuzzy] == [QueryOperation.FULLTEXT_SEARCH]
+
+
+# --- the contact, whose name arrives as one word or two ------------------------
+
+
+def test_one_contact_name_is_answered_exactly_and_defers_the_index(
+    catalogue: IdentificationCatalogue,
+) -> None:
+    """A single name is what CONTAINS is good at, so the index waits its turn."""
+    program = _program(catalogue, contactNames=["Cameron"])
+
+    assert {item.search.label for item in program.primary} == {
+        "contact_first_name_contains",
+        "contact_last_name_contains",
+    }
+    assert [item.plan.operation for item in program.primary] == [
+        QueryOperation.SEARCH,
+        QueryOperation.SEARCH,
+    ]
+    assert [item.search.label for item in program.deferred] == ["contact_name_fuzzy"]
+
+
+def test_a_full_contact_name_reaches_the_row_that_stores_it_in_two_columns(
+    production_schema: ActiveSchema, catalogue: IdentificationCatalogue
+) -> None:
+    """The gap the CONTAINS passes cannot close, and the reason it is not obvious.
+
+    `contact_name` was configured with CONTAINS on each half and a comment
+    claiming that covered "Cameron Ramirez" too. It does not, and the direction
+    is the whole point: containment asks whether the STORED value contains the
+    typed one, so the question reaching the graph was whether `CAMERON` contains
+    `CAMERON SOLBERG`. That is false for every row in any corpus. An associate
+    saying the full name -- the most natural way to say it -- matched nothing,
+    while the given name alone matched eight, and no test here had ever asked a
+    two-word contact name.
+
+    The index closes it because it is one index over BOTH columns:
+    `build_fulltext_query` AND-es the tokens of one value and Neo4j parses that
+    across every indexed property, so each half is satisfied by whichever column
+    holds it.
+    """
+    program = _program(catalogue, contactNames=["Cameron Solberg"])
+
+    # Every primary pass still sends the whole value at one column, which is
+    # exactly why none of them can answer this.
+    assert all(
+        condition.value == "Cameron Solberg"
+        for item in program.primary
+        for condition in item.plan.filters
+    )
+
+    indexed = [item for item in program.deferred if item.search.strategy == "FULLTEXT"]
+    assert [item.search.label for item in indexed] == ["contact_name_fuzzy"]
+    plan = indexed[0].plan
+    assert plan.operation is QueryOperation.FULLTEXT_SEARCH
+    assert plan.fulltext_index == "contact_name_search_v1"
+    # Both halves demanded, so a shared surname alone cannot satisfy the query.
+    assert "AND" in plan.fulltext_query
+    assert "Cameron" in plan.fulltext_query and "Solberg" in plan.fulltext_query
+
+    SchemaQueryGuard().validate(_guard_context(production_schema), plan)
+    QuerySafetyGuard(QuerySafetyPolicy()).validate(plan)
+    compiled = CypherCompiler().compile_read(production_schema, plan)
+
+    assert compiled.parameters["fulltext_index"] == "contact_name_search_v1"
+    assert compiled.read_only is True
+
+
+def test_a_full_name_the_model_read_as_a_company_still_reaches_the_contact(
+    catalogue: IdentificationCatalogue,
+) -> None:
+    """The fallback has to cover the same utterances the direct path covers.
+
+    "the order for Cameron Solberg" reaches `customerNames` whenever the model
+    reads the name as a trade name, which is the case the contact fallback
+    exists for. With only CONTAINS on the fallback it recovered single names and
+    nothing else -- that is, exactly the half that was already the easy one.
+    """
+    program = _program(catalogue, customerNames=["Cameron Solberg"])
+
+    indexed = {
+        item.search.label: item.plan
+        for item in program.deferred
+        if item.search.strategy == "FULLTEXT"
+    }
+
+    assert set(indexed) == {"customer_name_fuzzy", "contact_name_fallback"}
+    assert indexed["customer_name_fuzzy"].fulltext_index == "customer_name_search_v2"
+    assert indexed["contact_name_fallback"].fulltext_index == "contact_name_search_v1"
+
+
+def test_the_deferred_ceilings_rank_the_four_recoveries_against_each_other(
+    catalogue: IdentificationCatalogue,
+) -> None:
+    """Four deferred passes now answer one signal; their ceilings order the claims.
+
+    A ceiling is only meaningful next to the other ceilings in the same turn, so
+    the ladder is asserted as an ordering rather than as four literals: an exact
+    company beats an approximate one, which beats an exact contact reached from a
+    signal that may have meant a company, which beats an approximate one reached
+    the same way.
+    """
+    program = _program(catalogue, customerNames=["Cameron Solberg"])
+    ceilings = {
+        (item.search.label, item.search.strategy): item.search.deferred_score_ceiling
+        for item in program.deferred
+    }
+
+    assert (
+        ceilings[("customer_name_fuzzy", "FULLTEXT")]
+        > ceilings[("contact_name_fallback", "CONTAINS")]
+        > ceilings[("contact_name_fallback", "FULLTEXT")]
+    )
 
 
 def test_the_indexed_plan_bounds_returned_rows_and_never_the_corpus(

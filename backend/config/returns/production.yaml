@@ -186,6 +186,121 @@ discovery:
           only_when_nothing_found: true
           match_label: customer_name_fuzzy
           deferred_score_ceiling_millionths: 600000
+        # The name was a person, not the company. "find order for CAMERON" is
+        # ambiguous and the model resolves it to `customerNames` -- correctly, on
+        # the evidence it has -- so `contactNames` is never populated and the
+        # contact searches configured under it never run. Waiting for the model
+        # to guess which kind of name it heard is not a mechanism; this is.
+        #
+        # Deferred for the same reason as the fuzzy search above: while the name
+        # DOES match a company, that is the better answer and this would only
+        # dilute it. It earns its turn only once every other search in the turn
+        # has come back empty, which is exactly the "no company is called that"
+        # case. Ceiling below the fuzzy recovery's: matching a contact when the
+        # associate may have meant the business is a weaker claim than matching
+        # the business name approximately, and the associate still confirms.
+        - entity: contact_point
+          field: contact_first_name
+          strategy: CONTAINS
+          limit: 10
+          result_fields: [account_id, customer_id, customer_name, contact_first_name, contact_last_name]
+          only_when_nothing_found: true
+          match_label: contact_name_fallback
+          deferred_score_ceiling_millionths: 500000
+        - entity: contact_point
+          field: contact_last_name
+          strategy: CONTAINS
+          limit: 10
+          result_fields: [account_id, customer_id, customer_name, contact_first_name, contact_last_name]
+          only_when_nothing_found: true
+          match_label: contact_name_fallback
+          deferred_score_ceiling_millionths: 500000
+        # And the full name on the same fallback path, because the model
+        # misclassifying the name does not make the associate say it differently:
+        # "the order for Cameron Solberg" arrives here as `customerNames`, no
+        # company is called that, and the two CONTAINS passes above answer a
+        # single name only. Without this the fallback recovers exactly the
+        # utterances that were already the easy half.
+        #
+        # Lowest ceiling of the four deferred passes, and it is the weakest claim
+        # of the four: an approximate match, on a contact, reached from a signal
+        # the associate may have meant as a company.
+        - entity: contact_point
+          field: contact_first_name
+          strategy: FULLTEXT
+          fulltext_index: contact_name_search_v1
+          limit: 25
+          result_fields: [account_id, customer_id, customer_name, contact_first_name, contact_last_name]
+          only_when_nothing_found: true
+          match_label: contact_name_fallback
+          deferred_score_ceiling_millionths: 450000
+
+    # The person, as distinct from the company above. `customer_name` searches
+    # `customer.customer_name`, which in this corpus only ever holds a trade
+    # name -- so an associate saying "find the order for Cameron" was answered
+    # with "couldn't find any matches" while thirteen orders carried CAMERON in
+    # `contact_point.contact_first_name`. The data, the graph property and the
+    # schema's `searchable: true` were all already there; nothing asked for it.
+    #
+    # PERSONAL, and weighted well below `customer_name`: a given name is shared
+    # by many contacts across different accounts, so it narrows to a shortlist
+    # rather than to a customer. Low clarification priority for the same reason
+    # -- asking "what is the contact's first name?" is a poor question next to
+    # asking for an email or a phone number, which identify.
+    - field_id: contact_name
+      intent_key: contactNames
+      label: "name of the person on the order's contact row"
+      description: "Given or family name of the contact, not the company."
+      aliases: [contact, contact name, person, person name, attention, attn, ordered by]
+      normalization: LOWER_ALPHANUMERIC
+      sensitivity: PERSONAL
+      ranking_weight_millionths: 120000
+      exact_match_bonus_millionths: 100000
+      clarification_priority: 40
+      searches:
+        # Both halves, because an associate given one name does not know which
+        # of the two it is: "Cameron" is a first name here and a family name
+        # elsewhere, and asking only one loses half the corpus.
+        #
+        # CONTAINS answers ONE name, and only one. It cannot answer "Cameron
+        # Solberg": containment runs from the stored value outwards, so the
+        # question it asks is whether `CAMERON` contains `CAMERON SOLBERG`, and
+        # that is false for every row in the corpus. The full name is the most
+        # natural way for an associate to say it and it matched nothing at all,
+        # while the given name alone matched eight. The indexed pass below is
+        # what answers it.
+        - entity: contact_point
+          field: contact_first_name
+          strategy: CONTAINS
+          limit: 10
+          result_fields: [account_id, customer_id, customer_name, contact_first_name, contact_last_name]
+        - entity: contact_point
+          field: contact_last_name
+          strategy: CONTAINS
+          limit: 10
+          result_fields: [account_id, customer_id, customer_name, contact_first_name, contact_last_name]
+        # The full name, and the misspelled one. `contact_name_search_v1`
+        # (migration 0016) covers both name columns, and `build_fulltext_query`
+        # AND-es the tokens of one value across them, so `cameron* AND solberg*`
+        # reaches the row that stores the two halves in two columns -- which no
+        # single-column CONTAINS above can do.
+        #
+        # Deferred, exactly like `customer_name_fuzzy` and for the same reason:
+        # when the associate gave one name the CONTAINS passes already answered
+        # it exactly, and an approximate pass running beside them would only
+        # dilute. It earns its turn precisely in the case the CONTAINS passes
+        # cannot answer -- they came back empty. Ceiling below the company
+        # recovery's 600000: this is the right classification but a weaker field,
+        # since a given name is shared across accounts and a trade name is not.
+        - entity: contact_point
+          field: contact_first_name
+          strategy: FULLTEXT
+          fulltext_index: contact_name_search_v1
+          limit: 25
+          result_fields: [account_id, customer_id, customer_name, contact_first_name, contact_last_name]
+          only_when_nothing_found: true
+          match_label: contact_name_fuzzy
+          deferred_score_ceiling_millionths: 550000
 
     - field_id: email
       intent_key: emails

@@ -342,7 +342,9 @@ tasks:
           before narrowing to an order: when the associate names a customer, what comes next are the
           questions that say WHICH customer, not which order. The identifying fields are the branch or
           account the order sits on, the full business name, and the contact details carried on
-          contact_point -- phone_number, email, address_line1, city, postal_code. Ask for whichever of
+          contact_point -- phone_number, email, address_line1, city, postal_code, and the contact's own
+          first and last name, which is a different thing from the business name on the order. Ask for
+          whichever of
           those actually SPLITS the candidates in front of you, and say what you already resolved while
           you ask. A field every candidate shares is useless however identifying it looks: when they all
           carry the same customer name, asking for that name again narrows nothing, and neither does a

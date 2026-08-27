@@ -294,6 +294,7 @@ def _executable_strings_and_names(source: Path) -> set[str]:
 
 def test_no_identification_field_is_named_anywhere_in_the_discovery_code(
     extended_discovery: DiscoveryConfiguration,
+    shipped_discovery: DiscoveryConfiguration,
 ) -> None:
     """The invariant behind the scenario, checked against the source itself.
 
@@ -311,7 +312,16 @@ def test_no_identification_field_is_named_anywhere_in_the_discovery_code(
     property names and local variables, so matching on them would report noise
     and train a future reader to ignore this test.
     """
-    assert len(extended_discovery.identification_fields) == 18
+    # Relative to what shipped, not a literal. This is a guard that the fixture
+    # really appended its field before the sweep below reads the intent keys --
+    # and pinning the total to `18` made it fail the moment an operator added
+    # `contact_name` by editing YAML, which is the exact change the whole module
+    # exists to prove needs no code edit. A hardcoded count is the same defect
+    # one level up.
+    assert (
+        len(extended_discovery.identification_fields)
+        == len(shipped_discovery.identification_fields) + 1
+    )
 
     forbidden = {item.intent_key for item in extended_discovery.identification_fields}
     discovery_package = REPOSITORY_BACKEND / "src/return_platform/dynamic_knowledge/order_agent"

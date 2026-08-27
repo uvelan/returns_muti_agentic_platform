@@ -17,6 +17,11 @@ _REQUIRED_FULLTEXT_INDEXES = frozenset(
     {
         "customer_name_search_v2",
         "product_description_search_v2",
+        # 0016. Listed here for the same reason as the two above: a configured
+        # FULLTEXT search whose index is missing or still POPULATING returns
+        # nothing and reads to the associate as "no such person", so the run
+        # that creates it is the run that has to prove it is ONLINE.
+        "contact_name_search_v1",
     }
 )
 

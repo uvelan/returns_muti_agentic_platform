@@ -284,6 +284,40 @@ entities:
           - '*'
           masking: null
         path_origin: ROOT_DOCUMENT
+      customer_name:
+        field_id: customer_name
+        description: Trading name of the customer this contact row belongs to, carried so a
+          match on a contact can be named back to the associate as a company rather than as
+          an ERP customer number.
+        physical_path:
+        - salesHdr
+        - salesHdrData
+        - custName
+        graph_property: customer_name
+        data_type: STRING
+        nullable: true
+        capabilities:
+          # Displayable, not searchable. The searchable home for a company name
+          # is the `customer` entity; a second one here would be a parallel
+          # search path over the same value with different ranking. What this
+          # field is for is the RESULT: a contact match resolves to
+          # `customer_id`, and without the name beside it the agent can only
+          # offer the associate a number to choose between.
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
+        path_origin: ROOT_DOCUMENT
       contact_first_name:
         field_id: contact_first_name
         description: Given name of the person on the order's contact row.
@@ -4680,6 +4714,7 @@ graph:
       - customer_id
       - contact_value
       property_fields:
+      - customer_name
       - contact_first_name
       - contact_last_name
       - email
@@ -5121,4 +5156,4 @@ agent_policies:
     max_clarifications: 3
     max_replans: 2
     max_targeted_syncs_per_turn: 3
-configuration_checksum: e05adf502510311cb9e06cc2e53685d4c6d2534028e02d92371e5b42c4f81a45
+configuration_checksum: 187cf0db4fb3cbc05deed5b0e30a326411b3d9b019c2eece3abb9081743ee446
