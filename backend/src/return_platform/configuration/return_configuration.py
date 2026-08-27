@@ -1202,10 +1202,16 @@ class PolicyEvaluationConfiguration(StrictConfigModel):
     a fourth boolean beside a console toggle.
 
     Disabling it is not an approval and must never be read as one. The case's
-    fact log records `POLICY_SKIPPED_BY_CONFIGURATION` with the stated reason,
-    no route, and no decision -- so a reader can tell "no rule was applied" from
-    "a rule approved this", which is the distinction the whole gate exists to
-    keep. Nothing downstream may substitute a decision for the absence of one.
+    fact log records `policy_evaluation_state = SKIPPED_BY_CONFIGURATION` and
+    `policy_evaluation_skip_reason` with the stated reason, and no route and no
+    decision -- so a reader can tell "no rule was applied" from "a rule approved
+    this", which is the distinction the whole gate exists to keep. Nothing
+    downstream may substitute a decision for the absence of one.
+
+    Those two fact names are the ones to grep for. This paragraph named a single
+    `POLICY_SKIPPED_BY_CONFIGURATION` fact that has never existed anywhere but
+    here, so a reader checking that the audit trail was real found no writer and
+    could reasonably conclude the gate went quiet without recording anything.
 
     It is also not the same as publishing no policy.
     `validate_return_eligibility_policy` still refuses to activate a release
