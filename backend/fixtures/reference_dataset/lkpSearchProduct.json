@@ -39,7 +39,7 @@
   "lastUpdateTS": {
    "$date": "2025-09-19T06:01:32.113Z"
   },
-  "machineName": "1/2 IN PEX BALL VALVE",
+  "machineName": "etl-loader-01",
   "mongoWriteDate": {
    "$date": "2025-03-12T14:45:54.279Z"
   },

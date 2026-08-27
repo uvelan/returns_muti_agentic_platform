@@ -20,6 +20,7 @@ from pymongo.errors import DuplicateKeyError
 
 from return_platform.configuration.settings import Settings
 from return_platform.data_platform.operational_generation.deterministic_values import (
+    get_synthetic_email,
     get_synthetic_name,
 )
 from return_platform.data_platform.schema_registry import DataAssetSchema, SchemaRegistry
@@ -281,7 +282,9 @@ def _scenario_context(index: int, rng: random.Random, *, seed: int) -> ScenarioC
         customer_name=get_synthetic_name(index, seed=seed),
         party_id=f"PTY-{suffix}",
         phone=f"+1-555-{rng.randrange(100, 999)}-{rng.randrange(1000, 9999)}",
-        email=f"sandbox.customer.{suffix}@example.invalid",
+        email=get_synthetic_email(
+            f"{seed}-{index}", person_name=get_synthetic_name(index, seed=seed)
+        ),
         order_reference=order,
         order_line_reference=f"{order}-L1",
         product_reference=product,
@@ -330,7 +333,10 @@ def _bulk_order_context(
         customer_name=get_synthetic_name(customer_index, seed=seed),
         party_id=f"PTY-{customer_suffix}",
         phone=(f"+1-555-{customer_rng.randrange(100, 999)}-{customer_rng.randrange(1000, 9999)}"),
-        email=f"sandbox.customer.{customer_suffix}@example.invalid",
+        email=get_synthetic_email(
+            f"{seed}-{customer_index}",
+            person_name=get_synthetic_name(customer_index, seed=seed),
+        ),
         order_reference=order,
         order_line_reference=f"{order}-L1",
         product_reference=product,

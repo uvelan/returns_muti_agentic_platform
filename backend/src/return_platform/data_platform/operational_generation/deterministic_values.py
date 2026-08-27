@@ -102,14 +102,96 @@ def generate_stable_date(rng: random.Random, date_from: datetime, date_to: datet
     return date_from + timedelta(seconds=random_seconds)
 
 
-def get_synthetic_email(stable_id: str) -> str:
-    return f"generated+{stable_id}@example.invalid"
+#: Reserved by RFC 2606 and RFC 6761: none can be registered or resolve, so an
+#: address on one cannot be delivered to no matter who reads it. `.example` is
+#: preferred because it is the one a person reads as an address rather than as an
+#: error. This tuple is the contract -- `test_reference_dataset` and
+#: `test_synthetic_identity_policy` both assert against it rather than against a
+#: single literal domain, because the property is unroutability, not spelling.
+RESERVED_EMAIL_TLDS = (".example", ".invalid", ".test", ".localhost")
+
+#: Trade names for records that have no party of their own to borrow one from.
+#: Deliberately the same register as the reference dataset's vocabulary, so a
+#: generated record and a seeded one read like they came from one world.
+SYNTHETIC_BUSINESS_NAMES = (
+    "MERIDIAN HEATING & COOLING",
+    "NORTHGATE PLUMBING SUPPLY",
+    "BRIGHTWATER MECHANICAL",
+    "CEDAR RIDGE HVAC",
+    "STONEBRIDGE PIPEWORKS",
+    "HARBOR POINT SERVICES",
+    "IRONGATE CONTRACTORS",
+    "SILVERLAKE AIR SYSTEMS",
+)
+
+#: Words that say what kind of business it is, not which one.
+_DOMAIN_STOPWORDS = frozenset(
+    {"AND", "THE", "CO", "INC", "LLC", "LTD", "COMPANY", "SUPPLY", "SERVICES", "SYSTEMS"}
+)
+
+
+def email_domain_for(business_name: str) -> str:
+    """A readable domain slug for a trade name, without the generic half.
+
+    "NORTHGATE PLUMBING SUPPLY" -> `northgateplumbing`, not a domain so long
+    nobody would read it.
+    """
+    words = [
+        word
+        for word in "".join(
+            character if character.isalpha() else " " for character in business_name
+        ).split()
+        if word.upper() not in _DOMAIN_STOPWORDS
+    ]
+    return "".join(words[:2]).lower() or "customer"
+
+
+def build_synthetic_email(person_name: str, business_name: str) -> str:
+    """A readable address that still cannot receive mail.
+
+    The single definition of what a synthetic contact address looks like, shared
+    by the record generator and by both reference-dataset scripts. It used to be
+    three separate ones, and they had drifted: `generated+96919241@example.invalid`
+    in the committed fixture, `generated+<seed>-<index>@example.invalid` here, and
+    `sandbox.customer.<suffix>@example.invalid` in the AI studio -- three
+    conventions for one idea, none of which reads as a customer.
+
+    The guarantee that matters is the RESERVED TLD, never the opaque local part.
+    So the local part is the contact's own name and the domain their own company,
+    and the address stays exactly as undeliverable as it was.
+    """
+    first, _, last = person_name.strip().partition(" ")
+    local = ".".join(part.lower() for part in (first, last) if part) or "contact"
+    return f"{local}@{email_domain_for(business_name)}.example"
+
+
+def get_synthetic_email(stable_id: str, *, person_name: str = "", business_name: str = "") -> str:
+    """`build_synthetic_email`, filling in whichever identity the caller lacks.
+
+    Call sites deep in field generation know only the record's stable id, so the
+    person and company are derived from it here -- deterministically, so the same
+    record keeps one address across runs.
+    """
+    digest = hashlib.sha256(f"{stable_id}:synthetic-email".encode()).digest()
+    if not person_name:
+        person_name = get_synthetic_name(int.from_bytes(digest[:4], "big"))
+    if not business_name:
+        business_name = SYNTHETIC_BUSINESS_NAMES[
+            int.from_bytes(digest[4:8], "big") % len(SYNTHETIC_BUSINESS_NAMES)
+        ]
+    return build_synthetic_email(person_name, business_name)
 
 
 def get_synthetic_phone(rng: random.Random) -> str:
-    # Reserved non-routable number format, like 555-01XX
-    suffix = rng.randint(100, 999)
-    return f"555-01{suffix}"
+    # Reserved non-routable number format, like 555-01XX.
+    #
+    # `randint(100, 999)` did not produce that: it appended THREE digits, giving
+    # `555-01523` -- eight digits where a subscriber number has seven, outside
+    # the 555-0100..555-0199 block reserved for fiction, and not a dialable NANP
+    # number in any format. The test guarding this asserts only the `555-01`
+    # prefix, so the malformed tail went unnoticed.
+    suffix = rng.randint(0, 99)
+    return f"555-01{suffix:02d}"
 
 
 def get_synthetic_name(stable_number: int, *, seed: int = 0) -> str:

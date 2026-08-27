@@ -13,6 +13,7 @@ from return_platform.data_platform.operational_generation import (
     ScenarioType,
 )
 from return_platform.data_platform.operational_generation.deterministic_values import (
+    RESERVED_EMAIL_TLDS,
     get_synthetic_name,
 )
 from return_platform.data_platform.schema_registry import SchemaRegistry, load_schema_registry
@@ -72,10 +73,16 @@ async def test_synthetic_email_policy(
     emails = [row["email"] for row in addresses if "email" in row]
 
     assert emails, "customer.address[] carried no contact rows to check"
+    # The policy is that a generated address can never be delivered to, NOT that
+    # it is spelled `generated+...@example.invalid`. Asserting the literal made
+    # the unreadable form the only compliant one and let three different
+    # conventions drift apart behind it. Every TLD in RESERVED_EMAIL_TLDS is
+    # reserved by RFC 2606 / RFC 6761 and cannot be registered, so
+    # `riley.chen@irongatecontractors.example` is exactly as undeliverable.
     for email in emails:
         assert isinstance(email, str)
-        assert email.startswith("generated+")
-        assert email.endswith("@example.invalid")
+        assert email.endswith(RESERVED_EMAIL_TLDS), email
+        assert "@" in email and not email.startswith("@")
 
 
 @pytest.mark.asyncio

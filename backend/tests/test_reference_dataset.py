@@ -54,8 +54,17 @@ def test_no_contact_details_survive(orders: list[dict[str, Any]]) -> None:
     # The domain must contain a dot, or product specifications like "3.5@208V"
     # are read as email addresses and the assertion fails on the data being
     # correct.
+    # The property is that the domain can never resolve, NOT that it is one
+    # particular string. Pinning the literal `@example.invalid` conflated the two
+    # and made `generated+96919241@example.invalid` -- an address that reads as a
+    # defect rather than as a customer -- the only compliant form. Every TLD
+    # listed here is reserved by RFC 2606 / RFC 6761 and cannot be registered, so
+    # a readable `taylor.solberg@bluefinutilities.example` is exactly as
+    # undeliverable and passes for the reason that actually matters.
+    deidentify = _module("deidentify_reference_dataset")
     emails = set(re.findall(r"[\w.+-]+@[\w-]+\.[\w.-]+", serialized))
-    assert all(address.endswith("@example.invalid") for address in emails), sorted(emails)
+    unroutable = tuple(deidentify.RESERVED_EMAIL_TLDS)
+    assert all(address.endswith(unroutable) for address in emails), sorted(emails)
 
     # Any 3-3-4 or 10-digit run that is not the reserved 555-01xx test range.
     telephones = set(re.findall(r"\b(?!555-01)\d{3}-\d{3}-\d{4}\b", serialized))

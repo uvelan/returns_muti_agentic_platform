@@ -33,6 +33,21 @@ from pathlib import Path
 from typing import Any
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
+if str(BACKEND_ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT / "src"))
+
+# What a synthetic contact address looks like is defined once, in the library the
+# record generator also uses. Re-exported here because this module is the one the
+# reference-dataset tests read the contract from.
+from return_platform.data_platform.operational_generation import (  # noqa: E402
+    deterministic_values as _values,
+)
+
+RESERVED_EMAIL_TLDS = _values.RESERVED_EMAIL_TLDS
+_synthetic_email = _values.build_synthetic_email
+
+__all__ = ["RESERVED_EMAIL_TLDS"]
+
 DEFAULT_SOURCE = Path("K:/Projects/FEG/Ret/full/return_discovery_order_analysis_package/files")
 DEFAULT_OUTPUT = BACKEND_ROOT / "fixtures" / "reference_dataset"
 
@@ -182,7 +197,7 @@ def _synthetic(key: str, value: Any) -> Any:
     lowered = key.lower()
 
     if "email" in lowered:
-        return f"generated+{_stable_hash(token) % 10**8:08d}@example.invalid"
+        return _synthetic_email(_pick(PERSON_NAMES, token), _pick(BUSINESS_NAMES, token))
     if "phone" in lowered or "fax" in lowered or "mobile" in lowered:
         return f"555-01{_stable_hash(token) % 100:02d}"
     if "zip" in lowered or "postal" in lowered:
@@ -279,10 +294,15 @@ PRODUCT_NAMES = (
     "1/2 IN COPPER TUBE 10FT",
 )
 
+#: `machinename` is deliberately NOT here. It reads like a product field and is
+#: not one: in this extract `eventMeta.machineName` is the ETL host that wrote
+#: the document, so classifying it as a product name stamped
+#: "1/2 IN PEX BALL VALVE" into a hostname field -- the same class of error as
+#: the currency and warehouse cases this table exists to prevent. It carries no
+#: identity, so it needs no replacement at all.
 _PRODUCT_NAME_KEYS = (
     "webdisplayname",
     "displayname",
-    "machinename",
     "productname",
     "itemname",
 )
@@ -293,6 +313,13 @@ _NON_IDENTITY_NAME_VALUES = {
     "countryname": "United States",
     "statename": "Ohio",
     "unitofmeasurename": "EACH",
+    # The ETL host that wrote the document. It has to be listed here rather than
+    # merely left out of the product pool: `machineName` still matches the `name`
+    # branch of SENSITIVE_KEY_PATTERN, so anything not classified falls through
+    # to the person pool -- which would put "RILEY CHEN" in a hostname field
+    # instead of the product name that was there before. A hostname identifies a
+    # server, not a person, so a fixed value is both safe and correct.
+    "machinename": "etl-loader-01",
 }
 
 
@@ -329,6 +356,7 @@ def _scrub(node: Any, key: str = "") -> Any:
 _CITY_KEYS = ("city", "ccCity")
 _STATE_KEYS = ("state", "ccState")
 _ZIP_KEYS = ("zipCode", "postalCode", "ccZip")
+_COUNTY_KEYS = ("county", "countyName")
 
 
 def _harmonise_locations(node: Any) -> Any:
@@ -358,7 +386,87 @@ def _harmonise_locations(node: Any) -> Any:
         for zip_key in _ZIP_KEYS:
             if isinstance(harmonised.get(zip_key), str) and harmonised[zip_key]:
                 harmonised[zip_key] = chosen[2]
+        # `county` was scrubbed independently of `city`, so a row read
+        # "WESTHAVEN ... Mapleton County" -- two different towns in one address.
+        # Same defect the city/state/postcode triple above exists to prevent.
+        for county_key in _COUNTY_KEYS:
+            if isinstance(harmonised.get(county_key), str) and harmonised[county_key]:
+                harmonised[county_key] = f"{chosen[0].title()} County"
     return harmonised
+
+
+#: Where an object names the person the address belongs to.
+_CONTACT_FIRST_KEYS = ("contactFirstName", "personFirstName", "firstName")
+_CONTACT_LAST_KEYS = ("contactLastName", "personLastName", "lastName")
+
+
+def _harmonise_contacts(node: Any, business_name: str, key: str = "") -> Any:
+    """Make each email address agree with the contact and company on its record.
+
+    Scrubbing is per field, so the email was drawn from a hash of its own old
+    value and had nothing to do with the person standing next to it: an address
+    row for TAYLOR SOLBERG of BLUEFIN UTILITIES carried an address belonging to
+    neither. Anchored here on the row's own contact name and the order's
+    `custName`, it becomes `taylor.solberg@bluefinutilities.example` -- still
+    undeliverable, and now consistent with every other field on the row.
+
+    Rows without a contact name keep the address `_synthetic` chose. That one is
+    already safe; it simply has nobody to agree with.
+    """
+    if isinstance(node, list):
+        return [_harmonise_contacts(item, business_name, key) for item in node]
+    if not isinstance(node, dict):
+        return node
+
+    harmonised = {
+        inner: _harmonise_contacts(value, business_name, inner) for inner, value in node.items()
+    }
+    first = next((harmonised.get(name) for name in _CONTACT_FIRST_KEYS if harmonised.get(name)), "")
+    last = next((harmonised.get(name) for name in _CONTACT_LAST_KEYS if harmonised.get(name)), "")
+    if not isinstance(first, str) or not isinstance(last, str) or not (first or last):
+        return harmonised
+    for inner, value in harmonised.items():
+        if "email" in inner.lower() and isinstance(value, str) and value:
+            harmonised[inner] = _synthetic_email(f"{first} {last}".strip(), business_name)
+    return harmonised
+
+
+def _find_business_name(node: Any, key: str = "") -> str:
+    """The trading party this record belongs to, wherever the document keeps it.
+
+    `custName` on a salesInv order, `partyName` on a CDM customer. Rather than
+    hard-code both paths, take the first organisation-named field holding a value
+    the scrubber itself could have produced -- which is exactly the set of trade
+    names the fixture is allowed to contain.
+    """
+    if isinstance(node, dict):
+        for inner, value in node.items():
+            if (
+                isinstance(value, str)
+                and value in BUSINESS_NAMES
+                and any(marker in inner.lower() for marker in _ORGANISATION_NAME_KEYS)
+            ):
+                return value
+        for inner, value in node.items():
+            found = _find_business_name(value, inner)
+            if found:
+                return found
+    elif isinstance(node, list):
+        for item in node:
+            found = _find_business_name(item, key)
+            if found:
+                return found
+    return ""
+
+
+def _harmonise_per_record(node: Any) -> Any:
+    """Run the contact pass once per top-level record, anchored on its own party."""
+    if isinstance(node, list):
+        return [_harmonise_per_record(item) for item in node]
+    business = _find_business_name(node)
+    if not business:
+        return node
+    return _harmonise_contacts(node, business)
 
 
 def _sensitive_values(node: Any, key: str = "", found: set[str] | None = None) -> set[str]:
@@ -516,7 +624,7 @@ def main() -> int:
         if not path.is_file():
             raise SystemExit(f"Expected source document is missing: {path}")
         original = json.loads(path.read_text(encoding="utf-8"))
-        scrubbed = _harmonise_locations(_scrub(original))
+        scrubbed = _harmonise_per_record(_harmonise_locations(_scrub(original)))
         checked = _assert_nothing_leaked(original, scrubbed, name)
         destination = output / name
         destination.write_text(

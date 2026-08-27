@@ -251,6 +251,8 @@ def _cdm_parties(
     # one account wearing many parties.
     for account in accounts:
         resolver.add_key("customer_reference", account.split("*", 1)[1])
+    contact_name = get_synthetic_name(index, seed=seed)
+    contact_first, _, contact_last = contact_name.partition(" ")
     return [
         {
             "partyNumber": party_id,
@@ -262,9 +264,15 @@ def _cdm_parties(
                     "contactPointType": "PHONE",
                     "phoneNumber": get_synthetic_phone(record_rng),
                     "searchPhoneNumber": get_synthetic_phone(record_rng),
-                    "emailAddress": get_synthetic_email(f"{seed}-{index}"),
-                    "personFirstName": name,
-                    "personLastName": name,
+                    "emailAddress": get_synthetic_email(
+                        f"{seed}-{index}", person_name=contact_name, business_name=name
+                    ),
+                    # A *person*, not the organisation again. Both of these were
+                    # `name`, so every generated contact read "IRONGATE
+                    # CONTRACTORS IRONGATE CONTRACTORS" -- the same defect the
+                    # reference-dataset loader carried, in the sibling path.
+                    "personFirstName": contact_first,
+                    "personLastName": contact_last or contact_first,
                 }
             ],
             "partyMainCusts": [
