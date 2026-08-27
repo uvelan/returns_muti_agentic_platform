@@ -13054,106 +13054,6 @@
         "title": "ReturnCreateRequest",
         "type": "object"
       },
-      "ReturnDetailsRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "associateReference": {
-            "anyOf": [
-              {
-                "maxLength": 128,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Associatereference"
-          },
-          "attachmentIds": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 100,
-            "title": "Attachmentids",
-            "type": "array"
-          },
-          "branchReference": {
-            "anyOf": [
-              {
-                "maxLength": 128,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Branchreference"
-          },
-          "expectedVersion": {
-            "minimum": 0.0,
-            "title": "Expectedversion",
-            "type": "integer"
-          },
-          "notes": {
-            "anyOf": [
-              {
-                "maxLength": 2000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Notes"
-          },
-          "packageCount": {
-            "maximum": 10000.0,
-            "minimum": 1.0,
-            "title": "Packagecount",
-            "type": "integer"
-          },
-          "pickupAssessment": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pickupassessment"
-          },
-          "productPresence": {
-            "$ref": "#/components/schemas/ProductPresence",
-            "default": "PRESENT_AT_BRANCH"
-          },
-          "reasonCode": {
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Reasoncode",
-            "type": "string"
-          },
-          "returnQuantity": {
-            "maximum": 10000.0,
-            "minimum": 1.0,
-            "title": "Returnquantity",
-            "type": "integer"
-          },
-          "shippingPathExpectation": {
-            "$ref": "#/components/schemas/NormalizedReturnMethod"
-          }
-        },
-        "required": [
-          "reasonCode",
-          "returnQuantity",
-          "packageCount",
-          "shippingPathExpectation",
-          "expectedVersion"
-        ],
-        "title": "ReturnDetailsRequest",
-        "type": "object"
-      },
       "ReturnEventRequest": {
         "additionalProperties": false,
         "description": "One evidence-carrying production event.\n\nMirrors the legacy `ProductionEventRequest` field for field. `evidence` is\nrequired and has a minimum length because it is the whole justification for\nthe transition -- the stage-result binding, the audit record and the outbox\nevent all hang off it. `extra=\"forbid\"` so a caller who misspells\n`businessPayload` is told, rather than having their payload dropped.",
@@ -15719,6 +15619,16 @@
             "maxItems": 200,
             "title": "Items",
             "type": "array"
+          },
+          "returnDetails": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/return_platform__api__order_lines__ReturnDetailsRequest"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "title": "SelectedItemsRequest",
@@ -15861,6 +15771,18 @@
               }
             ],
             "title": "Overridereason"
+          },
+          "proNumber": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pronumber"
           },
           "status": {
             "maxLength": 64,
@@ -19045,6 +18967,150 @@
           "message"
         ],
         "title": "WarningMeta",
+        "type": "object"
+      },
+      "return_platform__api__order_lines__ReturnDetailsRequest": {
+        "additionalProperties": false,
+        "description": "What is coming back and in what state -- the case-level half of intake.\n\n**A sibling of `items` and `contact`, for the same reason `contact` is one.**\nThese are statements about the *return*, not about a line: one selection is\none product presence and one requested resolution, and a per-line copy would\nlet a two-line return carry two answers with no rule for choosing.\n\n**The names are the contract.** `compose_support_handoff` reads\n`product_presence`, `requested_resolution` and `associate_notes` off the\nfact log, and read them before anything wrote them -- so every Support\nhandoff rendered those three lines as \"Not available\" beside a case that had\na confirmed order, a product and a reason. Nothing here is new capability;\nit is the writer those readers were waiting for.\n\n**No return method.** Support decides it, per RMA, through\n`record_support_outcome`, and the projection reads it off the record. A\nmethod accepted here would let intake manufacture a decision nobody made and\nquietly satisfy the `awaiting: RETURN_METHOD` the case is honestly reporting.\n\nEvery field optional and the empty string a retraction, exactly as\n`ReturnContactRequest` documents: an omitted field says nothing about the\ncase and leaves what it already holds standing.",
+        "properties": {
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "productPresence": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Productpresence"
+          },
+          "requestedResolution": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestedresolution"
+          }
+        },
+        "title": "ReturnDetailsRequest",
+        "type": "object"
+      },
+      "return_platform__operations__associate_flow__ReturnDetailsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "associateReference": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Associatereference"
+          },
+          "attachmentIds": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Attachmentids",
+            "type": "array"
+          },
+          "branchReference": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Branchreference"
+          },
+          "expectedVersion": {
+            "minimum": 0.0,
+            "title": "Expectedversion",
+            "type": "integer"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          },
+          "packageCount": {
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Packagecount",
+            "type": "integer"
+          },
+          "pickupAssessment": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickupassessment"
+          },
+          "productPresence": {
+            "$ref": "#/components/schemas/ProductPresence",
+            "default": "PRESENT_AT_BRANCH"
+          },
+          "reasonCode": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Reasoncode",
+            "type": "string"
+          },
+          "returnQuantity": {
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Returnquantity",
+            "type": "integer"
+          },
+          "shippingPathExpectation": {
+            "$ref": "#/components/schemas/NormalizedReturnMethod"
+          }
+        },
+        "required": [
+          "reasonCode",
+          "returnQuantity",
+          "packageCount",
+          "shippingPathExpectation",
+          "expectedVersion"
+        ],
+        "title": "ReturnDetailsRequest",
         "type": "object"
       }
     }
@@ -24974,7 +25040,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ReturnDetailsRequest"
+                "$ref": "#/components/schemas/return_platform__operations__associate_flow__ReturnDetailsRequest"
               }
             }
           },

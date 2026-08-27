@@ -235,6 +235,41 @@ class ReturnContactRequest(BaseModel):
         return value
 
 
+class ReturnDetailsRequest(BaseModel):
+    """What is coming back and in what state -- the case-level half of intake.
+
+    **A sibling of `items` and `contact`, for the same reason `contact` is one.**
+    These are statements about the *return*, not about a line: one selection is
+    one product presence and one requested resolution, and a per-line copy would
+    let a two-line return carry two answers with no rule for choosing.
+
+    **The names are the contract.** `compose_support_handoff` reads
+    `product_presence`, `requested_resolution` and `associate_notes` off the
+    fact log, and read them before anything wrote them -- so every Support
+    handoff rendered those three lines as "Not available" beside a case that had
+    a confirmed order, a product and a reason. Nothing here is new capability;
+    it is the writer those readers were waiting for.
+
+    **No return method.** Support decides it, per RMA, through
+    `record_support_outcome`, and the projection reads it off the record. A
+    method accepted here would let intake manufacture a decision nobody made and
+    quietly satisfy the `awaiting: RETURN_METHOD` the case is honestly reporting.
+
+    Every field optional and the empty string a retraction, exactly as
+    `ReturnContactRequest` documents: an omitted field says nothing about the
+    case and leaves what it already holds standing.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: One of `return_policy.supported_product_presence`. Not a `Literal` here,
+    #: for the reason `SelectedItemRequest.reason` gives: the vocabulary is
+    #: operator-owned and moves in a release.
+    productPresence: str | None = Field(default=None, max_length=64)
+    requestedResolution: str | None = Field(default=None, max_length=64)
+    notes: str | None = Field(default=None, max_length=2_000)
+
+
 class SelectedItemsRequest(BaseModel):
     """The **whole** selection, not an addition to it.
 
@@ -256,6 +291,9 @@ class SelectedItemsRequest(BaseModel):
 
     items: tuple[SelectedItemRequest, ...] = Field(default=(), max_length=_MAX_SELECTED_LINES)
     contact: ReturnContactRequest | None = None
+    #: Outside the replace set for the same reason `contact` is: a statement
+    #: about the case, kept on the append-only fact log.
+    returnDetails: ReturnDetailsRequest | None = None
 
 
 class SelectedItemView(BaseModel):
@@ -471,14 +509,10 @@ async def _line_views(
         ordered_by_line={line.line_reference: line.ordered_quantity for line in lines},
     )
     colours = await _line_colours(request, lines)
-    return tuple(
-        _line_view(line, availability[line.line_reference], colours) for line in lines
-    )
+    return tuple(_line_view(line, availability[line.line_reference], colours) for line in lines)
 
 
-async def _line_colours(
-    request: Request, lines: tuple[SourceOrderLine, ...]
-) -> Mapping[str, str]:
+async def _line_colours(request: Request, lines: tuple[SourceOrderLine, ...]) -> Mapping[str, str]:
     """Colour per master product id, or nothing at all.
 
     Best-effort by construction, and deliberately so: colour is a decoration on
@@ -714,11 +748,24 @@ _CONTACT_FACTS: tuple[tuple[str, str], ...] = (
     ("branch_associate_phone", "phone"),
 )
 
+#: The three `compose_support_handoff` reads for its "Return Details" section.
+#: Kept beside `_CONTACT_FACTS` because they are written by the same rules and
+#: on the same submission -- see `_record_stated_facts`.
+_RETURN_DETAIL_FACTS: tuple[tuple[str, str], ...] = (
+    ("product_presence", "productPresence"),
+    ("requested_resolution", "requestedResolution"),
+    ("associate_notes", "notes"),
+)
 
-async def _record_return_contact(
-    repository: Any, *, case_id: str, contact: ReturnContactRequest | None
+
+async def _record_stated_facts(
+    repository: Any,
+    *,
+    case_id: str,
+    stated: object | None,
+    facts: tuple[tuple[str, str], ...],
 ) -> None:
-    """Append what changed about the branch associate, and nothing else.
+    """Append what changed about one case-level statement, and nothing else.
 
     **Only what changed.** `append_case_fact` is insert-only and bumps the case
     revision, so re-sending an unchanged selection -- which the replace-set
@@ -737,22 +784,22 @@ async def _record_return_contact(
     before a `409 QUANTITY_UNAVAILABLE` would leave the case carrying details
     for a return that was never recorded.
     """
-    if contact is None:
+    if stated is None:
         return
     current = await repository.latest_case_facts(case_id)
-    for fact_name, attribute in _CONTACT_FACTS:
-        stated = cast(str | None, getattr(contact, attribute))
-        if stated is None:
+    for fact_name, attribute in facts:
+        value = cast(str | None, getattr(stated, attribute))
+        if value is None:
             continue
         held = current.get(fact_name)
         recorded = "" if held is None else str(held.get("value") or "")
-        if stated == recorded:
+        if value == recorded:
             continue
         await repository.append_case_fact(
             fact_id=str(uuid.uuid4()),
             case_id=case_id,
             fact_name=fact_name,
-            value=stated,
+            value=value,
             agent_id="return-copilot",
             # Channel A: an associate typed it into the return screen. Not
             # `SYSTEM` -- nothing here derived it -- and not `CHANNEL_B`, which
@@ -860,7 +907,12 @@ async def replace_case_selected_items(
             ],
         ) from authorized
 
-    await _record_return_contact(repository, case_id=case_id, contact=payload.contact)
+    await _record_stated_facts(
+        repository, case_id=case_id, stated=payload.contact, facts=_CONTACT_FACTS
+    )
+    await _record_stated_facts(
+        repository, case_id=case_id, stated=payload.returnDetails, facts=_RETURN_DETAIL_FACTS
+    )
     await _notify_case_workflow(request, case_id=case_id, items=len(outcome.items))
 
     return APIResponse(

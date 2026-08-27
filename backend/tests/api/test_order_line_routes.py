@@ -716,9 +716,7 @@ def test_an_email_that_is_not_an_email_is_refused() -> None:
     typo and a carrier.
     """
     repository = StubRepository(case=_case(), sales=_sales_document())
-    response = _post(
-        repository, {"items": [_line()], "contact": {"email": "704-555-0134"}}
-    )
+    response = _post(repository, {"items": [_line()], "contact": {"email": "704-555-0134"}})
 
     assert response.status_code == 422, response.text
     # Nothing was written, including the selection: the body never validated.
@@ -772,6 +770,87 @@ def test_clearing_something_never_recorded_writes_nothing() -> None:
 
     assert response.status_code == 200, response.text
     assert repository.appended == []
+
+
+def test_the_return_details_the_support_template_reads_are_recorded() -> None:
+    """The three lines that rendered "Not available" beside a case that knew.
+
+    `compose_support_handoff` reads `product_presence`, `requested_resolution`
+    and `associate_notes` off the fact log, and nothing on the case path wrote
+    any of them -- so every handoff asked Support to decide from a form with
+    those three blank. The names asserted here are that contract, not a
+    preference: a fourth spelling would write a fact nothing renders, which is
+    the defect one level down.
+    """
+    repository = StubRepository(case=_case(), sales=_sales_document())
+    response = _post(
+        repository,
+        {
+            "items": [_line()],
+            "returnDetails": {
+                "productPresence": "PRESENT_AT_BRANCH",
+                "requestedResolution": "CREDIT",
+                "notes": "Customer opened the carton at the jobsite.",
+            },
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert _appended(repository) == {
+        "product_presence": "PRESENT_AT_BRANCH",
+        "requested_resolution": "CREDIT",
+        "associate_notes": "Customer opened the carton at the jobsite.",
+    }
+
+
+def test_return_details_carry_no_return_method() -> None:
+    """Support decides the method, per RMA, and intake may not say it for them.
+
+    `record_support_outcome` writes it onto the record and the projection reads
+    it from there. A method accepted here would satisfy the case's honest
+    `awaiting: RETURN_METHOD` without anybody having answered it -- the screen
+    would go quiet and no RMA would exist.
+    """
+    repository = StubRepository(case=_case(), sales=_sales_document())
+    response = _post(
+        repository,
+        {"items": [_line()], "returnDetails": {"returnMethod": "PPL"}},
+    )
+
+    assert response.status_code == 422, response.text
+    assert repository.appended == []
+    assert repository.written == []
+
+
+def test_return_details_and_a_contact_are_recorded_from_one_submission() -> None:
+    """One form, one write. They are separate statements about the same case."""
+    repository = StubRepository(case=_case(), sales=_sales_document())
+    response = _post(
+        repository,
+        {
+            "items": [_line()],
+            "contact": {"name": "D. Reyes"},
+            "returnDetails": {"productPresence": "OFFSITE_CUSTOMER_JOBSITE"},
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert _appended(repository) == {
+        "branch_associate_name": "D. Reyes",
+        "product_presence": "OFFSITE_CUSTOMER_JOBSITE",
+    }
+
+
+def test_unchanged_return_details_are_not_appended_twice() -> None:
+    """Same rule as the contact, and for the same reason: the log is insert-only."""
+    repository = StubRepository(case=_case(), sales=_sales_document())
+    body = {"items": [_line()], "returnDetails": {"productPresence": "PRESENT_AT_BRANCH"}}
+
+    assert _post(repository, body).status_code == 200
+    first = len(repository.appended)
+    assert _post(repository, body).status_code == 200
+
+    assert len(repository.appended) == first
 
 
 def test_a_refused_selection_records_no_contact() -> None:

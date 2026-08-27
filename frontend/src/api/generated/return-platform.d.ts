@@ -8287,32 +8287,6 @@ export interface components {
              */
             workflowMode: string;
         };
-        /** ReturnDetailsRequest */
-        ReturnDetailsRequest: {
-            /** Associatereference */
-            associateReference?: string | null;
-            /** Attachmentids */
-            attachmentIds?: string[];
-            /** Branchreference */
-            branchReference?: string | null;
-            /** Expectedversion */
-            expectedVersion: number;
-            /** Notes */
-            notes?: string | null;
-            /** Packagecount */
-            packageCount: number;
-            /** Pickupassessment */
-            pickupAssessment?: {
-                [key: string]: unknown;
-            } | null;
-            /** @default PRESENT_AT_BRANCH */
-            productPresence: components["schemas"]["ProductPresence"];
-            /** Reasoncode */
-            reasonCode: string;
-            /** Returnquantity */
-            returnQuantity: number;
-            shippingPathExpectation: components["schemas"]["NormalizedReturnMethod"];
-        };
         /**
          * ReturnEventRequest
          * @description One evidence-carrying production event.
@@ -9324,6 +9298,7 @@ export interface components {
              * @default []
              */
             items: components["schemas"]["SelectedItemRequest"][];
+            returnDetails?: components["schemas"]["return_platform__api__order_lines__ReturnDetailsRequest"] | null;
         };
         /**
          * SessionStatus
@@ -9397,6 +9372,8 @@ export interface components {
             override: boolean;
             /** Overridereason */
             overrideReason?: string | null;
+            /** Pronumber */
+            proNumber?: string | null;
             /** Status */
             status: string;
         };
@@ -10552,6 +10529,65 @@ export interface components {
             message: string;
             /** Source */
             source: string;
+        };
+        /**
+         * ReturnDetailsRequest
+         * @description What is coming back and in what state -- the case-level half of intake.
+         *
+         *     **A sibling of `items` and `contact`, for the same reason `contact` is one.**
+         *     These are statements about the *return*, not about a line: one selection is
+         *     one product presence and one requested resolution, and a per-line copy would
+         *     let a two-line return carry two answers with no rule for choosing.
+         *
+         *     **The names are the contract.** `compose_support_handoff` reads
+         *     `product_presence`, `requested_resolution` and `associate_notes` off the
+         *     fact log, and read them before anything wrote them -- so every Support
+         *     handoff rendered those three lines as "Not available" beside a case that had
+         *     a confirmed order, a product and a reason. Nothing here is new capability;
+         *     it is the writer those readers were waiting for.
+         *
+         *     **No return method.** Support decides it, per RMA, through
+         *     `record_support_outcome`, and the projection reads it off the record. A
+         *     method accepted here would let intake manufacture a decision nobody made and
+         *     quietly satisfy the `awaiting: RETURN_METHOD` the case is honestly reporting.
+         *
+         *     Every field optional and the empty string a retraction, exactly as
+         *     `ReturnContactRequest` documents: an omitted field says nothing about the
+         *     case and leaves what it already holds standing.
+         */
+        return_platform__api__order_lines__ReturnDetailsRequest: {
+            /** Notes */
+            notes?: string | null;
+            /** Productpresence */
+            productPresence?: string | null;
+            /** Requestedresolution */
+            requestedResolution?: string | null;
+        };
+        /** ReturnDetailsRequest */
+        return_platform__operations__associate_flow__ReturnDetailsRequest: {
+            /** Associatereference */
+            associateReference?: string | null;
+            /** Attachmentids */
+            attachmentIds?: string[];
+            /** Branchreference */
+            branchReference?: string | null;
+            /** Expectedversion */
+            expectedVersion: number;
+            /** Notes */
+            notes?: string | null;
+            /** Packagecount */
+            packageCount: number;
+            /** Pickupassessment */
+            pickupAssessment?: {
+                [key: string]: unknown;
+            } | null;
+            /** @default PRESENT_AT_BRANCH */
+            productPresence: components["schemas"]["ProductPresence"];
+            /** Reasoncode */
+            reasonCode: string;
+            /** Returnquantity */
+            returnQuantity: number;
+            shippingPathExpectation: components["schemas"]["NormalizedReturnMethod"];
         };
     };
     responses: never;
@@ -14616,7 +14652,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ReturnDetailsRequest"];
+                "application/json": components["schemas"]["return_platform__operations__associate_flow__ReturnDetailsRequest"];
             };
         };
         responses: {
