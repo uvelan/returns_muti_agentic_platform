@@ -229,6 +229,19 @@ async def publish_release_with_domains(
     for domain_key, payload in merged.items():
         await repository.save_draft_domain(release_id, domain_key, dict(payload), actor_id=actor_id)
 
+    # The packaged baseline the cloned release was built from, carried onto the
+    # clone. `bootstrap_graph_configuration` reads it to tell an operator's edit
+    # apart from a change to the packaged file; a release published without one
+    # is undecidable, and the next bootstrap keeps the whole release rather than
+    # adopt anything -- so dropping it here would re-break packaged config
+    # updates after every governed change an operator makes.
+    #
+    # The overlay itself needs no special treatment: it moves those domains AWAY
+    # from the baseline, which is exactly how the next publish reads them as
+    # edited and leaves them alone.
+    if active.metadata:
+        await repository.set_release_metadata(release_id, dict(active.metadata))
+
     await promote_configuration_release(
         repository=repository,
         release_id=release_id,

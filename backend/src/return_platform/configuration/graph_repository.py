@@ -124,6 +124,12 @@ class ConfigurationGraphRepository(Protocol):
         self, release_id: str, domain_key: str, payload: dict[str, Any], actor_id: str
     ) -> None: ...
 
+    #: Release metadata is not part of the checksum, so this may be called after
+    #: the release is published. `bootstrap_graph_configuration` uses it to record
+    #: which packaged values a release was built from -- the baseline that lets a
+    #: later run tell an operator's edit apart from a change to the packaged file.
+    async def set_release_metadata(self, release_id: str, metadata: dict[str, Any]) -> None: ...
+
     async def promote_release(
         self,
         release_id: str,
@@ -198,6 +204,15 @@ class InMemoryConfigurationGraphRepository:
                 updated_by=actor_id,
             )
             await self._recompute_checksum(release_id)
+
+    async def set_release_metadata(self, release_id: str, metadata: dict[str, Any]) -> None:
+        async with self._lock:
+            release = self._releases.get(release_id)
+            if release is None:
+                raise ValueError(f"Release {release_id} not found.")
+            self._releases[release_id] = release.model_copy(
+                update={"metadata": copy.deepcopy(metadata)}
+            )
 
     async def promote_release(
         self,
@@ -441,6 +456,21 @@ class Neo4jConfigurationGraphRepository:
                 status = current.status if current is not None else "UNKNOWN"
                 raise ValueError(f"Cannot edit domain in release {release_id} with status {status}")
         await self._recompute_checksum(release_id)
+
+    async def set_release_metadata(self, release_id: str, metadata: dict[str, Any]) -> None:
+        query = """
+        MATCH (r:ConfigurationRelease {release_id: $release_id})
+        SET r.metadata_json = $metadata_json
+        RETURN r.release_id AS release_id
+        """
+        async with self._driver.session() as session:
+            result = await session.run(
+                query,
+                release_id=release_id,
+                metadata_json=json.dumps(metadata, sort_keys=True),
+            )
+            if await result.single() is None:
+                raise ValueError(f"Release {release_id} not found.")
 
     async def promote_release(
         self,

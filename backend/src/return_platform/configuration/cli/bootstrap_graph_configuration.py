@@ -7,6 +7,8 @@ import asyncio
 import hashlib
 import json
 import logging
+from collections.abc import Mapping
+from typing import Any
 
 from neo4j import AsyncGraphDatabase
 from pydantic import ValidationError
@@ -43,6 +45,68 @@ from return_platform.secrets.runtime import (
 from return_platform.secrets.vault import SecretResolver
 
 logger = logging.getLogger(__name__)
+
+#: Release metadata key holding a digest of each top-level value in the PACKAGED
+#: configuration at the moment the release was published.
+#:
+#: This is the baseline that makes the carry-forward below decidable. Without it
+#: a publish can see that the release and the packaged file disagree about a key
+#: and cannot tell which of the two changed -- an operator edited the release, or
+#: the file moved on since the release was cut. Guessing "the release" froze every
+#: packaged change out of every deployment that had ever published a release;
+#: guessing "the file" would silently undo operator edits on every restart.
+PACKAGED_KEY_DIGESTS = "packaged_key_digests"
+
+
+def _key_digests(payload: Mapping[str, Any]) -> dict[str, str]:
+    """One digest per top-level key, over its canonical JSON."""
+    return {
+        key: hashlib.sha256(
+            json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        for key, value in payload.items()
+    }
+
+
+def _carry_forward(
+    packaged: Mapping[str, Any],
+    active_payload: Mapping[str, Any],
+    baseline: Mapping[str, Any] | None,
+) -> tuple[dict[str, Any], tuple[str, ...]]:
+    """Combine the packaged file with the active release, and say what it dropped.
+
+    Returns the merged payload and the keys the packaged file changed that could
+    NOT be adopted -- empty whenever the answer is exact.
+
+    With a baseline the decision is per key and needs no judgement: a release
+    value that still matches what the packaged file said when the release was cut
+    was never edited, so the file's new value replaces it; a value that has moved
+    away from that baseline was changed by someone after the file was read -- an
+    operator through the config API, or this bootstrap writing AI receipts into
+    `runtime_integrations` -- and is kept.
+
+    Without a baseline nothing can be decided, so nothing is: the release wins,
+    exactly as before, and the keys that lost are named to the caller rather than
+    dropped in silence. A release published by this function records a baseline,
+    so a deployment needs the undecidable path at most once.
+    """
+    if baseline is None:
+        merged = {**packaged, **active_payload}
+        unadopted = tuple(
+            sorted(
+                key
+                for key, value in packaged.items()
+                if key in active_payload and active_payload[key] != value
+            )
+        )
+        return merged, unadopted
+
+    active_digests = _key_digests(active_payload)
+    merged = dict(active_payload)
+    for key, value in packaged.items():
+        if key not in active_payload or active_digests[key] == baseline.get(key):
+            merged[key] = value
+    return merged, ()
 
 
 def _require_secret_resolver(resolver: SecretResolver | None) -> SecretResolver:
@@ -148,6 +212,7 @@ async def main(
     validate_ai: bool = False,
     force_ai_validation: bool = False,
     refresh_ai_routes: bool = False,
+    adopt_packaged: bool = False,
 ) -> None:
     settings, resolver = await resolve_runtime_settings_from_vault(
         Settings(),
@@ -192,6 +257,17 @@ async def main(
             settings.dependency_simulation_configuration_path
         )
 
+        # Whether what gets published is a truthful baseline for the packaged
+        # file -- which is what gates recording one at all.
+        #
+        # True by default because the ordinary case is the honest one: with no
+        # active release, or none carrying this domain, the published payload IS
+        # the packaged file. It goes false only where a payload is carried
+        # forward that this run could not decide about, because the published
+        # payload then still holds values the file has since changed, and
+        # stamping the current file over them would mark those dropped changes as
+        # deliberate edits and freeze them out for good.
+        baseline_decidable = True
         existing_configuration: ReturnPlatformConfiguration | None = None
         if active is not None:
             active_payload = await repository.get_domain_config(
@@ -234,14 +310,48 @@ async def main(
                 # `/api/runtime-config` still answered `null`.
                 #
                 # A top-level merge, at the same granularity the rest of this
-                # function works at. Every key the release carries wins, so an
-                # operator's edits are still authoritative; keys it predates come
-                # from the packaged file. A release already carrying every key
-                # merges to itself and still reports UNCHANGED.
-                merged_payload = {
-                    **loaded.configuration.model_dump(mode="json"),
-                    **active_payload,
-                }
+                # function works at. Keys the release predates come from the
+                # packaged file; keys an operator edited stay as the operator left
+                # them. Which of the two a disagreement IS gets decided against
+                # the baseline the release recorded when it was published -- see
+                # `_carry_forward`, and `PACKAGED_KEY_DIGESTS` for why a merge
+                # without one cannot decide it at all.
+                #
+                # Before that baseline existed this was `{**packaged, **active}`,
+                # and the second half of the intent above was never delivered: a
+                # key the release carried always won, so nothing INSIDE a
+                # top-level key could ever be changed by editing the packaged
+                # file. `discovery` is one key, so an identification field added
+                # to `config/returns/production.yaml` reached no deployment that
+                # had ever published a release -- which is every deployment after
+                # its first boot. The run said `UNCHANGED` and nothing else.
+                baseline = active.metadata.get(PACKAGED_KEY_DIGESTS)
+                baseline_decidable = baseline is not None or adopt_packaged
+
+                merged_payload, unadopted = _carry_forward(
+                    loaded.configuration.model_dump(mode="json"),
+                    active_payload,
+                    baseline,
+                )
+                if unadopted:
+                    logger.warning(
+                        "packaged_configuration_not_adopted release_id=%s keys=%s; "
+                        "this release predates the packaged baseline, so an edit to "
+                        "the release and an edit to the packaged file cannot be told "
+                        "apart and the release wins. Re-run with --adopt-packaged to "
+                        "take the packaged file for these keys; the release it "
+                        "publishes records a baseline and this cannot recur.",
+                        active.release_id,
+                        ",".join(unadopted),
+                    )
+                if adopt_packaged:
+                    # The operator's answer to the paragraph above, and the only
+                    # thing here that can overwrite an operator's own edits --
+                    # which is why it is a flag and not a default.
+                    merged_payload = {
+                        **active_payload,
+                        **loaded.configuration.model_dump(mode="json"),
+                    }
                 try:
                     existing_configuration = ReturnPlatformConfiguration.model_validate(
                         merged_payload
@@ -291,6 +401,21 @@ async def main(
         if active is not None:
             active_payloads = await repository.get_all_domain_configs(active.release_id)
             if active_payloads == domain_payloads:
+                # Nothing to publish, but the baseline still moves: the packaged
+                # file can change and leave the merged payload identical -- the
+                # key it changed was one an operator had already edited, so the
+                # release keeps its value. Recording what the file says NOW is
+                # what keeps that key readable as an operator edit next time
+                # instead of drifting back into "changed by someone, unknown".
+                if baseline_decidable:
+                    await repository.set_release_metadata(
+                        active.release_id,
+                        {
+                            PACKAGED_KEY_DIGESTS: _key_digests(
+                                loaded.configuration.model_dump(mode="json")
+                            )
+                        },
+                    )
                 print(f"graph_configuration_release={active.release_id}")
                 print("graph_configuration_status=UNCHANGED")
                 return
@@ -338,6 +463,24 @@ async def main(
                 f"Existing graph configuration release {release_id} has status {existing.status}"
             )
 
+        # The baseline this release was built from, recorded on the release
+        # itself so the NEXT publish can tell an operator's edit apart from a
+        # change to the packaged file. Digests of the PACKAGED values, never of
+        # the published ones: what is published also carries state this function
+        # generates -- AI receipts under `runtime_integrations` -- and recording
+        # those as the baseline would mark them unedited and let the next run
+        # overwrite them from the file.
+        #
+        # After the release, because metadata sits outside the checksum that is
+        # frozen at VALIDATED. A publish that reached RELEASED and failed here
+        # leaves a correct release with no baseline, which is the recoverable
+        # direction: the next run decides nothing and says so.
+        if baseline_decidable:
+            await repository.set_release_metadata(
+                release_id,
+                {PACKAGED_KEY_DIGESTS: _key_digests(loaded.configuration.model_dump(mode="json"))},
+            )
+
         print(f"graph_configuration_release={release_id}")
         print("graph_configuration_status=READY")
     finally:
@@ -368,6 +511,17 @@ def run() -> None:
             "Publish all configured provider/model/credential routes without calling AI providers."
         ),
     )
+    parser.add_argument(
+        "--adopt-packaged",
+        action="store_true",
+        help=(
+            "Take the packaged configuration file for every key it declares, "
+            "overwriting the active release. Needed only for a release published "
+            "before releases recorded a packaged baseline: without one, a publish "
+            "cannot tell an operator's edit from a change to the file and keeps the "
+            "release. This is the only path that can overwrite an operator's edits."
+        ),
+    )
     args = parser.parse_args()
 
     if args.force_ai_validation:
@@ -381,6 +535,7 @@ def run() -> None:
             validate_ai=args.validate_ai,
             force_ai_validation=args.force_ai_validation,
             refresh_ai_routes=args.refresh_ai_routes,
+            adopt_packaged=args.adopt_packaged,
         )
     )
 
