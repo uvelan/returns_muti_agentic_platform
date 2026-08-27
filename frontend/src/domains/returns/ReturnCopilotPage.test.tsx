@@ -616,11 +616,16 @@ describe("the agent the copilot addresses", () => {
   });
 
   it("claims no search is running while the composer is disabled", () => {
-    // The disable used to be spelled `isPending`, which is also what draws
-    // "Searching order graph..." -- so the unconfigured screen showed a
-    // configuration error and a spinner for a search that had never started.
-    // Nothing was in flight, and saying otherwise is the fabrication this
-    // programme exists to remove.
+    // The disable used to be spelled `isPending`, which is also what draws the
+    // in-flight indicator -- so the unconfigured screen showed a configuration
+    // error and a spinner for a search that had never started. Nothing was in
+    // flight, and saying otherwise is the fabrication this programme exists to
+    // remove.
+    //
+    // Asserted by role rather than by its words: the indicator used to read
+    // "Searching order graph", matching on that text pinned this test to a
+    // label that named the wrong subsystem, and it went quietly vacuous the
+    // moment the label was corrected. `role="status"` is what it IS.
     render(<ReturnCopilotPage />, {
       wrapper: wrapperWith(runtimeConfig({ orderDiscovery: null })),
     });
@@ -628,7 +633,7 @@ describe("the agent the copilot addresses", () => {
     expect(screen.getByLabelText("Message the discovery agent")).toBeDisabled();
     expect(screen.getByLabelText("Send")).toBeDisabled();
     expect(screen.getByRole("alert")).toHaveTextContent(/order_discovery_agent_id/);
-    expect(screen.queryByText(/Searching order graph/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("sends nothing while the bootstrap payload is still in flight", () => {
@@ -638,7 +643,7 @@ describe("the agent the copilot addresses", () => {
 
     expect(mocks.sendTurn).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent(/has not loaded yet/);
-    expect(screen.queryByText(/Searching order graph/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("survives a backend that does not serve the agent block at all", () => {
@@ -659,6 +664,43 @@ describe("the agent the copilot addresses", () => {
  * last value it wrote and ignores a mutation it did not see, so a raw
  * assignment leaves the component's state on the previous text.
  */
+/**
+ * What the screen says while a turn is in flight.
+ *
+ * It used to say "Searching order graph", which was a claim and not a true one:
+ * the graph read is milliseconds, and the minutes an associate waits are the
+ * reasoning routes tried in series, each with its own timeout. Naming a
+ * subsystem that had already answered sent every "why is this slow" question to
+ * the wrong place.
+ */
+describe("the in-flight indicator", () => {
+  it("shows that work is running, how long, and the way out -- and names no subsystem", async () => {
+    let release: (value: AgentTurnResult) => void = () => undefined;
+    mocks.sendTurn.mockReturnValue(
+      new Promise<AgentTurnResult>((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    render(<ReturnCopilotPage />, { wrapper });
+    fire(document.body, "LOGAN");
+
+    const indicator = await screen.findByRole("status");
+    expect(indicator).toHaveTextContent(/Searching/);
+    // The point of the change: no datastore is credited with the wait.
+    expect(indicator).not.toHaveTextContent(/graph/i);
+    // Both halves of the escape the fourteen-minute wait needed: a live
+    // elapsed count lives here, and the button that abandons it.
+    expect(indicator.querySelector(".animate-spin")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Stop waiting" })).toBeInTheDocument();
+
+    release(turn());
+    await waitFor(() => {
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+  });
+});
+
 function fire(_container: HTMLElement, text: string): void {
   fireEvent.change(screen.getByLabelText("Message the discovery agent"), {
     target: { value: text },
@@ -1092,6 +1134,31 @@ describe("the return history panel", () => {
     await waitFor(() => {
       expect(mocks.sendTurn.mock.calls.length).toBe(before);
     });
+  });
+
+  it("shows a candidate it cannot confirm as a disabled Select", async () => {
+    /**
+     * "Better a dead button than a meaningless turn" -- and a dead button that
+     * still looks live is the half of that nobody agreed to. The press was
+     * swallowed with no message, no error and no state change, which reads as a
+     * broken screen rather than as a row that cannot be chosen.
+     *
+     * A real shape, not a contrived one: a `FILTER` on `order_line` that
+     * selected the line number, the SKU and the description but not
+     * `sales_order_number` returns exactly this, and every row on a fifteen-line
+     * order rendered a Select that did nothing.
+     */
+    mocks.sendTurn.mockResolvedValue(
+      candidateTurn({
+        line_number: "2",
+        sku: "AP40FCPM20",
+        product_description: "3X20 ABS PLUS S40 FOAM CORE PIPE",
+      }),
+    );
+    const { container } = render(<ReturnCopilotPage />, { wrapper });
+    fire(container, "the pipe off that order");
+
+    expect(await screen.findByRole("button", { name: "Select" })).toBeDisabled();
   });
 
   it("asks about the customer, not only the order, when the candidate names one", async () => {

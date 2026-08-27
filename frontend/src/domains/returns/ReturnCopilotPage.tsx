@@ -1009,6 +1009,10 @@ export function ReturnCopilotPage() {
                 returnHistory={returnHistory.data ?? null}
                 returnHistoryPending={historyAnchor !== null && returnHistory.isPending}
                 returnHistoryError={returnHistory.error}
+                // Same rule the handler applies, asked before the click: a row
+                // that cannot produce a confirmation renders disabled rather
+                // than swallowing the press.
+                canSelectCandidate={(chosen) => confirmationFor(chosen) !== null}
                 onSelectCandidate={(chosen) => {
                   // Only the agent can confirm an order -- confirmation is what
                   // raises the case. The button says which one, in the

@@ -1,4 +1,4 @@
-import { Bot, History, MapPin, Package, Plus, Send, Tag, User } from "lucide-react";
+import { Bot, History, Loader2, MapPin, Package, Plus, Send, Tag, User } from "lucide-react";
 import type { ConversationSummary, ResponseStatement } from "../../../api/orderAgent";
 import type { CaseSummary } from "../../../api/cases";
 import { COPILOT_TOKENS } from "../copilotTokens";
@@ -354,18 +354,47 @@ export function ConversationPane({
                     <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary-container text-primary animate-pulse">
                       <Bot size={16} />
                     </div>
-                    <div className="rounded-2xl rounded-tl-sm border border-outline-variant/20 bg-surface-container-low px-4 py-2.5 text-xs text-outline">
-                      <span aria-live="polite">
-                        Searching order graph
+                    {/* "Searching order graph" named the wrong subsystem and
+                        named it confidently. The graph read is milliseconds; the
+                        wait is the reasoning routes, tried in series, each with
+                        its own timeout -- so the screen spent minutes crediting
+                        a datastore that had already answered. What the associate
+                        can actually act on is that work is still in flight, how
+                        long it has been, and the way out, so that is all this
+                        says now.
+
+                        The spinner carries the motion because `.animate-spin` is
+                        the one animation index.css exempts from reduce-motion:
+                        it is the only signal that the screen is not hung, and a
+                        frozen one reads as hung. The dots are decorative and
+                        collapse with everything else under that setting. */}
+                    <div
+                      role="status"
+                      className="flex items-center gap-2 rounded-2xl rounded-tl-sm border border-outline-variant/20 bg-surface-container-low px-4 py-2.5 text-xs text-outline"
+                    >
+                      <Loader2 size={14} className="animate-spin text-primary" aria-hidden="true" />
+                      <span>
+                        Searching
+                        <span aria-hidden="true" className="ml-px inline-flex">
+                          {[0, 1, 2].map((index) => (
+                            <span
+                              key={index}
+                              className="animate-bounce"
+                              style={{ animationDelay: `${String(index * 150)}ms` }}
+                            >
+                              .
+                            </span>
+                          ))}
+                        </span>
                         {typeof waitingSeconds === "number" && waitingSeconds > 0
-                          ? ` -- ${String(waitingSeconds)}s`
-                          : "..."}
+                          ? ` ${String(waitingSeconds)}s`
+                          : ""}
                       </span>
                       {onStopWaiting ? (
                         <button
                           type="button"
                           onClick={onStopWaiting}
-                          className="ml-3 rounded border border-outline-control px-2 py-0.5 text-[11px] text-on-surface hover:bg-surface-container"
+                          className="ml-1 rounded border border-outline-control px-2 py-0.5 text-[11px] text-on-surface hover:bg-surface-container"
                         >
                           Stop waiting
                         </button>

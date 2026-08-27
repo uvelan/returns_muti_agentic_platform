@@ -20,6 +20,19 @@ export type CandidateOrderModeProps = {
   returnHistoryError: Error | null;
   onSelectCandidate?: (candidate: Record<string, unknown>) => void;
   /**
+   * Whether this row can actually be confirmed. Rows differ in what they
+   * carry: an order search yields `sales_order_number`, a customer search
+   * yields `customer_name`, and a line query that selected neither yields a row
+   * naming an item the agent cannot be told to confirm.
+   *
+   * The page's `confirmationFor` already returned `null` for that last case and
+   * the click did nothing -- an enabled button, no error, no feedback, which is
+   * the exact defect its own comment records having fixed for customer rows.
+   * The predicate lets this component say so in the markup instead of relying on
+   * every caller's handler to fail quietly.
+   */
+  canSelectCandidate?: (candidate: Record<string, unknown>) => boolean;
+  /**
    * The operator's own column choice, from `runtime-config`'s
    * `candidateColumns`. Empty means the deployment has not said, and the
    * built-in `PRIMARY_COLUMNS` answer instead -- a fallback this component can
@@ -109,6 +122,7 @@ export function CandidateOrderMode({
   returnHistoryPending,
   returnHistoryError,
   onSelectCandidate,
+  canSelectCandidate,
   configuredColumns = [],
 }: CandidateOrderModeProps) {
   const [visible, setVisible] = useState<number>(ROW_PAGE);
@@ -213,14 +227,25 @@ export function CandidateOrderMode({
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-right">
-                      <button
-                        type="button"
-                        onClick={() => onSelectCandidate?.(row)}
-                        className="inline-flex items-center gap-1 rounded-lg bg-primary-container px-2.5 py-1 text-xs font-semibold text-white shadow-xs transition hover:bg-primary-container/90"
-                      >
-                        <span>Select</span>
-                        <ChevronRight size={12} />
-                      </button>
+                      {(() => {
+                        const selectable = canSelectCandidate?.(row) ?? true;
+                        return (
+                          <button
+                            type="button"
+                            disabled={!selectable}
+                            title={
+                              selectable
+                                ? undefined
+                                : "This row names no order or customer the agent can confirm -- say which one in the chat instead."
+                            }
+                            onClick={() => onSelectCandidate?.(row)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-primary-container px-2.5 py-1 text-xs font-semibold text-white shadow-xs transition hover:bg-primary-container/90 disabled:cursor-not-allowed disabled:bg-outline-variant disabled:text-on-surface-variant disabled:shadow-none"
+                          >
+                            <span>Select</span>
+                            <ChevronRight size={12} />
+                          </button>
+                        );
+                      })()}
                     </td>
                   </tr>
                   {isOpen ? (
