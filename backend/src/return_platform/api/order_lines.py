@@ -48,6 +48,7 @@ import logging
 import re
 import uuid
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, cast
 
@@ -85,6 +86,10 @@ from return_platform.resources import RuntimeResources
 from return_platform.security.authorization import require_associate_roles, require_read_roles
 from return_platform.security.principal import Principal
 from return_platform.shared.contracts import APIResponse, ResponseMeta
+from return_platform.workflows.order_discovery_workflow import (
+    ClarificationAnsweredNotice,
+    order_discovery_workflow_id,
+)
 from return_platform.workflows.return_case_workflow import return_case_workflow_id
 
 logger = logging.getLogger("return_platform.api.order_lines")
@@ -147,6 +152,19 @@ class OrderLines(BaseModel):
     #: that it asked a case for one.
     orderReference: str
     lines: tuple[OrderLineView, ...] = ()
+    #: The lines the confirmation named, from the case's own
+    #: `confirmed_order_lines` fact. Empty when the order was confirmed without
+    #: naming any -- which is a real confirmation, not a missing value.
+    #:
+    #: Served because it was otherwise unreachable. The line set reached the
+    #: case as a fact and as the tail of `confirmationKey`, and neither is a
+    #: contract a screen can read: the pane consequently drew all twenty-six
+    #: lines of an order confirmed against one, with none of them ticked, and
+    #: the associate set the return up against whichever line was drawn first.
+    #: References, not a filter -- what the order holds is still served, because
+    #: an associate who finds a second faulty item on the same order is raising
+    #: it on this case, not a new one.
+    confirmedLineReferences: tuple[str, ...] = ()
 
 
 class SelectedItemRequest(BaseModel):
@@ -387,6 +405,34 @@ def _confirmed_order(case: Mapping[str, Any], case_id: str) -> str:
     return order_reference.strip()
 
 
+def _text_or_none(value: Any) -> str | None:
+    """A non-blank string, or nothing. Blank is absent, not a conversation id."""
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _confirmed_line_references(facts: Mapping[str, Mapping[str, Any]]) -> tuple[str, ...]:
+    """The lines the confirmation named, off the case fact log.
+
+    Read from `confirmed_order_lines` rather than parsed out of
+    `confirmationKey`: the key is an idempotency boundary whose shape belongs to
+    the writer, and a reader that split it on `|` would break the moment a
+    tenant or conversation id contained one.
+
+    Anything that is not a non-empty string is dropped rather than coerced. The
+    fact is written by the agent turn, and a screen that ticked a line named
+    `null` would be scoping a return to nothing while looking scoped.
+    """
+    record = facts.get("confirmed_order_lines")
+    if record is None:
+        return ()
+    value = record.get("value")
+    if not isinstance(value, list):
+        return ()
+    return tuple(
+        item.strip() for item in value if isinstance(item, str) and item.strip()
+    )
+
+
 def _active_release(request: Request) -> ReturnPlatformConfiguration:
     """The configuration this process has adopted. No fallback.
 
@@ -564,10 +610,14 @@ async def read_case_order_lines(
     case = await _owned_case(request, case_id)
     order_reference = _confirmed_order(case, case_id)
     lines = await _source_lines(request, order_reference)
+    repository = resolve_operational_repository(request)
     return APIResponse(
         data=OrderLines(
             caseId=case_id,
             orderReference=order_reference,
+            confirmedLineReferences=_confirmed_line_references(
+                await repository.latest_case_facts(case_id)
+            ),
             lines=await _line_views(
                 request,
                 case_id=case_id,
@@ -706,7 +756,9 @@ def _selections(
 #: for the *branch* associate, and the case already carries an unrelated
 #: `principalId` for whoever is signed in. They are frequently the same person
 #: and are not the same field -- a counter terminal is shared.
-async def _notify_case_workflow(request: Request, *, case_id: str, items: int) -> None:
+async def _notify_case_workflow(
+    request: Request, *, case_id: str, items: int, conversation_id: str | None = None
+) -> None:
     """Tell the case's workflow that the associate has named what is coming back.
 
     Signalled rather than polled: the workflow is the only thing that knows
@@ -738,6 +790,53 @@ async def _notify_case_workflow(request: Request, *, case_id: str, items: int) -
         logger.warning(
             "case_workflow_not_notified_of_return_details",
             extra={"case_id": case_id},
+            exc_info=True,
+        )
+
+    await _end_the_conversations_wait(request, case_id=case_id, conversation_id=conversation_id)
+
+
+async def _end_the_conversations_wait(
+    request: Request, *, case_id: str, conversation_id: str | None
+) -> None:
+    """Tell the chat that its pending question was answered in the pane.
+
+    The copilot has two input surfaces onto one case. The chat asks what is
+    bringing the item back; the associate answers in this pane, which writes the
+    facts and deliberately posts nothing into the conversation. So the question
+    stayed pending: the transcript kept asking it, and the next thing the
+    associate typed was consumed as its answer and filed against it.
+
+    This ends the wait, not the question. What was asked stays in the
+    transcript, because it was asked. The next message opens a fresh turn that
+    reads `case_facts` -- where the pane's answer already is, and which the
+    prompt forbids re-asking from.
+
+    Best-effort and after the write, exactly as the case signal above: a
+    conversation that could not be told is a stale question, and refusing a
+    recorded selection over one is the worse trade. A case with no Channel A
+    conversation -- raised from the Support console rather than the copilot --
+    has no one to tell.
+    """
+    if conversation_id is None:
+        return
+    resources = getattr(request.app.state, "resources", None)
+    client = getattr(resources, "temporal", None)
+    if client is None:
+        return
+    try:
+        handle = client.get_workflow_handle(order_discovery_workflow_id(conversation_id))
+        await handle.signal(
+            "clarification_answered_elsewhere",
+            ClarificationAnsweredNotice(
+                answered_by="item-selection",
+                answered_at=datetime.now(UTC).isoformat(),
+            ),
+        )
+    except Exception:  # noqa: BLE001 - see the docstring
+        logger.warning(
+            "conversation_not_notified_of_pane_answer",
+            extra={"case_id": case_id, "conversation_id": conversation_id},
             exc_info=True,
         )
 
@@ -913,7 +1012,14 @@ async def replace_case_selected_items(
     await _record_stated_facts(
         repository, case_id=case_id, stated=payload.returnDetails, facts=_RETURN_DETAIL_FACTS
     )
-    await _notify_case_workflow(request, case_id=case_id, items=len(outcome.items))
+    await _notify_case_workflow(
+        request,
+        case_id=case_id,
+        items=len(outcome.items),
+        # The conversation this case was raised from, off the case itself. A
+        # case raised in the Support console has none, and nothing is signalled.
+        conversation_id=_text_or_none(case.get("channelAConversationId")),
+    )
 
     return APIResponse(
         data=SelectedItems(

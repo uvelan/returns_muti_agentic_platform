@@ -10224,6 +10224,14 @@
             "title": "Caseid",
             "type": "string"
           },
+          "confirmedLineReferences": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Confirmedlinereferences",
+            "type": "array"
+          },
           "lines": {
             "default": [],
             "items": {

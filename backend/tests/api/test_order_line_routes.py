@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, Sequence
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -91,6 +92,31 @@ def _sales_document() -> dict[str, Any]:
     }
 
 
+#: The Channel A conversation a copilot-raised case points back at.
+CONVERSATION = "disc-6f0b1f16-2f2c-45a4-9d54-2f2b1f0f2c11"
+
+
+class _TemporalDouble:
+    """Records the signals the route sends, and nothing else.
+
+    A double rather than a mock because the assertion is about *which*
+    workflows are told what: the case workflow that a selection landed, and the
+    conversation that its pending question has been answered somewhere else.
+    """
+
+    def __init__(self) -> None:
+        self.signals: list[tuple[str, str]] = []
+
+    def get_workflow_handle(self, workflow_id: str) -> Any:
+        recorder = self.signals
+
+        class _Handle:
+            async def signal(self, name: str, *args: Any) -> None:
+                recorder.append((workflow_id, name))
+
+        return _Handle()
+
+
 def _case(
     *,
     case_id: str = CASE,
@@ -104,6 +130,10 @@ def _case(
         "principalId": principal_id,
         "status": "GATHERING_INFO",
         "confirmedOrderReference": order,
+        #: The copilot conversation this case was raised from. Present on every
+        #: case the discovery agent confirms; absent on one raised in the
+        #: Support console, which has no chat to notify.
+        "channelAConversationId": CONVERSATION,
         "version": 7,
         "createdAt": NOW,
         "updatedAt": NOW,
@@ -257,6 +287,7 @@ def _client(
     *,
     tenant_id: str = TENANT,
     roles: frozenset[str] = frozenset({r.RETURN_ASSOCIATE}),
+    temporal: Any | None = None,
 ) -> Iterator[TestClient]:
     app = FastAPI()
 
@@ -270,7 +301,7 @@ def _client(
     app.include_router(router)
     app.state.stub_repository = repository
     app.state.settings = Settings()
-    app.state.resources = None
+    app.state.resources = SimpleNamespace(temporal=temporal) if temporal is not None else None
     app.state.return_configuration = LoadedReturnConfiguration(
         configuration=load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration,
         path=DEFAULT_RETURN_CONFIGURATION_PATH,
@@ -459,6 +490,47 @@ def test_a_selection_is_written_with_the_product_resolved_from_the_source() -> N
 # ---------------------------------------------------------------------------
 # The reason and condition vocabularies come from the release (plan sect. 12.4)
 # ---------------------------------------------------------------------------
+
+
+def test_the_conversation_is_told_its_question_was_answered_here() -> None:
+    """Two input surfaces, one case, and the chat has to be told.
+
+    The pane writes the reason and posts nothing into the conversation -- the
+    hook that used to type words into the chat was removed, rightly. But nothing
+    replaced it, so the pending question stayed pending: the transcript kept
+    asking it and the associate's next sentence was consumed as its answer.
+    """
+    repository = StubRepository(case=_case(), sales=_sales_document())
+    client_double = _TemporalDouble()
+
+    for client in _client(repository, temporal=client_double):
+        response = client.post(
+            f"/api/cases/{CASE}/selected-items",
+            json={"items": [{"orderLineReference": "1", "quantity": 1}]},
+        )
+        assert response.status_code == 200, response.text
+
+    assert (
+        f"order-discovery-{CONVERSATION}",
+        "clarification_answered_elsewhere",
+    ) in client_double.signals
+    # And the case workflow is still told, on the same write.
+    assert any(name == "return_details_recorded" for _id, name in client_double.signals)
+
+
+def test_a_case_raised_outside_the_copilot_signals_no_conversation() -> None:
+    """A Support-console case has no Channel A conversation to tell."""
+    case = {**_case(), "channelAConversationId": None}
+    repository = StubRepository(case=case, sales=_sales_document())
+    client_double = _TemporalDouble()
+
+    for client in _client(repository, temporal=client_double):
+        client.post(
+            f"/api/cases/{CASE}/selected-items",
+            json={"items": [{"orderLineReference": "1", "quantity": 1}]},
+        )
+
+    assert not [name for _id, name in client_double.signals if name.startswith("clarification")]
 
 
 def test_a_reason_the_release_does_not_publish_is_refused() -> None:

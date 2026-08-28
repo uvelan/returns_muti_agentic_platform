@@ -25,6 +25,7 @@ from temporalio.common import RetryPolicy
 
 __all__ = [
     "AgentTurnResultPayload",
+    "ClarificationAnsweredNotice",
     "GraphGenerationChangedNotice",
     "OrderDiscoveryTurnError",
     "OrderDiscoveryTurnOutcome",
@@ -33,6 +34,7 @@ __all__ = [
     "OrderDiscoveryWorkflowState",
     "RunOrderDiscoveryTurnActivityInput",
     "SubmitOrderDiscoveryTurnCommand",
+    "order_discovery_workflow_id",
 ]
 
 # Worst case: max_reasoning_steps (schema.py, up to 32) each potentially invoking the
@@ -169,6 +171,32 @@ class GraphGenerationChangedNotice:
     changed_at: str
 
 
+def order_discovery_workflow_id(conversation_id: str) -> str:
+    """The workflow that owns one conversation's turns.
+
+    Beside the workflow rather than in the route that starts it, because the
+    id is now addressed from two places: the turns API, and the item-selection
+    write that tells this workflow its pending question has been answered on
+    another surface. An id spelled by hand in two modules is one that signals
+    nothing from the second.
+    """
+    return f"order-discovery-{conversation_id}"
+
+
+@dataclass(frozen=True, slots=True)
+class ClarificationAnsweredNotice:
+    """That the pending question was answered on another surface.
+
+    `answered_by` names the surface rather than a person -- `item-selection` is
+    the only one today -- so the workflow log says which half of the copilot
+    ended the wait, and a second surface added later is distinguishable in the
+    same record.
+    """
+
+    answered_by: str
+    answered_at: str
+
+
 @dataclass(frozen=True, slots=True)
 class OrderDiscoveryWorkflowState:
     conversation_id: str
@@ -287,6 +315,46 @@ class OrderDiscoveryWorkflow:
         queued turn) on top of this without any workflow topology change.
         """
         self._last_known_graph_generation_id = notice.new_graph_generation_id
+        self._idle_deadline_extended = True
+
+    @workflow.signal(name="clarification_answered_elsewhere")
+    def clarification_answered_elsewhere(self, answered: ClarificationAnsweredNotice) -> None:
+        """The associate answered the pending question somewhere other than chat.
+
+        The copilot has two input surfaces onto one case. The chat asks "what is
+        bringing it back", and the associate answers it in the item-selection
+        pane -- which writes `return_reason` onto the case and, deliberately,
+        posts nothing into the conversation: a pane that typed words into the
+        chat is how "evaluate policy" was once submitted to a discovery agent.
+
+        So the question stayed pending. The transcript kept asking it, and worse,
+        the next thing the associate typed was consumed as its answer and paired
+        with it in `clarification_exchanges` -- a sentence about something else,
+        filed as the reply to a question that had already been answered.
+
+        Dropping the pending thread is the whole fix. It does not retract the
+        question -- it was asked, and the transcript is a record of what was said
+        -- it ends the *wait* for an answer, so the next message opens a fresh
+        turn that reads the facts the pane wrote. The facts already reach it:
+        `case_facts` travels in every turn's context and the prompt forbids
+        re-asking anything captured there.
+
+        Idempotent, and safe when nothing is pending: a pane submission on a
+        conversation that is not waiting on anything clears a `None` and returns.
+        The checkpoint it abandons is swept by the abandonment reaper like any
+        other run nobody resumed.
+        """
+        if self._pending_clarification_thread_id is None:
+            return
+        workflow.logger.info(
+            "clarification_answered_elsewhere",
+            extra={
+                "conversation_id": self._conversation_id,
+                "thread_id": self._pending_clarification_thread_id,
+                "answered_by": answered.answered_by,
+            },
+        )
+        self._pending_clarification_thread_id = None
         self._idle_deadline_extended = True
 
     @workflow.update(name="submit_turn")

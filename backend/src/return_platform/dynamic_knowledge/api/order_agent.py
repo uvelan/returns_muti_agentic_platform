@@ -46,6 +46,7 @@ from return_platform.workflows.order_discovery_workflow import (
     OrderDiscoveryWorkflow,
     OrderDiscoveryWorkflowInput,
     SubmitOrderDiscoveryTurnCommand,
+    order_discovery_workflow_id,
 )
 
 logger = logging.getLogger("return_platform.order_agent_api")
@@ -122,7 +123,13 @@ def resolve_runtime(request: Request) -> DynamicOrderAgentRuntime:
 
 
 def _order_discovery_workflow_id(conversation_id: str) -> str:
-    return f"order-discovery-{conversation_id}"
+    """Kept as the module's own name; the definition now lives with the workflow.
+
+    A second caller needed it -- the item-selection write, which has to tell the
+    conversation its pending question was answered elsewhere -- and two modules
+    spelling an id by hand is how one of them ends up signalling nothing.
+    """
+    return order_discovery_workflow_id(conversation_id)
 
 
 def _scope(request: Request) -> ConversationScope:

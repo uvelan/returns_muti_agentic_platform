@@ -7212,6 +7212,11 @@ export interface components {
             /** Caseid */
             caseId: string;
             /**
+             * Confirmedlinereferences
+             * @default []
+             */
+            confirmedLineReferences: string[];
+            /**
              * Lines
              * @default []
              */
