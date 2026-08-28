@@ -1130,6 +1130,10 @@ export function ReturnCopilotPage() {
               <ReturnSettlementMode
                 settlement={projection?.settlement ?? null}
                 caseStatus={projection?.status ?? null}
+                // The RMAs, so the closing pane names the authorisation, how
+                // the goods travel and where each stands -- the same records
+                // `AuthorizedRmaMode` reads.
+                returnRecords={caseRecords(projection)}
                 onStartNewReturn={resetToFreshReturn}
               />
             )}

@@ -343,19 +343,72 @@ describe("Return Copilot 8-Mode Lifecycle Contract", () => {
     it("Mode 8: renders ReturnSettlementMode without inventing a credit", () => {
       render(<ReturnSettlementMode settlement={settlement()} caseStatus="COMPLETED_EXTERNAL_SETTLEMENT" />);
       expect(screen.getByText("Return Completed · Settlement Not Integrated")).toBeInTheDocument();
-      expect(screen.getByText("Settlement Ledger")).toBeInTheDocument();
-      // The credit figure is not wanted on this screen for now (operator
-      // instruction, 2026-08-15), so the line reports completion instead. A
-      // settled amount still renders beside it when one exists -- see the next
-      // test -- and the approximate note below the ledger covers it.
-      expect(screen.getByText("Completed")).toBeInTheDocument();
-      expect(screen.getByText("NOT_INTEGRATED")).toBeInTheDocument();
-      // Four ledger lines and a credit memo, none of which any producer fills.
-      expect(screen.getAllByText("Unavailable").length).toBe(6);
+      // Status, and only status. The ledger printed four lines plus a total,
+      // all reading "Unavailable" because no producer computes any of them --
+      // six rows that taught a reader about the platform's gaps and nothing
+      // about the return (operator instruction, 2026-08-28).
+      expect(screen.getByText("COMPLETED_EXTERNAL_SETTLEMENT")).toBeInTheDocument();
+      expect(screen.queryByText("Settlement Ledger")).not.toBeInTheDocument();
+      expect(screen.queryAllByText("Unavailable")).toHaveLength(0);
+      // Nothing about credit at all -- no figure, no memo, no settlement status
+      // and no disclaimer about numbers that are not on the screen. The
+      // platform does not issue the credit and the pane stopped implying it
+      // might (operator instruction, 2026-08-28).
+      expect(screen.queryByText(/Approximate/)).not.toBeInTheDocument();
+      expect(screen.queryByText("NOT_INTEGRATED")).not.toBeInTheDocument();
+      expect(screen.queryByText(/Credit Memo/)).not.toBeInTheDocument();
       expect(screen.getByText("Start New Return")).toBeInTheDocument();
     });
 
-    it("Mode 8: renders a settled amount only when one exists, currency included", () => {
+    it("Mode 8: names the RMA, its method and its status", () => {
+      render(
+        <ReturnSettlementMode
+          settlement={settlement()}
+          caseStatus="COMPLETED_EXTERNAL_SETTLEMENT"
+          returnRecords={[
+            {
+              returnRecordId: "rec-1",
+              returnReference: "RMA-CL434694-1-01",
+              status: "ISSUED",
+              returnMethod: "PREPAID_PARCEL",
+              returnLocation: null,
+              approvedItems: [],
+              shipments: [],
+            } as never,
+          ]}
+        />,
+      );
+
+      expect(screen.getByText("RMA-CL434694-1-01")).toBeInTheDocument();
+      expect(screen.getByText("PREPAID_PARCEL")).toBeInTheDocument();
+      expect(screen.getByText("ISSUED")).toBeInTheDocument();
+    });
+
+    it("Mode 8: a method Support has not stated reads Unknown, never a default", () => {
+      render(
+        <ReturnSettlementMode
+          // A resolution is given so the only `Unknown` on the screen is the
+          // method under test -- the case status has its own absence and would
+          // otherwise answer this assertion.
+          caseStatus="COMPLETED_EXTERNAL_SETTLEMENT"
+          returnRecords={[
+            {
+              returnRecordId: "rec-1",
+              returnReference: "RMA-2",
+              status: "ISSUED",
+              returnMethod: null,
+              returnLocation: null,
+              approvedItems: [],
+              shipments: [],
+            } as never,
+          ]}
+        />,
+      );
+
+      expect(screen.getByText("Unknown")).toBeInTheDocument();
+    });
+
+    it("Mode 8: shows no credit even when the contract carries one", () => {
       render(
         <ReturnSettlementMode
           settlement={settlement({
@@ -365,8 +418,10 @@ describe("Return Copilot 8-Mode Lifecycle Contract", () => {
           })}
         />,
       );
-      expect(screen.getByText("12 USD")).toBeInTheDocument();
-      expect(screen.getByText("MEMO-1")).toBeInTheDocument();
+      // A settled amount is still not shown: the credit is issued outside this
+      // platform, so no figure it holds is the one the customer receives.
+      expect(screen.queryByText("12 USD")).not.toBeInTheDocument();
+      expect(screen.queryByText("MEMO-1")).not.toBeInTheDocument();
     });
   });
 });

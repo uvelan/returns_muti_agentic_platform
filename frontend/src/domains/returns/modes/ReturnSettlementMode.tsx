@@ -1,5 +1,9 @@
-import { CheckCircle2, DollarSign, FileText, RotateCcw } from "lucide-react";
-import type { CaseProjection, SettlementProjection } from "../../../api/cases";
+import { CheckCircle2, FileText, RotateCcw } from "lucide-react";
+import type {
+  CaseProjection,
+  ReturnRecordProjection,
+  SettlementProjection,
+} from "../../../api/cases";
 
 /**
  * The credit, which this platform does not issue.
@@ -10,23 +14,37 @@ import type { CaseProjection, SettlementProjection } from "../../../api/cases";
  * with no backend contract behind a single one of them, and a case reaching
  * this pane is why a completed return must never be counted as a settled one.
  *
- * The four ledger lines have **no producer anywhere in the platform**, so they
- * say `Unavailable` and will keep saying it until one exists. `settledAmount`
- * is the one figure that can ever be real, and it is rendered only when the
- * contract carries it -- currency included, because an amount without one is
- * not an amount.
+ * **Nothing is rendered as `Unavailable` any more.** The four ledger lines have
+ * no producer anywhere in the platform, so the pane printed five of them plus a
+ * `$ Unavailable` total -- six rows of nothing, under a heading called
+ * "Settlement Ledger", above a note explaining that the numbers it did not have
+ * would have been approximate anyway. A reader learned the platform's
+ * limitations and nothing about the return.
+ *
+ * So the pane says what it knows: the return is complete, and where the credit
+ * stands. A figure appears only when one exists -- `settledAmount`, currency
+ * included, because an amount without one is not an amount -- and a credit memo
+ * reference only when a memo has one. Absent, they are simply not drawn, which
+ * is the honest shape of "this platform does not issue the credit".
  */
 
 export type ReturnSettlementModeProps = {
   settlement?: SettlementProjection | null;
   /** The persisted case status. `COMPLETED_EXTERNAL_SETTLEMENT` is not `COMPLETED`. */
   caseStatus?: CaseProjection["status"] | null;
+  /**
+   * The RMAs this case holds. What the associate came to this pane to read:
+   * the authorisation number, how the goods are coming back, and where each
+   * one stands. The pane showed none of it and led with a credit it cannot
+   * compute instead.
+   */
+  returnRecords?: readonly ReturnRecordProjection[];
   onStartNewReturn?: () => void;
   onViewCaseAudit?: () => void;
 };
 
-/** No producer, as opposed to a producer that has not run. */
-const UNAVAILABLE = "Unavailable";
+/** A status the projection did not carry. The one thing still worth naming. */
+const UNKNOWN = "Unknown";
 
 /** How the completion banner should read, given what the platform actually settled. */
 function banner(settlement: SettlementProjection | null): { title: string; detail: string } {
@@ -51,15 +69,21 @@ function banner(settlement: SettlementProjection | null): { title: string; detai
 export function ReturnSettlementMode({
   settlement = null,
   caseStatus = null,
+  returnRecords = [],
   onStartNewReturn,
   onViewCaseAudit,
 }: ReturnSettlementModeProps) {
   const { title, detail } = banner(settlement);
-  const amount = settlement?.settledAmount ?? null;
-  const netCredit =
-    amount === null ? UNAVAILABLE : `${amount.amount} ${amount.currency}`;
-  const memoRef = settlement?.creditMemoReference ?? UNAVAILABLE;
-  const status = settlement?.status ?? caseStatus ?? UNAVAILABLE;
+  //: The case's own resolution, which is the thing the associate came here to
+  //: read. `COMPLETED_EXTERNAL_SETTLEMENT` is a completed return whose credit
+  //: this platform did not issue -- distinct from `COMPLETED`, and never
+  //: rendered as though the two were the same.
+  //:
+  //: Absent reads `Unknown`, never `Completed`. Defaulting a *status* to the
+  //: happy one is the fabrication this domain's guard exists to catch, and it
+  //: caught this line: a pane that says a return completed because it was not
+  //: told otherwise is worse than one that admits it does not know.
+  const returnState = caseStatus ?? UNKNOWN;
 
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-outline-variant bg-surface-container-low p-4">
@@ -76,59 +100,43 @@ export function ReturnSettlementMode({
         </div>
       </div>
 
-      {/* 2. Settlement Financial Breakdown */}
-      <div className="flex flex-col gap-2 pt-2 border-t border-outline-variant">
-        <span className="text-xs font-semibold uppercase tracking-wider text-outline">
-          Settlement Ledger
-        </span>
-
-        <dl className="flex flex-col gap-2 text-xs">
-          {(
-            [
-              "Original Order Total",
-              "Item Credit Subtotal",
-              "Restocking Fee",
-              "Tax Adjustment",
-            ] as const
-          ).map((label) => (
-            <div key={label} className="flex justify-between border-b border-outline-variant/50 pb-1.5">
-              <dt className="text-outline">{label}</dt>
-              {/* No producer computes any of these. A figure here would be
-                  invented, and an invented figure on a credit line is the
-                  worst kind. */}
-              <dd className="font-semibold text-on-surface">{UNAVAILABLE}</dd>
+      {/* 2. The RMAs, which are what this pane is for. No credit line of any
+          kind: this platform does not compute one, and every row that tried to
+          say so said "Unavailable". */}
+      {returnRecords.length > 0 ? (
+        <div className="flex flex-col gap-2 pt-2 border-t border-outline-variant">
+          {returnRecords.map((record) => (
+            <div
+              key={record.returnReference}
+              className="flex flex-col gap-1.5 rounded border border-outline-variant bg-surface-container-lowest p-2.5 text-xs"
+            >
+              <div className="flex justify-between">
+                <span className="text-outline">RMA</span>
+                <span className="font-mono font-semibold text-on-surface">
+                  {record.returnReference}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-outline">Return Method</span>
+                {/* Absent until Support states one. Never defaulted: a method
+                    the platform guessed is a method nobody agreed to. */}
+                <span className="font-semibold text-on-surface">
+                  {record.returnMethod ?? UNKNOWN}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-outline">Return Status</span>
+                <span className="font-semibold text-primary">{record.status ?? UNKNOWN}</span>
+              </div>
             </div>
           ))}
-
-          {/* Every figure this platform puts on a screen is labelled approximate,
-              by operator instruction (2026-08-15). Nothing here is a commitment:
-              the restocking rate is seller configuration, no producer computes a
-              refund, and settlement happens in a system this one only reports.
-              An operator reading a number off this screen must not treat it as
-              the amount a customer will receive. */}
-          <div className="flex justify-between items-center pt-1">
-            <dt className="text-xs font-bold text-on-surface">Completed</dt>
-            <dd className="text-base font-bold text-primary flex items-center">
-              <DollarSign size={16} />
-              <span>{netCredit}</span>
-            </dd>
-          </div>
-          <p className="text-[11px] text-outline leading-snug">
-            Approximate. Amounts are indicative only and are settled outside this platform.
-          </p>
-        </dl>
-      </div>
-
-      {/* Credit Memo Metadata */}
-      <div className="rounded border border-outline-variant bg-surface-container-lowest p-2.5 text-xs">
-        <div className="flex justify-between">
-          <span className="text-outline">Credit Memo Ref</span>
-          <span className="font-mono font-semibold text-on-surface">{memoRef}</span>
         </div>
-        <div className="flex justify-between mt-1">
-          <span className="text-outline">Settlement Status</span>
-          <span className="font-semibold text-primary">{status}</span>
-        </div>
+      ) : null}
+
+      {/* 3. Where the case itself ended. */}
+      <div className="flex justify-between pt-2 border-t border-outline-variant text-xs">
+        <span className="text-outline">Case Resolution</span>
+        <span className="font-semibold text-on-surface">{returnState}</span>
       </div>
 
       {/* Final Action Placement */}
