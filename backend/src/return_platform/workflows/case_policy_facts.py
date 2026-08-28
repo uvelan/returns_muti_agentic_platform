@@ -156,6 +156,12 @@ CONTRACT_OVERRIDE_FACT: Final = "contract_override_reference"
 #: it was without anyone having to reconstruct it.
 CONFIRMED_ORDER_PURCHASE_DATE: Final = "confirmed_order_purchase_date"
 
+#: What `admitted` records when the delivery date came from the order's proof of
+#: delivery rather than from the fact log. Named apart from `delivery_date` for
+#: the reason its purchase-date sibling is: a reader can tell which of the two
+#: it was without reconstructing it.
+CONFIRMED_ORDER_DELIVERY_DATE: Final = "confirmed_order_delivery_date"
+
 _TRUE_TOKENS: Final[frozenset[str]] = frozenset({"TRUE", "YES", "Y"})
 _FALSE_TOKENS: Final[frozenset[str]] = frozenset({"FALSE", "NO", "N"})
 
@@ -315,6 +321,94 @@ def purchase_date_from_confirmed_order(
     return None
 
 
+#: How `podSigTd` is written in `salesInv`: `15:11:19 OCT 15 2025`. A string,
+#: not a BSON date, in every document of the reference extract -- so it is
+#: parsed here rather than assumed to arrive as an instant.
+_SIGNATURE_FORMAT = "%H:%M:%S %b %d %Y"
+
+
+def _signature_instant(value: Any) -> datetime | None:
+    """The delivery instant behind a proof-of-delivery signature, or nothing.
+
+    Accepts the source's own string spelling and a real datetime, because a
+    re-bind to a source that stores a proper instant must not need a code
+    change. Anything else is not a date and is refused rather than coerced: a
+    delivery dated from an unparseable string is a reporting deadline computed
+    from nothing.
+    """
+    if isinstance(value, datetime):
+        return _business_day_instant(value)
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        # The value is upper-cased, the format never is: `%b` upper-cases to
+        # `%B` and `%d` to `%D`, which is not a directive at all -- so an
+        # upper-cased format raises `bad directive` on every signature and every
+        # delivered order silently reads as not delivered. `%b` already matches
+        # `OCT` case-insensitively.
+        parsed = datetime.strptime(value.strip().upper(), _SIGNATURE_FORMAT)
+    except ValueError:
+        return None
+    return _business_day_instant(parsed.replace(tzinfo=UTC))
+
+
+def delivery_date_from_confirmed_order(
+    document: Mapping[str, Any] | None, *, proof: Any
+) -> datetime | None:
+    """When the confirmed order was delivered, or `None` if it was not.
+
+    `None` covers every way the answer can be no: the deployment binds nothing,
+    the order was collected rather than delivered, the route never completed,
+    no signature was captured, or the document is absent. They are one answer
+    to the evaluator -- there is no delivery date -- and a delivery claim
+    without one has no reporting deadline, which is the behaviour that already
+    existed.
+
+    **All five conditions, and never a subset.** Three of them are cheap and
+    two carry the meaning, and it is tempting to take the signature alone. That
+    is exactly the reading that called fourteen counter pick-ups delivered in
+    the reference extract: `podSigTd` on a `CPU` order is the customer signing
+    at the counter, which is why the ship-via exclusion is a condition and not
+    a refinement.
+    """
+    if document is None or not getattr(proof, "bound", False):
+        return None
+
+    def resolved(paths: Sequence[str]) -> Any:
+        for path in paths:
+            value = _resolve_path(document, path)
+            if value is not None and value != "":
+                return value
+        return None
+
+    ship_via = resolved(proof.ship_via_paths)
+    collected = {code.strip().upper() for code in proof.collected_ship_via_codes}
+    if isinstance(ship_via, str) and ship_via.strip().upper() in collected:
+        return None
+
+    if proof.order_code_paths and proof.invoice_order_codes:
+        code = resolved(proof.order_code_paths)
+        allowed = {value.strip().upper() for value in proof.invoice_order_codes}
+        if not isinstance(code, str) or code.strip().upper() not in allowed:
+            return None
+
+    if proof.file_paths and proof.order_file_value is not None:
+        source_file = resolved(proof.file_paths)
+        if not isinstance(source_file, str) or source_file.strip().upper() != (
+            proof.order_file_value.strip().upper()
+        ):
+            return None
+
+    if proof.route_status_paths and proof.route_completed_value is not None:
+        status = resolved(proof.route_status_paths)
+        if not isinstance(status, str) or status.strip().upper() != (
+            proof.route_completed_value.strip().upper()
+        ):
+            return None
+
+    return _signature_instant(resolved(proof.signature_paths))
+
+
 def _latest_by_name(
     documents: Iterable[Mapping[str, Any]],
 ) -> dict[str, Mapping[str, Any]]:
@@ -350,6 +444,7 @@ def assemble_policy_evaluation_input(
     *,
     request_date: datetime,
     confirmed_order_purchase_date: datetime | None = None,
+    confirmed_order_delivery_date: datetime | None = None,
     configuration_release_id: str | None = None,
     policy_version: str | None = None,
 ) -> AssembledPolicyFacts:
@@ -410,6 +505,18 @@ def assemble_policy_evaluation_input(
             admitted.remove("purchase_date")
         values["purchase_date"] = confirmed_order_purchase_date
         admitted.append(CONFIRMED_ORDER_PURCHASE_DATE)
+
+    # The same rule as the purchase date, for the same reason: the carrier's
+    # proof of delivery outranks anything said about it in a conversation. The
+    # delivery-claim reporting window is counted from this, and until it existed
+    # `delivery_date` could only ever arrive as a stated fact -- so a claim was
+    # dated by whoever remembered a date, or not dated at all.
+    if confirmed_order_delivery_date is not None:
+        if "delivery_date" in values:
+            excluded.append(("delivery_date", "SUPERSEDED_BY_CONFIRMED_ORDER"))
+            admitted.remove("delivery_date")
+        values["delivery_date"] = confirmed_order_delivery_date
+        admitted.append(CONFIRMED_ORDER_DELIVERY_DATE)
 
     return AssembledPolicyFacts(
         facts=PolicyEvaluationInput(**values),

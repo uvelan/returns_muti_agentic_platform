@@ -79,7 +79,7 @@ from return_platform.policy.vocabulary import PolicyRoute
 from return_platform.workflows.case_customer_identity import (
     resolve_confirmed_order_customer,
 )
-from return_platform.workflows.case_order_date import resolve_confirmed_order_purchase_date
+from return_platform.workflows.case_order_date import resolve_confirmed_order_dates
 from return_platform.workflows.case_policy_facts import (
     AssembledPolicyFacts,
     assemble_policy_evaluation_input,
@@ -835,16 +835,22 @@ class ReturnCaseActivities:
         # escape it would be a defect in this platform rather than a
         # contradiction in the case's facts, and reporting it as
         # `POLICY_FACTS_INCONSISTENT` would name the wrong thing.
-        purchase_date = await resolve_confirmed_order_purchase_date(
+        # Both instants, from one read of the order. The delivery half is the
+        # one the platform could not answer before: `delivery_date` was a fact
+        # nobody wrote, so a delivery claim reached the evaluator undated and
+        # its reporting window had no basis.
+        order_dates = await resolve_confirmed_order_dates(
             self._repository,
             case_id=request.case_id,
             order_date_paths=configuration.source_resolution.order_date_paths,
+            delivery_proof=configuration.source_resolution.delivery_proof,
         )
         try:
             assembled = assemble_policy_evaluation_input(
                 log,
                 request_date=evaluated_at,
-                confirmed_order_purchase_date=purchase_date,
+                confirmed_order_purchase_date=order_dates.purchase_date,
+                confirmed_order_delivery_date=order_dates.delivery_date,
                 configuration_release_id=request.configuration_release_id,
                 policy_version=policy.version,
             )

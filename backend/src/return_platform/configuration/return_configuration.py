@@ -343,6 +343,60 @@ class DiscoveryConfiguration(StrictConfigModel):
         return self
 
 
+class DeliveryProofConfiguration(StrictConfigModel):
+    """How `salesInv` says an order was delivered, as five conditions.
+
+    Delivery is not a status on the order. `order_status` carries ERP states --
+    INVOICED, CALLCSR, READY-FOR-PICKUP -- and `commit_date` is documented in
+    the active schema as "Committed delivery date. NOT proof of delivery". What
+    proves delivery is a completed carrier route and a signature captured at
+    the door, on an order that was driven somewhere rather than collected:
+
+        order code      an invoice code (IO, ID) rather than an open order
+        file            the ORDER file rather than an invoice extract
+        ship-via        not counter pick-up, will-call or backorder
+        route status    the carrier reported the route Completed
+        signature       a proof-of-delivery timestamp exists
+
+    All five, and the ship-via one carries the most weight of the lot: a
+    signature on a `CPU` order is the customer signing at the counter, and a
+    reader taking the signature alone called every counter pick-up delivered.
+
+    **Every field defaulted, and empty means unbound.** A release cut before
+    this block still parses, and a deployment that binds nothing here has no
+    delivery date -- which is a different answer from "not delivered" and is
+    reported as such: `delivery_date` is simply absent, and a delivery claim
+    with no date has no reporting deadline, exactly as it did before.
+    """
+
+    order_code_paths: tuple[NonBlank, ...] = ()
+    #: The order codes that mean an invoice document. Anything else is an order
+    #: still working, which cannot have been delivered.
+    invoice_order_codes: tuple[NonBlank, ...] = ()
+    file_paths: tuple[NonBlank, ...] = ()
+    order_file_value: NonBlank | None = None
+    ship_via_paths: tuple[NonBlank, ...] = ()
+    #: Ship-via codes that are collected rather than delivered.
+    collected_ship_via_codes: tuple[NonBlank, ...] = ()
+    route_status_paths: tuple[NonBlank, ...] = ()
+    route_completed_value: NonBlank | None = None
+    #: Where the proof-of-delivery signature timestamp lives. Its value is the
+    #: delivery instant, so this is the binding that dates the delivery as well
+    #: as the one that proves it.
+    signature_paths: tuple[NonBlank, ...] = ()
+
+    @property
+    def bound(self) -> bool:
+        """Whether the deployment has stated enough to decide delivery.
+
+        The signature is the load-bearing one -- it is both the proof and the
+        date -- and the ship-via exclusion is what keeps a counter signature
+        from reading as a delivery. Without either, this refuses to answer
+        rather than answering from the three conditions it does have.
+        """
+        return bool(self.signature_paths and self.ship_via_paths)
+
+
 class SourceResolutionConfiguration(StrictConfigModel):
     sales_invoice_collection: NonBlank
     customer_collection: NonBlank
@@ -358,6 +412,12 @@ class SourceResolutionConfiguration(StrictConfigModel):
     #: means the deployment has bound no order date, and a case whose window
     #: cannot be dated reviews rather than guessing one.
     order_date_paths: tuple[NonBlank, ...] = ()
+    #: How delivery is proven on the sales document. Defaulted so a release cut
+    #: before the block still parses; an unbound one leaves `delivery_date`
+    #: absent rather than guessed.
+    delivery_proof: DeliveryProofConfiguration = Field(
+        default_factory=DeliveryProofConfiguration
+    )
     web_order_paths: tuple[NonBlank, ...] = Field(min_length=1)
     trilogie_order_paths: tuple[NonBlank, ...] = Field(min_length=1)
     customer_id_paths: tuple[NonBlank, ...] = Field(min_length=1)

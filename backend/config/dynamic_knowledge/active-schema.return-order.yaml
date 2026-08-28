@@ -940,6 +940,98 @@ entities:
           displayable_by:
           - '*'
           masking: null
+      ship_via_code:
+        field_id: ship_via_code
+        description: How the order leaves the branch, as a code. CPU is counter pick-up,
+          WCL will-call, BO backorder -- an order on any of those is collected, never
+          delivered, whatever signature it carries. The description beside it
+          (shipping_method) is the same fact in words and cannot be compared against a
+          list.
+        physical_path:
+        - salesHdr
+        - salesHdrData
+        - shipping
+        - shipViaCode
+        graph_property: ship_via_code
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EQUALS
+          - EXACT
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      fleetwise_status:
+        field_id: fleetwise_status
+        description: The carrier's own verdict on the delivery route. 'Completed' is the
+          route finishing; anything else, or nothing, is a route still running. One of
+          the two facts that prove delivery -- salesInv carries commit and ship dates and
+          neither is proof.
+        physical_path:
+        - salesHdr
+        - salesHdrData
+        - shipping
+        - fleetwiseStatus
+        graph_property: fleetwise_status
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EQUALS
+          - EXACT
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      delivery_signature_at:
+        field_id: delivery_signature_at
+        description: When the customer signed for the delivery, and the other fact that
+          proves it. A STRING, not a DATETIME - salesInv writes it as '15:11:19 OCT 15
+          2025' and typing it as a date would leave every value unreadable. On a pick-up
+          order this is a counter signature and proves nothing about delivery.
+        physical_path:
+        - salesHdr
+        - salesHdrData
+        - shipping
+        - podSigTd
+        graph_property: delivery_signature_at
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: true
+          distinct: false
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXISTS
+          - MISSING
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          masking: null
       shipping_method:
         field_id: shipping_method
         description: Ship-via description, e.g. OUR TRUCK / COUNTER PICK-UP.
@@ -4744,6 +4836,13 @@ graph:
       - sell_warehouse_id
       - ship_from_warehouse_id
       - shipping_method
+      # The three that decide whether the order was delivered. Declaring the
+      # fields is not enough: a field absent from this list is read by the
+      # schema and written nowhere, so the agent's own query would return null
+      # for every order and "was it delivered" would answer no, always.
+      - ship_via_code
+      - fleetwise_status
+      - delivery_signature_at
       - order_date
       - invoice_date
       - shipped_at
@@ -5150,10 +5249,10 @@ agent_policies:
     - return_handling_unit
     standard_model_refs:
     - ai-task://ORDER_AGENT_REASONING_V1
-    max_reasoning_steps: 8
+    max_reasoning_steps: 32
     max_graph_queries_per_turn: 12
     max_correction_attempts: 2
-    max_clarifications: 3
+    max_clarifications: 10
     max_replans: 2
     max_targeted_syncs_per_turn: 3
-configuration_checksum: 187cf0db4fb3cbc05deed5b0e30a326411b3d9b019c2eece3abb9081743ee446
+configuration_checksum: 53ff55fffc8235ece9201dd945e56a8a88ed837cc27f393778e4b195cc717c45

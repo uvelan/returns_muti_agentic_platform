@@ -34,16 +34,21 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
 
 from pymongo.asynchronous.collection import AsyncCollection
 
 from return_platform.operations.seed_manifest import SOURCE_SALES_DATASET
-from return_platform.workflows.case_policy_facts import purchase_date_from_confirmed_order
+from return_platform.workflows.case_policy_facts import (
+    delivery_date_from_confirmed_order,
+    purchase_date_from_confirmed_order,
+)
 
 __all__ = [
     "CaseOrderDateSource",
+    "resolve_confirmed_order_dates",
     "resolve_confirmed_order_purchase_date",
 ]
 
@@ -66,6 +71,88 @@ class CaseOrderDateSource(Protocol):
     async def get_case(self, case_id: str) -> dict[str, Any] | None: ...
 
     async def source_dataset(self, dataset: str) -> AsyncCollection[dict[str, object]]: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ConfirmedOrderDates:
+    """The two instants the window rules read, from one read of the order.
+
+    Together rather than through two calls, because they come from the same
+    document and a second read would double the query on the hot path of every
+    evaluation -- and could answer from a different revision of the row.
+    """
+
+    purchase_date: datetime | None = None
+    delivery_date: datetime | None = None
+
+
+async def _confirmed_order_document(
+    repository: CaseOrderDateSource, *, case_id: str
+) -> Mapping[str, Any] | None:
+    """The sales document for a case's confirmed order, or nothing.
+
+    Every failure answers `None` and is logged, for the reason the module
+    docstring gives: an order this cannot read must not become an evaluation
+    error, and must never become a guessed value.
+    """
+    try:
+        case = await repository.get_case(case_id)
+    except Exception:  # noqa: BLE001 - see the docstring
+        logger.warning("policy_case_unreadable", extra={"case_id": case_id}, exc_info=True)
+        return None
+    reference = None if case is None else case.get("confirmedOrderReference")
+    if not isinstance(reference, str) or not reference.strip():
+        # Discovery, not confirmation. There is no order to read yet.
+        return None
+
+    try:
+        sales = await repository.source_dataset(SOURCE_SALES_DATASET)
+        document = await sales.find_one({_ORDER_NUMBER_FILTER: reference.strip()})
+    except Exception:  # noqa: BLE001 - see the docstring
+        logger.warning(
+            "policy_order_unreadable",
+            extra={"case_id": case_id, "order_reference": reference},
+            exc_info=True,
+        )
+        return None
+
+    if not isinstance(document, Mapping):
+        logger.info(
+            "policy_order_not_in_source",
+            extra={"case_id": case_id, "order_reference": reference},
+        )
+        return None
+    return document
+
+
+async def resolve_confirmed_order_dates(
+    repository: CaseOrderDateSource,
+    *,
+    case_id: str,
+    order_date_paths: Sequence[str],
+    delivery_proof: Any,
+) -> ConfirmedOrderDates:
+    """The purchase and delivery instants for one case's confirmed order.
+
+    The delivery half is what the platform could not answer at all before: the
+    return-claim window read `delivery_date` off the fact log, nothing wrote it
+    there, and so a delivery claim had no reporting deadline. The proof is on
+    the order all along -- a completed carrier route and a captured signature,
+    on an order that was driven rather than collected -- and
+    `delivery_date_from_confirmed_order` is the pure half of reading it.
+    """
+    document = await _confirmed_order_document(repository, case_id=case_id)
+    if document is None:
+        return ConfirmedOrderDates()
+    purchase = (
+        purchase_date_from_confirmed_order(document, paths=order_date_paths)
+        if order_date_paths
+        else None
+    )
+    if purchase is None:
+        logger.info("policy_order_carries_no_date", extra={"case_id": case_id})
+    delivery = delivery_date_from_confirmed_order(document, proof=delivery_proof)
+    return ConfirmedOrderDates(purchase_date=purchase, delivery_date=delivery)
 
 
 async def resolve_confirmed_order_purchase_date(
