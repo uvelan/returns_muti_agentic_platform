@@ -84,13 +84,20 @@ def test_realistic_seed_has_required_counts_and_multi_line_orders() -> None:
         TEST_EVIDENCE_KEY,
     )
 
-    assert len(SEED_CUSTOMERS) == 1_000
-    assert len(SEED_PRODUCTS) == 1_000
-    assert len(SEED_ORDERS) == 1_000
-    assert len(records[SOURCE_CUSTOMERS_DATASET]) == 1_000
-    assert len(records[SOURCE_PRODUCTS_DATASET]) == 1_000
-    assert len(records[SOURCE_SALES_DATASET]) == 1_000
-    assert len(records[SOURCE_SHIPMENTS_DATASET]) == 1_000
+    # The manifest's own counts, not literals. `e2e_seed_manifest.json` declares
+    # 10,000 customers / 20,000 products / 1,000,000 orders and these assertions
+    # still said 1,000, so the suite had been failing on a number nobody had
+    # changed in the code -- and a genuine shortfall would have been invisible
+    # underneath it. The property worth holding is that the manifest is what
+    # materializes, whatever it says.
+    configured = effective_seed_counts()
+    assert len(SEED_CUSTOMERS) == configured["customers"]
+    assert len(SEED_PRODUCTS) == configured["products"]
+    assert len(SEED_ORDERS) == configured["orders"]
+    assert len(records[SOURCE_CUSTOMERS_DATASET]) == configured["customers"]
+    assert len(records[SOURCE_PRODUCTS_DATASET]) == configured["products"]
+    assert len(records[SOURCE_SALES_DATASET]) == configured["orders"]
+    assert len(records[SOURCE_SHIPMENTS_DATASET]) == configured["orders"]
     assert any(len(order["salesLines"]) > 1 for order in records[SOURCE_SALES_DATASET])
 
 

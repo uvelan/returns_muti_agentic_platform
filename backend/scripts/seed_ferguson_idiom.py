@@ -204,6 +204,20 @@ SHIP_VIA: tuple[tuple[str, str, int], ...] = (
     ("M", "MAIL", 1),
 )
 
+#: The invoice statuses, in their observed proportion to each other. What an
+#: order forced into the delivered cohort draws from: delivery requires an
+#: invoice order code, so `CALLCSR` and `READY-FOR-PICKUP` cannot appear there.
+INVOICED_STATUS_WEIGHTS: tuple[tuple[str, int], ...] = (
+    ("INVOICED", 39), ("INVOICE-PAID", 2),
+)
+
+#: The ship-via codes that are driven rather than collected, in their observed
+#: proportion. `CPU` and `WCL` are absent by definition -- an order collected at
+#: a counter is never delivered.
+DELIVERY_SHIP_VIA_WEIGHTS: tuple[tuple[tuple[str, str], int], ...] = (
+    (("OT", "OUR TRUCK"), 13), (("XPW", "EXPRESS PARCEL"), 1), (("M", "MAIL"), 1),
+)
+
 #: Real inventory warehouse ids from the order lines, weighted as observed.
 WAREHOUSE_WEIGHTS: tuple[tuple[str, int], ...] = (
     ("3526", 48), ("686", 42), ("603", 28), ("596", 26), ("2624", 21), ("31", 20),

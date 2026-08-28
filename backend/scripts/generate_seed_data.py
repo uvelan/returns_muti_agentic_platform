@@ -98,7 +98,9 @@ from seed_ferguson_idiom import (
     ASSOCIATES,
     BRANCH_WEIGHTS,
     CATEGORIES,
+    DELIVERY_SHIP_VIA_WEIGHTS,
     GIVEN_NAMES,
+    INVOICED_STATUS_WEIGHTS,
     LINE_TYPE_WEIGHTS,
     LINES_PER_ORDER,
     ORDER_PREFIXES,
@@ -151,6 +153,32 @@ def _moment(moment: datetime) -> datetime:
 def _day(moment: datetime) -> datetime:
     """Midnight on the given day, as every real `orderDate` is written."""
     return moment.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+
+
+#: Ship-via codes that are collected rather than delivered: counter pick-up,
+#: will-call and backorder. An order on one of these is never DELIVERED, however
+#: many signatures it carries -- the signature is the customer signing at the
+#: counter.
+PICKUP_SHIP_VIA: frozenset[str] = frozenset({"CPU", "WCL", "BO"})
+
+_POD_MONTHS = (
+    "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+    "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+)
+
+
+def _pod_signature(moment: datetime) -> str:
+    """A proof-of-delivery timestamp in `salesInv`'s own spelling.
+
+    `15:11:19 OCT 15 2025` -- a string, and deliberately not a BSON date. The
+    real extract writes it this way, and a generated corpus that wrote a proper
+    date would let a reader parse `podSigTd` with code that fails against
+    production.
+    """
+    return (
+        f"{moment.hour:02d}:{moment.minute:02d}:{moment.second:02d} "
+        f"{_POD_MONTHS[moment.month - 1]} {moment.day} {moment.year}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -386,6 +414,40 @@ originals, load these documents back over the collections.
 # ---------------------------------------------------------------------------
 
 
+def _state_delivery(document: dict[str, Any]) -> None:
+    """Give a real order the delivery fields the extract does not carry.
+
+    `orderCode`, `trilogieFile` and `fleetwiseStatus` are absent from every real
+    `salesInv` document in `fixtures/real_ferguson_source/` -- checked, not
+    assumed -- so a corpus that mixed real and generated orders had a hundred
+    documents the DELIVERED rule could not be evaluated against at all. They
+    read as "not delivered" either way, but for the wrong reason: the field was
+    missing rather than the condition unmet, and the two are different answers
+    to "why is this order not delivered".
+
+    **The real fixture is not edited.** It is the untouched original, and its
+    README says so. The fields are stated here, as the document is inserted, so
+    the corpus is uniform and the originals stay original.
+
+    No order is made delivered here. The delivered cohort is `delivered_orders`
+    from the config, drawn from generated orders, and a real order quietly
+    joining it would make that count a lie. A real order that ships gets a route
+    still in progress; a pick-up gets no route at all, and keeps whatever
+    counter signature it came with.
+    """
+    event = document.get("salesHdrEventData") or {}
+    shipping = ((document.get("salesHdr") or {}).get("salesHdrData") or {}).get("shipping") or {}
+    invoiced = bool(event.get("invoiced")) or str(event.get("orderStatus", "")).startswith(
+        "INVOICE"
+    )
+    event["orderCode"] = "IO" if invoiced else "OO"
+    event["trilogieFile"] = "ORDER"
+    if shipping.get("shipViaCode") not in PICKUP_SHIP_VIA:
+        shipping["fleetwiseStatus"] = "InRoute"
+    else:
+        shipping.pop("fleetwiseStatus", None)
+
+
 def _rename_real_orders(
     orders: Sequence[dict[str, Any]], directory: PersonDirectory
 ) -> tuple[list[dict[str, Any]], dict[tuple[str, str], Person], int]:
@@ -405,6 +467,7 @@ def _rename_real_orders(
     emails_added = 0
     for original in orders:
         document = json_util.loads(json_util.dumps(original))
+        _state_delivery(document)
         header = (document.get("salesHdr") or {}).get("salesHdrData") or {}
         account = str((document.get("salesHdrEventData") or {}).get("accountId") or "")
         customer_id = str(header.get("custId") or "")
@@ -1084,6 +1147,24 @@ class OrderNumbers:
                 return candidate
 
 
+def _delivered_indices(count: int, delivered: int, rng: random.Random) -> frozenset[int]:
+    """Which of the generated orders end up DELIVERED.
+
+    Drawn from the same seeded `rng` as everything else, so the corpus stays
+    reproducible from `generation.yaml` alone. A target above the corpus size
+    is refused rather than clamped: silently generating 900 of the 1,000
+    delivered orders a test asked for is the kind of shortfall that surfaces
+    three failures later as "the window rule is flaky".
+    """
+    if delivered > count:
+        raise SystemExit(
+            f"delivered_orders ({delivered}) exceeds the {count} orders being generated"
+        )
+    if delivered <= 0:
+        return frozenset()
+    return frozenset(rng.sample(range(count), delivered))
+
+
 def _generate_orders(
     count: int,
     accounts: Sequence[Account],
@@ -1093,10 +1174,12 @@ def _generate_orders(
     span_days: int,
     shipped_fraction: float,
     rng: random.Random,
+    delivered_orders: int = 0,
 ) -> list[dict[str, Any]]:
     """`salesInv` documents in the real header/lines shape."""
     documents: list[dict[str, Any]] = []
-    for _ in range(count):
+    delivered_set = _delivered_indices(count, delivered_orders, rng)
+    for index in range(count):
         account = rng.choice(accounts)
         person = account.person
         branch = account.branch
@@ -1117,6 +1200,31 @@ def _generate_orders(
         status = _weighted(rng, ORDER_STATUS_WEIGHTS)
         sales_type = _weighted(rng, SALES_TYPE_WEIGHTS)
         associate = rng.choice(ASSOCIATES)
+        # Delivery, by the five conditions `salesInv` actually decides it on:
+        # an invoice-file order, an invoice order code, a ship-via that is
+        # driven rather than collected, a completed FleetWise route and a POD
+        # signature. Generating the last two without the first three is how a
+        # corpus ends up claiming a counter pick-up was delivered.
+        if index in delivered_set:
+            # Forced, and forced completely: an order in this set must satisfy
+            # every one of the five conditions, so its status and its ship-via
+            # are overwritten rather than hoped for. Both are still drawn from
+            # the real vocabulary -- the corpus gains no code or status it did
+            # not already have, only a different mix of them.
+            status = _weighted(rng, INVOICED_STATUS_WEIGHTS)
+            ship_via_code, ship_via_desc = _weighted(rng, DELIVERY_SHIP_VIA_WEIGHTS)
+        invoiced = status.startswith("INVOICE")
+        deliverable = ship_via_code not in PICKUP_SHIP_VIA
+        # Exact, in both directions. An order outside the set that happened to
+        # draw an invoice status and a driven ship-via would satisfy the rule
+        # too, and `delivered_orders: 1000` would quietly mean "about 1,600".
+        # It gets a route that has not completed instead, which is an ordinary
+        # state and not a contrivance.
+        delivered_at = (
+            ordered_at + timedelta(days=rng.randint(1, 4), hours=rng.randint(0, 9))
+            if index in delivered_set
+            else None
+        )
         documents.append(
             {
                 "_id": f"{branch}*{order_number}",
@@ -1147,6 +1255,13 @@ def _generate_orders(
                     "invoiced": status.startswith("INVOICE"),
                     "orderStatus": status,
                     "shipViaCode": ship_via_code,
+                    # `IO` is an open invoice, `OO` an order still working. The
+                    # delivery rule tests for an invoice code, so an order that
+                    # was never invoiced cannot read as delivered whatever its
+                    # route says.
+                    "orderCode": "IO" if invoiced else "OO",
+                    #: The Trilogie file this document came out of.
+                    "trilogieFile": "ORDER",
                     "totalPages": "1",
                     "pageNumber": "1",
                 },
@@ -1185,6 +1300,23 @@ def _generate_orders(
                             "shipViaCode": ship_via_code,
                             "shipViaDesc": ship_via_desc,
                             "shipCompleteFlag": False,
+                            # DispatchTrack's verdict on the route, and the
+                            # signature it captured. Absent on a pick-up: there
+                            # is no route to complete.
+                            **(
+                                {
+                                    "fleetwiseStatus": (
+                                        "Completed" if delivered_at is not None else "InRoute"
+                                    )
+                                }
+                                if deliverable
+                                else {}
+                            ),
+                            **(
+                                {"podSigTd": _pod_signature(delivered_at)}
+                                if delivered_at is not None
+                                else {}
+                            ),
                             "commitDate": _day(ordered_at),
                             "shipDate": _day(ordered_at + timedelta(days=rng.randint(0, 3))),
                             "shipTo": {
@@ -1395,9 +1527,18 @@ def _generate_shipments(
                     ),
                     "trkNum": tracking,
                     "trilOrdNum": order_number,
-                    "currentStatus": rng.choices(
-                        ("intransit", "delivered", "outfordelivery"), weights=(30, 62, 8)
-                    )[0],
+                    # The order's own answer, not a second independent draw.
+                    # Drawn separately, a shipment reported `delivered` on an
+                    # order whose FleetWise route was still in progress -- and
+                    # the shipment is the entity the release calls the
+                    # authoritative delivery signal, so the two disagreeing is
+                    # the corpus arguing with itself.
+                    "currentStatus": (
+                        "delivered"
+                        if order["salesHdr"]["salesHdrData"]["shipping"].get("fleetwiseStatus")
+                        == "Completed"
+                        else rng.choices(("intransit", "outfordelivery"), weights=(80, 20))[0]
+                    ),
                     "srcSystem": "Convey" if convey else "DispatchTrack",
                 },
                 "shipmentInfo": [
@@ -1676,6 +1817,7 @@ async def _run(config: Mapping[str, Any], config_name: str) -> None:
             span_days,
             shipped_fraction,
             rng,
+            int(config.get("delivered_orders", 0)),
         )
         shipment_documents = _generate_shipments(order_documents, rng)
         warehouse_documents = _generate_warehouses(order_documents, rng, generated_at)
@@ -1689,7 +1831,13 @@ async def _run(config: Mapping[str, Any], config_name: str) -> None:
             schema,
             order_documents[0],
             customer_documents[0],
-            next(document for document in product_documents if document.get("__seed")),
+            # `is True`, not truthiness. A product derived from a real order
+            # line carries `__seed: "DERIVED_FROM_ORDER_LINE"`, which is also
+            # truthy -- so this picked one of those, and then failed the whole
+            # run because a derived product deliberately states no vendor, no
+            # department and no UPC. The verification wants a fully generated
+            # document, which is the one marked exactly `True`.
+            next(document for document in product_documents if document.get("__seed") is True),
             shipment_documents[0],
         )
         print("all declared paths resolve.\n")

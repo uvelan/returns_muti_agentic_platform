@@ -261,7 +261,8 @@
      "shipToGeocode": "REDACTED",
      "shipViaCode": "OT",
      "shipViaDesc": "OUR TRUCK",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "InRoute"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -330,7 +331,9 @@
    "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -925,7 +928,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -1910,7 +1915,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -2426,7 +2433,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -2951,7 +2960,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -4553,7 +4564,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -5252,7 +5265,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -5730,7 +5745,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -6314,7 +6331,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -6920,7 +6939,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -7280,7 +7301,8 @@
      "shipToGeocode": "REDACTED",
      "shipViaCode": "OT",
      "shipViaDesc": "OUR TRUCK",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "InRoute"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -7370,7 +7392,9 @@
    "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -7849,7 +7873,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -8316,7 +8342,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -8774,7 +8802,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -9559,7 +9589,9 @@
      "shipViaCode": "OT",
      "shipViaDesc": "OUR TRUCK",
      "wmsStatus": "S",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "Completed",
+     "podSigTd": "09:04:34 OCT 13 2025"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -9639,7 +9671,9 @@
    "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -11950,7 +11984,8 @@
      "shipToGeocode": "REDACTED",
      "shipViaCode": "OT",
      "shipViaDesc": "OUR TRUCK",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "InRoute"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -12032,7 +12067,9 @@
    "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -12803,7 +12840,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -13415,7 +13454,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -13788,7 +13829,8 @@
      "shipToGeocode": "REDACTED",
      "shipViaCode": "XPW",
      "shipViaDesc": "Xpressway Program - CPU",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "InRoute"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -13870,7 +13912,9 @@
    "shipViaCode": "XPW",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -14346,7 +14390,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -15062,7 +15108,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -16899,7 +16947,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -17487,7 +17537,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -19551,7 +19603,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -20036,7 +20090,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -20545,9 +20601,11 @@
       "shipToSuffix": "CPU"
      },
      "shipToGeocode": "REDACTED",
-     "shipViaCode": "CPU",
-     "shipViaDesc": "COUNTER PICK-UP",
-     "wmsTransferFlag": false
+     "shipViaCode": "OT",
+     "shipViaDesc": "OUR TRUCK",
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "Completed",
+     "podSigTd": "11:22:19 OCT 14 2025"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -20615,10 +20673,12 @@
    "sellWhseId": "3510",
    "shipFromWhseId": "3510",
    "shipTrackNum": [],
-   "shipViaCode": "CPU",
+   "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -21259,7 +21319,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -21872,7 +21934,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -22931,7 +22995,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -23470,7 +23536,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -24238,7 +24306,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -24683,7 +24753,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -25307,7 +25379,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -26032,7 +26106,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -26592,10 +26668,12 @@
       "shipToSuffix": "CPU"
      },
      "shipToGeocode": "REDACTED",
-     "shipViaCode": "WCL",
-     "shipViaDesc": "PRO PICKUP",
+     "shipViaCode": "OT",
+     "shipViaDesc": "OUR TRUCK",
      "wmsStatus": "P",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "Completed",
+     "podSigTd": "12:57:58 OCT 14 2025"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -26663,10 +26741,12 @@
    "sellWhseId": "361",
    "shipFromWhseId": "361",
    "shipTrackNum": [],
-   "shipViaCode": "WCL",
+   "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -27269,7 +27349,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -27864,7 +27946,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -28408,7 +28492,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -29018,7 +29104,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -30537,9 +30625,11 @@
       "shipToSuffix": "CPU"
      },
      "shipToGeocode": "REDACTED",
-     "shipViaCode": "CPU",
-     "shipViaDesc": "COUNTER PICK-UP",
-     "wmsTransferFlag": false
+     "shipViaCode": "OT",
+     "shipViaDesc": "OUR TRUCK",
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "Completed",
+     "podSigTd": "17:35:10 OCT 14 2025"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -30607,10 +30697,12 @@
    "sellWhseId": "5923",
    "shipFromWhseId": "5923",
    "shipTrackNum": [],
-   "shipViaCode": "CPU",
+   "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -31215,7 +31307,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -31832,7 +31926,8 @@
      "shipToGeocode": "REDACTED",
      "shipViaCode": "OT",
      "shipViaDesc": "OUR TRUCK",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "InRoute"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -31901,7 +31996,9 @@
    "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -32458,7 +32555,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -32941,7 +33040,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -33503,7 +33604,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -34086,7 +34189,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -34675,7 +34780,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -35430,10 +35537,12 @@
       "shipToSuffix": "CPU"
      },
      "shipToGeocode": "REDACTED",
-     "shipViaCode": "CPU",
-     "shipViaDesc": "COUNTER PICK-UP",
+     "shipViaCode": "OT",
+     "shipViaDesc": "OUR TRUCK",
      "wmsStatus": "S",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "Completed",
+     "podSigTd": "15:49:10 OCT 14 2025"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -35502,10 +35611,12 @@
    "sellWhseId": "632",
    "shipFromWhseId": "632",
    "shipTrackNum": [],
-   "shipViaCode": "CPU",
+   "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -36428,7 +36539,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -37204,7 +37317,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -37853,7 +37968,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -38417,7 +38534,8 @@
      "shipToGeocode": "REDACTED",
      "shipViaCode": "OT",
      "shipViaDesc": "OUR TRUCK",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "InRoute"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -38489,7 +38607,9 @@
    "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -39018,10 +39138,11 @@
       "shipToSuffix": "CPU"
      },
      "shipToGeocode": "REDACTED",
-     "shipViaCode": "WCL",
-     "shipViaDesc": "PRO PICKUP",
+     "shipViaCode": "OT",
+     "shipViaDesc": "OUR TRUCK",
      "wmsStatus": "S",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "Completed"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -39090,10 +39211,12 @@
    "sellWhseId": "1242",
    "shipFromWhseId": "1242",
    "shipTrackNum": [],
-   "shipViaCode": "WCL",
+   "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -40400,7 +40523,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -41243,7 +41368,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -44082,7 +44209,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -44514,7 +44643,8 @@
      "shipToGeocode": "REDACTED",
      "shipViaCode": "OT",
      "shipViaDesc": "OUR TRUCK",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "InRoute"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -44586,7 +44716,9 @@
    "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -45571,7 +45703,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -46086,7 +46220,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -46606,9 +46742,10 @@
       "shipToSuffix": "CPU"
      },
      "shipToGeocode": "REDACTED",
-     "shipViaCode": "CPU",
-     "shipViaDesc": "COUNTER PICK-UP",
-     "wmsTransferFlag": false
+     "shipViaCode": "OT",
+     "shipViaDesc": "OUR TRUCK",
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "Completed"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -46676,10 +46813,12 @@
    "sellWhseId": "1950",
    "shipFromWhseId": "1950",
    "shipTrackNum": [],
-   "shipViaCode": "CPU",
+   "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -48385,7 +48524,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -49253,7 +49394,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -55921,7 +56064,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -56670,7 +56815,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -59562,7 +59709,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -60309,9 +60458,11 @@
       "shipToSuffix": "CPU"
      },
      "shipToGeocode": "REDACTED",
-     "shipViaCode": "CPU",
-     "shipViaDesc": "COUNTER PICK-UP",
-     "wmsTransferFlag": false
+     "shipViaCode": "OT",
+     "shipViaDesc": "OUR TRUCK",
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "Completed",
+     "podSigTd": "10:36:07 OCT 14 2025"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -60379,10 +60530,12 @@
    "sellWhseId": "596",
    "shipFromWhseId": "596",
    "shipTrackNum": [],
-   "shipViaCode": "CPU",
+   "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -63807,7 +63960,8 @@
      "shipToGeocode": "REDACTED",
      "shipViaCode": "OT",
      "shipViaDesc": "OUR TRUCK",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "InRoute"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -63879,7 +64033,9 @@
    "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -65230,7 +65386,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -66008,7 +66166,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -66877,10 +67037,12 @@
       "shipToSuffix": "CPU"
      },
      "shipToGeocode": "REDACTED",
-     "shipViaCode": "WCL",
-     "shipViaDesc": "PRO PICKUP",
+     "shipViaCode": "OT",
+     "shipViaDesc": "OUR TRUCK",
      "wmsStatus": "S",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "Completed",
+     "podSigTd": "14:55:04 OCT 14 2025"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -66951,10 +67113,12 @@
    "shipTrackNum": [
     "CA734571_686_25"
    ],
-   "shipViaCode": "WCL",
+   "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -73277,7 +73441,8 @@
      "shipToGeocode": "REDACTED",
      "shipViaCode": "OT",
      "shipViaDesc": "OUR TRUCK",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "InRoute"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -73349,7 +73514,9 @@
    "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -74041,9 +74208,10 @@
       "shipToSuffix": "CPU"
      },
      "shipToGeocode": "REDACTED",
-     "shipViaCode": "WCL",
-     "shipViaDesc": "PRO PICKUP",
-     "wmsTransferFlag": false
+     "shipViaCode": "OT",
+     "shipViaDesc": "OUR TRUCK",
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "Completed"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -74111,10 +74279,12 @@
    "sellWhseId": "76",
    "shipFromWhseId": "76",
    "shipTrackNum": [],
-   "shipViaCode": "WCL",
+   "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -74836,9 +75006,11 @@
       "shipToSuffix": "CPU"
      },
      "shipToGeocode": "REDACTED",
-     "shipViaCode": "CPU",
-     "shipViaDesc": "COUNTER PICK-UP",
-     "wmsTransferFlag": false
+     "shipViaCode": "OT",
+     "shipViaDesc": "OUR TRUCK",
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "Completed",
+     "podSigTd": "10:57:24 OCT 14 2025"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -74907,10 +75079,12 @@
    "sellWhseId": "144",
    "shipFromWhseId": "144",
    "shipTrackNum": [],
-   "shipViaCode": "CPU",
+   "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -76106,7 +76280,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -76963,7 +77139,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -77584,7 +77762,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -78917,7 +79097,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -79587,10 +79769,11 @@
       "shipToSuffix": "CPU"
      },
      "shipToGeocode": "REDACTED",
-     "shipViaCode": "CPU",
-     "shipViaDesc": "COUNTER PICK-UP",
+     "shipViaCode": "OT",
+     "shipViaDesc": "OUR TRUCK",
      "wmsStatus": "P",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "Completed"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -79658,10 +79841,12 @@
    "sellWhseId": "603",
    "shipFromWhseId": "603",
    "shipTrackNum": [],
-   "shipViaCode": "CPU",
+   "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -83767,7 +83952,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -84425,7 +84612,9 @@
      "shipToGeocode": "REDACTED",
      "shipViaCode": "OT",
      "shipViaDesc": "OUR TRUCK",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "Completed",
+     "podSigTd": "17:02:43 OCT 13 2025"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -84498,7 +84687,9 @@
    "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -85895,7 +86086,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -87790,7 +87983,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -88508,7 +88703,8 @@
      },
      "shipViaCode": "M",
      "shipViaDesc": "XX",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "InRoute"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -88577,7 +88773,9 @@
    "shipViaCode": "M",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -89084,9 +89282,11 @@
       "shipToSuffix": "CPU"
      },
      "shipToGeocode": "REDACTED",
-     "shipViaCode": "CPU",
-     "shipViaDesc": "COUNTER PICK-UP",
-     "wmsTransferFlag": false
+     "shipViaCode": "OT",
+     "shipViaDesc": "OUR TRUCK",
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "Completed",
+     "podSigTd": "14:45:17 OCT 14 2025"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -89154,10 +89354,12 @@
    "sellWhseId": "2680",
    "shipFromWhseId": "2680",
    "shipTrackNum": [],
-   "shipViaCode": "CPU",
+   "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -90386,7 +90588,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -90830,7 +91034,8 @@
      "shipToGeocode": "REDACTED",
      "shipViaCode": "OT",
      "shipViaDesc": "OUR TRUCK",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "InRoute"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -90914,7 +91119,9 @@
    "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -91965,7 +92172,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -92777,7 +92986,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -93229,7 +93440,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "COPY",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -93742,7 +93955,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -94973,7 +95188,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -95457,7 +95674,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -96738,7 +96957,9 @@
    "shipViaCode": "WCL",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -97170,7 +97391,8 @@
      "shipToGeocode": "REDACTED",
      "shipViaCode": "OT",
      "shipViaDesc": "OUR TRUCK",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "InRoute"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -97261,7 +97483,9 @@
    "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -97918,9 +98142,10 @@
       "shipToSuffix": "CPU"
      },
      "shipToGeocode": "REDACTED",
-     "shipViaCode": "CPU",
-     "shipViaDesc": "COUNTER PICK-UP",
-     "wmsTransferFlag": false
+     "shipViaCode": "OT",
+     "shipViaDesc": "OUR TRUCK",
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "Completed"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -97988,10 +98213,12 @@
    "sellWhseId": "1178",
    "shipFromWhseId": "1178",
    "shipTrackNum": [],
-   "shipViaCode": "CPU",
+   "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -98608,7 +98835,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -99312,7 +99541,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -102050,7 +102281,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -102451,7 +102684,8 @@
      "shipToGeocode": "REDACTED",
      "shipViaCode": "OT",
      "shipViaDesc": "OUR TRUCK",
-     "wmsTransferFlag": false
+     "wmsTransferFlag": false,
+     "fleetwiseStatus": "InRoute"
     },
     "shwrmFlag": false,
     "smsSentFlag": false,
@@ -102536,7 +102770,9 @@
    "shipViaCode": "OT",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "OO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {
@@ -103120,7 +103356,9 @@
    "shipViaCode": "CPU",
    "srcErp": "Trilogie",
    "srcSysCode": "SOE",
-   "totalPages": "1"
+   "totalPages": "1",
+   "orderCode": "IO",
+   "trilogieFile": "ORDER"
   },
   "salesHdrEventMeta": {
    "insertTs": {

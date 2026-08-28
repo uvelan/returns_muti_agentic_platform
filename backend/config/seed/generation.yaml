@@ -35,6 +35,19 @@ counts:
 # is the state most returns are raised against.
 shipped_fraction: 0.7
 
+# How many orders must satisfy the whole `salesInv` DELIVERED rule: an invoice
+# order code, the ORDER Trilogie file, a ship-via that is driven rather than
+# collected, a completed FleetWise route and a POD signature.
+#
+# An exact count, not a probability, because it is the thing a return-window
+# test needs a known quantity of. Left to the weights it would be an emergent
+# ~6% -- invoiced (41%) that also ships (15%) -- and the corpus would have to
+# grow to 16,000 orders to reach a thousand of them by chance. The generator
+# instead picks this many orders up front and makes them delivered, and makes
+# sure no order outside that set satisfies the rule, so the number is what it
+# says. Must not exceed `counts.orders`.
+delivered_orders: 1000
+
 order_dates:
   # Inclusive ISO dates. Orders are spread uniformly across the window, which
   # keeps date-window searches meaningful at every point in it.

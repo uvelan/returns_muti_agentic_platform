@@ -121,6 +121,50 @@ def test_business_vocabulary_is_still_real(orders: list[dict[str, Any]]) -> None
     assert len(descriptions) > 50
 
 
+def test_delivery_can_be_told_from_pick_up(orders: list[dict[str, Any]]) -> None:
+    """The five conditions `salesInv` decides DELIVERED on all resolve.
+
+    The extract answered two of them -- `shipViaCode` and `podSigTd` -- and
+    every `podSigTd` in it sat on a `CPU`/`WCL` order, where the signature is
+    the customer signing at the counter. A corpus in that state cannot tell
+    delivered from collected, and a reader that took the signature alone would
+    have called all fourteen pick-ups delivered.
+    `scripts/backfill_delivery_proof.py` is what keeps this true.
+    """
+    pickup = {"CPU", "WCL", "BO"}
+
+    def shipping(order: dict[str, Any]) -> dict[str, Any]:
+        return order["salesHdr"]["salesHdrData"]["shipping"]
+
+    delivered = [
+        order
+        for order in orders
+        if order["salesHdrEventData"].get("orderCode") in {"IO", "ID"}
+        and order["salesHdrEventData"].get("trilogieFile") == "ORDER"
+        and shipping(order).get("shipViaCode") not in pickup
+        and shipping(order).get("fleetwiseStatus") == "Completed"
+        and shipping(order).get("podSigTd") is not None
+    ]
+    assert delivered, "no order in the corpus reads as delivered"
+
+    # Both halves of the discrimination, not just the positive one: a corpus
+    # where everything is delivered tests the rule no better than one where
+    # nothing is.
+    assert len(delivered) < len(orders)
+    assert all(order["salesHdrEventData"].get("orderCode") for order in orders)
+    assert all(order["salesHdrEventData"].get("trilogieFile") == "ORDER" for order in orders)
+
+    # A route belongs to an order that is driven somewhere. A pick-up carrying
+    # a FleetWise status is the state that lets a signature at the counter read
+    # as proof of delivery.
+    assert not [
+        order
+        for order in orders
+        if shipping(order).get("shipViaCode") in pickup
+        and shipping(order).get("fleetwiseStatus") is not None
+    ]
+
+
 def test_every_order_line_can_reach_a_product(orders: list[dict[str, Any]]) -> None:
     """`line_references_product` matches lineData.masterProductId against the
     product document's `_id`, so a line whose master id derives no product is an

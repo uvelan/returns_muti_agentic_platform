@@ -7,6 +7,7 @@ from pathlib import Path
 
 from return_platform.data_platform.schema_registry import load_schema_registry
 from return_platform.operations.seed_manifest import (
+    effective_seed_counts,
     SEED_SCENARIOS,
     SOURCE_CUSTOMERS_DATASET,
     SOURCE_PRODUCTS_DATASET,
@@ -63,9 +64,14 @@ def test_domain_seed_keys_are_the_configured_datasets_not_collection_names() -> 
 
     customers = {str(item["customerId"]) for item in records[SOURCE_CUSTOMERS_DATASET]}
     products = {str(item["productId"]) for item in records[SOURCE_PRODUCTS_DATASET]}
-    assert len(records[SOURCE_SALES_DATASET]) == 1_000
-    assert len(records[SOURCE_CUSTOMERS_DATASET]) == 1_000
-    assert len(records[SOURCE_PRODUCTS_DATASET]) == 1_000
+    # The manifest's counts rather than literals -- see the note in
+    # `test_seed_manifest.py`. These read 1,000 against a manifest declaring
+    # 10,000/20,000/1,000,000, so the check had stopped being about the datasets
+    # and become about a stale number.
+    configured = effective_seed_counts()
+    assert len(records[SOURCE_SALES_DATASET]) == configured["orders"]
+    assert len(records[SOURCE_CUSTOMERS_DATASET]) == configured["customers"]
+    assert len(records[SOURCE_PRODUCTS_DATASET]) == configured["products"]
     sample_indexes = (0, 9, 999)
     for index in sample_indexes:
         order = records[SOURCE_SALES_DATASET][index]
