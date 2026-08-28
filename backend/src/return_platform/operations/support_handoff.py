@@ -306,6 +306,8 @@ def compose_support_handoff(
     policy: SupportHandoffPolicy,
     order_confirmed: bool,
     required_details_complete: bool,
+    outstanding_support_dimensions: tuple[str, ...] = (),
+    support_state_known: bool = True,
 ) -> SupportHandoff:
     """The handoff, as text a person reads and as data a screen reads.
 
@@ -373,6 +375,30 @@ def compose_support_handoff(
             "Complete" if required_details_complete else "Incomplete",
         )
     )
+    # What Support has not answered yet, named separately from what the
+    # associate did or did not supply.
+    #
+    # These were the same line, and the line was unreadable. "Required Return
+    # Information" was computed from the whole `awaiting` set, which holds only
+    # Support- and fulfilment-owned dimensions -- RETURN_METHOD, RMA, LABEL,
+    # TRACKING, BOL, PICKUP, RETURN_LOCATION -- and never anything the associate
+    # states. So the verdict on the associate's work was decided by whether
+    # Support had already done the work this very message is asking for, and it
+    # read "Incomplete" on every request ever sent, including ones carrying a
+    # line, a quantity, a reason and a condition.
+    #
+    # An unreadable case state prints as unreadable, never as an empty list. The
+    # two look identical on a screen and send Support to opposite actions: one
+    # says "nothing is outstanding, proceed" and the other says "we could not
+    # find out". That distinction is the whole reason the old line refused to
+    # render "Complete" when the projection could not be assembled, and it has
+    # to survive the split rather than be lost in it.
+    if not support_state_known:
+        sections.append(_line("Awaiting From Support", "UNKNOWN -- case state could not be read"))
+    elif outstanding_support_dimensions:
+        sections.append(
+            _line("Awaiting From Support", ", ".join(outstanding_support_dimensions))
+        )
     sections.append(_line("Policy Evaluation", policy.rendered()))
     sections.append(_line("Bay Assignment Source", "Bay Assignment Agent"))
     sections.append("")
@@ -421,6 +447,8 @@ def compose_support_handoff(
         "verification": {
             "orderConfirmed": order_confirmed,
             "requiredReturnInformationComplete": required_details_complete,
+            "awaitingFromSupport": list(outstanding_support_dimensions),
+            "supportStateKnown": support_state_known,
             "policyEvaluation": {
                 "state": _clean(policy.state),
                 "skippedReason": _clean(policy.skipped_reason),

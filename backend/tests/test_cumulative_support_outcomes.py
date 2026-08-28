@@ -2013,7 +2013,7 @@ async def test_a_selected_item_alone_does_not_make_the_handoff_claim_completenes
             "orderLineId": "1",
             "productId": "4000096",
             "quantity": 1,
-            "reasonCode": "ORDERED_IN_ERROR",
+            "reason": "ORDERED_IN_ERROR",
             "returnRecordId": None,
             "version": 1,
         }
@@ -2031,13 +2031,55 @@ async def test_a_selected_item_alone_does_not_make_the_handoff_claim_completenes
         )
     )
 
+    # The associate's half is complete -- a line, a quantity, a reason -- and
+    # Support's half is not. One line each, because they were one line before
+    # and it could only ever read "Incomplete": `awaiting` holds nothing an
+    # associate can state, so the verdict on their work was decided by whether
+    # Support had already answered the message being composed.
+    assert "Required Return Information: Complete" in draft.text
+    assert "Awaiting From Support: RETURN_METHOD" in draft.text
+    assert draft.payload["verification"]["requiredReturnInformationComplete"] is True
+    assert draft.payload["verification"]["awaitingFromSupport"] == ["RETURN_METHOD"]
+
+
+@pytest.mark.asyncio
+async def test_a_line_with_no_quantity_leaves_the_request_incomplete() -> None:
+    """The associate's half, judged on what the associate supplies.
+
+    Every line, not any line: a request naming a line with no quantity is one
+    Support has to come back about, whatever the other lines carry. The reading
+    this replaces was `bool(selected)`, which called that request complete the
+    moment the line existed.
+    """
+    fixture = _fixture()
+    fixture.repository.items.append(
+        {
+            "caseId": CASE_ID,
+            "returnItemId": "item-1",
+            "orderLineId": "1",
+            "productId": "4000096",
+            "quantity": 0,
+            "reason": "ORDERED_IN_ERROR",
+            "returnRecordId": None,
+            "version": 1,
+        }
+    )
+
+    draft = await fixture.activities.draft_support_request(
+        DraftSupportRequestInput(
+            case_id=CASE_ID,
+            configuration_release_id="release-1",
+            work_item_id="work-item-1",
+        )
+    )
+
     assert "Required Return Information: Incomplete" in draft.text
     assert draft.payload["verification"]["requiredReturnInformationComplete"] is False
 
 
 @pytest.mark.asyncio
-async def test_an_unreadable_projection_is_reported_incomplete_never_complete() -> None:
-    """ "We cannot tell" and "complete" send Support to opposite actions."""
+async def test_an_unreadable_projection_says_so_rather_than_reporting_nothing_outstanding() -> None:
+    """ "We cannot tell" and "nothing outstanding" send Support to opposite actions."""
     fixture = _fixture()
     fixture.repository.items.append(
         {
@@ -2046,7 +2088,7 @@ async def test_an_unreadable_projection_is_reported_incomplete_never_complete() 
             "orderLineId": "1",
             "productId": "4000096",
             "quantity": 1,
-            "reasonCode": "ORDERED_IN_ERROR",
+            "reason": "ORDERED_IN_ERROR",
             "returnRecordId": None,
             "version": 1,
         }
@@ -2062,5 +2104,9 @@ async def test_an_unreadable_projection_is_reported_incomplete_never_complete() 
         )
     )
 
-    assert "Required Return Information: Incomplete" in draft.text
-    assert draft.payload["verification"]["requiredReturnInformationComplete"] is False
+    # "We cannot tell" and "nothing is outstanding" look identical as an empty
+    # list and send Support to opposite actions, so the unreadable case says so
+    # in words. The associate's half is still answerable -- it is read from the
+    # selection, which is not what failed.
+    assert "Awaiting From Support: UNKNOWN -- case state could not be read" in draft.text
+    assert draft.payload["verification"]["supportStateKnown"] is False

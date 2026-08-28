@@ -404,6 +404,49 @@ class SupportRequestDraft:
     subject: str = ""
 
 
+#: Facts that describe the return itself, as opposed to which order it is
+#: against. Any one of them means the associate has started describing what is
+#: coming back -- the same threshold the item-selection write signals at, which
+#: fires on a selection rather than on a complete one. Whether the description
+#: is *complete* is a different question, answered by `awaiting` at handoff.
+_RETURN_DETAIL_FACTS: Final[frozenset[str]] = frozenset(
+    {
+        "return_reason",
+        "product_condition",
+        "return_quantity",
+        "ordered_quantity",
+        "product_presence",
+        "branch_location",
+        "proof_reference",
+    }
+)
+
+
+def _associate_described_the_return(
+    selected: Sequence[Mapping[str, Any]], *, reason_required: bool
+) -> bool:
+    """Whether the associate has said enough for a human to act on the request.
+
+    Their half of the handoff and only their half: a line, how many of it, and
+    why -- where the release publishes a catalogue to choose the why from. What
+    Support still owes is a different question, reported beside this one.
+
+    Every line, not any line. A request naming three lines where one has no
+    quantity is a request Support has to come back about, and reporting it
+    complete because the other two were fine is how the message earns its
+    reputation for being wrong.
+    """
+    if not selected:
+        return False
+    for item in selected:
+        quantity = item.get("quantity")
+        if not isinstance(quantity, int) or quantity < 1:
+            return False
+        if reason_required and not _text_of(item.get("reason")):
+            return False
+    return True
+
+
 class ReturnCaseActivities:
     """Narrow injected surface: one repository, one support service, one drafter."""
 
@@ -499,6 +542,34 @@ class ReturnCaseActivities:
                 acquisition_method=FactAcquisition.DERIVED,
                 source_path="RETURN_CASE_WORKFLOW",
             )
+
+    @activity.defn(name="case_has_return_details")
+    async def case_has_return_details(self, request: RecordCaseCustomerInput) -> bool:
+        """Whether anyone has described this return yet, from the case itself.
+
+        The wait it serves was signal-only, and exactly one surface sends the
+        signal: the item-selection write. So an associate who answered the
+        agent's "what is bringing it back" in the chat described the return
+        perfectly well and the case waited on, then parked, for a click that was
+        never coming.
+
+        The case is the authority on what it knows, and a fact recorded by any
+        surface -- the pane, the conversation, an operator, a later backfill --
+        is the same answer to the same question. The signal stays as the fast
+        path; this is the truth the fast path is an optimisation of.
+
+        Reuses `RecordCaseCustomerInput` for its shape: a case id and nothing
+        else. A read that invented its own single-field input would be a second
+        way to say the same thing.
+        """
+        selected = await self._selected_items(request.case_id)
+        if selected:
+            return True
+        facts = await self._repository.latest_case_facts(request.case_id)
+        return any(
+            _text_of(record.get("value")) for name, record in facts.items()
+            if name in _RETURN_DETAIL_FACTS
+        )
 
     @activity.defn(name="record_case_customer_identity")
     async def record_case_customer_identity(self, request: RecordCaseCustomerInput) -> bool:
@@ -1129,29 +1200,40 @@ class ReturnCaseActivities:
         )
         details = await self._order_line_details(order_reference)
 
-        # Completeness comes from the same assessment that produces `awaiting`,
-        # never from whether a line happens to be selected.
+        # Two questions, and they were being answered as one.
         #
-        # It used to read `bool(selected)`, which is true the moment any item is
-        # picked. So a case the platform itself recorded as
-        # `awaiting: ["RETURN_METHOD"], businessComplete: false` handed Support a
-        # message saying "Required Return Information: Complete" and asked them to
-        # issue or decline the RMA on that basis -- while the case pane beside it
-        # said "Waiting on RETURN_METHOD". Three surfaces, two answers.
+        # "Has the associate described the return" and "is there anything left
+        # outstanding on this case" are different, and `awaiting` only ever
+        # answers the second: every dimension in it -- RETURN_METHOD, RMA,
+        # LABEL, TRACKING, BOL, PICKUP, RETURN_LOCATION -- is Support- or
+        # fulfilment-owned, and none of them is anything an associate can state.
+        # Reading `required_details_complete = not awaiting` therefore made the
+        # verdict on the associate's work depend on Support having already done
+        # the work this message exists to request, and it rendered "Incomplete"
+        # on every handoff ever composed -- including this one, which carried a
+        # line, a quantity of four, SHIPPING_DAMAGE and NEW_IN_ORIGINAL_PACKAGING.
         #
-        # At handoff the case has no return records yet, so the completion
-        # profile is unresolved and `awaiting` holds exactly the *unresolved*
-        # dimensions: the facts nobody has established. That is what "required
-        # return information" means here, and an empty set is the only honest
-        # reading of complete.
+        # Before that it read `bool(selected)`, which was true the moment any
+        # item was picked and said "Complete" over a case whose own pane said
+        # "Waiting on RETURN_METHOD". Both readings were one line trying to be
+        # two answers.
+        #
+        # So: the associate's half is judged on what the associate supplies --
+        # a line, a quantity, and a reason where the release publishes a
+        # catalogue to choose one from -- and Support's half is named beside it
+        # rather than folded into it.
         #
         # `known` is false when the projection cannot be assembled at all -- an
-        # activity double, a narrower port. Reported as incomplete rather than
-        # guessed, because "we cannot tell" must never render as "Complete".
+        # activity double, a narrower port. The outstanding list is then empty
+        # rather than guessed, because "we cannot tell" must never render as
+        # "nothing is outstanding".
         known, _business_complete, awaiting, _revision = await self._assess_completion(
             request.case_id
         )
-        required_details_complete = known and not awaiting
+        outstanding_support_dimensions = tuple(awaiting) if known else ()
+        required_details_complete = _associate_described_the_return(
+            selected, reason_required=self._reason_is_published()
+        )
 
         item_methods = self._derive_item_methods(selected, details)
 
@@ -1201,6 +1283,8 @@ class ReturnCaseActivities:
             ),
             order_confirmed=order_reference is not None,
             required_details_complete=required_details_complete,
+            outstanding_support_dimensions=outstanding_support_dimensions,
+            support_state_known=known,
         )
         return SupportRequestDraft(
             text=handoff.text + await self._drafted_note(request.case_id, facts),
@@ -1328,6 +1412,20 @@ class ReturnCaseActivities:
         if not drafted.strip():
             return ""
         return f"\nAdditional note from the return assistant:\n{drafted.strip()}\n"
+
+    def _reason_is_published(self) -> bool:
+        """Whether the release gives the associate a reason catalogue to pick from.
+
+        A deployment that publishes none is not one where every return is
+        undescribed; it is one where there is no reason to state. Requiring an
+        answer nobody can give would report every handoff incomplete on a
+        release that never asked for the field.
+        """
+        configuration = self._configuration() if self._configuration else None
+        if configuration is None:
+            return False
+        vocabulary = getattr(configuration, "selection_vocabulary", None)
+        return bool(getattr(vocabulary, "reasons", ()))
 
     async def _selected_items(self, case_id: str) -> list[Mapping[str, Any]]:
         """The lines the associate named that no RMA covers yet.
