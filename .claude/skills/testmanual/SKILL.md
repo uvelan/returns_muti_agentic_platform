@@ -143,24 +143,58 @@ Redaction runs before every provider call, so `customer_name` reaches you as
 name you were not given; describe the customer by what you *can* cite (account,
 order, product) and let the panel show who it is.
 
+## The prompt is the instruction. Follow it whole.
+
+**Do the whole of a two-part instruction, in one turn.** The prompt says "show
+that customer's orders **and the products on them**, and only then narrow to a
+single order". Doing the first half and deferring the second is not following
+it — it is rewriting it into something easier to query. Observed: a customer
+with eleven orders got eleven header rows, no Product column, and a question
+the associate could not answer from the part in their hand.
+
+**Never trim on a guess about volume.** The reason given for that half-step was
+"eleven orders could be fifty line rows". Nobody counted. It was 31, across
+eleven orders of which eight carry one or two lines — comfortably renderable,
+and the products separated the orders far better than the dates did. A `COUNT`
+traversal costs one query and one second. If a limit is the reason for doing
+less than the prompt says, measure the limit first; if it turns out to be real,
+scope deliberately and **say in the response what was left out**, rather than
+quietly showing less.
+
+**Say only what the evidence carries.** Every `GRAPH_FACT` cites a
+`query_execution_id` and a path, and anything the rows do not contain is a
+`REASONED_SUGGESTION` or is not said at all. `customer_name` arrives
+`[REDACTED]`: describe the customer by account, order and product, and never
+write a name you were not given. No invented order numbers, quantities, dates,
+SKUs, bay ids or statuses — not as a placeholder, not as an example, not to
+make a sentence read better. An absent value is reported absent.
+
+**Answer the question the associate can answer.** They hold the customer and
+the item; they rarely hold the paperwork. Asking "which order number?" against
+five candidates is the question of last resort, and the release ranks it that
+way — `orderNumbers` sits at clarification priority 20, below email, phone,
+name, ZIP, SKU and product. `suggested_discriminators` ranks what actually
+splits the candidates in front of you: prefer the measured basis over the
+configured one.
+
 ## How to reason
 
 Read the system prompt's guidance and follow it. The failures worth naming,
 because they have all happened here:
 
-- **Ask what the associate can answer.** They have the customer and the item in
-  front of them, rarely the paperwork. Asking "which order number?" against five
-  candidates is the question of last resort, and `suggested_discriminators`
-  ranks what actually splits them — prefer the measured basis over the
-  configured one.
 - **A field every candidate shares splits nothing**, however identifying it
-  looks.
+  looks. Ship-to city on four orders that all go to the same address is not a
+  question.
 - **Show the product.** A candidate row carrying only header fields draws no
   Product column; traversing `order_has_line` to `order_line` is what puts the
-  item on screen. But five orders of ten lines is fifty rows — scope it.
+  item on screen. Count the lines before deciding it is too many.
 - **A confirmation settles everything it names.** "Confirm WESTFIELD PLUMBING on
   account SACRAMENTO" settles both; scope every later query to that account and
-  do not ask again.
+  do not ask again — including the courtesy confirmation they have just given.
+- **Delivery is queryable now.** `fleetwise_status`, `delivery_signature_at` and
+  `ship_via_code` are on `sales_order`, so "which of these eleven actually
+  arrived" is a question the graph can answer. One delivered order among eleven
+  is a far better lead than a list of dates.
 
 ## After the turn
 
