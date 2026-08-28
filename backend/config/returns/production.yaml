@@ -1215,6 +1215,27 @@ return_case:
   # Bay is advisory and sits in front of every return, so this is dead time on
   # the critical path before the Support handoff can begin. Deliberately short.
   bay_wait_seconds: 120
+  # A Support request nobody has described is a task a human cannot act on.
+  #
+  # The default is false, which opens the thread the moment the case is cleared
+  # and lets the detail follow -- and what Support received was a request whose
+  # own verification block read "Required Return Information: Incomplete", with
+  # no reason, no quantity and no condition, while the associate was still being
+  # asked for them in the chat. The first thing the human does with that is come
+  # back and ask.
+  #
+  # Turning it on is an operator's decision, which is why it defaults off, and
+  # this deployment is making it: wait for the description, and park rather than
+  # hand over a return nobody finished describing. The wait is satisfied by any
+  # surface that records a detail -- the item pane, the conversation, an
+  # operator -- and the case is asked directly, so answering the agent's
+  # question in chat counts.
+  return_details_required: true
+  # The same thirty minutes as the reservation hold above, and for the same
+  # reason: they bound one live counter conversation from two directions, and a
+  # selection whose hold has expired is a selection the associate is no longer
+  # making.
+  return_details_wait_seconds: 1800
   # How long a selected line's quantity is held for this case before the hold
   # expires and the units go back to everyone else (plan sect. 12.3). Wall
   # clock, not business hours: it bounds a live counter conversation, and a

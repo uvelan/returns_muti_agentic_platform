@@ -163,6 +163,23 @@ class CaseStore(Protocol):
         """Current value per fact name for a case. Empty when it has none."""
         ...
 
+    async def record_observed_facts(
+        self, case_id: str, observed_facts: tuple[dict[str, Any], ...]
+    ) -> tuple[str, ...]:
+        """Write what the associate has said since the case was created.
+
+        Not a widening of the agent's reach: it already writes exactly these
+        facts, on the turn that creates the case. What it could not do was write
+        the ones stated afterwards, so everything the associate said about the
+        return -- the reason, the quantity, the condition -- reached the
+        conversation and stopped there, while the case reported itself as a
+        return nobody had described.
+
+        Still the agent's own case and still only facts. Returns the names
+        actually written.
+        """
+        ...
+
     async def confirm_case(
         self,
         *,
@@ -435,6 +452,40 @@ def _capture_observed_facts(
     return tuple(fact.to_state() for fact in merged), unknown
 
 
+async def _record_on_the_case(
+    deps: GraphDependencies, state: dict[str, Any], captured: tuple[dict[str, Any], ...]
+) -> None:
+    """Put this turn's facts on the case, once there is a case to put them on.
+
+    Before confirmation there is nowhere to write and `confirm_case` flushes
+    what the conversation gathered. After it, this is the only path: the
+    associate answers "what is bringing it back" in the chat, and without this
+    the answer lives in the conversation state and nowhere the Support handoff,
+    the policy facts or the case pane can see it.
+
+    Failure is logged and swallowed. The facts are still in the conversation and
+    the next turn writes them again -- whereas failing the turn would refuse an
+    answer the associate has already given, over a write that retries by itself.
+    """
+    case_id = state.get("case_id")
+    if not case_id or not captured:
+        return
+    try:
+        written = await deps.case_store.record_observed_facts(str(case_id), captured)
+    except Exception:  # noqa: BLE001 - see the docstring
+        logger.warning(
+            "order_agent_case_facts_not_recorded",
+            extra={"case_id": case_id, "client_turn_id": state.get("client_turn_id")},
+            exc_info=True,
+        )
+        return
+    if written:
+        logger.info(
+            "order_agent_case_facts_recorded",
+            extra={"case_id": case_id, "facts": list(written)},
+        )
+
+
 def _pinned_grounding(state: dict[str, Any]) -> tuple[datetime, str]:
     """The turn's pinned as-of and session zone, or a loud failure.
 
@@ -622,6 +673,7 @@ def make_validate_action_node(deps: GraphDependencies) -> Any:
                 }
             raise OrderAgentFailure(exc.code, exc.message, retryable=False) from exc
         captured, unknown = _capture_observed_facts(deps, state, action)
+        await _record_on_the_case(deps, state, captured)
         if unknown:
             # Named, never stored. A fact nobody configured has no label, no
             # validation and no re-ask rule, and putting one into a case's

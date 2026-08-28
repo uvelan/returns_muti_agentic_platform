@@ -46,6 +46,7 @@ not in the graph is one no agent can tell an associate about.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from enum import StrEnum
@@ -606,6 +607,13 @@ class SupportOutcomeReceipt:
 #: it did before. The run loop already reads a missing receipt as "completion
 #: unknown", which is the honest answer for a worker that cannot produce one.
 #:
+#: How often the return-details wait asks the case, rather than only waiting on
+#: the signal. Bounded either side: often enough to catch a chat answer while
+#: the associate is still at the counter, rare enough that the default
+#: half-hour costs a handful of reads.
+_DETAILS_POLL_MIN_SECONDS: Final = 15
+_DETAILS_POLL_MAX_SECONDS: Final = 180
+
 #: Typed `Any` because `execute_activity(result_type=...)` is annotated `type`
 #: and a union is not one. What reaches the converter is the value, not the
 #: annotation.
@@ -1501,11 +1509,7 @@ class ReturnCaseWorkflow:
             return True
         await self._set_status(ReturnCaseStatus.GATHERING_INFO)
         try:
-            await workflow.wait_condition(
-                lambda: self._state.return_details_recorded or self._cancelled(),
-                timeout=timedelta(seconds=timings.return_details_wait_seconds),
-                timeout_summary="return-details-wait",
-            )
+            await self._wait_for_return_details(timings)
         except TimeoutError:
             workflow.logger.info(
                 "no return details were recorded for case %s; parking rather than "
@@ -1518,6 +1522,70 @@ class ReturnCaseWorkflow:
             )
             return False
         return not self._cancelled()
+
+    async def _wait_for_return_details(self, timings: ReturnCaseTimings) -> None:
+        """Wait for the signal, and ask the case in between.
+
+        Signal-only was the defect. `return_details_recorded` is sent by exactly
+        one surface -- the item-selection write -- so an associate who answered
+        the agent's question in the chat had described the return, the case knew
+        it, and this waited for a click that was never coming and then parked.
+
+        The signal stays the fast path; the poll is the correctness. Any surface
+        that records a return detail satisfies this now, because the question is
+        "has anyone described the return" and the case is the only thing that
+        can answer it.
+
+        The interval is a tenth of the budget, bounded either side: often enough
+        that a chat answer is picked up while the associate is still standing
+        there, rare enough that a thirty-minute wait costs ten reads rather than
+        a thread of them.
+        """
+        deadline = timings.return_details_wait_seconds
+        interval = max(_DETAILS_POLL_MIN_SECONDS, min(deadline // 10 or deadline, _DETAILS_POLL_MAX_SECONDS))
+        waited = 0
+        while waited < deadline:
+            step = min(interval, deadline - waited)
+            with contextlib.suppress(TimeoutError):
+                await workflow.wait_condition(
+                    lambda: self._state.return_details_recorded or self._cancelled(),
+                    timeout=timedelta(seconds=step),
+                    timeout_summary="return-details-wait",
+                )
+            if self._state.return_details_recorded or self._cancelled():
+                return
+            waited += step
+            if await self._case_describes_the_return():
+                self._state.return_details_recorded = True
+                return
+        raise TimeoutError("return-details-wait")
+
+    async def _case_describes_the_return(self) -> bool:
+        """Whether the case itself holds a return detail. Never fails the wait.
+
+        A read that could not be made is not evidence that nothing was said, so
+        an unreachable repository answers False and the wait continues to its
+        own deadline -- which is what it did before this existed.
+        """
+        try:
+            return bool(
+                await workflow.execute_activity(
+                    "case_has_return_details",
+                    RecordCaseCustomerInput(
+                        case_id=self._require_input().case_id,
+                        fact_id_seed=str(workflow.uuid4()),
+                    ),
+                    result_type=bool,
+                    start_to_close_timeout=_PERSIST_TIMEOUT,
+                    retry_policy=_BEST_EFFORT_RETRY,
+                )
+            )
+        except Exception:  # noqa: BLE001 - see the docstring
+            workflow.logger.warning(
+                "could not read whether case %s describes its return; still waiting",
+                self._require_input().case_id,
+            )
+            return False
 
     async def _open_support(self, timings: ReturnCaseTimings) -> None:
         workflow_input = self._require_input()

@@ -153,6 +153,69 @@ class RepositoryCaseStore:
             await self._append_observed(case_id, observed_facts)
         return ConfirmedCase(case_id=str(created["caseId"]), already_existed=already_existed)
 
+    async def record_observed_facts(
+        self, case_id: str, observed_facts: tuple[dict[str, Any], ...]
+    ) -> tuple[str, ...]:
+        """Write what the associate has said since the case was created.
+
+        `_append_observed` runs once, on the turn that creates the case, and
+        that was the whole of it -- so everything stated afterwards reached the
+        conversation and stopped there. The agent asked "what is bringing it
+        back", the associate answered in chat, and the answer was recorded
+        nowhere: not on the case, not in the handoff Support reads, not in the
+        facts the policy gate assembles. Only the item-selection pane could
+        record a return detail, and an associate who typed instead of clicking
+        described a return that the platform then reported as undescribed.
+
+        Appends only what the case does not already hold with the same value.
+        The log is append-only and the projection is newest-per-name, so a
+        changed value is a correction and belongs in it, while an unchanged one
+        is this turn re-stating what the last turn already wrote -- and writing
+        that would make the log say the associate answered the same question
+        twice.
+
+        Returns the names actually written, so the caller can tell "the
+        associate described the return" from "nothing new was said".
+        """
+        if not observed_facts:
+            return ()
+        held = await self.case_facts(case_id)
+        written: list[str] = []
+        for entry in observed_facts:
+            name = entry.get("name")
+            if not isinstance(name, str) or not name:
+                continue
+            if entry.get("status") not in {None, "USABLE", "CONFIRMATION_REQUIRED"}:
+                # The same admission rule `_append_observed` applies: a fact the
+                # conversation still owes the associate a question about --
+                # conflicting, ambiguous, invalid, stale -- is not yet something
+                # the case knows.
+                continue
+            value = entry.get("value")
+            if name in held and held[name] == value:
+                continue
+            await self._repository.append_case_fact(
+                fact_id=str(uuid.uuid4()),
+                case_id=case_id,
+                fact_name=name,
+                value=value,
+                agent_id="order-discovery-agent",
+                channel=FactChannel.CHANNEL_A,
+                acquisition_method=(
+                    FactAcquisition.DERIVED
+                    if entry.get("acquisition") == "DERIVED"
+                    else FactAcquisition.STATED
+                ),
+                # The turn the associate said it in, not the turn that wrote it.
+                # Stamping this write's turn would put every fact at the moment
+                # the case caught up, which is the record that hides a detail
+                # having been stated three turns before anyone recorded it.
+                turn_id=str(entry.get("turnId") or ""),
+                source_path="CONVERSATION",
+            )
+            written.append(name)
+        return tuple(written)
+
     async def _append_observed(
         self, case_id: str, observed_facts: tuple[dict[str, Any], ...]
     ) -> None:

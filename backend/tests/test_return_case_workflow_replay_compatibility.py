@@ -80,6 +80,23 @@ LEGACY_DRAFT_TEXT = (
 #: `draft_support_request` appears twice on purpose -- that is the guard working.
 ACTIVITY_RESULT_TYPES: dict[str, set[str]] = {
     "record_case_customer_identity": {"bool"},
+    # Added with the return-details wait, which stopped trusting a signal only
+    # one surface sends and started asking the case as well.
+    #
+    # A new activity call is a replay hazard in a way a new activity is not: a
+    # history that never recorded this call replays against code that makes it,
+    # and the sequences disagree. It is safe here because it sits behind
+    # `timings.return_details_required`, and `ReturnCaseTimings` is pinned onto
+    # the workflow input at start and never re-read -- so every execution begun
+    # before the release that turned it on keeps `False`, returns at the guard,
+    # and issues no command it did not issue before. Checked against the two
+    # in-flight cases when this landed; both predate the release.
+    #
+    # The window that would not be safe is a case started after the release was
+    # published but before this code was deployed: `True` pinned, no poll in its
+    # history. If that ordering is ever reversed, guard this with
+    # `workflow.patched` instead of relying on the pin.
+    "case_has_return_details": {"bool"},
     "request_bay_assignment": {"BayResultNotice"},
     "evaluate_case_eligibility": {"CaseEligibilityOutcome"},
     # `SupportRequestDraft` only. The un-patched branch no longer pins a result
