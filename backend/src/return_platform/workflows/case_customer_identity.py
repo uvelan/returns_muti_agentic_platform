@@ -79,10 +79,26 @@ class CaseCustomerIdentity:
 
     customer_name: str | None
     customer_id: str | None
+    #: The account the order sits on, and how to reach the customer on it.
+    #:
+    #: Read from the same document as the name, because a Support request that
+    #: names a customer nobody can telephone is a request whose first action is
+    #: to look them up. The order carries all of it -- `customer.address[]` is
+    #: what `contact_point` is exploded from -- so this is a read the platform
+    #: was already making and throwing away.
+    #:
+    #: Each independently nullable. An order with a phone and no email says so,
+    #: and no field is ever filled from a neighbour.
+    account: str | None = None
+    phone: str | None = None
+    email: str | None = None
 
     @property
     def empty(self) -> bool:
-        return self.customer_name is None and self.customer_id is None
+        return all(
+            value is None
+            for value in (self.customer_name, self.customer_id, self.account, self.phone, self.email)
+        )
 
 
 class CaseCustomerSource(Protocol):
@@ -94,8 +110,24 @@ class CaseCustomerSource(Protocol):
 
 
 def _resolve(record: Any, path: str) -> Any:
+    """The value at a dotted path, walking arrays as alternatives.
+
+    A list is searched rather than indexed: `customer.address` holds one row per
+    contact channel, and the phone is on whichever of them carries one. Taking
+    `[0]` would report "no phone" for a customer whose first address row happens
+    to be the one without it -- which, in the reference corpus, is most of them.
+    The first row that answers wins, which is the same preference rule the path
+    list itself expresses.
+    """
     current: Any = record
-    for segment in path.split("."):
+    for index, segment in enumerate(path.split(".")):
+        if isinstance(current, list):
+            remaining = ".".join(path.split(".")[index:])
+            for item in current:
+                found = _resolve(item, remaining)
+                if found is not _MISSING and found is not None:
+                    return found
+            return _MISSING
         if not isinstance(current, Mapping) or segment not in current:
             return _MISSING
         current = current[segment]
@@ -125,6 +157,9 @@ async def resolve_confirmed_order_customer(
     case_id: str,
     customer_name_paths: Sequence[str],
     customer_id_paths: Sequence[str],
+    account_paths: Sequence[str] = (),
+    phone_paths: Sequence[str] = (),
+    email_paths: Sequence[str] = (),
 ) -> CaseCustomerIdentity:
     """The customer on one case's confirmed order, or an empty identity.
 
@@ -133,7 +168,7 @@ async def resolve_confirmed_order_customer(
     or a failed read. They are logged apart and they mean the same thing to the
     caller, which is that this case cannot name its customer.
     """
-    if not customer_name_paths and not customer_id_paths:
+    if not customer_name_paths and not customer_id_paths and not account_paths:
         logger.debug("case_customer_unbound", extra={"case_id": case_id})
         return CaseCustomerIdentity(None, None)
 
@@ -169,6 +204,9 @@ async def resolve_confirmed_order_customer(
     identity = CaseCustomerIdentity(
         customer_name=_first_text(document, customer_name_paths),
         customer_id=_first_text(document, customer_id_paths),
+        account=_first_text(document, account_paths),
+        phone=_first_text(document, phone_paths),
+        email=_first_text(document, email_paths),
     )
     if identity.empty:
         logger.info(

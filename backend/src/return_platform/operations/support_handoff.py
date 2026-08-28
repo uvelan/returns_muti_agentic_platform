@@ -103,12 +103,25 @@ def _line(label: str, value: Any, *, indent: int = 0) -> str:
 class SupportHandoffCustomer:
     name: str | None = None
     reference: str | None = None
+    #: The account the order sits on, which is how a desk finds a customer whose
+    #: name several other customers share.
+    account: str | None = None
     #: The branch associate a carrier can reach about this return. Every one of
     #: these is optional by operator instruction and none may acquire a default:
     #: an invented email routes a label to nobody.
     contact_name: str | None = None
     contact_email: str | None = None
     contact_phone: str | None = None
+    #: The customer's own phone and email, off the order.
+    #:
+    #: A different person from the branch associate above, and shown only when
+    #: no associate was named -- so the block always offers somebody to contact
+    #: without ever implying the customer is the branch's own point of contact.
+    #: The associate fields are optional and mostly unfilled, and what Support
+    #: got in their place was three lines of "Not available" on a case whose
+    #: order carried a phone number and an email address all along.
+    customer_phone: str | None = None
+    customer_email: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -336,9 +349,23 @@ def compose_support_handoff(
     sections.append("Customer:")
     sections.append(_line("Customer Name", customer.name))
     sections.append(_line("Customer Reference", customer.reference))
-    sections.append(_line("Branch Associate", _safe(customer.contact_name)))
-    sections.append(_line("Branch Associate Email", _safe(customer.contact_email)))
-    sections.append(_line("Branch Associate Phone", _safe(customer.contact_phone)))
+    sections.append(_line("Account", customer.account))
+    # The branch associate when one was named, the customer's own details when
+    # none was. Never both, and always labelled as whichever it is: a desk that
+    # rings "the contact" needs to know whether it is reaching Ferguson or the
+    # person who bought the goods.
+    if _safe(customer.contact_name) or _safe(customer.contact_email) or _safe(
+        customer.contact_phone
+    ):
+        sections.append(_line("Branch Associate", _safe(customer.contact_name)))
+        sections.append(_line("Branch Associate Email", _safe(customer.contact_email)))
+        sections.append(_line("Branch Associate Phone", _safe(customer.contact_phone)))
+    else:
+        sections.append(
+            _line("Branch Associate", "Not recorded -- customer contact below")
+        )
+        sections.append(_line("Customer Phone", customer.customer_phone))
+        sections.append(_line("Customer Email", customer.customer_email))
     sections.append("")
 
     sections.append("Order:")

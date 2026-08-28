@@ -91,18 +91,45 @@ async def test_the_branch_associate_is_named_in_the_message_support_reads() -> N
     assert "Create or decline the RMA through the authoritative Support workflow." in drafted
 
 
-async def test_a_case_with_no_associate_says_so_rather_than_saying_nothing() -> None:
+async def test_a_case_with_no_associate_says_so_and_offers_the_customer() -> None:
     """Optional, so the ordinary return is not blocked -- and the absence is stated.
 
     The prose version omitted the sentence entirely, which left a reader unable
-    to tell "nobody was recorded" from "the message forgot to mention them". A
-    labelled `Not available` answers that.
+    to tell "nobody was recorded" from "the message forgot to mention them".
+    That property is unchanged; what replaces the three `Not available` lines is
+    the customer's own phone and email, which the order carried all along.
+    Support was reading a contact block with nobody in it on a case whose order
+    named somebody reachable.
     """
     drafted = await _draft()
 
-    assert f"- Branch Associate: {UNAVAILABLE}" in drafted
-    assert f"- Branch Associate Email: {UNAVAILABLE}" in drafted
-    assert f"- Branch Associate Phone: {UNAVAILABLE}" in drafted
+    # Stated, not omitted.
+    assert "- Branch Associate: Not recorded" in drafted
+    # And somebody to ring instead. Labelled as the customer, because a desk
+    # needs to know whether it is reaching Ferguson or the person who bought
+    # the goods.
+    assert "- Customer Phone:" in drafted
+    assert "- Customer Email:" in drafted
+
+
+@pytest.mark.asyncio
+async def test_a_named_associate_replaces_the_customer_contact() -> None:
+    """One contact or the other, never both.
+
+    A block offering the branch associate and the customer together invites a
+    reply to whichever line is read first, which is how a customer receives a
+    message meant for the desk.
+    """
+    drafted = await _draft(
+        branch_associate_name="Dana Whitfield",
+        branch_associate_email="dana@example.com",
+        customer_phone="555-0100",
+        customer_email="buyer@example.com",
+    )
+
+    assert "- Branch Associate: Dana Whitfield" in drafted
+    assert "- Customer Phone:" not in drafted
+    assert "buyer@example.com" not in drafted
 
 
 @pytest.mark.parametrize(
