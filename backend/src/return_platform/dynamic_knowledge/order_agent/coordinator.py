@@ -240,6 +240,35 @@ def _resume_update(
         "user_message": request.message,
         "client_turn_id": request.client_turn_id,
         "transcript": _stored_transcript(conversation_state),
+        # A resumed turn is a new turn, and the per-turn budgets start again.
+        #
+        # They did not, and the effect was a conversation that died of old age.
+        # A clarification pauses the graph; the associate's answer resumes the
+        # same checkpoint, and every counter came back with it -- so
+        # `max_reasoning_steps` stopped being "how long may one turn reason"
+        # and became "how long may this conversation be", spending two steps on
+        # every question the agent asked. Observed at the default of 8: the
+        # ninth action of a five-exchange discovery was refused as
+        # MAX_REASONING_STEPS_REACHED, one node after the case had been
+        # committed, so the case existed and the sentence saying so did not.
+        #
+        # The policy names which of them are per-turn --
+        # `max_graph_queries_per_turn`, `max_targeted_syncs_per_turn` -- and
+        # the rest of these belong to one attempt at answering: a correction is
+        # a retry of *this* action, a replan discards *this* turn's evidence,
+        # and a reasoning step is one step of the loop the error message
+        # already calls a turn.
+        #
+        # `clarifications_used` is deliberately absent. `max_clarifications` is
+        # the only budget that is about the conversation rather than the turn
+        # -- it bounds how many times an associate may be asked before the
+        # agent has to answer with what it has -- and resetting it here would
+        # remove the one ceiling on a loop of questions.
+        "reasoning_steps_used": 0,
+        "queries_used": 0,
+        "correction_attempts": 0,
+        "replans_used": 0,
+        "targeted_syncs_used": 0,
     }
     if not _has_pinned_grounding(paused_values):
         update["as_of"] = as_of.isoformat()

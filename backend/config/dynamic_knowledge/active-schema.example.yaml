@@ -139,13 +139,13 @@ agent_policies:
     standard_model_refs:
     - model://standard/reasoning-primary
     - model://standard/reasoning-secondary
-    max_reasoning_steps: 8
+    max_reasoning_steps: 32
     max_graph_queries_per_turn: 12
     max_correction_attempts: 2
-    max_clarifications: 3
+    max_clarifications: 10
     max_replans: 2
     max_targeted_syncs_per_turn: 3
     allowed_roles:
     - associate
     - support
-configuration_checksum: 1becd2d356693312c8ac404c9f56a2b9f830ad352493b9a4ac651ed05529b186
+configuration_checksum: e030247203d2277689eab772f4cdc9fa45969dff89f8688e68c20a7cb4b66085

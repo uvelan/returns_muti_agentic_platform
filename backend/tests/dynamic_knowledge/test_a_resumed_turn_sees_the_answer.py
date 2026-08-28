@@ -58,6 +58,36 @@ def test_the_answer_becomes_this_turns_message() -> None:
     assert _update()["user_message"] == ANSWER
 
 
+def test_the_per_turn_budgets_start_again() -> None:
+    """A resumed turn is a new turn, and its budgets are a turn's budgets.
+
+    They came back with the checkpoint, so `max_reasoning_steps` stopped being
+    "how long may one turn reason" and became "how long may this conversation
+    be" -- two steps spent on every question the agent asked. At the default of
+    8 the ninth action of a five-exchange discovery was refused, one node after
+    the case had been committed: the case existed and the sentence saying so
+    did not.
+    """
+    update = _update()
+
+    assert update["reasoning_steps_used"] == 0
+    assert update["queries_used"] == 0
+    assert update["correction_attempts"] == 0
+    assert update["replans_used"] == 0
+    assert update["targeted_syncs_used"] == 0
+
+
+def test_the_clarification_budget_is_not_reset() -> None:
+    """The one budget that is about the conversation, not the turn.
+
+    `max_clarifications` bounds how many times an associate may be asked before
+    the agent has to answer with what it has. Resetting it on the resume that
+    *delivers* an answer would remove the only ceiling on a loop of questions --
+    every question would refill the budget that limits questions.
+    """
+    assert "clarifications_used" not in _update()
+
+
 def test_the_transcript_carries_what_was_already_said() -> None:
     """Frozen at the pause, it showed the model an empty conversation.
 

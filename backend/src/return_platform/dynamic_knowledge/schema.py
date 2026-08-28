@@ -734,7 +734,7 @@ class AgentPolicy(BaseModel):
     allowed_roles: SortedStrings
     allowed_entity_ids: SortedStrings
     standard_model_refs: tuple[str, ...]
-    max_reasoning_steps: int = Field(default=8, ge=1, le=32)
+    max_reasoning_steps: int = Field(default=32, ge=1, le=32)
     max_graph_queries_per_turn: int = Field(default=12, ge=1, le=64)
     max_correction_attempts: int = Field(default=2, ge=0, le=5)
     max_clarifications: int = Field(default=3, ge=0, le=10)
