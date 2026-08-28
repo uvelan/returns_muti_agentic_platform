@@ -169,15 +169,23 @@ RETURN_RECORD_SHIPMENTS_FIELD: Final = "shipments"
 
 #: Where a record's return method comes from, in order of authority.
 #:
-#: **Neither exists in the case aggregate today.** `ReturnRecordView` has no
-#: `returnMethod` column and no writer records one as a case fact -- the method
-#: lives on the legacy `ReturnSessionView.approvedReturnMethod` and in the agent
-#: DTOs, neither of which the case path reads. So every record currently
-#: projects `returnMethod: None`, the completion profile stays unresolved,
-#: `awaiting` reports `RETURN_METHOD`, and `businessComplete` can never become
-#: true. That is the truthful answer, and the missing writer is specified in
-#: `docs/RETURN_METHOD_PERSISTENCE_SPEC.md`: a per-record column plus a
-#: per-record `return_method` fact, written by `record_support_outcome`.
+#: **The writer exists, on the Support-outcome path.**
+#: `RETURN_RECORD_MERGED_FIELDS` in `workflows/return_case_activities.py` carries
+#: `("returnMethod", "return_method", "return_method")`, and `_plan_for` merges
+#: it onto the record when a `SupportReturnRecord` states one. A case whose
+#: outcome named `PREPAID_PARCEL` resolves the dimension, `awaiting` empties and
+#: `businessComplete` becomes true -- verified end to end on 2026-08-28 against
+#: case `8f5bc333`, which went from `awaiting: ["RETURN_METHOD"]` to `[]` on the
+#: outcome that issued its RMA.
+#:
+#: This comment used to say the opposite -- that no writer existed anywhere and
+#: `businessComplete` could never be true -- and pointed at a
+#: `docs/RETURN_METHOD_PERSISTENCE_SPEC.md` that is not in the repository. It
+#: was read as evidence of a missing feature when what was actually missing was
+#: an outcome carrying a method: until one does, every record projects
+#: `returnMethod: None` and `awaiting` reports `RETURN_METHOD`, which is the
+#: truthful answer to "nobody has said how this is coming back" rather than a
+#: gap in the code.
 #:
 #: These names are the two places the assembler finds the method the moment
 #: something writes it. Record-level first, and this fallback second: it is
@@ -235,6 +243,25 @@ SUPPORT_OUTCOME_REASON_FACT: Final = "support_outcome_reason"
 _BAY_FACILITY_FACT: Final = "bay_warehouse_reference"
 _BAY_REFERENCE_FACT: Final = "bay_reference"
 _BAY_REASON_FACT: Final = "bay_reason"
+
+#: Goods booked in, written by `POST /api/cases/{case_id}/receipt`.
+#:
+#: The producer these four fields waited for. Until it existed the case path had
+#: no concept of arrival at all: a bay could be *recommended* days ahead of the
+#: goods, tracking could say a carrier had *delivered*, and neither is the
+#: warehouse saying it has the item -- so the lifecycle's "Reached warehouse"
+#: could never be true and a physically completed return could not be shown.
+#:
+#: Facts rather than a new collection, for the reason the bay facts are facts:
+#: the case's log is append-only and already carries who recorded what and when,
+#: which is exactly what a receipt is. A second receipt supersedes the first by
+#: the log's own newest-per-name rule, so a corrected count is a correction and
+#: not a second arrival.
+_RECEIVED_AT_FACT: Final = "warehouse_received_at"
+_RECEIVED_QUANTITY_FACT: Final = "warehouse_received_quantity"
+_INSPECTION_STATUS_FACT: Final = "warehouse_inspection_status"
+_RECEIPT_CONDITION_FACT: Final = "warehouse_received_condition"
+_WAREHOUSE_STATUS_FACT: Final = "warehouse_status"
 
 #: Where the restocking rate reaches the projection from.
 #:
@@ -413,6 +440,28 @@ def _fact(facts: Mapping[str, Mapping[str, Any]], name: str) -> object:
 
 def _fact_text(facts: Mapping[str, Mapping[str, Any]], name: str) -> str | None:
     return _text(_fact(facts, name))
+
+
+def _fact_instant(facts: Mapping[str, Mapping[str, Any]], name: str) -> datetime | None:
+    """A fact whose value is a moment. Unreadable reads as absent, never as now."""
+    return _moment(_fact(facts, name))
+
+
+def _fact_int(facts: Mapping[str, Mapping[str, Any]], name: str) -> int | None:
+    """A fact whose value is a count.
+
+    The log holds whatever the writer put there, and a quantity that arrived as
+    a string is a quantity nobody can add up -- so it is read as a count when it
+    is one and absent when it is not, rather than coerced into a number the
+    writer never stated.
+    """
+    value = _fact(facts, name)
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return None
+    return _count(value)
 
 
 # ----------------------------------------------------------------------------
@@ -913,7 +962,24 @@ def project_warehouse(
     facility = _fact_text(facts, _BAY_FACILITY_FACT)
     bay = _fact_text(facts, _BAY_REFERENCE_FACT)
     reason = _fact_text(facts, _BAY_REASON_FACT)
-    if facility is None and bay is None and reason is None:
+    received_at = _fact_instant(facts, _RECEIVED_AT_FACT)
+    received_quantity = _fact_int(facts, _RECEIVED_QUANTITY_FACT)
+    inspection = _fact_text(facts, _INSPECTION_STATUS_FACT)
+    condition = _fact_text(facts, _RECEIPT_CONDITION_FACT)
+    warehouse_status = _fact_text(facts, _WAREHOUSE_STATUS_FACT)
+    if all(
+        value is None
+        for value in (
+            facility,
+            bay,
+            reason,
+            received_at,
+            received_quantity,
+            inspection,
+            condition,
+            warehouse_status,
+        )
+    ):
         return None
     return WarehouseProjection(
         facilityId=facility,
@@ -921,9 +987,18 @@ def project_warehouse(
         facilityName=None,
         bayId=bay,
         bayReason=reason,
-        # The seven below are left to their declared `None` rather than written
-        # out, so that adding a producer is an edit here and not a search for
-        # which of ten arguments was the honest one.
+        receivedAt=received_at,
+        receivedQuantity=received_quantity,
+        inspectionStatus=inspection,
+        # The condition somebody inspected on arrival, which is a different
+        # statement from the condition the associate claimed at selection --
+        # `case_return_items.condition`. Read from the receipt only, so a
+        # customer's claim is never relabelled as a warehouse finding.
+        condition=condition,
+        warehouseStatus=warehouse_status,
+        # `disposition` and `qaStatus` still have no producer. Left to their
+        # declared `None` rather than filled from the receipt: what happens to
+        # the goods afterwards is a separate decision by a separate actor.
     )
 
 

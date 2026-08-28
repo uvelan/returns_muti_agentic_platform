@@ -81,6 +81,7 @@ from return_platform.operations.case_projection import (
     resolve_method_requirements,
     stage_rank,
 )
+from return_platform.operations.case_projection import assembly
 from return_platform.operations.case_projection import contract as contract_module
 from return_platform.operations.case_projection.completion import ROUTE_VERIFICATION_DIMENSIONS
 from return_platform.policy import EligibilityDecision, PolicyReasonCode, PolicyRoute
@@ -377,11 +378,13 @@ def test_the_warehouse_block_declares_the_phase_9_fields_and_nothing_more() -> N
     """Plan sect. 13 Phase 9's ten fields, plus `bayReason`.
 
     Frozen here so a field cannot be added without somebody stating its
-    producer. Three of the eleven have one -- `facilityId`, `bayId` and
-    `bayReason`, all from the bay facts `ReturnCaseWorkflow` writes -- and
-    `assembly.project_warehouse` names the absent producer for each of the other
-    eight in its docstring. A field nothing can fill is a field a pane will
-    eventually fill for it.
+    producer. Eight of the eleven have one now -- `facilityId`, `bayId` and
+    `bayReason` from the bay facts `ReturnCaseWorkflow` writes, and
+    `receivedAt`, `receivedQuantity`, `inspectionStatus`, `condition` and
+    `warehouseStatus` from the receipt `POST /api/cases/{case_id}/receipt`
+    records. `facilityName`, `disposition` and `qaStatus` still have none, and
+    `assembly.project_warehouse` names the absence for each. A field nothing can
+    fill is a field a pane will eventually fill for it.
     """
     assert set(contract_module.WarehouseProjection.model_fields) == {
         "facilityId",
@@ -396,6 +399,66 @@ def test_the_warehouse_block_declares_the_phase_9_fields_and_nothing_more() -> N
         "qaStatus",
         "warehouseStatus",
     }
+
+
+def test_a_receipt_reaches_the_warehouse_block() -> None:
+    """The producer those four fields waited for.
+
+    Before it, a case could be recommended a bay days ahead of the goods and a
+    carrier could report `delivered`, and neither made the platform able to say
+    the warehouse had the item -- so "Reached warehouse" could never be true.
+    """
+    warehouse = assembly.project_warehouse(
+        {
+            "warehouse_received_at": {"value": "2026-08-28T14:05:00+00:00"},
+            "warehouse_received_quantity": {"value": 4},
+            "warehouse_inspection_status": {"value": "PASSED"},
+            "warehouse_received_condition": {"value": "DAMAGED_IN_TRANSIT"},
+            "warehouse_status": {"value": "RECEIVED"},
+        }
+    )
+
+    assert warehouse is not None
+    assert warehouse.receivedAt is not None
+    assert warehouse.receivedQuantity == 4
+    assert warehouse.inspectionStatus == "PASSED"
+    assert warehouse.warehouseStatus == "RECEIVED"
+    # The receiver's finding, which is a different statement from the condition
+    # the associate claimed at selection. Read from the receipt only, so a
+    # customer's claim is never relabelled as a warehouse finding.
+    assert warehouse.condition == "DAMAGED_IN_TRANSIT"
+
+
+def test_a_receipt_of_nothing_is_still_a_receipt() -> None:
+    """Zero units arrived is an answer. Absent is a different one.
+
+    A consignment that turned up empty is a receipt and a problem; one that
+    never turned up is neither. Reading `0` as "no receipt" would merge them.
+    """
+    warehouse = assembly.project_warehouse(
+        {
+            "warehouse_received_at": {"value": "2026-08-28T14:05:00+00:00"},
+            "warehouse_received_quantity": {"value": 0},
+        }
+    )
+
+    assert warehouse is not None
+    assert warehouse.receivedQuantity == 0
+
+
+def test_a_bay_recommendation_alone_is_not_a_receipt() -> None:
+    """Placement runs pre-arrival by design and must not read as arrival."""
+    warehouse = assembly.project_warehouse(
+        {
+            "bay_warehouse_reference": {"value": "596"},
+            "bay_reason": {"value": "PRE_ARRIVAL_NOT_ALLOWED"},
+        }
+    )
+
+    assert warehouse is not None
+    assert warehouse.receivedAt is None
+    assert warehouse.receivedQuantity is None
+    assert warehouse.warehouseStatus is None
 
 
 def test_the_settlement_block_cannot_express_a_started_producer() -> None:

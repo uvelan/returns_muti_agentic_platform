@@ -63,7 +63,10 @@ from return_platform.security.authorization import (
     require_capability,
     require_read_roles,
 )
-from return_platform.security.capabilities import RETURNS_POLICY_OVERRIDE
+from return_platform.security.capabilities import (
+    RETURNS_LOGISTICS_ACT,
+    RETURNS_POLICY_OVERRIDE,
+)
 from return_platform.security.principal import Principal
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 from return_platform.workflows.case_divergence import (
@@ -828,6 +831,116 @@ def _temporal_client(request: Request) -> Any | None:
     """
     resources = getattr(request.app.state, "resources", None)
     return getattr(resources, "temporal", None)
+
+
+class CaseReceiptRequest(BaseModel):
+    """Goods booked in at the warehouse. What a receiver states, and no more.
+
+    `receivedAt` is the server clock and cannot be supplied, for the reason the
+    policy override derives its own timestamp: a caller-supplied audit field is
+    not audit. A receipt backdated by the client is exactly the value a dispute
+    would turn on.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: How many units actually arrived, which is frequently not how many the
+    #: associate said were coming. Zero is a real answer -- a consignment that
+    #: arrived empty is a receipt, and a different problem from one that never
+    #: arrived at all.
+    receivedQuantity: int = Field(ge=0, le=100_000)
+    #: The receiver's own finding, in the deployment's inspection vocabulary.
+    #: Distinct from the condition the associate claimed at selection: this one
+    #: is somebody looking at the goods.
+    inspectionStatus: str | None = Field(default=None, min_length=1, max_length=128)
+    condition: str | None = Field(default=None, min_length=1, max_length=128)
+    #: Where the goods now are in the receiving process. Free text against the
+    #: deployment's own ladder rather than an enum here, because the platform
+    #: publishes no warehouse-status catalogue to validate against and a
+    #: `Literal` would be this module inventing one.
+    warehouseStatus: str | None = Field(default=None, min_length=1, max_length=128)
+    #: Idempotency, the same shape the override uses: a retried request writes
+    #: the same fact ids rather than a second arrival.
+    idempotencyKey: str = Field(min_length=1, max_length=128)
+
+
+@router.post("/{case_id}/receipt", response_model=APIResponse[CaseProjection])
+async def record_case_receipt(
+    case_id: str,
+    payload: CaseReceiptRequest,
+    request: Request,
+    actor: str = Depends(require_capability(RETURNS_LOGISTICS_ACT)),
+) -> APIResponse[CaseProjection]:
+    """The goods arrived. The producer four projection fields were waiting for.
+
+    Until this existed the case path had no concept of arrival at all.
+    `WarehouseProjection.receivedAt`, `receivedQuantity`, `inspectionStatus` and
+    `warehouseStatus` were declared, documented as having no producer, and
+    always `None` -- so the lifecycle's "Reached warehouse" could never be true
+    and a physically completed return could not be shown on any screen.
+
+    **A recommended bay is not goods booked in**, which is why this is a
+    separate act from placement: `CaseBayPlacement` runs pre-arrival by design
+    and typically predates the goods by days. **Nor is a carrier's `delivered`
+    scan**: that is the carrier saying it handed the parcel over, not the
+    warehouse saying it has the item and counted it. Deriving a receipt from
+    either would be the invention this endpoint exists to replace.
+
+    **Written as facts, not a new collection.** The case log is append-only and
+    already carries who recorded what and when, which is what a receipt is. A
+    corrected count is a second receipt superseding the first under the log's
+    newest-per-name rule, so the correction is visible rather than destructive.
+
+    **Accepted on a closed case.** Goods arriving after closure is the normal
+    path for a prepaid parcel -- the customer's obligation ended when they
+    handed it over, and the credit is issued externally days before the dock
+    sees anything. Recording the arrival does not reopen the case; refusing it
+    would leave the platform unable to say where the goods went.
+    """
+    repository = resolve_operational_repository(request)
+    tenant_id = str(getattr(request.state, "tenant_id", "default"))
+    case = await repository.get_case(case_id)
+    if case is None or case.get("tenantId") != tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "CASE_NOT_FOUND",
+                "message": f"Case {case_id} does not exist.",
+                "retryable": False,
+            },
+        )
+
+    received_at = datetime.now(UTC)
+    values: list[tuple[str, Any]] = [
+        ("warehouse_received_at", received_at.isoformat()),
+        ("warehouse_received_quantity", payload.receivedQuantity),
+    ]
+    if payload.inspectionStatus is not None:
+        values.append(("warehouse_inspection_status", payload.inspectionStatus))
+    if payload.condition is not None:
+        values.append(("warehouse_received_condition", payload.condition))
+    if payload.warehouseStatus is not None:
+        values.append(("warehouse_status", payload.warehouseStatus))
+
+    for name, value in values:
+        await repository.append_case_fact(
+            # Deterministic in the key, so a retried request re-writes the same
+            # ids and the append is idempotent rather than a second arrival.
+            fact_id=f"{name}-{payload.idempotencyKey}",
+            case_id=case_id,
+            fact_name=name,
+            value=value,
+            agent_id=actor,
+            channel=FactChannel.SYSTEM,
+            acquisition_method=FactAcquisition.OBSERVED,
+            source_system="RETURN_PLATFORM_WAREHOUSE",
+            source_path="CASE_RECEIPT",
+            observed_at=received_at,
+        )
+
+    # The freshly assembled case, so the caller sees the receipt it just
+    # recorded rather than having to poll for it.
+    return await get_case(case_id, request)
 
 
 @router.post(

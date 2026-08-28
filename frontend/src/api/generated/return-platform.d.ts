@@ -614,6 +614,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cases/{case_id}/receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Case Receipt
+         * @description The goods arrived. The producer four projection fields were waiting for.
+         *
+         *     Until this existed the case path had no concept of arrival at all.
+         *     `WarehouseProjection.receivedAt`, `receivedQuantity`, `inspectionStatus` and
+         *     `warehouseStatus` were declared, documented as having no producer, and
+         *     always `None` -- so the lifecycle's "Reached warehouse" could never be true
+         *     and a physically completed return could not be shown on any screen.
+         *
+         *     **A recommended bay is not goods booked in**, which is why this is a
+         *     separate act from placement: `CaseBayPlacement` runs pre-arrival by design
+         *     and typically predates the goods by days. **Nor is a carrier's `delivered`
+         *     scan**: that is the carrier saying it handed the parcel over, not the
+         *     warehouse saying it has the item and counted it. Deriving a receipt from
+         *     either would be the invention this endpoint exists to replace.
+         *
+         *     **Written as facts, not a new collection.** The case log is append-only and
+         *     already carries who recorded what and when, which is what a receipt is. A
+         *     corrected count is a second receipt superseding the first under the log's
+         *     newest-per-name rule, so the correction is visible rather than destructive.
+         *
+         *     **Accepted on a closed case.** Goods arriving after closure is the normal
+         *     path for a prepaid parcel -- the customer's obligation ended when they
+         *     handed it over, and the credit is issued externally days before the dock
+         *     sees anything. Recording the arrival does not reopen the case; refusing it
+         *     would leave the platform unable to say where the goods went.
+         */
+        post: operations["record_case_receipt_api_cases__case_id__receipt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cases/{case_id}/recovery": {
         parameters: {
             query?: never;
@@ -5854,6 +5898,27 @@ export interface components {
              */
             updatedAt: string;
             warehouse?: components["schemas"]["WarehouseProjection"] | null;
+        };
+        /**
+         * CaseReceiptRequest
+         * @description Goods booked in at the warehouse. What a receiver states, and no more.
+         *
+         *     `receivedAt` is the server clock and cannot be supplied, for the reason the
+         *     policy override derives its own timestamp: a caller-supplied audit field is
+         *     not audit. A receipt backdated by the client is exactly the value a dispute
+         *     would turn on.
+         */
+        CaseReceiptRequest: {
+            /** Condition */
+            condition?: string | null;
+            /** Idempotencykey */
+            idempotencyKey: string;
+            /** Inspectionstatus */
+            inspectionStatus?: string | null;
+            /** Receivedquantity */
+            receivedQuantity: number;
+            /** Warehousestatus */
+            warehouseStatus?: string | null;
         };
         /**
          * CaseRecoveryResult
@@ -11223,6 +11288,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_PolicyOverrideResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_case_receipt_api_cases__case_id__receipt_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CaseReceiptRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_CaseProjection_"];
                 };
             };
             /** @description Validation Error */

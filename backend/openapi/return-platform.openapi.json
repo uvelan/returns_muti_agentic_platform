@@ -6827,6 +6827,69 @@
         "title": "CaseProjection",
         "type": "object"
       },
+      "CaseReceiptRequest": {
+        "additionalProperties": false,
+        "description": "Goods booked in at the warehouse. What a receiver states, and no more.\n\n`receivedAt` is the server clock and cannot be supplied, for the reason the\npolicy override derives its own timestamp: a caller-supplied audit field is\nnot audit. A receipt backdated by the client is exactly the value a dispute\nwould turn on.",
+        "properties": {
+          "condition": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "idempotencyKey": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Idempotencykey",
+            "type": "string"
+          },
+          "inspectionStatus": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inspectionstatus"
+          },
+          "receivedQuantity": {
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Receivedquantity",
+            "type": "integer"
+          },
+          "warehouseStatus": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warehousestatus"
+          }
+        },
+        "required": [
+          "receivedQuantity",
+          "idempotencyKey"
+        ],
+        "title": "CaseReceiptRequest",
+        "type": "object"
+      },
       "CaseRecoveryResult": {
         "additionalProperties": false,
         "description": "What a relaunch actually did. Never a bare 200.\n\n`action` rather than a success flag, because \"did not relaunch\" has four\nmeanings -- already running, legitimately terminal, host unreachable, start\nrefused -- and an operator who cannot tell them apart cannot act on any of\nthem.",
@@ -20050,6 +20113,59 @@
           }
         },
         "summary": "Override Case Policy",
+        "tags": [
+          "Cases"
+        ]
+      }
+    },
+    "/api/cases/{case_id}/receipt": {
+      "post": {
+        "description": "The goods arrived. The producer four projection fields were waiting for.\n\nUntil this existed the case path had no concept of arrival at all.\n`WarehouseProjection.receivedAt`, `receivedQuantity`, `inspectionStatus` and\n`warehouseStatus` were declared, documented as having no producer, and\nalways `None` -- so the lifecycle's \"Reached warehouse\" could never be true\nand a physically completed return could not be shown on any screen.\n\n**A recommended bay is not goods booked in**, which is why this is a\nseparate act from placement: `CaseBayPlacement` runs pre-arrival by design\nand typically predates the goods by days. **Nor is a carrier's `delivered`\nscan**: that is the carrier saying it handed the parcel over, not the\nwarehouse saying it has the item and counted it. Deriving a receipt from\neither would be the invention this endpoint exists to replace.\n\n**Written as facts, not a new collection.** The case log is append-only and\nalready carries who recorded what and when, which is what a receipt is. A\ncorrected count is a second receipt superseding the first under the log's\nnewest-per-name rule, so the correction is visible rather than destructive.\n\n**Accepted on a closed case.** Goods arriving after closure is the normal\npath for a prepaid parcel -- the customer's obligation ended when they\nhanded it over, and the credit is issued externally days before the dock\nsees anything. Recording the arrival does not reopen the case; refusing it\nwould leave the platform unable to say where the goods went.",
+        "operationId": "record_case_receipt_api_cases__case_id__receipt_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaseReceiptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_CaseProjection_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Case Receipt",
         "tags": [
           "Cases"
         ]
