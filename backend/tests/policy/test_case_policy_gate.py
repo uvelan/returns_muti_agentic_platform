@@ -344,13 +344,29 @@ class _Runtime:
 
 @pytest.fixture(scope="module")
 def configuration() -> ReturnPlatformConfiguration:
-    """The shipped release, policy and all.
+    """The shipped release, policy and all, with the gate switched on.
 
     Loaded rather than hand-built: the claim "the Ferguson rule set is live on
     the case path" is only worth something if the rule set under test is the one
     a container would activate.
+
+    `policy_evaluation.enabled` is the one value overridden, and only here. The
+    shipped file suspends the gate on this development host -- a deployment
+    switch, stated in configuration so it survives a reset -- and every test
+    below is about what the gate *decides*. Depending on that switch would mean
+    a deployment choice silently turning twenty-eight assertions into
+    "SKIPPED_BY_CONFIGURATION", which is not a rule set anyone reviewed. The
+    skip itself is covered by its own tests, against a configuration that says
+    so explicitly.
     """
-    return load_return_configuration(CONFIGURATION_PATH).configuration
+    loaded = load_return_configuration(CONFIGURATION_PATH).configuration
+    return loaded.model_copy(
+        update={
+            "policy_evaluation": loaded.policy_evaluation.model_copy(
+                update={"enabled": True, "disabled_reason": None}
+            )
+        }
+    )
 
 
 @pytest.fixture(scope="module")

@@ -166,8 +166,19 @@ def test_a_field_the_candidates_disagree_on_outranks_one_they_share(deps: _Deps)
         assert "every remaining candidate has the same value" in states["reason"]
 
     keys = [item.get("intentKey") for item in ranked]
-    assert keys.index("cities") < keys.index("orderNumbers"), (
-        f"the configured first question still outranks the field that splits them: {keys}"
+    # A measured split beats an unprofiled configured field. Compared against
+    # whichever field that is rather than against `orderNumbers`, which the
+    # release has since demoted to the question of last resort and which no
+    # longer reaches this list at all -- the assertion was reading a ranking
+    # rule off one row of the priority table.
+    unprofiled = [
+        item.get("intentKey")
+        for item in ranked
+        if item.get("basis") == "CONFIGURED_PRIORITY" and item.get("intentKey") != "cities"
+    ]
+    assert unprofiled, f"nothing left to outrank: {keys}"
+    assert all(keys.index("cities") < keys.index(other) for other in unprofiled), (
+        f"the configured questions still outrank the field that splits them: {keys}"
     )
 
 

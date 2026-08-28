@@ -103,8 +103,20 @@ def test_an_unprofiled_field_is_ranked_by_configured_order_and_says_so(
     assert ranked
     assert {item.basis for item in ranked} == {DiscriminatorBasis.CONFIGURED.value}
     assert "not profiled" in ranked[0].reason
-    # Highest configured priority first: the order number, at 120.
-    assert ranked[0].intent_key == "orderNumbers"
+    # Highest configured priority first -- read from the catalogue rather than
+    # named, because which field that is, is the operator's to decide. It was
+    # `orderNumbers` at 120 until the release demoted asking for paperwork below
+    # every detail an associate can answer from memory; pinning the name here
+    # made a configuration change look like a ranking defect.
+    expected = max(
+        (field for field in catalogue.fields if field.intent_key == ranked[0].intent_key),
+        key=lambda field: field.clarification_priority,
+    )
+    assert all(
+        expected.clarification_priority >= field.clarification_priority
+        for field in catalogue.fields
+        if field.intent_key in {item.intent_key for item in ranked}
+    )
 
 
 def test_a_measured_field_outranks_a_higher_priority_unprofiled_one(
@@ -317,7 +329,13 @@ def test_zero_results_asks_for_an_independent_anchor(
     )
 
     assert "an independent anchor is worth more" in ranked[0].reason
-    assert ranked[0].intent_key == "orderNumbers"
+    # An anchor, and the best-ranked one the operator offers. Not `orderNumbers`
+    # by name: the release moved the order number to the question of last resort
+    # -- "an associate calling about a customer has the customer in front of
+    # them and rarely the paperwork" -- so the top anchor is now the email, and
+    # a test naming the field was asserting the priority table rather than the
+    # zero-result rule it is about.
+    assert ranked[0].intent_key == "emails"
 
 
 def test_a_signal_already_given_is_not_asked_for_again(

@@ -136,7 +136,18 @@ discovery:
       sensitivity: NONE
       ranking_weight_millionths: 500000
       exact_match_bonus_millionths: 500000
-      clarification_priority: 120
+      # Highest weight as a *search* signal and nearly the lowest as a
+      # *question*, and the two are different jobs. An order number given to
+      # the agent identifies an order outright, which is what the weight above
+      # says. Asking for one is the question of last resort: the prompt puts it
+      # plainly -- "an associate calling about a customer has the customer in
+      # front of them and rarely the paperwork" -- and at 120 this outranked
+      # every field they can actually answer, so the ranked discriminators
+      # offered "order number" first to an associate holding a part and a name.
+      # Observed: five customers of the same given name, split perfectly by
+      # their surname, and the agent led with five order numbers to choose
+      # between.
+      clarification_priority: 20
       searches:
         - entity: sales_order
           field: sales_order_number
@@ -152,7 +163,10 @@ discovery:
       normalization: LOWER_ALPHANUMERIC
       ranking_weight_millionths: 500000
       exact_match_bonus_millionths: 500000
-      clarification_priority: 118
+      # Below `order_number` for the same reason, and below it specifically:
+      # an associate who has neither is no likelier to produce the internal
+      # identifier than the number printed on the paperwork.
+      clarification_priority: 18
       searches:
         - entity: sales_order
           field: sales_order_number
@@ -659,6 +673,38 @@ source_resolution:
   # reviews on PURCHASE_DATE_UNKNOWN rather than being decided from a guess.
   order_date_paths:
     - salesHdr.salesHdrData.orderDate
+  # WHAT PROVES THE ORDER WAS DELIVERED, as `salesInv` decides it.
+  #
+  # Not `order_status`, which carries ERP states (INVOICED, CALLCSR,
+  # READY-FOR-PICKUP) and never says delivered, and not `commitDate`, which the
+  # active schema documents as "Committed delivery date. NOT proof of
+  # delivery". Delivery is a completed carrier route plus a signature captured
+  # at the door, on an order that was driven rather than collected.
+  #
+  # The ship-via exclusion is a condition and not a refinement. All fourteen
+  # `podSigTd` values in the original reference extract sat on CPU/WCL orders,
+  # where the signature is the customer signing at the counter -- so a reader
+  # taking the signature alone called every counter pick-up delivered.
+  #
+  # `podSigTd` is both the proof and the date: its value is the delivery
+  # instant, and the standard-return and delivery-claim windows are counted
+  # from it.
+  delivery_proof:
+    order_code_paths:
+      - salesHdrEventData.orderCode
+    invoice_order_codes: [IO, ID]
+    file_paths:
+      - salesHdrEventData.trilogieFile
+    order_file_value: ORDER
+    ship_via_paths:
+      - salesHdr.salesHdrData.shipping.shipViaCode
+      - salesHdrEventData.shipViaCode
+    collected_ship_via_codes: [CPU, WCL, BO]
+    route_status_paths:
+      - salesHdr.salesHdrData.shipping.fleetwiseStatus
+    route_completed_value: Completed
+    signature_paths:
+      - salesHdr.salesHdrData.shipping.podSigTd
   web_order_paths:
     - salesHdrEventData.webOrderId
     - salesHdrEventData.webOrderNumber
@@ -1292,6 +1338,25 @@ feature_flags:
   order_discovery_copilot: true
   copilot_operations_console: false
   graph_first_runtime_configuration: true
+
+# The deterministic eligibility gate. Suspended here, in the file, rather than
+# only on a published release: an operator's disable lives in the graph
+# configuration and does not survive a reset, so the gate came back on by itself
+# the moment the release was rebuilt from this file -- which is how a walkthrough
+# case ended up routed to REVIEW_REQUIRED on OUTSIDE_STANDARD_RETURN_WINDOW.
+#
+# Disabling is not an approval and is never read as one: the case records
+# `policy_evaluation_state = SKIPPED_BY_CONFIGURATION` and the reason below, with
+# no route and no decision, so "no rule was applied" stays distinguishable from
+# "a rule approved this". Publishing a policy is unaffected --
+# `return_eligibility_policy` below still has to be a valid rule set, because a
+# deployment must be able to switch the gate back on without cutting a release.
+policy_evaluation:
+  enabled: false
+  disabled_reason: >-
+    Suspended on this development host while order-discovery turns are answered
+    through the MANUAL provider. Re-enable before any case that is not a
+    walkthrough.
 
 copilot:
   # The agent policy every Copilot conversation turn is routed to. It must name

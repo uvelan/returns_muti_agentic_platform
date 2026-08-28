@@ -68,8 +68,20 @@ def configuration() -> ReturnPlatformConfiguration:
     Declared here rather than imported from the gate module: importing a fixture
     by name shadows every helper parameter that shares it, and the two helpers
     below both take a release to modify.
+
+    `policy_evaluation.enabled` is pinned on for the reason the gate module
+    gives: the shipped file suspends the gate on this development host, and a
+    deployment switch must not turn a test about what the evaluator decides into
+    a test that it was skipped.
     """
-    return load_return_configuration(CONFIGURATION_PATH).configuration
+    loaded = load_return_configuration(CONFIGURATION_PATH).configuration
+    return loaded.model_copy(
+        update={
+            "policy_evaluation": loaded.policy_evaluation.model_copy(
+                update={"enabled": True, "disabled_reason": None}
+            )
+        }
+    )
 
 
 def _without_seller_schedule(release: ReturnPlatformConfiguration) -> ReturnPlatformConfiguration:
