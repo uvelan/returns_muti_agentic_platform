@@ -1054,6 +1054,11 @@ export function ReturnCopilotPage() {
               <ItemSelectionMode
                 orderReference={confirmedOrderReference}
                 lines={orderLines.data?.lines ?? []}
+                // What the confirmation named. The pane opens on these lines
+                // and ticks them; without them it drew every line of the order
+                // with none selected, and the associate set the return up
+                // against whichever line happened to be drawn first.
+                confirmedLineReferences={orderLines.data?.confirmedLineReferences ?? []}
                 linesPending={caseId !== null && orderLines.isPending}
                 linesError={orderLines.error}
                 items={projection?.selectedItems ?? []}

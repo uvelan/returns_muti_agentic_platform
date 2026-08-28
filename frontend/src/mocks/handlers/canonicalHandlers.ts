@@ -1825,6 +1825,10 @@ export const canonicalHandlers = [
         {
           caseId: String(params.id),
           orderReference: "CW273354",
+          // The confirmation named one line, as a real one does. The pane opens
+          // on it and keeps the other behind its reveal, which is the shape
+          // mock mode has to show or it stops standing in for the real route.
+          confirmedLineReferences: ["Line 1"],
           lines: [
             {
               lineReference: "Line 1",

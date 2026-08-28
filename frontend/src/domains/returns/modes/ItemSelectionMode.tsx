@@ -101,6 +101,18 @@ export type ItemSelectionModeProps = {
   orderReference?: string | null;
   /** The confirmed order's lines. Empty until `GET /order-lines` answers. */
   lines?: readonly OrderLineView[];
+  /**
+   * The lines the confirmation named, as `GET /order-lines` serves them.
+   *
+   * The pane opens on these: they are drawn, they are ticked, and the rest of
+   * the order waits behind a control. Empty is an order-level confirmation --
+   * a real one -- and then every line is drawn as before.
+   *
+   * Scope rather than filter. An associate who finds a second faulty item on
+   * the same order raises it on this case, so the lines the confirmation did
+   * not name stay reachable; they are just not what the screen opens on.
+   */
+  confirmedLineReferences?: readonly string[];
   linesPending?: boolean;
   linesError?: Error | null;
   /** What the case already holds, which is what the controls open on. */
@@ -253,6 +265,7 @@ function publishedTerm(heard: string | null, reasons: readonly string[]): string
 export function ItemSelectionMode({
   orderReference = null,
   lines = [],
+  confirmedLineReferences = [],
   linesPending = false,
   linesError = null,
   items = [],
@@ -267,6 +280,8 @@ export function ItemSelectionMode({
 }: ItemSelectionModeProps) {
   const [draft, setDraft] = useState<Readonly<Record<string, LineDraft | null>>>({});
   const [visible, setVisible] = useState<number>(LINE_PAGE);
+  /** Whether the associate has asked for the lines the confirmation did not name. */
+  const [showEveryLine, setShowEveryLine] = useState<boolean>(false);
   /**
    * The contact boxes, once the associate has touched them.
    *
@@ -278,9 +293,25 @@ export function ItemSelectionMode({
    */
   const [contactDraft, setContactDraft] = useState<ContactDraft | null>(null);
 
+  /** What the conversation stated, verbatim, or nothing. */
+  const heardReason = spoken(capturedReason);
+  /** That same value only if the release publishes it. Never a guess. */
+  const preselectedReason = publishedTerm(capturedReason, reasons);
+
+  const confirmedScope = new Set(confirmedLineReferences);
   const held = new Map(items.map((item) => [item.orderLineReference, item]));
   function entry(reference: string): LineDraft | null {
-    return reference in draft ? draft[reference] : committed(held.get(reference));
+    if (reference in draft) return draft[reference];
+    const recorded = committed(held.get(reference));
+    if (recorded !== null) return recorded;
+    // A line the confirmation named opens ticked, in the same shape ticking it
+    // by hand produces -- an empty quantity, which keeps the submit refused
+    // until the associate states one. Derived rather than seeded into `draft`
+    // so unticking it still works: writing the key is what makes the
+    // associate's choice win over this default.
+    return confirmedScope.has(reference)
+      ? { quantity: "", reason: preselectedReason ?? "", condition: "" }
+      : null;
   }
   function write(reference: string, next: LineDraft | null) {
     setDraft((previous) => ({ ...previous, [reference]: next }));
@@ -343,13 +374,21 @@ export function ItemSelectionMode({
     );
   }
 
-  const shown = lines.slice(0, visible);
-  const hidden = lines.length - shown.length;
-
-  /** What the conversation stated, verbatim, or nothing. */
-  const heardReason = spoken(capturedReason);
-  /** That same value only if the release publishes it. Never a guess. */
-  const preselectedReason = publishedTerm(capturedReason, reasons);
+  /**
+   * The lines this pane opens on: the confirmed ones, until asked for the rest.
+   *
+   * `confirmedScope` empty means the confirmation named no line, and then the
+   * order's lines are the scope -- the behaviour every case had before the
+   * references were served.
+   */
+  const scoped =
+    confirmedScope.size === 0 || showEveryLine
+      ? lines
+      : lines.filter((line) => confirmedScope.has(line.lineReference));
+  const shown = scoped.slice(0, visible);
+  const hidden = scoped.length - shown.length;
+  /** Lines of this order the confirmation did not name, and which are not drawn. */
+  const withheld = lines.length - scoped.length;
 
   return (
     <div className="flex flex-col gap-4">
@@ -475,7 +514,8 @@ export function ItemSelectionMode({
           </span>
           {lines.length > 0 ? (
             <span className="shrink-0 text-[11px] text-outline">
-              Showing {String(shown.length)} of {String(lines.length)} lines
+              Showing {String(shown.length)} of {String(scoped.length)}{" "}
+              {withheld > 0 ? "confirmed lines" : "lines"}
             </span>
           ) : null}
         </div>
@@ -684,6 +724,19 @@ export function ItemSelectionMode({
             className="rounded-lg border border-outline-control bg-surface px-3 py-1.5 text-xs font-semibold text-on-surface"
           >
             Show {String(Math.min(LINE_PAGE, hidden))} more · {String(hidden)} not shown
+          </button>
+        ) : null}
+
+        {withheld > 0 ? (
+          <button
+            type="button"
+            onClick={() => {
+              setShowEveryLine(true);
+            }}
+            className="rounded-lg border border-dashed border-outline-control bg-surface px-3 py-1.5 text-xs font-semibold text-on-surface"
+          >
+            Show all {String(lines.length)} lines on this order · {String(withheld)} not named on
+            the confirmation
           </button>
         ) : null}
       </div>

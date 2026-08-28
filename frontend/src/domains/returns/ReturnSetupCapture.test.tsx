@@ -573,6 +573,70 @@ describe("the item-selection pane collects the return details", () => {
     expect(offered).toEqual(["", ...PUBLISHED_REASONS]);
   });
 
+  it("opens on the lines the confirmation named, ticked, with the rest behind a control", () => {
+    render(
+      <ItemSelectionMode
+        orderReference="SO-A1"
+        lines={[orderLine(), orderLine({ lineReference: "L2", sku: "PART-B" })]}
+        confirmedLineReferences={["L2"]}
+        reasons={PUBLISHED_REASONS}
+        conditions={PUBLISHED_CONDITIONS}
+      />,
+    );
+
+    // Only the confirmed line is drawn, and it is already chosen: the case was
+    // confirmed against it, so the associate should not have to find it among
+    // the order's other lines and tick it themselves.
+    expect(screen.getByText("PART-B")).toBeInTheDocument();
+    expect(screen.queryByText("PART-A")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /PART-B/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Show all 2 lines on this order/ }));
+    expect(screen.getByText("PART-A")).toBeInTheDocument();
+  });
+
+  it("lets the associate untick a line the confirmation named", () => {
+    render(
+      <ItemSelectionMode
+        orderReference="SO-A1"
+        lines={[orderLine()]}
+        confirmedLineReferences={["L1"]}
+        reasons={PUBLISHED_REASONS}
+      />,
+    );
+
+    const line = screen.getByRole("button", { name: /PART-A/ });
+    expect(line).toHaveAttribute("aria-pressed", "true");
+    // The default is a default, not a commitment: unticking has to win, or a
+    // confirmed line could never be withdrawn from the selection.
+    fireEvent.click(line);
+    expect(screen.getByRole("button", { name: /PART-A/ })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("draws every line when the confirmation named none", () => {
+    // An order-level confirmation is a real one. This is every case raised
+    // before the line references were served, and it must not open empty.
+    render(
+      <ItemSelectionMode
+        orderReference="SO-A1"
+        lines={[orderLine(), orderLine({ lineReference: "L2", sku: "PART-B" })]}
+        reasons={PUBLISHED_REASONS}
+      />,
+    );
+
+    expect(screen.getByText("PART-A")).toBeInTheDocument();
+    expect(screen.getByText("PART-B")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /lines on this order/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it("offers nothing when the release publishes no catalogue", () => {
     // Empty means "no catalogue is published", which the writer reads as
     // "refuse nothing". Substituting a list here would be the hardcoded
@@ -999,6 +1063,37 @@ describe("the candidate table is a page, and says so", () => {
 
     expect(screen.getByText("Showing 1 of 47 matched")).toBeInTheDocument();
     expect(screen.getByText(/46 further matches were found/)).toBeInTheDocument();
+  });
+
+  it("shows the branch on a customer row instead of swallowing it", () => {
+    // A customer search yields rows carrying only the account, the ids and the
+    // name. `account_id` is the Customer column's last-resort alias, so it was
+    // counted as already drawn even though `customer_name` is what rendered --
+    // and it then appeared nowhere. The branch is exactly what tells five
+    // customers of the same name apart.
+    render(
+      <CandidateOrderMode
+        candidates={[
+          {
+            customer_name: "SERGIO MALLORY",
+            account_id: "LAKEWOOD",
+            customer_id: "600576",
+            source_updated_at: "2025-12-28T10:53:00Z",
+          },
+        ]}
+        totalFound={5}
+        returnHistory={null}
+        returnHistoryPending={false}
+        returnHistoryError={null}
+      />,
+    );
+
+    expect(screen.getByText("SERGIO MALLORY")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /More/ }));
+    expect(screen.getByText("LAKEWOOD")).toBeInTheDocument();
+    // Still withheld: the internal ERP number and the extract's own timestamp
+    // tell an associate choosing between five Sergios nothing.
+    expect(screen.queryByText("600576")).not.toBeInTheDocument();
   });
 
   it("caps the rows it draws and counts the remainder", () => {

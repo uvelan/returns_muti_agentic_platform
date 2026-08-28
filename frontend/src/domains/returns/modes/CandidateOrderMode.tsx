@@ -99,13 +99,21 @@ const PRIMARY_COLUMNS: readonly { label: string; fields: readonly string[] }[] =
 ];
 
 /** The first alias this row actually carries, or null. */
-function primaryValue(row: Record<string, unknown>, fields: readonly string[]): string | null {
+function primaryField(row: Record<string, unknown>, fields: readonly string[]): string | null {
   for (const field of fields) {
     const value = row[field];
-    if (typeof value === "string" && value.trim() !== "") return value;
-    if (typeof value === "number" || typeof value === "boolean") return String(value);
+    if (typeof value === "string" && value.trim() !== "") return field;
+    if (typeof value === "number" || typeof value === "boolean") return field;
   }
   return null;
+}
+
+/** The value behind `primaryField`, or null. */
+function primaryValue(row: Record<string, unknown>, fields: readonly string[]): string | null {
+  const field = primaryField(row, fields);
+  if (field === null) return null;
+  const value = row[field];
+  return typeof value === "string" ? value : String(value);
 }
 
 /** As `scalar`: the absence marker is the accessor's, never a JSX fallback. */
@@ -152,11 +160,31 @@ export function CandidateOrderMode({
   const activeColumns = primaryColumns.filter((column) =>
     shown.some((row) => primaryValue(row, column.fields) !== null),
   );
-  const primaryFields = new Set(activeColumns.flatMap((column) => column.fields));
-  const detailFields = (row: Record<string, unknown>): [string, unknown][] =>
-    Object.entries(row).filter(
-      ([field]) => !SUPPRESSED_COLUMNS.has(field) && !primaryFields.has(field),
+  /**
+   * The fields a column actually drew *for this row*, which is not the same as
+   * the fields it could have drawn.
+   *
+   * Built per row rather than from every alias of every active column, and that
+   * is the fix for a real disappearance: `account_id` is the Customer column's
+   * last-resort alias, so on a customer search -- where `customer_name` is what
+   * renders -- the account was treated as already shown and filtered out of the
+   * details too. It appeared nowhere, and the branch is exactly what tells five
+   * customers of the same name apart.
+   */
+  const drawnFields = (row: Record<string, unknown>): Set<string> => {
+    const drawn = new Set<string>();
+    for (const column of activeColumns) {
+      const field = primaryField(row, column.fields);
+      if (field !== null) drawn.add(field);
+    }
+    return drawn;
+  };
+  const detailFields = (row: Record<string, unknown>): [string, unknown][] => {
+    const drawn = drawnFields(row);
+    return Object.entries(row).filter(
+      ([field]) => !SUPPRESSED_COLUMNS.has(field) && !drawn.has(field),
     );
+  };
 
   const toggle = (index: number) => {
     setExpanded((current) => {
