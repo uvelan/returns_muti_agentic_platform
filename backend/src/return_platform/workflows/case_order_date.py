@@ -42,6 +42,7 @@ from pymongo.asynchronous.collection import AsyncCollection
 
 from return_platform.operations.seed_manifest import SOURCE_SALES_DATASET
 from return_platform.workflows.case_policy_facts import (
+    _resolve_path,
     delivery_date_from_confirmed_order,
     purchase_date_from_confirmed_order,
 )
@@ -50,6 +51,7 @@ __all__ = [
     "CaseOrderDateSource",
     "resolve_confirmed_order_dates",
     "resolve_confirmed_order_purchase_date",
+    "resolve_confirmed_order_ship_via",
 ]
 
 logger = logging.getLogger("return_platform.workflows.case_order_date")
@@ -153,6 +155,33 @@ async def resolve_confirmed_order_dates(
         logger.info("policy_order_carries_no_date", extra={"case_id": case_id})
     delivery = delivery_date_from_confirmed_order(document, proof=delivery_proof)
     return ConfirmedOrderDates(purchase_date=purchase, delivery_date=delivery)
+
+
+async def resolve_confirmed_order_ship_via(
+    repository: CaseOrderDateSource, *, case_id: str, ship_via_paths: Sequence[str]
+) -> str | None:
+    """How the goods left the branch, off the confirmed order.
+
+    The strongest available evidence for how they should come back, and a fact
+    rather than an inference: an order collected at a counter can be carried
+    back to that counter, and one that left on a branch truck needs the truck
+    again. `_derive_return_method` consults it before falling back to matching
+    keywords against a product description.
+
+    `None` for every reason the others answer `None`, and for the same reason:
+    a method nobody can derive is asked for, which is the behaviour that existed
+    before any of this.
+    """
+    if not ship_via_paths:
+        return None
+    document = await _confirmed_order_document(repository, case_id=case_id)
+    if document is None:
+        return None
+    for path in ship_via_paths:
+        value = _resolve_path(document, path)
+        if isinstance(value, str) and value.strip():
+            return value.strip().upper()
+    return None
 
 
 async def resolve_confirmed_order_purchase_date(

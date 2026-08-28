@@ -717,6 +717,21 @@ source_resolution:
   customer_id_paths:
     - salesHdr.salesHdrData.custId
     - salesHdrEventData.customerId
+  # How the goods left, for the return-method derivation. Both places the source
+  # writes it, header first.
+  ship_via_paths:
+    - salesHdr.salesHdrData.shipping.shipViaCode
+    - salesHdrEventData.shipViaCode
+  # The account, and how to reach the customer on it. `customer.address[]` is
+  # the array `contact_point` is exploded from; the resolver searches its rows
+  # rather than indexing the first, because in this corpus the row carrying the
+  # phone is frequently not the row carrying the email.
+  customer_account_paths:
+    - salesHdrEventData.accountId
+  customer_phone_paths:
+    - customer.address.phoneNumber
+  customer_email_paths:
+    - customer.address.email
   customer_name_paths:
     - salesHdr.salesHdrData.custName
     - salesHdrEventData.customerName
@@ -968,6 +983,65 @@ return_policy:
     - OFFSITE_VENDOR_SITE
     - OFFSITE_OTHER
     - NOT_APPLICABLE
+  # How the parcel-vs-freight class is decided from the product, so Support is
+  # told the method rather than asked for it.
+  #
+  # `_derive_return_method` has always been able to do this -- "the
+  # parcel-vs-freight class, from what the product is, never asked" -- and has
+  # always answered `None` here, because this block did not exist. So every
+  # handoff went out with no method, every case sat on `awaiting:
+  # ["RETURN_METHOD"]`, and the Support agent's first message on every thread
+  # was "Before the RMA can be issued, please confirm: return method."
+  #
+  # One freight-class line decides the whole shipment: the parcel network cannot
+  # carry it, so a consignment holding a water heater and a box of fittings goes
+  # LTL entire. The keywords are matched against the resolved product
+  # description and SKU, upper-cased.
+  #
+  # Derived, not decided. The answer is recorded as a `return_method` fact with
+  # `DERIVED` acquisition and travels to Support with that provenance, and
+  # Support remains free to record a different one on the outcome -- which
+  # supersedes it, as a stated value should.
+  return_method_derivation:
+    default_method: PREPAID_PARCEL
+    freight_method: BRANCH_LTL
+    # Observed codes in this corpus: CPU counter pick-up (56%), WCL will-call,
+    # OT our truck, XPW express parcel, M mail.
+    #
+    # CPU and WCL are inferred rows and want operator review, in the sense the
+    # requirements table already uses: a customer who collected at the counter
+    # can carry it back to the counter, and `BRANCH_UPS` is this catalogue's
+    # nearest entry for the branch handling the return leg -- but whether that
+    # is what the desk means by it is a business answer, not a reading.
+    ship_via_methods:
+      CPU: BRANCH_UPS
+      WCL: BRANCH_UPS
+      OT: BRANCH_LTL
+      XPW: PREPAID_PARCEL
+      M: PREPAID_PARCEL
+    freight_keywords:
+      # Water heaters, tanks and boilers -- the commonest LTL class in this
+      # catalogue and the one an associate is most likely to meet.
+      - WHTR
+      - WATER HEATER
+      - TKLS
+      - TANK
+      - BOILER
+      - FURN
+      # Bath and fixture ware that ships crated.
+      - TUB
+      - SHOWER BASE
+      - TOILET
+      - LAVATORY
+      - SINK
+      # Mechanical plant.
+      - CONDENSER
+      - AIR HANDLER
+      - PUMP
+      - COMPRESSOR
+      # Length, which is what puts pipe and duct on a truck regardless of weight.
+      - PIPE
+      - DUCT
   normalized_return_methods:
     - PREPAID_PARCEL
     - BRANCH_UPS

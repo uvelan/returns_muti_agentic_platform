@@ -418,6 +418,17 @@ class SourceResolutionConfiguration(StrictConfigModel):
     delivery_proof: DeliveryProofConfiguration = Field(
         default_factory=DeliveryProofConfiguration
     )
+    #: Where the order states how the goods left, for
+    #: `return_method_derivation.ship_via_methods`. Empty means the deployment
+    #: has not bound it and the derivation falls back to the keyword rule.
+    ship_via_paths: tuple[NonBlank, ...] = ()
+    #: The account the order sits on, and how to reach the customer on it.
+    #: Read at case creation and recorded as facts, so a Support request names
+    #: somebody reachable rather than a customer id nobody can telephone.
+    #: Empty means unbound, and the field is reported absent rather than guessed.
+    customer_account_paths: tuple[NonBlank, ...] = ()
+    customer_phone_paths: tuple[NonBlank, ...] = ()
+    customer_email_paths: tuple[NonBlank, ...] = ()
     web_order_paths: tuple[NonBlank, ...] = Field(min_length=1)
     trilogie_order_paths: tuple[NonBlank, ...] = Field(min_length=1)
     customer_id_paths: tuple[NonBlank, ...] = Field(min_length=1)
@@ -545,6 +556,20 @@ class ReturnMethodDerivationConfiguration(StrictConfigModel):
     default_method: NonBlank
     freight_method: NonBlank
     freight_keywords: tuple[NonBlank, ...] = ()
+    #: How the goods left, mapped to how they should come back. Keyed by the
+    #: order's `shipViaCode`, upper-cased.
+    #:
+    #: Stronger evidence than a keyword and consulted first, because it is a
+    #: fact about *this order* rather than a guess from a description string:
+    #: an order the customer collected at a counter can be carried back to that
+    #: counter, and one that left on a branch truck needs the truck again.
+    #: Keywords stay as the override for goods the parcel network cannot carry
+    #: whatever the outbound channel was.
+    #:
+    #: A code the map does not name falls through to the keyword rule and then
+    #: to `default_method`, so a new ship-via appearing in the source degrades
+    #: to today's answer rather than to none.
+    ship_via_methods: dict[NonBlank, NonBlank] = Field(default_factory=dict)
 
 
 class ReturnPolicyConfiguration(StrictConfigModel):
@@ -645,6 +670,16 @@ class ReturnPolicyConfiguration(StrictConfigModel):
                     raise ValueError(
                         f"return_policy.return_method_derivation.{label} names {method!r}, "
                         "which is not in normalized_return_methods"
+                    )
+            # The map's values are methods too, and a typo in one is a case
+            # deriving a method the completion table has never heard of --
+            # which is exactly the failure this validator exists to catch
+            # before a release is published rather than at the handoff.
+            for code, method in self.return_method_derivation.ship_via_methods.items():
+                if method.strip().upper() not in catalogue:
+                    raise ValueError(
+                        "return_policy.return_method_derivation.ship_via_methods maps "
+                        f"{code!r} to {method!r}, which is not in normalized_return_methods"
                     )
         return self
 

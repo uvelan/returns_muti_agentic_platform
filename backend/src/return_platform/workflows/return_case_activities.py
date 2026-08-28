@@ -79,7 +79,10 @@ from return_platform.policy.vocabulary import PolicyRoute
 from return_platform.workflows.case_customer_identity import (
     resolve_confirmed_order_customer,
 )
-from return_platform.workflows.case_order_date import resolve_confirmed_order_dates
+from return_platform.workflows.case_order_date import (
+    resolve_confirmed_order_dates,
+    resolve_confirmed_order_ship_via,
+)
 from return_platform.workflows.case_policy_facts import (
     AssembledPolicyFacts,
     assemble_policy_evaluation_input,
@@ -606,6 +609,9 @@ class ReturnCaseActivities:
             case_id=request.case_id,
             customer_name_paths=resolution.customer_name_paths,
             customer_id_paths=resolution.customer_id_paths,
+            account_paths=resolution.customer_account_paths,
+            phone_paths=resolution.customer_phone_paths,
+            email_paths=resolution.customer_email_paths,
         )
         if identity.empty:
             return False
@@ -614,6 +620,13 @@ class ReturnCaseActivities:
         for suffix, fact_name, value in (
             ("name", "customer_name", identity.customer_name),
             ("id", "customer_id", identity.customer_id),
+            # The account and how to reach them, from the same read. A Support
+            # request naming a customer nobody can telephone is a request whose
+            # first action is to look them up, and the order carried all of it
+            # the whole time.
+            ("account", "customer_account", identity.account),
+            ("phone", "customer_phone", identity.phone),
+            ("email", "customer_email", identity.email),
         ):
             if value is None:
                 continue
@@ -1245,9 +1258,12 @@ class ReturnCaseActivities:
             customer=SupportHandoffCustomer(
                 name=_stated(facts, "customer_name"),
                 reference=_stated(facts, "customer_id"),
+                account=_stated(facts, "customer_account"),
                 contact_name=_stated(facts, "branch_associate_name"),
                 contact_email=_stated(facts, "branch_associate_email"),
                 contact_phone=_stated(facts, "branch_associate_phone"),
+                customer_phone=_stated(facts, "customer_phone"),
+                customer_email=_stated(facts, "customer_email"),
             ),
             order=SupportHandoffOrder(
                 reference=order_reference,
@@ -1360,8 +1376,30 @@ class ReturnCaseActivities:
         )
         if derivation is None or not selected:
             return None
-        keywords = tuple(keyword.upper() for keyword in derivation.freight_keywords)
+        # How the goods left, first. It is a fact about this order rather than
+        # an inference from a description, and it answers the question the
+        # keywords can only approximate: an order the customer collected at a
+        # counter can be carried back to that counter, whatever it weighs.
         method = derivation.default_method
+        ship_via = await resolve_confirmed_order_ship_via(
+            self._repository,
+            case_id=case_id,
+            ship_via_paths=(
+                self._configuration().source_resolution.ship_via_paths
+                if self._configuration
+                else ()
+            ),
+        )
+        mapped = (
+            {code.strip().upper(): value for code, value in derivation.ship_via_methods.items()}
+        ).get(ship_via or "")
+        if mapped is not None:
+            method = mapped
+
+        # Keywords remain the override, and only upward: goods the parcel
+        # network cannot carry do not become carriable because they happened to
+        # leave on a counter pick-up.
+        keywords = tuple(keyword.upper() for keyword in derivation.freight_keywords)
         for item in selected:
             detail = details.get(str(item.get("orderLineId") or ""))
             text = " ".join(
