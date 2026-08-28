@@ -67,3 +67,23 @@ linux_kit_validation/
 
 # Claude Code local state
 .claude/settings.local.json
+
+# Linux-only developer helper, deliberately not committed.
+#
+# `start_manual_mode.sh` brings the platform up with every reasoning turn
+# answered by a human (`PLATFORM_AI_PROVIDER_ORDER=MANUAL`). It is a convenience
+# wrapper around checks and scripts that are all in the repository already, and
+# it is Linux-only -- it calls `scripts/linux/*` and `scripts/infra.sh`, so it
+# is no use to anyone on the Windows host path.
+#
+# It is also refused by this network's egress inspection: pushes carrying it
+# return 403 from the proxy while the identical push without it succeeds,
+# isolated 2026-08-28 by pushing each file on its own branch. Presumably the
+# block of `PLATFORM_AI_*=` assignments reads as credential configuration; there
+# is no secret in the file, which reads variable *names* and reports whether
+# they are set.
+#
+# What it does is written out step by step in
+# `.claude/skills/testmanual/SKILL.md`, so nothing is lost by its absence -- the
+# script is a shortcut, not the source of truth.
+scripts/dev/start_manual_mode.sh
