@@ -16,7 +16,7 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | S1 phase 1b (`actorId`) | feat/s1-actor-id | **MERGED** | 1 · PASS (98a180e) | 132b031 |
 | S2 | feat/s2-delivery-spine | **MERGED** | 3 · CR → CR → PASS (b7a78ad) | dfd3036 |
 | V1 phase 1 | feat/v1-template-review | **MERGED** | 2 · CR → PASS (18f671f) | b2590ef |
-| V1 phase 2 | feat/v1-phase2 | UNDER_RV_REVIEW round 2 · candidate 594bb05 | 2 · CR (85db125) → open | — |
+| V1 phase 2 | feat/v1-phase2 | UNDER_RV_REVIEW round 3 · candidate cadd6d0 | 3 · CR → CR (3d90aa4) → open | — |
 | V2 phase 1 | feat/v2-ingress-relay | **MERGED** | 2 · CR → PASS (02da231) | 97bca1e |
 | V2 phase 1b | feat/v2-ingress-relay | **MERGED** | 1 · PASS (a51c9b4) | 95b5672 |
 | V2 phase 2 (frontend) | feat/v2-frontend | IN_PROGRESS · off V1p2 candidate 594bb05 | — | — |
@@ -65,6 +65,7 @@ Every slice has shipped at least one green-but-blind test. The shapes found so f
 - **The documented reason is not the operative one** — V3's neutralise-then-bound ordering was safe because of a *space* in the truncation joiner; swapping the documented order changed nothing.
 - **A negative assertion** — "does not contain" passes for the wrong reasons; pin the whole composed output as an equality.
 - **Skipped on the platform that runs it** — ACC's behavioural stop/kill pin is Windows-skipped, so a structural pin was added beside it.
+- **An *injection* red for the wrong reason** — the newest shape, and the same defect wearing the reviewer's clothes. V1 phase 2's first two ordering injections used `str.index` anchors that matched a *different* endpoint and silently **deleted** the liveness block instead of reordering it; both produced plausible red (6 tests) that were nearly recorded as evidence. The tell was that the parked-review test *passed*, which is impossible if liveness runs first. **Fault injection needs its own verification: confirm the injection did what it claims, not merely that something went red.**
 
 ## Integration debt (orchestrator applies at merge)
 
