@@ -193,14 +193,26 @@ def test_the_internal_id_is_derived_from_the_contracts_three_part_identity() -> 
 
 
 def test_the_derivation_cannot_be_confused_by_a_shifted_separator() -> None:
-    """`("ab","c")` and `("a","bc")` must not derive the same id.
+    """A part containing the separator must not be able to forge a boundary.
 
-    A plain join would collide them, and the collision would silently make two
-    different transports' messages one event.
+    The three identity parts are joined with `|`, so a collision needs the
+    boundary to shift between *adjacent* parts **and** one of them to be able
+    to contain the separator. Adjacency alone proves nothing: `"ab|c"` and
+    `"a|bc"` differ under a plain join too, so a test written that way passes
+    with the length prefixes deleted.
+
+    The inputs below put a `|` inside a part. Length-prefixed they are two
+    identities; bare-joined they are one -- and one identity for two transports'
+    messages is the dedupe silently absorbing a message nobody sent twice.
     """
     assert derive_support_event_id(
-        case_id=CASE, transport_id="ab", external_message_id="c"
-    ) != derive_support_event_id(case_id=CASE, transport_id="a", external_message_id="bc")
+        case_id=CASE, transport_id="a|b", external_message_id="c"
+    ) != derive_support_event_id(
+        case_id=CASE, transport_id="a", external_message_id="b|c"
+    ), (
+        "a part containing the separator forged a boundary: the length prefixes "
+        "are what stop it, and this is the only input shape that shows it"
+    )
 
 
 def test_the_same_words_on_two_transports_are_two_events() -> None:
