@@ -10,7 +10,7 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 |---|---|---|---|---|
 | T0 | (trunk) | DONE | — | 2cafe2a |
 | S1 | feat/s1-model-identity | **MERGED** | 1 · PASS (6bdb5bd) | 5d58b90 |
-| S2 | feat/s2-delivery-spine | UNDER_RV_REVIEW · candidate 4359bf9 | 1 open | — |
+| S2 | feat/s2-delivery-spine | CHANGES_REQUIRED → fixing · was 4359bf9 | 1 · CR (db7bfb9) | — |
 | V1 phase 1 | feat/v1-template-review | CHANGES_REQUIRED → fixing · was d452e97 | 1 · CR (f8ce598) | — |
 | V1 phase 2 | (same branch, later) | BLOCKED on S2 merge | — | — |
 | V2 | feat/v2-ingress-relay | NOT_STARTED | — | — |
@@ -27,6 +27,8 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 *Deviations:* (a) brief path typo `operations/` → real `workflows/return_case_recovery.py`; (b) append-only additions to S1's `fact_names.py`; (c) new `CaseStatus.AWAITING_TEMPLATE_REVIEW` mapped onto existing `ReturnCaseStatus.AWAITING_SUPPORT` (since `read_persisted_status` refuses unknown statuses, recovery would otherwise raise on the first case V1's gate parks) + forced OpenAPI regen.
 *Open risks flagged to RV:* `AWAITING_SUPPORT` is now in `LEGITIMATE_WAIT_STATUSES` — a behaviour change to a pre-existing status, so the time-based sweep no longer relaunches null-`workflowId` cases (the probe-based path still does); RV must confirm the old sweep was not load-bearing. Command-horizon rule unarmed until V1 wires it (degrades honestly). `_wordpiece_approx_v1` is a versioned estimate, not a tokenizer.
 *Design note:* `assemble_case_context` types against a structural `ContextPolicy` protocol because `platform/*` may not import `configuration/*` (layering test 13.1 R2a).
+*Review round 1 — CHANGES_REQUIRED, three findings, all "multi-write sequences that leave durable state disagreeing with itself":* **F1** the legitimate-wait skip strands the workflow link and **starves the recovery queue** — the flagged risk resolved in the blocking direction, but not for the reason expected: relaunching wasn't the only thing that pass did, it also re-writes `cases.workflowId`, which `return_case_launcher.py:19-25` explicitly names as the repair for a link write it deliberately swallows. Because `list_cases_without_workflow` selects `workflowId: None`, sorts oldest-first and applies a limit, a skipped case never leaves the queue and sits at the head of every batch: RV's probe (100 legitimate-wait cases + 1 genuinely unlaunched, five passes) recovered *nothing*. Monotonic accumulation, so it's a matter of time not chance. Fix = keep refusing to relaunch, stop refusing to repair. **F2** `ensure_case_support_thread.created` is decided by a non-atomic pre-read while its docstring insists only the insert-winner can know it — the loser reports `created=True` having opened nothing, and `created` selects opening-request vs reply, so two replaying workers both compose an opening request: a duplicate to Support through the one field delivery identity doesn't cover. **F3** the conflict marker is bumped/cleared outside the transaction §6 puts it in; a torn pair is unrecoverable both ways.
+*Verified clean and not in question:* atomicity of `OPEN → APPROVING` (RV forced the outbox leg to fail mid-approval: review `OPEN`, zero commands, zero outbox rows), the resume bug-fix, the `AWAITING_TEMPLATE_REVIEW` mapping (contract-correct — it appears nowhere in the OpenAPI diff), `ContextPolicy`, purity/determinism of `assemble_case_context`, honest horizon degradation, `absorbed=True` reaching `SENT`, and that `mongo_double.py` genuinely models cross-collection atomicity.
 
 **V1 phase 1 — changes required, fixing.** Items 1, 2, 5 built: template grammar + formatter allowlist + `production.yaml` default block, renderer (batched sync, gaps, within-draft cache), preview endpoint, config UI on the literally-reused `DocumentEditor`.
 *Blocking findings:* **F1** the default variant does **not** reproduce today's handoff — the equivalence test was green only because its fixture makes every conditional take the one branch the template can express; RV rendered the shipped yaml through the shipped renderer on a case with no associate and no bay recommendation and found five silent divergences with zero gaps, including customer phone/email (a loss `support_handoff.py` documents as a defect it *fixed*). Phase 2 swaps the composed path behind `workflow.patched`, so these would ship as silent regressions. **F2** five `case_fact:` bindings name facts that exist nowhere in `backend/src`; the assembler seam is docstring-only; `template_preview.py` holds a second uncoordinated copy of the 24-key vocabulary. **F4** `return_record:` resolved via unconstrained `getattr` → closed by AMENDMENT-2.
@@ -45,6 +47,12 @@ Raised in review and assigned to the orchestrator, not to a slice. A slice canno
 
 ### Into the V1 phase-2 brief (S2 handover)
 3. **Arm the command-horizon rule.** S2 shipped it unwired: until V1 passes `command_horizon=`, the recovery outcome honestly reports `RELAUNCHED` rather than pretending to have checked.
+
+### Into the V1 phase-2 brief (from S2 review round 1)
+5. **Derive workflow ids; never read the link.** `cases.workflowId` can legitimately be null while a case is healthy (S2-1 F1). V1 must derive the id via `return_case_workflow_id(case_id)` rather than trusting the stored link.
+
+### Into the ACC phase-2 brief (from S2 review round 1)
+6. **Acceptance 18's ordered drain rests on V2 populating the causation chain.** The ordering machinery is S2's, but the guarantee is only real if V2 actually fills `causation_id` / `required_predecessor_ids[]`. Assert the chain, not just the drain.
 
 ### Into the V2 brief (from S1 review)
 4. **Watch advisory A1.** A scoped fact write using a *legacy* fact name would surface in `latest_case_facts` and could shadow a case-level value. Nothing in S1 or S2 does this; V2 writes the most new scoped facts and is where it would first appear.
