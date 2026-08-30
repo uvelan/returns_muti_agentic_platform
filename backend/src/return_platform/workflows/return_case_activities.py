@@ -450,6 +450,14 @@ def _associate_described_the_return(
     return True
 
 
+#: The fact-identity derivation `append_scoped_fact_once` stamps into
+#: `identity_version`. The per-callsite derivation `_append_fact_once` relies
+#: on predates versioning and is implicitly the unversioned original; this is
+#: the first *stamped* algorithm (caller-derived id, `::record_scope` appended
+#: when the fact is about one record). Bump on any change to that derivation.
+SCOPED_FACT_IDENTITY_VERSION: Final[int] = 2
+
+
 class ReturnCaseActivities:
     """Narrow injected surface: one repository, one support service, one drafter."""
 
@@ -515,6 +523,49 @@ class ReturnCaseActivities:
                     "case_id": fact.get("case_id"),
                     "fact_id": fact.get("fact_id"),
                     "fact_name": fact.get("fact_name"),
+                },
+            )
+            return False
+        return True
+
+    async def append_scoped_fact_once(self, *, record_scope: str | None, **fact: Any) -> bool:
+        """Append one record-scoped derived-id fact, absorbing a duplicate.
+
+        The scoped sibling of `_append_fact_once`, and a sibling rather than a
+        change to it (contracts.md sect. 4): the legacy algorithm and every id
+        it has ever derived stay untouched. What this one adds is scope in the
+        *identity*: the caller supplies the same derived `fact_id` it always
+        would, and when the fact is about one record the stored id becomes
+        `{fact_id}::{record_scope}` -- so the same observation about two RMAs
+        is two facts, not one shadowing the other. With no scope the derived
+        id is exactly the legacy one, which is the replay guarantee: an event
+        first recorded through `_append_fact_once` before this path deployed
+        and retried through it afterwards meets its own `factId` and is
+        absorbed as the duplicate it is, never re-recorded.
+
+        Every write stamps `record_scope` and `identity_version`, so a reader
+        can tell which derivation produced an id without guessing from its
+        shape. Return semantics are `_append_fact_once`'s: whether this call
+        wrote the fact, with only the duplicate absorbed.
+        """
+        derived_id = str(fact.pop("fact_id"))
+        if record_scope is not None:
+            derived_id = f"{derived_id}::{record_scope}"
+        try:
+            await self._repository.append_scoped_case_fact(
+                fact_id=derived_id,
+                record_scope=record_scope,
+                identity_version=SCOPED_FACT_IDENTITY_VERSION,
+                **fact,
+            )
+        except DuplicateKeyError:
+            logger.debug(
+                "scoped_case_fact_already_recorded",
+                extra={
+                    "case_id": fact.get("case_id"),
+                    "fact_id": derived_id,
+                    "fact_name": fact.get("fact_name"),
+                    "record_scope": record_scope,
                 },
             )
             return False
