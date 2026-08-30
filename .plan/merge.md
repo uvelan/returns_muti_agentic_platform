@@ -8,8 +8,9 @@ Each slice branches from the latest RV-approved integration commit recorded here
 |---|---|---|---|---|---|
 | T0 | (trunk) | IN_PROGRESS | — | — | investigations complete (contracts.md §2); DR-11 ruled; calibration fixture pending |
 | S1 | feat/s1-model-identity | MERGED | 1 (PASS, zero findings) | 5d58b90 | review 6bdb5bd; S2/V1 pipelined bases confirmed valid (7438e07 = approved head); advisories A1 (legacy-name shadowing) + A2 (:: separator) watchlist for S2/V2 |
-| S2 | feat/s2-delivery-spine | IN_PROGRESS | — | — | PIPELINED off S1 candidate 7438e07 (user-directed ≤3 parallel agents); rebases if S1-1 ≠ PASS |
-| V1 | feat/v1-template-review | IN_PROGRESS (phase 1: brief items 1,2,5) | — | — | PIPELINED off S1 candidate 7438e07; phase 2 (gate/API/panel UI) after S2 merges |
+| S2 | feat/s2-delivery-spine | IN_PROGRESS (steps 01–03 done @1cf2d44; resumed at step:04) | — | — | PIPELINED off S1 approved head 7438e07. Agent killed by API session limit after step:03, resumed cold via ledger. Recorded deviations for RV: (a) brief path typo `operations/return_case_recovery.py` → real `workflows/return_case_recovery.py`; (b) append-only add of 2 constants to S1's fact_names.py (that file's own docstring invites it; contract forbids literals elsewhere) |
+| V1 | feat/v1-template-review | IN_PROGRESS (phase 1 steps 01–04 done @176f1d5; resumed at step:05 config UI) | — | — | PIPELINED off S1 approved head 7438e07. Killed by session limit after step:04, resumed cold. Phase 2 (gate/API/panel UI) dispatches after S2 merges. Note: step:04 touched main.py (router mount, required for contracts:generate) — flag for RV |
+| ACC-1 | feat/acc-harness | IN_PROGRESS (phase 1: brief items 1,2,7 only) | — | — | Independent test infrastructure dispatched early to fill the 3rd slot: fact-name literal guard (makes RV's standing grep durable), Mon–Fri calendar fixture, kill/restart harness primitives. Scenarios (items 3–6,8–10) wait for V3 |
 | V2 | feat/v2-ingress-relay | NOT_STARTED | — | — | |
 | V3 | feat/v3-resolver-clarification | NOT_STARTED | — | — | |
 | ACC | feat/acc-acceptance | NOT_STARTED | — | — | |
