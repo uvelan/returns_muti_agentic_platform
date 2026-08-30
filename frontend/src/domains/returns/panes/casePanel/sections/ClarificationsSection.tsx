@@ -274,7 +274,7 @@ function ClarificationCard({
           <dt className={COPILOT_TOKENS.review.field.label}>Why we are asking</dt>
           <dd className={COPILOT_TOKENS.review.field.value}>
             {clarification.whyUnresolvable === ""
-              ? "Not recorded"
+              ? "Unavailable"
               : clarification.whyUnresolvable}
           </dd>
         </div>
@@ -282,7 +282,7 @@ function ClarificationCard({
           <dt className={COPILOT_TOKENS.review.field.label}>What we need</dt>
           <dd className={COPILOT_TOKENS.review.field.value}>
             {clarification.neededField === ""
-              ? "Not recorded"
+              ? "Unavailable"
               : neededFieldWords(clarification.neededField)}
           </dd>
         </div>
@@ -413,13 +413,13 @@ function ArtifactEvidence({ clarification }: { readonly clarification: CaseClari
       <div className={COPILOT_TOKENS.review.field.row}>
         <dt className={COPILOT_TOKENS.review.field.label}>Support sent</dt>
         <dd className={COPILOT_TOKENS.review.field.value}>
-          {clarification.artifactValue ?? "Not recorded"}
+          {clarification.artifactValue ?? "Unavailable"}
         </dd>
       </div>
       <div className={COPILOT_TOKENS.review.field.row}>
         <dt className={COPILOT_TOKENS.review.field.label}>They called it</dt>
         <dd className={COPILOT_TOKENS.review.field.value}>
-          {clarification.evidenceSpan ?? "Not recorded"}
+          {clarification.evidenceSpan ?? "Unavailable"}
         </dd>
       </div>
     </dl>
