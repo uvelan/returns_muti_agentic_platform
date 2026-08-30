@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { COPILOT_TOKENS, PENDING_LABEL } from "../../../copilotTokens";
 import type { PanelSectionRendererProps } from "../panelSectionRegistry";
-import { framingFor } from "./supportCopy";
+import { framingFor, intentLabel } from "./supportCopy";
 import {
   SUPPORT_SECTION_IDS,
   isDegraded,
@@ -98,8 +98,7 @@ function Degraded({ what }: { readonly what: string }) {
   return (
     <p className={COPILOT_TOKENS.support.notice}>
       {what} could not be loaded just now. This is a display problem, not a change to the
-      return -- nothing Support sent has been lost, and the panel will show it on the next
-      refresh.
+      return: nothing Support sent has been lost, and it will appear on the next refresh.
     </p>
   );
 }
@@ -213,12 +212,18 @@ export function SupportRecordsSection({ section, panel }: PanelSectionRendererPr
       )}
 
       {payload.unbound.length === 0 ? null : (
-        <div className={COPILOT_TOKENS.support.notice}>
+        <div className={COPILOT_TOKENS.support.attentionNotice}>
+          {/*
+            The attention tone, not the parking tone. A parked message is on
+            file and needs nobody; an unfiled artifact cannot be used until
+            somebody says which return it belongs to. Drawn in one colour, the
+            two read as equally finished.
+          */}
           <h4 className="mb-1 font-semibold">Sent, but not filed against a return</h4>
           <p className="mb-2">
-            Support sent these and the platform could not tell which return they belong to.
-            Nothing has been applied. Somebody has to say which is which before they can be
-            used.
+            Support sent these and the platform could not tell which return each belongs to.
+            Nothing has been applied to any return. Someone has to say which is which before
+            they can be used.
           </p>
           <ul className="space-y-1">
             {payload.unbound.map((artifact, index) => (
@@ -281,7 +286,7 @@ export function SupportDigestSection({ section }: PanelSectionRendererProps) {
               <p className={COPILOT_TOKENS.support.value}>{message.preview}</p>
             )}
             {message.intent === null ? null : (
-              <p className={COPILOT_TOKENS.support.term}>Read as: {message.intent}</p>
+              <p className={COPILOT_TOKENS.support.term}>Read as: {intentLabel(message.intent)}</p>
             )}
           </li>
         ))}
@@ -315,8 +320,8 @@ export function SupportParkedSection({ section }: PanelSectionRendererProps) {
   return (
     <div className={COPILOT_TOKENS.support.notice}>
       <h3 className="mb-1 font-semibold">
-        {String(payload.count)} {plural} from Support {payload.count === 1 ? "is" : "are"} on
-        file and not yet read
+        {String(payload.count)} {plural} from Support {payload.count === 1 ? "is" : "are"}{" "}
+        waiting to be read
       </h3>
       <p>
         {/*
@@ -325,13 +330,14 @@ export function SupportParkedSection({ section }: PanelSectionRendererProps) {
           has bounced back to Support and nothing needs re-sending.
         */}
         {payload.nlEnabled === false
-          ? "Reading messages in their own words is switched off for this platform, so these are being kept as they arrive. They will be read in the order they came in when it is switched on again."
-          : "These are being kept until the platform can read them. They will be read in the order they came in."}{" "}
-        Nothing has been lost and Support does not need to send them again.
+          ? "Free-text messages from Support are not being read on this platform right now. These are kept as they arrive, and will be read in the order they came in once that is switched back on."
+          : "These are kept until the platform can read them, and will be read in the order they came in."}{" "}
+        Nothing has been lost, and Support does not need to send them again.
       </p>
       {payload.quota === null ? null : (
         <p className="mt-1">
-          This return can hold {String(payload.quota)}. Past that, operations are told.
+          This return can hold {String(payload.quota)} waiting messages. After that, the
+          operations team is told.
         </p>
       )}
     </div>

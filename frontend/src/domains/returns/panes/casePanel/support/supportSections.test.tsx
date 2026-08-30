@@ -272,11 +272,11 @@ describe("the parked-messages entry", () => {
   it("names the count and says the messages are safe", () => {
     renderParked({ count: 3, nl_enabled: false, quota: 50 });
     expect(screen.getByRole("heading", { level: 3 }).textContent).toContain(
-      "3 messages from Support are on file and not yet read",
+      "3 messages from Support are waiting to be read",
     );
-    expect(screen.getByText(/switched off for this platform/)).toBeVisible();
+    expect(screen.getByText(/Free-text messages from Support are not being read/)).toBeVisible();
     expect(screen.getByText(/Nothing has been lost/)).toBeVisible();
-    expect(screen.getByText(/This return can hold 50/)).toBeVisible();
+    expect(screen.getByText(/This return can hold 50 waiting messages/)).toBeVisible();
   });
 
   it("asserts no cause when the contributor did not give one", () => {
@@ -284,9 +284,9 @@ describe("the parked-messages entry", () => {
     // claim about a release this console has not read.
     renderParked({ count: 1 });
     expect(screen.getByRole("heading", { level: 3 }).textContent).toContain(
-      "1 message from Support is on file",
+      "1 message from Support is waiting to be read",
     );
-    expect(screen.queryByText(/switched off for this platform/)).toBeNull();
+    expect(screen.queryByText(/Free-text messages from Support are not being read/)).toBeNull();
     expect(screen.getByText(/kept until the platform can read them/)).toBeVisible();
   });
 
@@ -325,6 +325,21 @@ describe("the thread digest", () => {
     expect(document.querySelector("img")).toBeNull();
     expect(screen.getByText("PROCESSED")).toBeVisible();
     expect(screen.getByText(/Showing 1 of 23/)).toBeVisible();
+  });
+
+  it("says what a message was read as in words, and shows an unknown one raw", () => {
+    // `rma_issued` is machine vocabulary on the screen of somebody holding a box
+    // on a phone call. An intent this bundle does not know keeps its raw name
+    // rather than being title-cased -- a raw name is visibly a system value, so
+    // a taxonomy skew looks like a skew and not like a phrase we chose.
+    renderDigest({
+      messages: [
+        { support_event_id: "evt-1", intent: "rma_issued", preview: "one" },
+        { support_event_id: "evt-2", intent: "a_newer_intent", preview: "two" },
+      ],
+    });
+    expect(screen.getByText("Read as: Return authorised")).toBeVisible();
+    expect(screen.getByText("Read as: a_newer_intent")).toBeVisible();
   });
 
   it("claims no total when the contributor did not give one", () => {

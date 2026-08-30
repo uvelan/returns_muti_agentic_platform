@@ -37,6 +37,7 @@ describe("the support token group", () => {
     // being considered against the rules fails here first.
     expect(tokenEntries(SUPPORT).map((entry) => entry.path).sort()).toEqual([
       "announcer",
+      "attentionNotice",
       "card",
       "cardHeader",
       "chip",
@@ -109,6 +110,14 @@ describe("the support token group", () => {
     // one string: the do-not-mix warning *is* in the error role, because a
     // label filed against the wrong RMA is not recoverable by re-reading.
     expect(SUPPORT.warning).toMatch(/\berror\b/);
+    // And the third state is neither of those two. "On file, needs nobody" and
+    // "cannot be used until somebody acts" are opposites from where an associate
+    // stands, so they must not share a ground -- which is exactly what the
+    // design critique caught them doing. What it reads *at* is measured in
+    // `supportContrast.test.ts`, because a class name cannot be eyeballed for it.
+    expect(SUPPORT.attentionNotice).toContain("tertiary");
+    expect(SUPPORT.attentionNotice).not.toMatch(/\berror\b/);
+    expect(SUPPORT.attentionNotice).not.toBe(SUPPORT.notice);
   });
 
   it("keeps the panel announcer inaudible to layout and audible to a reader", () => {

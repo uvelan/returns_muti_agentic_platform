@@ -206,6 +206,36 @@ export const COPILOT_TOKENS = {
     notice:
       "rounded-lg border border-outline-variant/40 bg-secondary-container/40 px-3 py-2 text-xs text-on-secondary-container",
     /**
+     * Something is on file and waiting on a person.
+     *
+     * Added by the design critique, which found the unbound-artifact block
+     * drawn in `notice` -- the *parking* tone. Those two states are opposites
+     * from where an associate stands: a parked message is on file and needs
+     * nobody, and an unfiled artifact cannot be used by anybody until somebody
+     * says which return it belongs to. Drawing them in one colour told a reader
+     * that both were equally finished.
+     *
+     * The `tertiary` family -- V1's roles for "this is in somebody's hands" --
+     * rather than `error`, which is reserved here for the do-not-mix warning,
+     * the one case that is unrecoverable by re-reading.
+     *
+     * **The foreground is `on-surface`, not `on-tertiary-container`, and the
+     * accessibility review is why.** This palette's tertiary pair is *inverted*
+     * relative to its siblings: `secondary-container` and `error-container` are
+     * light with dark `on-` roles, but `tertiary-container` is a dark brown with
+     * a *light* `on-` role. That pair reads 4.54:1 as a solid chip -- and at the
+     * `/40` tint a notice needs, the ground lightens to roughly `#d0b7ad` while
+     * the foreground stays light, landing near **1.3:1**. The `on-` role is only
+     * the right foreground for the *solid* container, which is why the chip uses
+     * it and this does not. On the tint, `on-surface` reads about 9.6:1.
+     *
+     * `supportTokens.test.ts` now computes this from the palette rather than
+     * trusting the pairing, because the first draft of this token copied
+     * `review.conflict`'s foreground and would have shipped the 1.3:1.
+     */
+    attentionNotice:
+      "rounded-lg border border-tertiary/50 bg-tertiary-container/40 px-3 py-2 text-xs text-on-surface",
+    /**
      * Do not mix these records up.
      *
      * The one place in this group that borrows `review.gap`'s roles, because

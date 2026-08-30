@@ -50,3 +50,26 @@ export function framingFor(
 ): string {
   return (key === null ? undefined : table[key]) ?? table[DEFAULT_KEY];
 }
+
+/**
+ * How an intent reads to somebody who did not write the taxonomy.
+ *
+ * The digest drew the raw value -- `rma_issued`, `information_request` -- which
+ * is machine vocabulary on the screen of somebody holding a box on a phone
+ * call. A closed map, and an **unrecognised intent keeps its raw name** rather
+ * than being title-cased: the raw name is visibly a system value, so a skew
+ * between this bundle and a newer taxonomy looks like what it is instead of
+ * looking like a phrase the platform chose.
+ */
+export const INTENT_LABEL: Readonly<Record<string, string>> = {
+  rma_issued: "Return authorised",
+  rejection: "Return declined",
+  label_provided: "Label sent",
+  tracking_update: "Tracking sent",
+  information_request: "They need more from us",
+  other: "General reply",
+};
+
+export function intentLabel(intent: string): string {
+  return INTENT_LABEL[intent] ?? intent;
+}

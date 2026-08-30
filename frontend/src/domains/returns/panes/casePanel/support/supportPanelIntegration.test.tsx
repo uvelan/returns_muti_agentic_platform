@@ -89,7 +89,7 @@ describe("what the panel shows once Support has been heard from", () => {
     await screen.findByRole("heading", { name: "What Support has sent" });
     // The mock's door is open, so nothing parks. A section that announced "0
     // messages are waiting" would be permanent furniture reporting an absence.
-    expect(screen.queryByText(/on file and not yet read/)).toBeNull();
+    expect(screen.queryByText(/waiting to be read/)).toBeNull();
   });
 
   it("shows a message that arrived after the screen was open, on the next read", async () => {
@@ -182,11 +182,11 @@ describe("what the panel shows once Support has been heard from", () => {
     await waitFor(() => {
       expect(
         screen.getByRole("heading", {
-          name: /1 message from Support is on file and not yet read/,
+          name: /1 message from Support is waiting to be read/,
         }),
       ).toBeVisible();
     });
-    expect(screen.getByText(/switched off for this platform/)).toBeVisible();
+    expect(screen.getByText(/Free-text messages from Support are not being read/)).toBeVisible();
     expect(screen.getByText(/Nothing has been lost/)).toBeVisible();
     // And it is not painted as a failure. The notice must not be the error role
     // -- teaching an associate to discount the error colour is the cost.
