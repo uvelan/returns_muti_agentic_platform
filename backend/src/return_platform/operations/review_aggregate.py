@@ -493,21 +493,38 @@ class ReviewAggregateStore:
         return dict(updated)
 
     async def _after_edit_written(self, case_id: str, review_id: str) -> None:
-        """Conflict appears the moment a second actor holds an edit row."""
+        """Conflict appears the moment a second actor holds an edit row.
+
+        The review flag and the case-scoped marker move together, in one
+        transaction. Torn the other way -- marker clear, review flagged --
+        `approve()` refuses with `ReviewConflictError` while the panel shows
+        nothing wrong: a 409 with no visible cause and nothing to resolve.
+        """
         actors = {
             str(document["actorId"]) async for document in self._edits.find({"reviewId": review_id})
         }
         if len(actors) < 2:
             return
         review = await self._reviews.find_one({"_id": review_id})
-        if review is not None and review.get("conflictPresent") is not True:
+        if review is None or review.get("conflictPresent") is True:
+            return
+
+        async def transaction(mongo_session: Any) -> None:
             await self._reviews.update_one(
                 {"_id": review_id, "conflictPresent": {"$ne": True}},
                 {"$set": {"conflictPresent": True, "updatedAt": _now()}, "$inc": {"version": 1}},
+                session=mongo_session,
             )
-            await self._bump_conflict_marker(case_id, review_id, present=True)
+            await self._bump_conflict_marker(
+                case_id, review_id, present=True, session=mongo_session
+            )
 
-    async def _bump_conflict_marker(self, case_id: str, review_id: str, *, present: bool) -> None:
+        async with self._client.start_session() as mongo_session:
+            await mongo_session.with_transaction(transaction)
+
+    async def _bump_conflict_marker(
+        self, case_id: str, review_id: str, *, present: bool, session: Any = None
+    ) -> None:
         await self._conflicts.update_one(
             {"_id": case_id},
             {
@@ -516,6 +533,7 @@ class ReviewAggregateStore:
                 "$setOnInsert": {"caseId": case_id},
             },
             upsert=True,
+            session=session,
         )
 
     async def submit_edit(self, *, case_id: str, review_id: str, actor_id: str) -> dict[str, Any]:
@@ -549,7 +567,17 @@ class ReviewAggregateStore:
         canonical_payload: Mapping[str, Any],
         resolved_from_actor_edit_ids: Sequence[str],
     ) -> dict[str, Any]:
-        """Write the canonical edit; the conflict marker clears in the same act."""
+        """Write the canonical edit; the conflict marker clears in the same act.
+
+        "In the same act" is contracts.md sect. 6's wording -- the marker is
+        *"cleared by the canonical-edit write"*, one write and not a write
+        followed by another -- and it is now literally true: both legs commit
+        in one transaction or neither does. Torn, the pair is unrecoverable,
+        because `conflict_marker()` reads the stored flags rather than
+        recomputing from the edit rows: the panel would show a conflict for
+        ever, the associate would be told to resolve one that no longer exists,
+        and resolving again is a no-op against an already-clean review.
+        """
         require_assignable_actor(resolved_by, action="resolve a canonical edit")
         review = await self.get_review(case_id=case_id, review_id=review_id)
         self._require_state(review, "resolve", (ReviewState.OPEN,))
@@ -561,23 +589,42 @@ class ReviewAggregateStore:
             "resolved_by": resolved_by,
             "resolved_at": now,
         }
-        updated = await self._reviews.find_one_and_update(
-            {
-                "_id": review_id,
-                "caseId": case_id,
-                "state": ReviewState.OPEN.value,
-                "canonicalEditVersion": review["canonicalEditVersion"],
-            },
-            {
-                "$set": {
-                    "canonicalEdit": canonical_edit,
-                    "conflictPresent": False,
-                    "updatedAt": now,
+        updated: dict[str, Any] | None = None
+
+        async def transaction(mongo_session: Any) -> None:
+            nonlocal updated
+            updated = await self._reviews.find_one_and_update(
+                {
+                    "_id": review_id,
+                    "caseId": case_id,
+                    "state": ReviewState.OPEN.value,
+                    "canonicalEditVersion": review["canonicalEditVersion"],
                 },
-                "$inc": {"canonicalEditVersion": 1, "version": 1},
-            },
-            return_document=ReturnDocument.AFTER,
-        )
+                {
+                    "$set": {
+                        "canonicalEdit": canonical_edit,
+                        "conflictPresent": False,
+                        "updatedAt": now,
+                    },
+                    "$inc": {"canonicalEditVersion": 1, "version": 1},
+                },
+                session=mongo_session,
+                return_document=ReturnDocument.AFTER,
+            )
+            if updated is None:
+                # Lost the version CAS. Nothing to clear, and raising inside the
+                # transaction is what stops the marker moving on its own.
+                raise _CanonicalEditLockLost()
+            await self._bump_conflict_marker(
+                case_id, review_id, present=False, session=mongo_session
+            )
+
+        try:
+            async with self._client.start_session() as mongo_session:
+                await mongo_session.with_transaction(transaction)
+        except _CanonicalEditLockLost:
+            updated = None
+
         if updated is None:
             raise ReviewVersionMismatchError(
                 review_id,
@@ -585,7 +632,6 @@ class ReviewAggregateStore:
                 int(review["canonicalEditVersion"]),
                 -1,
             )
-        await self._bump_conflict_marker(case_id, review_id, present=False)
         return dict(updated)
 
     # ---------------------------------------------------------------- approval
@@ -1026,3 +1072,11 @@ class ReviewAggregateStore:
 
 class _ApprovalLockLost(RuntimeError):
     """Internal: the CAS inside the approval transaction matched nothing."""
+
+
+class _CanonicalEditLockLost(RuntimeError):
+    """Internal: the version CAS inside the canonical-edit transaction missed.
+
+    Raised rather than returned so the transaction aborts: the marker clear
+    must not commit for a canonical edit that was never written.
+    """

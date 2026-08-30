@@ -445,6 +445,165 @@ async def test_the_canonical_edit_write_clears_the_marker_and_bumps_its_version(
 
 
 @pytest.mark.asyncio
+async def test_the_marker_and_the_review_flag_are_raised_as_one(
+    store: ReviewAggregateStore, reviews: FakeCollection
+) -> None:
+    """Contracts sect. 6: the pair is one write, and a torn pair is unrecoverable.
+
+    Torn this way -- review flagged, marker clear -- `approve()` refuses with
+    `ReviewConflictError` while the panel shows nothing wrong: a 409 with no
+    visible cause and nothing an associate can resolve.
+    """
+    review = await _open_review(store)
+    review_id = str(review["_id"])
+    await store.upsert_draft_edit(
+        case_id=CASE_ID,
+        review_id=review_id,
+        actor_id="associate-1",
+        client_edit_id="c1",
+        base_draft_version=1,
+        payload=EDITED,
+    )
+
+    original = store._conflicts.update_one  # noqa: SLF001
+
+    async def marker_write_fails(*args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+        raise RuntimeError("the marker leg failed mid-pair")
+
+    store._conflicts.update_one = marker_write_fails  # type: ignore[method-assign]  # noqa: SLF001
+    try:
+        with pytest.raises(RuntimeError, match="marker leg"):
+            await store.upsert_draft_edit(
+                case_id=CASE_ID,
+                review_id=review_id,
+                actor_id="associate-2",
+                client_edit_id="c2",
+                base_draft_version=1,
+                payload=EDITED,
+            )
+    finally:
+        store._conflicts.update_one = original  # type: ignore[method-assign]  # noqa: SLF001
+
+    # Neither leg committed: the two agree, and they agree on "no conflict".
+    assert reviews.documents[review_id]["conflictPresent"] is not True
+    assert (await store.conflict_marker(CASE_ID))["present"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_failed_marker_raise_still_leaves_the_conflict_discoverable(
+    store: ReviewAggregateStore,
+) -> None:
+    """The flag pair is transactional; the *edit rows* are the durable truth.
+
+    `_after_edit_written` recomputes the actor set from the edit rows, so a
+    pass that aborted still finds the conflict next time somebody writes. This
+    is why wrapping the flag/marker pair alone is the right scope: that pair
+    cannot heal itself, and the rows can.
+    """
+    review = await _open_review(store)
+    review_id = str(review["_id"])
+    for actor, client_edit in (("associate-1", "c1"), ("associate-2", "c2")):
+        original = store._conflicts.update_one  # noqa: SLF001
+
+        async def marker_write_fails(*args: Any, **kwargs: Any) -> None:
+            del args, kwargs
+            raise RuntimeError("the marker leg failed mid-pair")
+
+        store._conflicts.update_one = marker_write_fails  # type: ignore[method-assign]  # noqa: SLF001
+        try:
+            await store.upsert_draft_edit(
+                case_id=CASE_ID,
+                review_id=review_id,
+                actor_id=actor,
+                client_edit_id=client_edit,
+                base_draft_version=1,
+                payload=EDITED,
+            )
+        except RuntimeError:
+            pass
+        finally:
+            store._conflicts.update_one = original  # type: ignore[method-assign]  # noqa: SLF001
+
+    # A later successful write finds the same two actors and raises the pair.
+    await store.upsert_draft_edit(
+        case_id=CASE_ID,
+        review_id=review_id,
+        actor_id="associate-2",
+        client_edit_id="c3",
+        base_draft_version=1,
+        payload=DRAFT,
+    )
+    await store._after_edit_written(CASE_ID, review_id)  # noqa: SLF001
+
+    assert (await store.conflict_marker(CASE_ID))["present"] is True
+
+
+@pytest.mark.asyncio
+async def test_the_marker_and_the_canonical_edit_are_cleared_as_one(
+    store: ReviewAggregateStore, reviews: FakeCollection
+) -> None:
+    """Torn the other way, the panel shows a phantom conflict for ever.
+
+    `conflict_marker()` reads the stored flags rather than recomputing, so
+    nothing repairs it: the associate is told to resolve a conflict that no
+    longer exists, and resolving again is a no-op against a clean review.
+    """
+    review = await _open_review(store)
+    review_id = str(review["_id"])
+    written = []
+    for actor in ("associate-1", "associate-2"):
+        written.append(
+            await store.upsert_draft_edit(
+                case_id=CASE_ID,
+                review_id=review_id,
+                actor_id=actor,
+                client_edit_id=f"c-{actor}",
+                base_draft_version=1,
+                payload=EDITED,
+            )
+        )
+    assert (await store.conflict_marker(CASE_ID))["present"] is True
+
+    original = store._conflicts.update_one  # noqa: SLF001
+
+    async def marker_clear_fails(*args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+        raise RuntimeError("the marker leg failed mid-pair")
+
+    store._conflicts.update_one = marker_clear_fails  # type: ignore[method-assign]  # noqa: SLF001
+    try:
+        with pytest.raises(RuntimeError, match="marker leg"):
+            await store.resolve_canonical_edit(
+                case_id=CASE_ID,
+                review_id=review_id,
+                resolved_by="associate-1",
+                canonical_payload=EDITED,
+                resolved_from_actor_edit_ids=[str(row["_id"]) for row in written],
+            )
+    finally:
+        store._conflicts.update_one = original  # type: ignore[method-assign]  # noqa: SLF001
+
+    # The canonical edit did not commit either, so the pair still agrees --
+    # and, agreeing, it is still resolvable.
+    stored = reviews.documents[review_id]
+    assert stored["canonicalEditVersion"] == 0
+    assert stored["canonicalEdit"] is None
+    assert stored["conflictPresent"] is True
+    assert (await store.conflict_marker(CASE_ID))["present"] is True
+
+    resolved = await store.resolve_canonical_edit(
+        case_id=CASE_ID,
+        review_id=review_id,
+        resolved_by="associate-1",
+        canonical_payload=EDITED,
+        resolved_from_actor_edit_ids=[str(row["_id"]) for row in written],
+    )
+    assert resolved["canonicalEditVersion"] == 1
+    assert (await store.conflict_marker(CASE_ID))["present"] is False
+
+
+@pytest.mark.asyncio
 async def test_a_sole_actors_submit_auto_promotes_to_canonical(
     store: ReviewAggregateStore,
 ) -> None:
@@ -559,6 +718,49 @@ async def test_a_failed_approval_leaves_neither_command_nor_outbox_row(
     assert commands.documents == {}
     assert outbox.documents == {}
     assert reviews.documents[review_id]["state"] == ReviewState.OPEN.value
+
+
+@pytest.mark.asyncio
+async def test_a_failing_outbox_leg_rolls_the_locked_review_back_to_open(
+    store: ReviewAggregateStore,
+    reviews: FakeCollection,
+    commands: FakeCollection,
+    outbox: FakeCollection,
+) -> None:
+    """The other direction of the approval transaction.
+
+    The lock-loses direction is covered above. This is the one that matters if
+    somebody ever moves the command/outbox insert back outside the transaction:
+    the review would be left in `APPROVING` -- locked, frozen, uneditable --
+    with no command ever dispatched and no path back, and the review would wait
+    on a send that nobody was ever asked to make.
+    """
+    review = await _open_review(store)
+    review_id = str(review["_id"])
+    original = outbox.insert_one
+
+    async def outbox_leg_fails(*args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+        raise RuntimeError("the outbox leg failed after the review was locked")
+
+    outbox.insert_one = outbox_leg_fails  # type: ignore[method-assign]
+    try:
+        with pytest.raises(RuntimeError, match="outbox leg"):
+            await _approve(store, review)
+    finally:
+        outbox.insert_one = original  # type: ignore[method-assign]
+
+    stored = reviews.documents[review_id]
+    assert stored["state"] == ReviewState.OPEN.value
+    assert stored["approvedPayload"] is None
+    assert stored["deliveryId"] is None
+    assert stored["approvingCommandId"] is None
+    assert commands.documents == {}
+    assert outbox.documents == {}
+
+    # And the review is still approvable, which is the point of rolling back.
+    approved, _ = await _approve(store, review)
+    assert approved["state"] == ReviewState.APPROVING.value
 
 
 @pytest.mark.asyncio
