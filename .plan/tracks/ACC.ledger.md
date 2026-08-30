@@ -236,4 +236,51 @@ precedence (explicit marker beats suffix beats fixtures); `addopts -m "not
 live_infra and not browser"`; `run_real_infra_suite.sh` port preflight + `-m
 live_infra` selection.
 
+**Next step:** step:03a — close the orphan-child gap the harness's own tests found.
+
+---
+
+## step:03a — the graceful teardown was leaving orphans
+
+**Files:** `backend/tests/harness/chaos_restart.py`,
+`backend/tests/harness/test_chaos_restart.py`.
+
+A test written for `stop()` (`test_stop_reaps_the_children_too`) failed on
+first run, and the failure was real: `taskkill /T` walks the tree **from the
+parent**, so reaping after `terminate()` had already killed the parent
+enumerated nothing. Teardown was handing the next scenario a live child still
+polling the task queue — the exact state the whole harness exists to prevent,
+arriving through the polite path rather than the violent one.
+
+**A job object was tried and rejected on evidence.** `CreateJobObjectW` +
+`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` + `TerminateJobObject` would remove the
+"parent must be alive" constraint entirely, since job membership is inherited
+and outlives the parent. It does not work here: `AssignProcessToJobObject`
+lands *after* `CreateProcess` returns, and the worker spawns its own children
+inside that window. Measured, not assumed — `IsProcessInJob` on the grandchild
+returned "in no job at all", and the child survived `TerminateJobObject`. The
+~60 lines of `ctypes` were removed rather than kept as decoration: a mechanism
+that silently reaps less than the one it replaces is worse than the one it
+replaces.
+
+**Resolution.** One `_signal_tree(pid, force=…)` used by both paths, always
+called while the parent is still alive. `kill()` forces immediately;
+`stop()` asks politely, waits a short grace, then forces. The constraint is
+documented at the method rather than left to be rediscovered.
+
+**Second finding, from the clock.** The polite step made the harness suite
+3s → 50s. On Windows `taskkill` without `/F` posts `WM_CLOSE`, which a console
+process has no message loop to receive, and `Popen.terminate()` is
+`TerminateProcess` — already un-catchable. So the polite step terminated
+nothing and cost a full grace period per teardown. It is now skipped on Windows
+with the reason stated: there is no graceful stop to attempt, and pretending
+otherwise bought only latency. `GRACE_SECONDS = 3.0` on POSIX, where `SIGTERM`
+to the process group means something.
+
+**Commands:**
+- `python -m pytest tests/harness -q` → **32 passed, 1 deselected in 5.31s**
+  (was 2 failed / 30 passed before the fix, then 32 passed in 50.61s before the
+  latency fix)
+- `ruff check` / `ruff format` → clean
+
 **Next step:** step:04 — full-suite verification and delta report.

@@ -150,6 +150,35 @@ class TestWorkerProcess:
         finally:
             worker.kill()
 
+    def test_stop_reaps_the_children_too(self, tmp_path: Path) -> None:
+        """A polite shutdown that leaves an orphan poisons the next scenario anyway.
+
+        `terminate()` reaches the parent and nothing below it on either
+        platform, so teardown has to reap the tree regardless of how gracefully
+        the parent went. The starting state the next scenario inherits is the
+        only thing that matters here, and it is identical either way.
+        """
+        heartbeat = tmp_path / "child-heartbeat"
+        worker = WorkerProcess(_parent_that_spawns_a_child(tmp_path, heartbeat))
+        try:
+            worker.start()
+            deadline = time.monotonic() + 20
+            while not heartbeat.exists() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            assert heartbeat.exists(), "the child never started, so this proves nothing"
+
+            worker.stop()
+            time.sleep(0.5)
+            settled = heartbeat.read_text()
+            time.sleep(0.5)
+
+            assert heartbeat.read_text() == settled, (
+                "the child survived a graceful stop -- teardown left a worker polling "
+                "a task queue for whatever runs next"
+            )
+        finally:
+            worker.kill()
+
     def test_the_context_manager_starts_and_stops(self) -> None:
         with WorkerProcess(_idle_worker()) as worker:
             assert worker.is_running

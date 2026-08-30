@@ -41,6 +41,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Awaitable, Callable, Iterable, Sequence
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -48,6 +49,7 @@ from typing import Any, Protocol
 __all__ = [
     "DEFAULT_POLL_INTERVAL_SECONDS",
     "DEFAULT_TIMEOUT_SECONDS",
+    "GRACE_SECONDS",
     "ORDER_DISCOVERY_WORKER",
     "RETURN_WORKFLOW_WORKER",
     "ChaosTimeout",
@@ -68,6 +70,11 @@ DEFAULT_TIMEOUT_SECONDS = 60.0
 #: Fast enough that a state transition is not credited to the wrong side of a
 #: kill, slow enough not to spin a core while a worker boots.
 DEFAULT_POLL_INTERVAL_SECONDS = 0.25
+
+#: How long a polite teardown waits before it stops being polite. Teardown time
+#: is paid on every scenario and buys nothing, so this is short: a worker that
+#: has not drained in three seconds is going to be forced anyway.
+GRACE_SECONDS = 3.0
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
@@ -166,9 +173,9 @@ class WorkerProcess:
             return
 
         environment = {**os.environ, **self._spec.env}
-        # A new process group / job so that `kill()` can take the children with
-        # it. Set at launch because it cannot be arranged afterwards, and a
-        # worker whose children outlive it holds a task queue nobody can find.
+        # A new process group so the whole tree can be signalled at once. Set at
+        # launch because it cannot be arranged afterwards, and a worker whose
+        # children outlive it holds a task queue nobody can find.
         extra: dict[str, Any] = (
             {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}  # type: ignore[attr-defined]
             if os.name == "nt"
@@ -181,6 +188,37 @@ class WorkerProcess:
             **extra,
         )
 
+    def _signal_tree(self, pid: int, *, force: bool) -> None:
+        """Signal the worker and everything descended from it.
+
+        `force` is the difference between "please stop" and "you are gone":
+        `SIGTERM`/`SIGKILL` to the process group on POSIX, `taskkill /T` with or
+        without `/F` on Windows.
+
+        **The tree is walked from the parent, so this must be called while the
+        parent is alive.** That is a real limitation and it is why both `kill()`
+        and `stop()` reap before letting the parent go rather than after. A job
+        object would have removed the constraint, except that the worker spawns
+        its own children in the microseconds between `CreateProcess` returning
+        and an assignment landing -- measured, not assumed: the grandchild came
+        back in no job at all -- so the job would have silently reaped less than
+        this does.
+
+        Never raises. A signal that finds nothing to signal has succeeded, and a
+        teardown error would bury the assertion that explains the failure.
+        """
+        if os.name == "nt":  # pragma: no cover - exercised only on Windows
+            command = ["taskkill", "/T", "/PID", str(pid)]
+            if force:
+                command.insert(1, "/F")
+            subprocess.run(command, capture_output=True, check=False)  # noqa: S603, S607
+            return
+        try:
+            os.killpg(os.getpgid(pid), signal.SIGKILL if force else signal.SIGTERM)
+        except (ProcessLookupError, PermissionError):
+            with suppress(ProcessLookupError, PermissionError):
+                os.kill(pid, signal.SIGKILL if force else signal.SIGTERM)
+
     def kill(self, *, timeout: float = 10.0) -> None:
         """Take the worker away without warning, children included.
 
@@ -190,25 +228,10 @@ class WorkerProcess:
         scenarios ask.
         """
         process = self._process
-        if process is None or process.poll() is not None:
-            self._process = None
+        if process is None:
             return
 
-        if os.name == "nt":
-            # `/T` for the tree, `/F` for un-catchable. `check=False`: the
-            # process may have exited between the poll above and here, and a
-            # kill that finds nothing to kill has succeeded.
-            subprocess.run(  # noqa: S603, S607
-                ["taskkill", "/F", "/T", "/PID", str(process.pid)],
-                capture_output=True,
-                check=False,
-            )
-        else:
-            try:
-                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                process.kill()
-
+        self._signal_tree(process.pid, force=True)
         try:
             process.wait(timeout=timeout)
         except subprocess.TimeoutExpired as error:  # pragma: no cover - unkillable process
@@ -220,24 +243,40 @@ class WorkerProcess:
         finally:
             self._process = None
 
-    def stop(self, *, timeout: float = 15.0) -> None:
-        """Shut the worker down politely. **Teardown only.**
+    def stop(self, *, timeout: float = 15.0, grace: float = GRACE_SECONDS) -> None:
+        """Shut the worker down as politely as the platform allows. **Teardown only.**
 
         Named apart from `kill()` so the two can never be confused at a call
         site: a scenario that used this would be testing the drain path while
         claiming to test crash recovery, and would pass.
+
+        Polite to the whole tree, not just the parent, and forceful afterwards.
+        A worker that shut down cleanly while leaving a child polling the task
+        queue hands the next scenario exactly the poisoned starting state an
+        ungraceful exit would have -- so teardown reaps either way, and reaps
+        *before* the parent is gone, while the tree can still be walked.
+
+        **On Windows the polite step is skipped, because there is no polite
+        step.** `taskkill` without `/F` posts `WM_CLOSE`, which a console
+        process has no message loop to receive, and `Popen.terminate()` is
+        `TerminateProcess` -- already un-catchable. Trying anyway cost a full
+        grace period per teardown and terminated nothing; the honest version
+        goes straight to the forceful path and says so here.
         """
         process = self._process
-        if process is None or process.poll() is not None:
-            self._process = None
+        if process is None:
             return
-        process.terminate()
-        try:
+
+        if os.name != "nt" and process.poll() is None:
+            self._signal_tree(process.pid, force=False)
+            deadline = time.monotonic() + grace
+            while process.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.05)
+
+        self._signal_tree(process.pid, force=True)
+        with suppress(subprocess.TimeoutExpired):
             process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            self.kill()
-        finally:
-            self._process = None
+        self._process = None
 
     def restart(self) -> None:
         """Kill and start again -- the shape of every scenario in items 14-18."""
