@@ -604,6 +604,71 @@ async def test_the_marker_and_the_canonical_edit_are_cleared_as_one(
 
 
 @pytest.mark.asyncio
+async def test_a_lost_version_cas_clears_nothing(
+    store: ReviewAggregateStore, reviews: FakeCollection
+) -> None:
+    """The abort inside the transaction, pinned.
+
+    The transaction itself is covered above; this covers the mechanism *inside*
+    it. If the CAS misses and the code merely reports the mismatch afterwards
+    without aborting, the marker clear still commits -- and the marker is then
+    clear for a canonical edit that was never written, which is exactly half of
+    the tear the transaction exists to prevent, reintroduced from within.
+
+    The race is a cancel landing between this caller's read and its write.
+    """
+    review = await _open_review(store)
+    review_id = str(review["_id"])
+    written = []
+    for actor in ("associate-1", "associate-2"):
+        written.append(
+            await store.upsert_draft_edit(
+                case_id=CASE_ID,
+                review_id=review_id,
+                actor_id=actor,
+                client_edit_id=f"c-{actor}",
+                base_draft_version=1,
+                payload=EDITED,
+            )
+        )
+    assert (await store.conflict_marker(CASE_ID))["present"] is True
+
+    # The snapshot this caller read before anything moved.
+    stale = await store.get_review(case_id=CASE_ID, review_id=review_id)
+    # Somebody cancels the review in the window. The CAS filter names
+    # `state: OPEN`, so this caller's write will match nothing.
+    await store.cancel(
+        case_id=CASE_ID, review_id=review_id, actor_id="associate-2", reason="withdrawn"
+    )
+
+    async def stale_read(**kwargs: Any) -> dict[str, Any]:
+        del kwargs
+        return dict(stale)
+
+    original = store.get_review
+    store.get_review = stale_read  # type: ignore[method-assign]
+    try:
+        with pytest.raises(ReviewVersionMismatchError):
+            await store.resolve_canonical_edit(
+                case_id=CASE_ID,
+                review_id=review_id,
+                resolved_by="associate-1",
+                canonical_payload=EDITED,
+                resolved_from_actor_edit_ids=[str(row["_id"]) for row in written],
+            )
+    finally:
+        store.get_review = original  # type: ignore[method-assign]
+
+    # Nothing was written, so nothing was cleared. The conflict is still there
+    # to be resolved, and the review still says so.
+    assert (await store.conflict_marker(CASE_ID))["present"] is True
+    stored = reviews.documents[review_id]
+    assert stored["canonicalEdit"] is None
+    assert stored["canonicalEditVersion"] == 0
+    assert stored["conflictPresent"] is True
+
+
+@pytest.mark.asyncio
 async def test_a_sole_actors_submit_auto_promotes_to_canonical(
     store: ReviewAggregateStore,
 ) -> None:

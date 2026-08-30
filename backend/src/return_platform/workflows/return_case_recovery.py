@@ -209,6 +209,22 @@ class ReturnCaseWorkflowRecovery:
             raise ValueError("batch_size must be at least 1")
         if interval_seconds <= 0:
             raise ValueError("interval_seconds must be positive")
+        # Checked here, loudly, rather than discovered per-case at runtime.
+        # `_repair_workflow_link` swallows its failures on purpose -- one case's
+        # link must not stop the sweep reaching the cases behind it -- and that
+        # is right for an operational failure, which is transient and affects
+        # one case. A *missing method* is neither: it fails identically for
+        # every case on every pass, for ever, and the sweep degrades silently
+        # back to the starvation this repair exists to prevent, visible only as
+        # a warning nobody is watching. A wiring error should be loud at wiring
+        # time, so the one failure mode the broad catch could hide is removed
+        # before it can happen rather than caught after.
+        if not callable(getattr(repository, "bind_case_workflow", None)):
+            raise TypeError(
+                f"{type(repository).__name__} does not implement bind_case_workflow: "
+                "the sweep repairs the workflow link for cases it refuses to relaunch, "
+                "and without it those cases never leave the recovery queue"
+            )
         self._launcher = launcher
         self._repository = repository
         self._grace_seconds = grace_seconds
@@ -295,17 +311,28 @@ class ReturnCaseWorkflowRecovery:
         link on its next pass". This is that pass, for the statuses it no
         longer relaunches.
 
-        A failure here is logged, not raised, for the same reason the launcher
-        logs its own: the link is provenance, and one case's link must not stop
-        the sweep from reaching the genuinely unlaunched cases behind it. The
-        case stays in the queue and the next pass tries again -- which is a
-        retry rather than the permanent residue the skip created, because the
-        write is attempted every pass instead of never.
+        An *operational* failure here is logged, not raised, for the same
+        reason the launcher logs its own: the link is provenance, and one
+        case's link must not stop the sweep from reaching the genuinely
+        unlaunched cases behind it. The case stays in the queue and the next
+        pass tries again -- a retry rather than the permanent residue the bare
+        skip created, because the write is attempted every pass instead of
+        never.
+
+        `AttributeError` is deliberately **not** caught. It is the one failure
+        here that is not operational: it means the port has no such method, so
+        it would fail identically for every case on every pass and degrade the
+        sweep silently back to the starvation this repair exists to prevent.
+        The constructor already refuses such a repository, so reaching this at
+        all is a programming error -- and swallowing a programming error into a
+        warning is how the invisible mode gets built.
         """
         try:
             await self._repository.bind_case_workflow(
                 case_id, workflow_id=return_case_workflow_id(case_id)
             )
+        except AttributeError:
+            raise
         except Exception:  # noqa: BLE001 - provenance, and the next pass retries
             logger.warning(
                 "case_workflow_link_repair_failed",
