@@ -87,8 +87,10 @@ export function DocumentEditor<TResult>({
   submitTitle,
   readOnlyNotice,
   notObjectMessage,
+  confirmSubmit,
   onSubmit,
   renderResult,
+  notice,
   onDirtyChange,
   footer,
 }: {
@@ -108,9 +110,19 @@ export function DocumentEditor<TResult>({
   readOnlyNotice: string;
   /** Refusal shown when the document is not an object. Subject-specific wording. */
   notObjectMessage: string;
+  /**
+   * Asked before submitting, when submitting is the irreversible half.
+   *
+   * Absent for a write that only *proposes* a change -- an agent edit waits in
+   * the approvals queue and a confirmation there would be ceremony over
+   * nothing. Present where the button publishes.
+   */
+  confirmSubmit?: string;
   onSubmit: (document: JsonObject) => Promise<TResult>;
   /** What to show once the write succeeded -- a proposal id, a release. */
   renderResult?: (result: TResult) => ReactNode;
+  /** Shown with the editor's own messages, under the header: progress, warnings. */
+  notice?: ReactNode;
   onDirtyChange: (dirty: boolean) => void;
   /**
    * Rendered under the editor with the document as it currently stands, or
@@ -230,6 +242,7 @@ export function DocumentEditor<TResult>({
       setJsonError(notObjectMessage);
       return;
     }
+    if (confirmSubmit !== undefined && !window.confirm(confirmSubmit)) return;
     save.mutate(document);
   }
 
@@ -377,6 +390,7 @@ export function DocumentEditor<TResult>({
         {result !== null && save.error === null && renderResult !== undefined
           ? renderResult(result)
           : null}
+        {notice}
 
         {mode === "json" ? jsonEditor : mode === "form" ? formEditor : (
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">

@@ -19,7 +19,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SupportTemplateSection } from "./SupportTemplateSection";
 import { CapabilityContext } from "../../hooks/capabilityContext";
@@ -127,6 +127,11 @@ beforeEach(() => {
     gaps: [],
     review_blocked: false,
   });
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("every control on the template screen says what it is", () => {

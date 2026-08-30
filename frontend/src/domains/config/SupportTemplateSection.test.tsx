@@ -15,7 +15,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SupportTemplateSection } from "./SupportTemplateSection";
 import { CapabilityContext } from "../../hooks/capabilityContext";
@@ -127,6 +127,13 @@ beforeEach(() => {
   mocks.patchDomain.mockReset().mockResolvedValue({});
   mocks.promote.mockReset().mockResolvedValue({});
   mocks.preview.mockReset().mockResolvedValue(RENDERED);
+  // Publishing asks first; jsdom has no dialogs, so the answer is stubbed.
+  // Overridden in the test that checks the refusal path.
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("the template an operator is editing", () => {
@@ -251,6 +258,22 @@ describe("publishing the change", () => {
     expect(patch.support_template.variants[0].subject_template).toBe("Return of {order_number}");
     // The head revision guards the publish, so two operators cannot both win.
     expect(mocks.promote).toHaveBeenLastCalledWith(releaseId, "RELEASED", 41);
+  });
+
+  it("asks before publishing, and publishes nothing when the answer is no", async () => {
+    // The Agents tab's button proposes; this one changes what the platform
+    // runs. Declining has to leave the release lifecycle untouched.
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const user = userEvent.setup();
+    render(<SupportTemplateSection />, { wrapper: Wrapper });
+
+    const subject = await screen.findByDisplayValue("Return {order_number}");
+    await user.type(subject, "!");
+    await user.click(screen.getByRole("button", { name: /publish release/i }));
+
+    expect(mocks.createRelease).not.toHaveBeenCalled();
+    expect(mocks.patchDomain).not.toHaveBeenCalled();
+    expect(mocks.promote).not.toHaveBeenCalled();
   });
 
   it("reports the published release without claiming running cases changed", async () => {

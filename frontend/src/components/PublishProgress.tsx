@@ -9,14 +9,17 @@ import type { PublishStep } from "../api/releasePublish";
  */
 export function PublishProgress({
   steps,
-  error,
-  published,
-  publishedNote,
+  // Optional, because a caller whose surrounding editor already reports the
+  // refusal and the success would otherwise have to pass `null`, `false` and
+  // `""` to say "not mine to report".
+  error = null,
+  published = false,
+  publishedNote = "",
 }: {
   steps: readonly PublishStep[];
-  error: string | null;
-  published: boolean;
-  publishedNote: string;
+  error?: string | null;
+  published?: boolean;
+  publishedNote?: string;
 }) {
   return (
     <>

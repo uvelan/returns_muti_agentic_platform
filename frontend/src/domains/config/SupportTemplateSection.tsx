@@ -142,6 +142,10 @@ export function SupportTemplateSection() {
         submitTitle="Publishing a configuration release requires config.release.promote"
         readOnlyNotice="Read-only access. Publishing a configuration release requires config.release.promote. Preview works without it."
         notObjectMessage="A support template must be an object with template_id, default_variant_id and variants."
+        // Publishing changes what the platform runs. The Agents tab needs no
+        // confirmation because its button only proposes; this one does not.
+        confirmSubmit="Publish this template as a new configuration release? Cases opened afterwards pin it."
+        notice={<PublishProgress steps={steps} />}
         onDirtyChange={setDirty}
         onSubmit={async (document: JsonObject) => {
           const releaseId = defaultReleaseId("support-template");
@@ -161,17 +165,7 @@ export function SupportTemplateSection() {
             keep the template they started with.
           </p>
         )}
-        footer={(document) => (
-          <div className="flex flex-col gap-3">
-            <PublishProgress
-              steps={steps}
-              error={null}
-              published={false}
-              publishedNote=""
-            />
-            <VariantPreview template={document} />
-          </div>
-        )}
+        footer={(document) => <VariantPreview template={document} />}
       />
     </div>
   );
@@ -288,23 +282,29 @@ function VariantPreview({ template }: { template: JsonObject | null }) {
         </div>
       </div>
 
-      <div className="border-t border-outline-variant/80 px-4 py-3">
-        {template === null ? (
-          <p className="text-sm text-on-surface-variant">
-            The JSON in the editor does not parse yet, so there is nothing to render. Fix it and the
-            preview comes back.
-          </p>
-        ) : preview.error !== null ? (
+      <div className="flex flex-col gap-3 border-t border-outline-variant/80 px-4 py-3">
+        {/*
+          One live region, present from the first render rather than created
+          when the result arrives -- a region added to the document at the same
+          moment as its content is not reliably announced. It carries the
+          one-line summary only: putting the whole rendered message in here
+          would read the entire handoff aloud every time.
+        */}
+        <p role="status" className="text-sm text-on-surface">
+          {template === null
+            ? "The JSON in the editor does not parse yet, so there is nothing to render. Fix it and the preview comes back."
+            : preview.data === undefined
+              ? "Nothing rendered yet. Set the case shape above, then render."
+              : summarize(preview.data)}
+        </p>
+        {preview.error !== null ? (
           <p role="alert" className="rounded-lg border border-error/20 bg-error-container px-3 py-2 text-sm text-on-error-container">
             {preview.error.message}
           </p>
-        ) : preview.data === undefined ? (
-          <p className="text-sm text-on-surface-variant">
-            Nothing rendered yet. Set the case shape above, then render.
-          </p>
-        ) : (
+        ) : null}
+        {template !== null && preview.data !== undefined ? (
           <RenderedPreview rendered={preview.data} />
-        )}
+        ) : null}
       </div>
     </section>
   );
@@ -340,18 +340,17 @@ function ClauseField({
   );
 }
 
+/** The one line the live region announces. Deliberately short. */
+function summarize(rendered: SupportTemplatePreviewResponse): string {
+  const count = rendered.gaps.length;
+  return count === 0
+    ? `Variant ${rendered.variant_id} rendered with every required field filled.`
+    : `Variant ${rendered.variant_id} rendered with ${String(count)} required field${count === 1 ? "" : "s"} unfilled.`;
+}
+
 function RenderedPreview({ rendered }: { rendered: SupportTemplatePreviewResponse }) {
   return (
     <div className="flex flex-col gap-3">
-      {/* Announced without moving focus: the operator asked for this, and
-          stealing focus back would lose the caret in whatever they were editing. */}
-      <p role="status" className="text-sm text-on-surface">
-        Variant <strong className="font-semibold">{rendered.variant_id}</strong> rendered
-        {rendered.gaps.length === 0
-          ? " with every required field filled."
-          : ` with ${String(rendered.gaps.length)} required field${rendered.gaps.length === 1 ? "" : "s"} unfilled.`}
-      </p>
-
       {rendered.gaps.length > 0 ? (
         <div className="rounded-lg border border-error/20 bg-error-container px-3 py-2 text-sm text-on-error-container">
           <p className="font-semibold">This draft would be held rather than sent.</p>
