@@ -512,3 +512,49 @@ phase 2 deliberately: the right shape of that guard depends on how the scenarios
 obtain their configuration, which is V1–V3 surface that does not exist yet.
 Building it now would be guessing at an interface. **Carry this entry into the
 phase-2 brief.**
+
+---
+
+## step:07 — RV round 1 resubmission
+
+Branch `feat/acc-harness`, seven commits, nothing uncommitted. Both findings
+fixed, each reproduced by fault injection before the fix and re-injected after.
+
+### Suite
+
+| run | result |
+| --- | --- |
+| base (`e0a5f6c`) | 4 373 passed, **2 failed**, 9 skipped, 511 deselected |
+| RV round 1 (`f433237`) | 4 408 passed, **2 failed**, 9 skipped, 512 deselected |
+| resubmission | 4 409 passed, **2 failed**, 10 skipped, 512 deselected, 3:15 |
+
+**+1 passed, +1 skipped** against the reviewed commit — F2 turned one test into
+three, of which the behavioural one is skipped on Windows. Failures unchanged:
+the same known pre-existing pair, still untouched. **Zero new failures.**
+
+### Fault-injection evidence, both findings
+
+| finding | injected drift | before fix | after fix |
+| --- | --- | --- | --- |
+| F1 | production `_business_calendar` drops the holiday set | 10 passed (**miss**) | 1 failed, 9 passed |
+| F1 | production inverts timezone precedence | 1 failed | 1 failed, 9 passed |
+| F2 | `stop()`'s graceful block deleted → alias of `kill()` | 22 passed (**miss**) | 1 failed, 22 passed, 1 skipped |
+
+Every injection was made in the working tree, run, and reverted with
+`git checkout`; `git status` was confirmed clean after each. No production file
+is modified by this branch — `git diff --name-only e0a5f6c..HEAD -- backend/src
+frontend/src backend/config scripts` returns nothing.
+
+### Carried forward, unchanged from the round-1 report
+
+- `test_chaos_restart_smoke_real_infra.py` still unexecuted (no live stack).
+  RV's note stands: it should be the first thing run when the stack comes up,
+  ahead of any scenario built on it.
+- The POSIX graceful teardown path is still unexercised on this platform. Now
+  *asserted* structurally on every platform, and behaviourally on POSIX when
+  something runs it — but the behavioural test itself has never run.
+- No production-code defect found. The two advisory observations
+  (`production.yaml`'s BEFORE LIVE obligation; the private config→domain mapping
+  that ACC duplicates) are unchanged and still not acted on, both being
+  production edits owned elsewhere.
+- Advisory above — the forgotten-fixture gap — must reach the phase-2 brief.
