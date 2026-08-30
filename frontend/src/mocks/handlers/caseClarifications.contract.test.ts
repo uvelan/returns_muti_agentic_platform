@@ -1,24 +1,21 @@
 /**
- * The clarification mocks, and a tripwire that goes off when they stop being
- * necessary.
+ * What the clarification client sends, which no other check can see.
  *
- * Every other client module on this surface imports `api/generated/return-platform`,
- * which `npm run contracts:generate` emits from the backend's own OpenAPI.
- * `api/caseClarifications.ts` cannot: `api/case_clarifications.py` exists, is
- * tested, and is **absent from `main.py`** until the batched integration pass
- * mounts it (`.plan/merge.md`, integration debt, V3), so the route is absent
- * from the committed document and there is nothing to generate from.
+ * This file used to open with a tripwire: a test that failed the day the answer
+ * route reached the committed OpenAPI document, because on that day the
+ * hand-written types in `api/caseClarifications.ts` stopped having a reason to
+ * exist. It fired, the runbook in its failure message was carried out, and it
+ * was deleted -- along with the separate handler array whose separateness it was
+ * guarding. The mock now lives in `casePanelHandlers`, where
+ * `casePanelHandlers.contract.test.ts` validates the body it *returns* against
+ * the published schema like every other one.
  *
- * Hand-written types are a defect with a scheduled fix rather than a preference,
- * and the first test below is that schedule made executable: it **fails the day
- * the route appears in the committed OpenAPI**, and its failure message says
- * what to do. Without it, the transcriptions would outlive their reason and
- * nobody would find out until the two drifted.
- *
- * The rest of the file checks the thing a permissive mock cannot: that the
- * client sends **exactly** the three keys `ClarificationAnswerRequest` declares.
- * That model is `extra="forbid"`, so a fourth key is a 422 in production that no
- * amount of testing against an accommodating mock would ever reach.
+ * What survives here is the half that machinery cannot reach. Schema conformance
+ * runs over responses; nothing in it looks at a request. So this file still
+ * checks the thing a permissive mock cannot: that the client sends **exactly**
+ * the three keys `ClarificationAnswerRequest` declares. That model is
+ * `extra="forbid"`, so a fourth key is a 422 in production that no amount of
+ * testing against an accommodating mock would ever reach.
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
@@ -29,66 +26,26 @@ import {
   caseClarificationsApi,
   clarificationAnswerPath,
 } from "../../api/caseClarifications";
-import type { OpenApiDocument } from "../../test/schemaConformance";
-import {
-  caseClarificationHandlers,
-  resetCaseClarificationMocks,
-} from "./caseClarificationHandlers";
+import { resetCasePanelMocks } from "./casePanelHandlers";
 
-const document = Object.values(
-  import.meta.glob("../../../openapi/return-platform.openapi.json", {
-    query: "?raw",
-    import: "default",
-    eager: true,
-  }),
-).map((raw) => JSON.parse(raw) as OpenApiDocument)[0];
-
-const CONTRACT_PATH = "/api/v1/cases/{case_id}/clarifications/{clarification_id}/answer";
 const CASE = "case-mock-2026";
 const CLARIFICATION = "clar-1";
 
 beforeEach(() => {
-  resetCaseClarificationMocks();
+  resetCasePanelMocks();
 });
 
-describe("the tripwire", () => {
-  it("fires when the answer route reaches the committed OpenAPI document", () => {
-    const paths = (document as { paths?: Record<string, unknown> }).paths ?? {};
-    expect(
-      Object.keys(paths).includes(CONTRACT_PATH),
-      [
-        `${CONTRACT_PATH} is now published, which means this test has done its job.`,
-        "",
-        "Do three things and delete this test:",
-        "  1. delete the hand-written types in `src/api/caseClarifications.ts` and",
-        "     import `ClarificationAnswerRequest` / `ClarificationAnswerAcceptedView`",
-        "     from `./generated/return-platform` instead;",
-        "  2. move `caseClarificationHandlers` into `casePanelHandlers` (or add its",
-        "     route to that file's ROUTES table) so the mock body is validated",
-        "     against the published schema like every other one;",
-        "  3. regenerate: `npm run contracts:generate`.",
-      ].join("\n"),
-    ).toBe(false);
-  });
-
-  it("registers the one route the router declares, at the path the router declares it", () => {
-    // Pinned as an equality against the path the client builds, so the mock and
-    // the client cannot drift apart while both stay internally consistent -- and
-    // the literal is the one in `api/case_clarifications.py`'s decorator.
-    const registered = caseClarificationHandlers.map((handler) => {
-      const info = (handler as unknown as { info: { method: string; path: string } }).info;
-      return `${info.method.toLowerCase()} ${info.path}`;
-    });
-    expect(registered).toEqual([
-      "post /api/v1/cases/:caseId/clarifications/:clarificationId/answer",
-    ]);
+describe("the client sends exactly what the model declares", () => {
+  it("builds the path the router declares, so client and mock cannot drift apart", () => {
+    // The mock's half of this equality is pinned by the panel's ROUTES table,
+    // which holds the handler path against the OpenAPI path in both directions.
+    // This is the client's half, and the literal is the one in
+    // `api/case_clarifications.py`'s decorator.
     expect(clarificationAnswerPath(CASE, CLARIFICATION)).toBe(
       `/api/v1/cases/${CASE}/clarifications/${CLARIFICATION}/answer`,
     );
   });
-});
 
-describe("the client sends exactly what the model declares", () => {
   it("posts the three fields and nothing else, and reads the six that come back", async () => {
     const accepted = await caseClarificationsApi.answer(CASE, CLARIFICATION, {
       answerText: "It is the pallet in bay 3.",

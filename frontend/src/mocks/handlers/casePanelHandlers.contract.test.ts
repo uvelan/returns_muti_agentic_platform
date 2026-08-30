@@ -34,6 +34,7 @@ const document = Object.values(
 
 const CASE = "case-mock-2026";
 const REVIEW = "review-mock-1";
+const CLARIFICATION = "clar-1";
 
 type Route = {
   readonly method: "get" | "post" | "put";
@@ -126,6 +127,17 @@ const ROUTES: readonly Route[] = [
     contract: "/api/v1/cases/{case_id}/reviews/{review_id}/recovery/abandon",
     url: `/api/v1/cases/${CASE}/reviews/${REVIEW}/recovery/abandon`,
     body: { reason: "support resolved it on the phone" },
+  },
+  {
+    // 202, and the document declares no 200 here at all: when this returns a
+    // command is on file and a delivery row is queued, and nothing about the
+    // relay to Support has happened yet.
+    method: "post",
+    handler: "/api/v1/cases/:caseId/clarifications/:clarificationId/answer",
+    contract: "/api/v1/cases/{case_id}/clarifications/{clarification_id}/answer",
+    url: `/api/v1/cases/${CASE}/clarifications/${CLARIFICATION}/answer`,
+    body: { answerText: "It is the pallet in bay 3.", resolutionChoice: "reject", returnRecordId: null },
+    status: 202,
   },
 ];
 

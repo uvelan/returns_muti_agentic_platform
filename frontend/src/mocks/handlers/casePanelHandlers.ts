@@ -15,6 +15,15 @@ import { HttpResponse, delay, http } from "msw";
  * the reason DR-10 gives: it has to move when the panel moves and hold still
  * when it does not, and a counter would fail the second half.
  *
+ * **The clarification answer route lives here too**, at the bottom. It had its
+ * own file for as long as it had to: its router was written and tested but
+ * unmounted, so the route was absent from the committed OpenAPI and folding it
+ * into this array would have broken `casePanelHandlers.contract.test.ts`'s
+ * published-route check -- a check that was doing its job. The integration pass
+ * mounted it and regeneration published it, so it now sits in the array whose
+ * contract test validates every body against the document, which is the only
+ * place a mock body is actually held to the server's shape.
+ *
  * Excluded from the production bundle by the mock-mode gate in `main.tsx`;
  * `scripts/check-bundle.js` fails the build if a mock artifact leaks.
  */
@@ -152,9 +161,24 @@ function freshStore(): Store {
 
 let store = freshStore();
 
+/**
+ * The answers on file, keyed by clarification id.
+ *
+ * Deliberately tiny -- one answered-set -- because the one piece of behaviour
+ * worth walking in `dev:mock` is the **second** submission: the endpoint answers
+ * 202 with `duplicate: true` rather than 409 for a repeat of the same answer,
+ * and the form says "the answer on file stands" instead of treating it as a
+ * failure. Kept out of `Store` because nothing composes it into the panel.
+ */
+const answeredClarifications = new Map<
+  string,
+  { answerText: string; recordId: string | null }
+>();
+
 /** Test seam. `dev:mock` never calls it; a test that wants a clean panel does. */
 export function resetCasePanelMocks(): void {
   store = freshStore();
+  answeredClarifications.clear();
 }
 
 const ACTOR = "associate-mock";
@@ -296,6 +320,11 @@ function notFound(message: string) {
     { detail: { code: "REVIEW_NOT_FOUND", message, retryable: false } },
     { status: 404 },
   );
+}
+
+/** A refusal with no review to report the state of. */
+function refusal(code: string, message: string, status: number, retryable = false) {
+  return HttpResponse.json({ detail: { code, message, retryable } }, { status });
 }
 
 function conflict(code: string, message: string, review: Review) {
@@ -514,4 +543,95 @@ export const casePanelHandlers = [
     };
     return HttpResponse.json(envelope(actionResult(review, null), "abandon"));
   }),
+
+  /**
+   * Answering one clarification.
+   *
+   * The strictness below is not decoration. `ClarificationAnswerRequest` is
+   * `extra="forbid"`, so this mock forbids too: a permissive one is how a client
+   * ships a fourth key and meets its first 422 in production, and no amount of
+   * testing against an accommodating mock would ever reach it. The contract test
+   * validates what this *returns*; only the mock can refuse what it is *sent*.
+   */
+  http.post(
+    "/api/v1/cases/:caseId/clarifications/:clarificationId/answer",
+    async ({ params, request }) => {
+      await delay(40);
+      const caseId = String(params.caseId);
+      const clarificationId = String(params.clarificationId);
+      const body = (await request.json()) as {
+        answerText?: unknown;
+        resolutionChoice?: unknown;
+        returnRecordId?: unknown;
+      };
+
+      const unknownKeys = Object.keys(body).filter(
+        (key) => !["answerText", "resolutionChoice", "returnRecordId"].includes(key),
+      );
+      if (unknownKeys.length > 0) {
+        return refusal(
+          "UNPROCESSABLE_ENTITY",
+          `Unexpected field(s): ${unknownKeys.join(", ")}.`,
+          422,
+        );
+      }
+
+      const answerText = typeof body.answerText === "string" ? body.answerText.trim() : "";
+      if (answerText.length === 0 || answerText.length > 4_000) {
+        return refusal(
+          "UNPROCESSABLE_ENTITY",
+          "The answer must be between 1 and 4000 characters.",
+          422,
+        );
+      }
+
+      const choice = body.resolutionChoice;
+      if (choice !== null && choice !== undefined && choice !== "map" && choice !== "reject") {
+        return refusal("UNPROCESSABLE_ENTITY", "The choice must be map or reject.", 422);
+      }
+
+      const recordId = typeof body.returnRecordId === "string" ? body.returnRecordId : null;
+      if (choice === "map" && recordId === null) {
+        // The refusal that is not a convenience: "map this to nothing" is not a
+        // decision anybody can have meant, and a later step inventing a record
+        // for it is the create-from-a-loose-artifact behaviour §4 forbids.
+        return refusal(
+          "CLARIFICATION_MAP_WITHOUT_RECORD",
+          "Mapping this artifact needs the return it belongs to.",
+          422,
+        );
+      }
+
+      const held = answeredClarifications.get(clarificationId);
+      const duplicate = held?.answerText === answerText && held.recordId === recordId;
+      if (held !== undefined && !duplicate) {
+        // A *different* answer to an already-answered clarification is the 409;
+        // the same answer again is a retry and is still a 202.
+        return refusal(
+          "CLARIFICATION_ALREADY_ANSWERED",
+          "This clarification was already answered. The answer on file stands.",
+          409,
+        );
+      }
+      answeredClarifications.set(clarificationId, { answerText, recordId });
+
+      return HttpResponse.json(
+        envelope(
+          {
+            caseId,
+            clarificationId,
+            commandId: `cmd-${clarificationId}`,
+            signalId: `clarification_answered:${clarificationId}`,
+            outboxCommandId: `obx-${clarificationId}`,
+            duplicate,
+          },
+          "clarification-answer",
+        ),
+        // 202, not 200. When this resolves a command is on file and a delivery
+        // row is queued; the fact, the relay and the deadline reset all happen
+        // after the signal reaches the workflow.
+        { status: 202 },
+      );
+    },
+  ),
 ];
