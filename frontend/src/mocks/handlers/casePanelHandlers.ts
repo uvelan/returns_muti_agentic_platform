@@ -231,6 +231,13 @@ function panelBody() {
      * `clarifications: []` above stays empty and is *not* where this lives: the
      * top-level field cannot be written by any registered contributor, so a mock
      * that filled it would be mocking a path production has no way to take.
+     *
+     * **One element per contributing slice, and merges compose rather than
+     * replace.** The registry lets several slices contribute sections, so a
+     * branch arriving with its own section belongs *alongside* this one. Taking
+     * either side of a conflict here drops a slice's section from `dev:mock`
+     * while both suites stay green -- nothing asserts a section it has never
+     * heard of is present. Add the element; do not swap the array.
      */
     sections: [
       {
