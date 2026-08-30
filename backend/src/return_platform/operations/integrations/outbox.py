@@ -178,6 +178,12 @@ CLAIMABLE_STATUSES: Final[tuple[str, ...]] = ("PENDING", "RETRY")
 #: The status a permanently failed command comes to rest in.
 DEAD_LETTER_STATUS: Final = "DEAD_LETTER"
 
+#: The one status that means the command reached its destination. Named so that
+#: "not delivered" is a thing a reader can ask for without enumerating the six
+#: ways a command can still be in flight -- and so that adding a seventh does
+#: not silently change what such a reader means.
+DELIVERED_STATUS: Final = "DELIVERED"
+
 #: Written beside it, and the field Phase 10 reads. Separate from `status`
 #: because the two answer different questions: `status` is what the outbox will
 #: do next (nothing), this is what a human or a reconciler still has to do.
@@ -708,7 +714,7 @@ class IntegrationOutboxDispatcher:
             {"_id": command.id, "leaseOwner": self._worker_id},
             {
                 "$set": {
-                    "status": "DELIVERED",
+                    "status": DELIVERED_STATUS,
                     "externalReference": result.external_reference,
                     "responseDigest": result.response_digest,
                     "deliveredAt": now,

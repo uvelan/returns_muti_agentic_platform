@@ -12198,7 +12198,8 @@
           "REFUSED_TERMINAL",
           "DEFERRED_UNKNOWN",
           "RELAUNCH_FAILED",
-          "CASE_NOT_FOUND"
+          "CASE_NOT_FOUND",
+          "OPERATIONS_REQUIRED"
         ],
         "title": "RecoveryAction",
         "type": "string"

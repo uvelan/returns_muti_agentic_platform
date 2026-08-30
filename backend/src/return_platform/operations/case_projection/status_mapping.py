@@ -150,6 +150,12 @@ _DIRECT: Final[Mapping[CaseStatus, ReturnCaseStatus]] = {
     CaseStatus.POLICY_REJECTED: ReturnCaseStatus.POLICY_REJECTED,
     CaseStatus.RECOVERY_REQUIRED: ReturnCaseStatus.RECOVERY_REQUIRED,
     CaseStatus.AWAITING_SUPPORT: ReturnCaseStatus.AWAITING_SUPPORT,
+    # Waiting on an approval of the message *to* Support reads, from outside, as
+    # waiting on Support -- which it is. Mapped onto the existing member rather
+    # than adding one: `ReturnCaseStatus` is the frozen contract vocabulary, and
+    # the review is an internal step in an exchange the caller already sees as
+    # one wait.
+    CaseStatus.AWAITING_TEMPLATE_REVIEW: ReturnCaseStatus.AWAITING_SUPPORT,
     CaseStatus.RMA_RECEIVED: ReturnCaseStatus.PROCESSING_RETURN,
     CaseStatus.IN_TRANSIT: ReturnCaseStatus.PROCESSING_RETURN,
     CaseStatus.CANCELLED: ReturnCaseStatus.CANCELLED,

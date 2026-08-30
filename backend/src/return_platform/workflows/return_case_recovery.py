@@ -90,9 +90,11 @@ from temporalio.client import Client, WorkflowExecutionStatus
 from temporalio.service import RPCError, RPCStatusCode
 
 from return_platform.configuration.return_configuration import ReturnCaseTimingConfiguration
+from return_platform.operations.case_projection.status_mapping import UnmappedCaseStatusError
 from return_platform.operations.fact_names import SUPPORT_STREAM_SKIP
 from return_platform.operations.integrations.outbox import (
     DEAD_LETTER_STATUS,
+    DELIVERED_STATUS,
     INTEGRATION_OUTBOX_COLLECTION,
     PARKED_STREAM_STATUS,
     REQUIRES_RECONCILIATION,
@@ -115,11 +117,14 @@ from return_platform.workflows.return_case_launcher import (
 from return_platform.workflows.return_case_workflow import return_case_workflow_id
 
 __all__ = [
+    "DEFAULT_COMMAND_HORIZON_SECONDS",
+    "LEGITIMATE_WAIT_STATUSES",
     "PERMANENTLY_REJECTED",
     "RECONCILED",
     "CaseExecutionProbePort",
     "CaseRecoveryOutcome",
     "CaseStreamRecovery",
+    "CommittedCommandHorizonPort",
     "MongoReconciliationOutbox",
     "ReconciliationOutboxPort",
     "RecoverableCaseRepositoryPort",
@@ -143,6 +148,26 @@ RECONCILED: Final = "RECONCILED"
 #: The command stays `DEAD_LETTER` and the Support event stays in
 #: `case_support_events`: this is a decision recorded, not a record removed.
 PERMANENTLY_REJECTED: Final = "PERMANENTLY_REJECTED"
+
+#: Persisted statuses in which sitting still is the design, not a symptom
+#: (contracts.md sect. 6). The **time-based** sweep skips these: it has only
+#: elapsed time to go on, and elapsed time is not evidence about a case whose
+#: whole purpose is to wait for a person. The probe-based reconciler below is
+#: unaffected -- a confirmed-absent or unexpectedly-closed execution is real
+#: evidence whatever the case was waiting for, and that path still repairs it.
+LEGITIMATE_WAIT_STATUSES: Final[frozenset[CaseStatus]] = frozenset(
+    {
+        CaseStatus.AWAITING_TEMPLATE_REVIEW,
+        CaseStatus.AWAITING_POLICY_REVIEW,
+        CaseStatus.AWAITING_SUPPORT,
+    }
+)
+
+#: How long a committed command may sit undelivered before the case stops being
+#: a recovery candidate and becomes an operations question. Past this, the
+#: outbox has had every retry it was going to get, and a relaunch would be
+#: guessing at a cause nobody has diagnosed.
+DEFAULT_COMMAND_HORIZON_SECONDS: Final = 3_600.0
 
 
 class RecoverableCaseRepositoryPort(Protocol):
@@ -203,6 +228,16 @@ class ReturnCaseWorkflowRecovery:
         recovered = 0
         for case in pending:
             case_id = str(case.get("caseId") or "")
+            if _is_legitimate_wait(case.get("status")):
+                # Waiting on a person is not a fault, and this sweep has only
+                # elapsed time to reason from. Relaunching here would restart a
+                # case whose reviewer simply has not answered yet -- and the
+                # relaunch would be visible to them as their draft vanishing.
+                logger.debug(
+                    "case_workflow_recovery_skipped_legitimate_wait",
+                    extra={"case_id": case_id, "status": str(case.get("status"))},
+                )
+                continue
             conversation_id = case.get("channelAConversationId")
             if not case_id or not isinstance(conversation_id, str) or not conversation_id:
                 # Not a confirmed Channel A case. `ReturnCaseWorkflow` is the
@@ -376,6 +411,25 @@ class MongoReconciliationOutbox:
         ).limit(limit)
         return [cast(dict[str, Any], document) async for document in cursor]
 
+    async def list_unapplied_commands_past_horizon(
+        self, *, older_than: datetime, limit: int
+    ) -> list[dict[str, Any]]:
+        """Commands that committed and never reached the workflow.
+
+        Deliberately *not* filtered to `DEAD_LETTER`. A command still politely
+        retrying an hour after it was written is the case this rule exists for:
+        the dead-letter sweep never sees it, and it is exactly as unapplied as
+        one that gave up. What makes it an operations question is the age, not
+        the status it wears while ageing.
+        """
+        cursor = self._collection.find(
+            {
+                "status": {"$ne": DELIVERED_STATUS},
+                "createdAt": {"$lt": older_than},
+            }
+        ).limit(limit)
+        return [cast(dict[str, Any], document) async for document in cursor]
+
     async def requeue_command(self, command_id: str) -> bool:
         """Put a permanently-failed command back on the queue against a live case.
 
@@ -425,6 +479,34 @@ class MongoReconciliationOutbox:
             },
         )
         return result.modified_count == 1
+
+
+def _is_legitimate_wait(status: object) -> bool:
+    """Whether this persisted status is a case waiting rather than stuck.
+
+    Unreadable statuses answer `False`. This gate is a *refusal to act*, and a
+    refusal that fired on a value nobody recognised would silently stop
+    recovering a whole class of cases -- the opposite failure from the one it
+    prevents, and a much quieter one.
+    """
+    try:
+        return read_persisted_status(status) in LEGITIMATE_WAIT_STATUSES
+    except UnmappedCaseStatusError:
+        return False
+
+
+class CommittedCommandHorizonPort(Protocol):
+    """Commands that committed and were never applied, past the retry horizon.
+
+    A separate optional port rather than another method on
+    `ReconciliationOutboxPort`: that protocol has existing implementations, and
+    widening it would make every one of them wrong at once for a check a
+    deployment can legitimately not wire.
+    """
+
+    async def list_unapplied_commands_past_horizon(
+        self, *, older_than: datetime, limit: int
+    ) -> list[dict[str, Any]]: ...
 
 
 class ScopedCaseFactRepositoryPort(Protocol):
@@ -617,6 +699,12 @@ class RecoveryAction(StrEnum):
     RELAUNCH_FAILED = "RELAUNCH_FAILED"
     #: No case with this id.
     CASE_NOT_FOUND = "CASE_NOT_FOUND"
+    #: A command committed and was never applied, and the outbox has had every
+    #: retry it was going to get. Surfaced to operations and **never
+    #: auto-relaunched**: past the horizon the cause is undiagnosed, and
+    #: starting a fresh execution would replace one unexplained state with
+    #: another while destroying the evidence for the first.
+    OPERATIONS_REQUIRED = "OPERATIONS_REQUIRED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -632,6 +720,10 @@ class CaseRecoveryOutcome:
     requeued_commands: int = 0
     #: Dead-lettered Support commands recorded as never-to-be-applied.
     rejected_commands: int = 0
+    #: Command ids that committed, were never applied, and are past the retry
+    #: horizon. Non-empty only with `OPERATIONS_REQUIRED`, and the reason it is
+    #: ids rather than a count: the operator's next action is to look at one.
+    stale_command_ids: tuple[str, ...] = ()
 
     @property
     def changed_anything(self) -> bool:
@@ -665,6 +757,8 @@ class ReturnCaseRecoveryService:
         repository: RecoveryCaseRepositoryPort,
         probe: CaseExecutionProbePort,
         outbox: ReconciliationOutboxPort | None = None,
+        command_horizon: CommittedCommandHorizonPort | None = None,
+        command_horizon_seconds: float = DEFAULT_COMMAND_HORIZON_SECONDS,
         batch_size: int = 100,
         interval_seconds: float = 60.0,
     ) -> None:
@@ -672,10 +766,14 @@ class ReturnCaseRecoveryService:
             raise ValueError("batch_size must be at least 1")
         if interval_seconds <= 0:
             raise ValueError("interval_seconds must be positive")
+        if command_horizon_seconds <= 0:
+            raise ValueError("command_horizon_seconds must be positive")
         self._launcher = launcher
         self._repository = repository
         self._probe = probe
         self._outbox = outbox
+        self._command_horizon = command_horizon
+        self._command_horizon_seconds = command_horizon_seconds
         self._batch_size = batch_size
         self._interval_seconds = interval_seconds
 
@@ -755,7 +853,48 @@ class ReturnCaseRecoveryService:
                 requeued_commands=requeued,
             )
 
+        # `RECOVERY_REQUIRED` from here on. One question stands between it and a
+        # relaunch: has a command already committed and gone unapplied for
+        # longer than the outbox was ever going to keep trying?
+        stale = await self._stale_commands(case_id)
+        if stale:
+            logger.error(
+                "case_recovery_operations_required",
+                extra={
+                    "case_id": case_id,
+                    "reason": assessment.reason.value,
+                    "stale_command_ids": stale,
+                    "horizon_seconds": self._command_horizon_seconds,
+                },
+            )
+            return CaseRecoveryOutcome(
+                case_id=case_id,
+                action=RecoveryAction.OPERATIONS_REQUIRED,
+                assessment=assessment,
+                stale_command_ids=stale,
+            )
+
         return await self._relaunch(case, assessment, commands)
+
+    async def _stale_commands(self, case_id: str) -> tuple[str, ...]:
+        """This case's committed-but-unapplied commands past the horizon.
+
+        Empty when no horizon port is wired, which is not a silent pass: a
+        deployment without one simply has no way to ask the question, and the
+        honest answer to a question that cannot be asked is not "no".  The
+        difference is visible in the outcome -- `RELAUNCHED` rather than
+        `OPERATIONS_REQUIRED` -- rather than hidden behind a default.
+        """
+        horizon = self._command_horizon
+        if horizon is None:
+            return ()
+        cutoff = datetime.now(UTC) - timedelta(seconds=self._command_horizon_seconds)
+        commands = await horizon.list_unapplied_commands_past_horizon(
+            older_than=cutoff, limit=self._batch_size
+        )
+        return tuple(
+            sorted(str(command["_id"]) for command in commands if _case_id_of(command) == case_id)
+        )
 
     async def _relaunch(
         self,
