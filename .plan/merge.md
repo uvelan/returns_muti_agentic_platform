@@ -49,6 +49,7 @@ Five so far. **Four of the five are T0 errors — things I froze that did not su
 
 1. **Four frozen mechanisms failed on contact** (amendments 1–5 above, plus the V1 brief's governance-proposal write path, which that endpoint refuses for a non-agent module).
 2. **A stale trunk sha in the S1 phase-1b dispatch** (`24e01b1`, 122 commits behind). The slice verified it was an ancestor and followed the words over the number; RV noted branching there would have failed unmissably rather than subtly.
+4. **I named `594bb05` as the frontend base; it predates the work those slices depend on.** That sha is V1 phase 2's delta report, cut from `f4c6f7f` — before V2 phase 1b and V3 merged to trunk. **Both** frontend agents caught it independently and re-based onto `aa1f261` (V1 phase 2's trunk merge), one of them naming the commit "the named base predates the work it says is merged". Fourth error of the same family: **naming a sha without verifying what it contains.** The standing rule now covers both directions — name the branch an interface claim comes from, *and* verify a named base actually contains what the brief says is in it.
 3. **I described unmerged branch state as trunk state** to V3 — claiming V2 phase 1b had removed a required keyword. It had not; that work is on a branch. V3 checked rather than trusted and was right. **Rule: name the branch an interface claim comes from.**
 
 ## Recurring failure shapes (the run's checklist, earned by injection)
