@@ -115,9 +115,21 @@ class StageInvokerPort(Protocol):
     `StructuredOutputInvoker`-backed and lives at the wiring site.
     """
 
-    release_id: str
-    routing_policy_version: str
-    ordered_candidate_routes: tuple[str, ...]
+    # Read-only, and declared as properties rather than as attributes for a
+    # reason that only appeared once a real adapter existed: the production
+    # implementation derives all three from the *currently released*
+    # configuration on every access, so they are properties, and a Protocol
+    # declaring them as settable variables refuses that -- it would be satisfied
+    # only by an object that had captured them at construction, which is the
+    # thing this slice is trying not to do.
+    @property
+    def release_id(self) -> str: ...
+
+    @property
+    def routing_policy_version(self) -> str: ...
+
+    @property
+    def ordered_candidate_routes(self) -> tuple[str, ...]: ...
 
     async def invoke(self, *, route_id: str, payload: Mapping[str, Any]) -> dict[str, Any]: ...
 

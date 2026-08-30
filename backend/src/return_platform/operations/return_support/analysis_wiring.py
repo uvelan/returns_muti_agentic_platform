@@ -29,6 +29,7 @@ AI-gateway code, which is not this slice's to change. Registered as a follow-up.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from collections.abc import Mapping
@@ -89,8 +90,28 @@ class SupportAnalysisEnvelope(BaseModel):
         return parsed if isinstance(parsed, dict) else {}
 
 
+class _DispatcherLike(Protocol):
+    """Just the live-configuration read. `FinalDispatcher` satisfies it."""
+
+    @property
+    def configuration(self) -> Any: ...
+
+
 class _InvokerLike(Protocol):
-    task: Any
+    """Read-only throughout: every member the real invoker exposes here is a
+    property that re-resolves the released document, so declaring them as
+    settable variables would be satisfied only by an object that had captured
+    them at construction -- the thing this adapter exists not to do."""
+
+    @property
+    def task(self) -> Any: ...
+
+    #: The dispatch boundary, whose `configuration` property is the AI gateway
+    #: document **in force now** -- `AIRoutePool.replace_routes` swaps routes and
+    #: configuration together under the pool's own lock, so this is the one
+    #: object in the process that is already atomic across a release activation.
+    @property
+    def dispatcher(self) -> _DispatcherLike: ...
 
     async def invoke(
         self,
@@ -99,6 +120,81 @@ class _InvokerLike(Protocol):
         size_probe: str,
         log_context: Mapping[str, Any],
     ) -> Any: ...
+
+
+#: The task fields that decide **where a call can go**, and only those.
+#:
+#: `tier` and `allowedProviders` filter the candidate routes outright;
+#: `allowTierEscalation` widens that filter; `fallbackStrategy` /
+#: `fallbackTemplate` decide what happens when every candidate is refused; and
+#: `maximumInputTokens` is what `AIGatewayConfiguration.context_shortfall`
+#: compares a model's declared window against to rule a route out per selection.
+#:
+#: Deliberately **not** here: `promptVersion` and the prompt itself (that is
+#: `release_id`, pinned separately on the same record, and folding it in here
+#: would make the two fields say one thing twice), `maximumOutputTokens`,
+#: `allowedInputKeys`, and every other task in the document. A release that
+#: rewrites a different task's prompt did not change this task's routing policy.
+_ROUTING_TASK_FIELDS: Final = (
+    "tier",
+    "allowedProviders",
+    "allowTierEscalation",
+    "fallbackStrategy",
+    "fallbackTemplate",
+    "maximumInputTokens",
+)
+
+#: The document-level fields that decide the same thing. `pricing` is excluded
+#: on the same principle: prices ride the release lifecycle but they do not
+#: route, and a version that moved when a rate card was corrected would report a
+#: routing-policy change that did not happen.
+_ROUTING_DOCUMENT_FIELDS: Final = (
+    "schemaVersion",
+    "circuitBreaker",
+    "retry",
+    "rateLimits",
+    "providerLimits",
+    "modelContexts",
+)
+
+
+def derive_routing_policy_version(configuration: Any, task: Any) -> str:
+    """The routing policy in force for one task, as a released identity.
+
+    **Item C.** `StructuredStageInvoker` used to take this as a required free
+    string, and nothing in `src/` produced one -- so the only way to construct
+    the analyser was to type a literal at the wiring site, which is exactly the
+    hardcoding the reviewer greps for. sect. 5 asks each stage to pin a
+    `routing_policy_version` *before* invoking; a pin that a wiring site invents
+    records nothing.
+
+    Derived the way every other versioned identity here is derived -- sha256
+    over a canonical JSON projection, the shape `load_return_configuration`'s
+    `sha256` and `build_loaded_ai_gateway_configuration` both use -- so changing
+    routing policy is a **released** change and the analysis record's pin moves
+    with it. Rendered `"<schemaVersion>:<digest>"`: the schema version in front
+    because it is the one part a person reading an audit row can act on, the
+    digest because it is the part that cannot be wrong.
+
+    Not put in `support_ingress` configuration. A hand-written version string in
+    config is a value someone must remember to bump, and forgetting is silent --
+    every record then pins a policy version that no longer describes the policy.
+    A digest cannot be forgotten.
+
+    The projection is enumerated, not "everything": see `_ROUTING_TASK_FIELDS`
+    and `_ROUTING_DOCUMENT_FIELDS` for what is in it and what is deliberately
+    out. Digesting the whole document would make this bump on a prompt fix or a
+    price correction, and a version that moves for reasons unrelated to routing
+    is a version nobody can reason from.
+    """
+    task_dump = task.model_dump(mode="json")
+    document_dump = configuration.model_dump(mode="json")
+    projection = {
+        "document": {field: document_dump[field] for field in _ROUTING_DOCUMENT_FIELDS},
+        "task": {field: task_dump[field] for field in _ROUTING_TASK_FIELDS},
+    }
+    encoded = json.dumps(projection, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return f"{document_dump['schemaVersion']}:{hashlib.sha256(encoded).hexdigest()}"
 
 
 class StructuredStageInvoker:
@@ -112,9 +208,8 @@ class StructuredStageInvoker:
     analysis record recorded a release the invocation did not use.
     """
 
-    def __init__(self, invoker: _InvokerLike, *, routing_policy_version: str) -> None:
+    def __init__(self, invoker: _InvokerLike) -> None:
         self._invoker = invoker
-        self._routing_policy_version = routing_policy_version
 
     @property
     def release_id(self) -> str:
@@ -122,7 +217,17 @@ class StructuredStageInvoker:
 
     @property
     def routing_policy_version(self) -> str:
-        return self._routing_policy_version
+        """Derived from the released document, on every access.
+
+        A property for the same reason `release_id` is one, and it used to be a
+        constructor argument -- a free string with no producer anywhere in
+        `src/`. A literal typed at the wiring site would have made every
+        analysis record pin a policy version that changed when somebody
+        remembered to change it, which is not a version.
+        """
+        return derive_routing_policy_version(
+            self._invoker.dispatcher.configuration, self._invoker.task
+        )
 
     @property
     def ordered_candidate_routes(self) -> tuple[str, ...]:
