@@ -232,6 +232,23 @@ class CaseFactView(MutableContract):
     factName: str
     value: Any = None
     agentId: str
+    #: Which *principal* caused this fact, when a command did: the authenticated
+    #: actor the server stamped, never a client-supplied one (contracts.md §4,
+    #: "command-originated facts carry server-stamped `actorId`").
+    #:
+    #: Distinct from `agentId`, and the distinction is the point. `agentId` is
+    #: which piece of software wrote the fact -- it is the same string for every
+    #: fact an activity writes, and it answers "what produced this". `actorId`
+    #: answers "on whose authority", which for a command is a person, and for
+    #: everything else is nobody. `None` therefore means *not command-originated*,
+    #: which is the honest reading of every fact the platform wrote before this
+    #: field existed and of every observation it will write after: a carrier scan
+    #: has no actor, and inventing one would be worse than recording none.
+    #:
+    #: Additive by default, like `record_scope` below: no stored document is
+    #: required to gain a key, and every fact already in the log validates
+    #: unchanged.
+    actorId: str | None = None
     channel: FactChannel
     turnId: str | None = None
     sourceSystem: str | None = None

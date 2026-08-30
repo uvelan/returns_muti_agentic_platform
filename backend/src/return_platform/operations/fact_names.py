@@ -62,3 +62,20 @@ SUPPORT_SENT_SNAPSHOT_REF: Final[str] = "support_sent_snapshot_ref"
 #: it is the signal-side marker contracts.md sect. 7 names, and a case has one
 #: answer to "is there something to review".
 TEMPLATE_DRAFT_READY: Final[str] = "template_draft_ready"
+
+#: One inbound support message, recorded on the case at the moment its analysis
+#: commits (contracts.md sect. 5). Case-level: a message is addressed to the
+#: case, and the *records* it turns out to be about are the record-scoped facts
+#: written beside it.
+SUPPORT_MESSAGE_RECEIVED: Final[str] = "support_message_received"
+
+#: The accepted classification of one inbound message, from the closed sect. 5
+#: taxonomy. Written only from `accepted_classification`, so the fact on the
+#: case and the analysis record's committed answer can never disagree.
+SUPPORT_MESSAGE_INTENT: Final[str] = "support_message_intent"
+
+#: A question the platform must put to the associate before it can act on a
+#: message (contracts.md sect. 9): an unmatched or ambiguous artifact, carrying
+#: the value, the evidence span, the candidate records and the map-or-reject
+#: choice. V3 owns the answer flow; V2 only writes the question.
+SUPPORT_CLARIFICATION_REQUESTED: Final[str] = "support_clarification_requested"

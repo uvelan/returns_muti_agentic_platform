@@ -16,6 +16,9 @@ from return_platform.configuration.context_assembly_configuration import (
 )
 from return_platform.configuration.settings import PRODUCTION_ENVIRONMENT
 from return_platform.configuration.support_gate_configuration import SupportGateConfiguration
+from return_platform.configuration.support_ingress_configuration import (
+    SupportIngressConfiguration,
+)
 from return_platform.configuration.support_template_configuration import (
     SupportTemplateConfiguration,
 )
@@ -1719,6 +1722,12 @@ class ReturnPlatformConfiguration(StrictConfigModel):
     #: sect. 10). Defaulted so a release cut before the block still loads.
     context_assembly: ContextAssemblyConfiguration = Field(
         default_factory=ContextAssemblyConfiguration
+    )
+    #: What the platform accepts from Support and how it answers back
+    #: (contracts.md sect. 5). Defaulted so a release cut before this block
+    #: still loads; the default has the natural-language door shut.
+    support_ingress: SupportIngressConfiguration = Field(
+        default_factory=SupportIngressConfiguration
     )
 
     @model_validator(mode="after")

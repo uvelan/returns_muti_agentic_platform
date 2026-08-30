@@ -52,10 +52,16 @@ def _stored_fact(**overrides: Any) -> dict[str, Any]:
 
 class TestCaseFactViewScoping:
     def test_a_pre_deploy_fact_validates_as_a_case_level_fact(self) -> None:
-        """Additive means additive: no new key, no new requirement."""
+        """Additive means additive: no new key, no new requirement.
+
+        Extended in phase 1b by `actorId`, which joins the same rule rather
+        than being exempted from it: the pinned pre-S1 key set above is
+        untouched, and the field it does not contain must read as absent.
+        """
         validated = CaseFactView.model_validate(_stored_fact())
         assert validated.record_scope is None
         assert validated.identity_version is None
+        assert validated.actorId is None
 
     def test_a_scoped_fact_round_trips_its_scope_and_identity_version(self) -> None:
         validated = CaseFactView.model_validate(

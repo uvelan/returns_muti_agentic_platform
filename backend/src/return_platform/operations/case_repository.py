@@ -392,6 +392,7 @@ class CaseRepository:
         acquisition_method: FactAcquisition,
         record_scope: str | None,
         identity_version: int,
+        actor_id: str | None = None,
         turn_id: str | None = None,
         source_system: str | None = None,
         source_path: str | None = None,
@@ -406,11 +407,23 @@ class CaseRepository:
         rather than two new parameters on it: the legacy write path and every
         document it has ever produced stay byte-identical, so a pre-deploy
         fact replayed through pre-deploy code cannot change shape. This path
-        additionally stores `record_scope` (which record the fact is about)
-        and `identity_version` (which fact-identity derivation produced
-        `fact_id`), and everything else -- insert-only against the unique
-        `factId`, the plan sect. 6.5 revision bump in the same transaction --
-        is the same contract `append_case_fact` documents.
+        additionally stores `record_scope` (which record the fact is about),
+        `identity_version` (which fact-identity derivation produced `fact_id`)
+        and `actorId` (on whose authority, when a command caused the fact), and
+        everything else -- insert-only against the unique `factId`, the plan
+        sect. 6.5 revision bump in the same transaction -- is the same contract
+        `append_case_fact` documents.
+
+        `actor_id` is the *server-stamped* principal contracts.md sect. 4
+        requires of a command-originated fact, and it is deliberately not part
+        of the fact's identity: `fact_id` arrives already derived, and this
+        method does not touch it. Provenance describes a fact; it does not
+        multiply it. Two arrivals of one observation under two principals are
+        one fact whose recorded actor is whoever got there first -- the same
+        append-once semantics every other field on this path has -- and not two
+        facts that a projection would then have to choose between. It defaults
+        to `None` because most facts are observations, which have no actor at
+        all, and because every caller that predates the field keeps working.
         """
         now = utc_now()
         document = {
@@ -430,6 +443,11 @@ class CaseRepository:
             "correlationId": correlation_id,
             "record_scope": record_scope,
             "identity_version": identity_version,
+            # Always written, `None` included: a reader distinguishing "no
+            # actor" from "field absent" is the difference between provenance
+            # and a gap, and every document this path has ever written carries
+            # the key either way.
+            "actorId": actor_id,
         }
 
         async def _write(session: AsyncClientSession) -> None:
