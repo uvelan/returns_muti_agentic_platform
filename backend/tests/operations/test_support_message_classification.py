@@ -417,11 +417,88 @@ async def test_the_omc_mirror_row_is_keyed_by_delivery_identity_and_written_once
 
     assert len(parts["omc"].rows) == 1
     assert parts["omc"].rows[0]["payload"]["returnRecordId"] == "rr-1"
-    # Derived, not minted. Asserted as an exact string rather than a prefix: a
-    # random component would still start "omc-return-update:", and a retried
-    # dispatch would then mirror one business change twice with the receiver
-    # holding nothing to dedupe on.
-    assert parts["omc"].rows[0]["delivery_id"] == f"omc-return-update:{CASE_ID}:{EVENT_ID}-0"
+    # Derived, not minted. Asserted as an exact **literal** rather than by
+    # calling the derivation again: re-deriving here would compare the function
+    # with itself and pass under any change to it, and a prefix assertion would
+    # pass for a key with a random tail -- which is the shape that mirrors one
+    # business change twice with the receiver holding nothing to dedupe on.
+    # uuid5 over the length-prefixed
+    # (case, event, record, type, value) = ("case-5150", "sev-5150", "rr-1",
+    # "TRACKING", "1Z-AAA").
+    assert (
+        parts["omc"].rows[0]["delivery_id"]
+        == "omc-return-update:6ba35ba5-c726-5c0e-843b-89f1ee902019"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_mirror_is_written_even_when_the_record_already_holds_the_value(
+    analysis: SupportAnalysisRecordStore,
+) -> None:
+    """The crash the missing transaction actually causes, and the one that bit.
+
+    sect. 5 says the mirror row is enqueued "in the artifact-persistence
+    transaction". There is no such transaction (see
+    `omc_mirror.DurableOmcMirror`), so there is a real window: the record is
+    merged, the process dies, the classify command is redelivered.
+
+    On that redelivery the merge writes nothing -- the value is already on the
+    record -- so a mirror gated on "did the merge write anything" is skipped, and
+    skipped *permanently*: there will never be an attempt on which the merge
+    writes again. The row is lost for good, silently, on the exact retry meant to
+    recover it.
+
+    Set up as the post-crash state directly: the record already carries
+    `1Z-AAA`. The merge is therefore a no-op on the first and only dispatch, and
+    the mirror must still be enqueued.
+    """
+    analyser, parts = _analyser(
+        analysis,
+        extraction={
+            "records": [],
+            "artifacts": [{"artifactType": "TRACKING", "value": "1Z-AAA", "binding": "RMA-1"}],
+        },
+        stored_records=[_record_document("RMA-1", "rr-1", trackingReference="1Z-AAA")],
+    )
+    outcome = await _analyse(analyser)
+
+    # The merge really did write nothing -- otherwise this test proves nothing.
+    assert parts["records"].updates == []
+    assert outcome.bound_artifacts == 0
+    # And the mirror happened anyway, under the same derived identity.
+    assert [row["delivery_id"] for row in parts["omc"].rows] == [
+        "omc-return-update:6ba35ba5-c726-5c0e-843b-89f1ee902019"
+    ]
+    assert outcome.omc_rows == ("omc-return-update:6ba35ba5-c726-5c0e-843b-89f1ee902019",)
+
+
+@pytest.mark.asyncio
+async def test_a_bound_rma_confirms_identity_and_mirrors_nothing(
+    analysis: SupportAnalysisRecordStore,
+) -> None:
+    """Skipped by a property of the decision, not by a property of the attempt.
+
+    An RMA artifact has no stored field: binding one says *which record this is*
+    and carries no data to merge. Mirroring it would send an update containing
+    nothing to update. The skip has to be decision-shaped, because a skip that
+    depended on what this attempt did would be the `wrote` gate again under
+    another name -- so a second dispatch must skip for the same reason and not
+    because the first one already ran.
+    """
+    analyser, parts = _analyser(
+        analysis,
+        extraction={
+            "records": [],
+            "artifacts": [{"artifactType": "RMA", "value": "RMA-1", "binding": "RMA-1"}],
+        },
+        stored_records=[_record_document("RMA-1", "rr-1")],
+    )
+    first = await _analyse(analyser)
+    second = await _analyse(analyser)
+
+    assert parts["omc"].rows == []
+    assert first.omc_rows == ()
+    assert second.omc_rows == ()
 
 
 # --------------------------------------------------------------------------- #
@@ -776,3 +853,27 @@ async def test_an_extraction_that_never_committed_writes_no_artifacts(
     assert parts["events"].calls == []
     assert parts["relay"].entries == []
     assert parts["facts"].facts == []
+
+
+def test_an_analyser_cannot_be_constructed_without_an_omc_mirror() -> None:
+    """The gap item B was raised for, closed at the constructor.
+
+    `omc` used to default to `None`, and `_mirror_to_omc` used to answer that by
+    returning early. A wiring site that simply did not mention `omc` therefore
+    got an analyser that dropped sect. 5's mirror in silence -- and no test could
+    see it, because every test passed a stub. Absence is now a `TypeError` at
+    construction, which is the only moment at which anyone is looking.
+
+    Asserted on the message as well as the type: a `TypeError` from somewhere
+    else in the constructor would satisfy `pytest.raises(TypeError)` on its own.
+    """
+    with pytest.raises(TypeError, match="omc"):
+        SupportMessageAnalyser(  # type: ignore[call-arg]
+            records=object(),
+            classifier=object(),  # type: ignore[arg-type]
+            extractor=object(),  # type: ignore[arg-type]
+            configuration=SupportIngressConfiguration(),
+            record_store=object(),  # type: ignore[arg-type]
+            append_scoped_fact_once=object(),  # type: ignore[arg-type]
+            support_events=object(),  # type: ignore[arg-type]
+        )

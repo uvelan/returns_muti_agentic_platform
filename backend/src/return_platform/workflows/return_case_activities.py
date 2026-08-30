@@ -528,7 +528,9 @@ class ReturnCaseActivities:
             return False
         return True
 
-    async def append_scoped_fact_once(self, *, record_scope: str | None, **fact: Any) -> bool:
+    async def append_scoped_fact_once(
+        self, *, record_scope: str | None, actor_id: str | None = None, **fact: Any
+    ) -> bool:
         """Append one record-scoped derived-id fact, absorbing a duplicate.
 
         The scoped sibling of `_append_fact_once`, and a sibling rather than a
@@ -547,6 +549,17 @@ class ReturnCaseActivities:
         can tell which derivation produced an id without guessing from its
         shape. Return semantics are `_append_fact_once`'s: whether this call
         wrote the fact, with only the duplicate absorbed.
+
+        `actor_id` is the server-stamped principal contracts.md sect. 4 requires
+        of a command-originated fact -- who authorised it, as against `agent_id`,
+        which is what software wrote it. It is passed through to the stored
+        `actorId` and is pointedly **absent from the derivation below**: the id
+        is built from `fact_id` and `record_scope` and from nothing else. Adding
+        the actor to it would turn one observation arriving under two principals
+        into two facts, which is precisely the shadowing the scoped identity
+        exists to prevent -- so the actor rides along and the duplicate is still
+        absorbed, keeping the first stamp. `None` for anything not originated by
+        a command, which is most of the log.
         """
         derived_id = str(fact.pop("fact_id"))
         if record_scope is not None:
@@ -556,6 +569,7 @@ class ReturnCaseActivities:
                 fact_id=derived_id,
                 record_scope=record_scope,
                 identity_version=SCOPED_FACT_IDENTITY_VERSION,
+                actor_id=actor_id,
                 **fact,
             )
         except DuplicateKeyError:
