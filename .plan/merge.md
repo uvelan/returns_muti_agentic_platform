@@ -10,7 +10,7 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 |---|---|---|---|---|
 | T0 | (trunk) | DONE | — | 2cafe2a |
 | S1 | feat/s1-model-identity | **MERGED** | 1 · PASS (6bdb5bd) | 5d58b90 |
-| S2 | feat/s2-delivery-spine | UNDER_RV_REVIEW round 3 · candidate af7052b | 3 · CR → CR (faefa84) → open | — |
+| S2 | feat/s2-delivery-spine | **MERGED** | 3 · CR (db7bfb9) → CR (faefa84) → PASS (b7a78ad) | dfd3036 |
 | V1 phase 1 | feat/v1-template-review | **MERGED** | 2 · CR (f8ce598) → PASS (18f671f) | b2590ef |
 | V1 phase 2 | feat/v1-phase2 | IN_PROGRESS · base f4c6f7f = trunk + S2 candidate | — | — |
 | V2 phase 1 (backend) | feat/v2-ingress-relay | IN_PROGRESS · pipelined off S2 c884e8e | — | — |
@@ -52,6 +52,10 @@ Raised in review and assigned to the orchestrator, not to a slice. A slice canno
 3. **Arm the command-horizon rule.** S2 shipped it unwired: until V1 passes `command_horizon=`, the recovery outcome honestly reports `RELAUNCHED` rather than pretending to have checked.
 5. **Derive workflow ids; never read the link.** `cases.workflowId` can legitimately be null while a case is healthy (S2-1 F1). Use `return_case_workflow_id(case_id)`.
 5a. **Residual F3 exposure meets V1's `approve()`.** RV upheld S2 leaving edit rows outside the marker transaction, narrowing the real exposure to: process death in the insert→flag window, no later edit, then a direct `approve()`. Handle or explicitly accept.
+
+### Into the V1 phase-2 brief — SENT to the running agent mid-flight (from S2 review round 3)
+8. **Do not treat `conflictPresent` as sole authority at the approval endpoint; prefer a cheap recompute.** RV upheld S2 leaving edit rows outside the marker transaction because `_after_edit_written` runs inline and `submit_edit` recomputes the actor set live from the rows — so auto-promote is guarded by the rows, not the flag. Exactly one path survives that reasoning: process death in the insert→flag window, no later autosave, then a direct `approve()`. RV: "one line, costs nothing now, and cannot be retrofitted cheaply once the approval endpoint ships."
+9. **A partially-implemented `RecoverableCaseRepositoryPort` is accepted and swallowed.** S2 now refuses a *missing* `bind_case_workflow` at construction, but RV built a port whose method is present, callable, and raises `NotImplementedError`: accepted at construction, swallowed at runtime, case silently stays in the queue — `callable(getattr(...))` checks presence, not that it works. Advisory on S2 (one-line fix, its own `AttributeError` argument describes `NotImplementedError` word for word); matters to V1/V2 as the first outside implementers, because a stub is a normal intermediate state.
 
 ### Into every brief that composes outbound Channel B text (V2, V3) — from V1 phase 1
 7. **Neutralise associate- and support-authored text before it enters an agent-authored message.** V1 found that binding a raw `associate_notes` fact silently dropped `compose_support_handoff`'s neutralisation, letting a note containing `BAY ASSIGNMENT:` reach the rendered handoff intact and restructure the message for whoever read it next. `support_handoff.py` neutralises via `_FRAMING` (a regex over section-heading-shaped lines → `[removed]`). Any new path rendering human-authored text into a Channel B message — relay text, clarification quotes carrying the *verbatim* support question, reply drafts — must neutralise the same way or state why it cannot be abused. This is §9's tool-safety principle applied to message *structure* rather than tool selection. **Composition `_safe`s exactly four values (`associate_notes` + three `contact_*`); match that parity.**
