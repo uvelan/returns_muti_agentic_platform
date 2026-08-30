@@ -64,3 +64,11 @@ SUPPORT_RESOLVER_BUDGET_EXHAUSTED: Final[str] = "support_resolver_budget_exhaust
 #: answer, which is equally true whichever way it left. Case-level: a reply
 #: answers the message, and the records it concerns are scoped facts beside it.
 SUPPORT_REPLY_DRAFT: Final[str] = "support_reply_draft"
+
+#: The branch associate's answer to a clarification the platform asked
+#: (contracts.md sect. 9). `STATED` on `CHANNEL_A`, because a person on the
+#: branch side typed it -- the question it answers is a Channel B fact, and
+#: collapsing the two would lose which side of the bridge each sentence came
+#: from. Record-scoped where the clarification named a record; case-scoped
+#: where it did not, which is the ordinary case for an unmatched artifact.
+SUPPORT_CLARIFICATION_ANSWERED: Final[str] = "support_clarification_answered"
