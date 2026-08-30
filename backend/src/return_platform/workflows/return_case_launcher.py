@@ -34,6 +34,7 @@ from temporalio.client import Client
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from return_platform.configuration.return_configuration import ReturnCaseTimingConfiguration
+from return_platform.configuration.support_gate_configuration import SupportGateConfiguration
 from return_platform.workflows.return_case_workflow import (
     ReturnCaseTimings,
     ReturnCaseWorkflow,
@@ -124,6 +125,7 @@ class CaseWorkflowRepositoryPort(Protocol):
 
 def case_timings_from_configuration(
     configuration: ReturnCaseTimingConfiguration,
+    gate: SupportGateConfiguration | None = None,
 ) -> ReturnCaseTimings:
     """Pin the release's timings onto the workflow input.
 
@@ -131,7 +133,16 @@ def case_timings_from_configuration(
     that moved under a return already waiting on it would make an operator's
     countdown jump, so a configuration change applies to cases started after
     it.
+
+    `gate` is the review gate's block (contracts.md sect. 6), optional so every
+    existing caller still compiles. **Omitting it is not "no gate"** -- it
+    falls back to `SupportGateConfiguration()`, whose defaults are DR-4's, so a
+    caller that forgets gets the reviewed behaviour rather than silently
+    sending unreviewed messages. A caller that means "off" says so in the
+    release.
     """
+    resolved = gate or SupportGateConfiguration()
+    review = resolved.template_review
     return ReturnCaseTimings(
         bay_wait_seconds=configuration.bay_wait_seconds,
         return_details_wait_seconds=configuration.return_details_wait_seconds,
@@ -142,6 +153,12 @@ def case_timings_from_configuration(
         on_reminders_exhausted=configuration.on_reminders_exhausted,
         business_calendar_id=configuration.business_calendar_id,
         timezone=configuration.timezone,
+        template_review_enabled=review.enabled,
+        template_review_wait_seconds=review.review_wait_seconds,
+        template_review_reminder_interval_seconds=review.reminder_interval_seconds,
+        template_review_max_reminders=review.max_reminders,
+        template_review_on_timeout=review.on_timeout.value,
+        support_request_grouping=resolved.request_grouping.value,
     )
 
 
@@ -155,10 +172,16 @@ class TemporalCaseWorkflowLauncher:
         repository: CaseWorkflowRepositoryPort,
         timings: ReturnCaseTimingConfiguration,
         task_queue: str,
+        gate: SupportGateConfiguration | None = None,
     ) -> None:
         self._client = client
         self._repository = repository
         self._timings = timings
+        #: The review gate's block, pinned onto every input this launcher
+        #: builds. Optional so existing callers compile; see
+        #: `case_timings_from_configuration` for why `None` is the *reviewed*
+        #: behaviour rather than no gate.
+        self._gate = gate
         self._task_queue = task_queue
 
     async def ensure_case_workflow(
@@ -207,7 +230,7 @@ class TemporalCaseWorkflowLauncher:
                     principal_id=principal_id,
                     conversation_id=conversation_id,
                     configuration_release_id=configuration_release_id,
-                    timings=case_timings_from_configuration(self._timings),
+                    timings=case_timings_from_configuration(self._timings, self._gate),
                     resumed_status=resumption.status,
                     resumed_work_item_id=resumption.work_item_id,
                     resumed_lifetime_start_iso=resumption.lifetime_start_iso,

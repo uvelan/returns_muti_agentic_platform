@@ -219,6 +219,10 @@ async def build_dynamic_order_agent_runtime(
             repository=operational_repository,
             timings=return_case_timings,
             task_queue=settings.return_workflow_task_queue,
+            # The review gate's block, pinned onto the input of every case this
+            # coordinator starts. `None` is the reviewed default, never "no
+            # gate" -- see `case_timings_from_configuration`.
+            gate=None if return_configuration is None else return_configuration.support_gate,
         ),
         active_snapshot_store=graph.active_snapshot_store,
         customer_fulltext=customer_fulltext_policy(progressive),

@@ -90,6 +90,7 @@ from temporalio.client import Client, WorkflowExecutionStatus
 from temporalio.service import RPCError, RPCStatusCode
 
 from return_platform.configuration.return_configuration import ReturnCaseTimingConfiguration
+from return_platform.configuration.support_gate_configuration import SupportGateConfiguration
 from return_platform.operations.case_projection.status_mapping import UnmappedCaseStatusError
 from return_platform.operations.fact_names import SUPPORT_STREAM_SKIP
 from return_platform.operations.integrations.outbox import (
@@ -1218,6 +1219,7 @@ def build_case_recovery_service(
     database: AsyncDatabase[dict[str, object]] | None,
     timings: ReturnCaseTimingConfiguration,
     task_queue: str,
+    gate: SupportGateConfiguration | None = None,
 ) -> ReturnCaseRecoveryService:
     """Assemble the service from the four things every process already holds.
 
@@ -1255,6 +1257,11 @@ def build_case_recovery_service(
             repository=repository,
             timings=timings,
             task_queue=task_queue,
+            # A relaunched case re-enters the review gate, so its input needs
+            # the same block a freshly-confirmed one gets. Without this a
+            # deployment that turned the gate off would have it back on for
+            # exactly the cases that were already having a bad day.
+            gate=gate,
         ),
         repository=repository,
         probe=TemporalCaseExecutionProbe(client=temporal),

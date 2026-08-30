@@ -57,6 +57,7 @@ from return_platform.workflows.return_case_workflow import (
     ReturnCaseTimings,
     ReturnCaseWorkflow,
     ReturnCaseWorkflowInput,
+    TemplateReviewDraftSet,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -251,6 +252,25 @@ class _Info:
     @staticmethod
     def is_continue_as_new_suggested() -> bool:
         return False
+
+
+async def _no_published_template(request: Any) -> TemplateReviewDraftSet:
+    """`record_template_draft` for a deployment that published no template.
+
+    These fixtures build a `ReturnPlatformConfiguration` with no
+    `support_template` variants, so this is the truthful answer for them rather
+    than a convenience: the gate asks, is told there is nothing to review, and
+    hands the case back to the composed path -- which is exactly the branch
+    every assertion in this file was written against.
+
+    It is a *double* rather than the real activity because the review aggregate
+    is Mongo-backed and this file has none. What that costs is covered in
+    `tests/test_support_template_review_gate.py`, which drives the same gate
+    with a real store and asserts the other branch: with a template published,
+    `open_support_work_item` is not called at all.
+    """
+    del request
+    return TemplateReviewDraftSet(template_available=False)
 
 
 class _Runtime:
@@ -512,6 +532,7 @@ async def _run_case(
         "draft_support_request": activities.draft_support_request,
         "open_support_work_item": activities.open_support_work_item,
         "send_support_reminder": activities.send_support_reminder,
+        "record_template_draft": _no_published_template,
     }
     runtime = _Runtime(table, arrivals=arrivals)
     monkeypatch.setattr(workflow_module, "workflow", runtime)
@@ -1128,6 +1149,7 @@ async def test_an_approving_override_lets_the_case_through(
             "draft_support_request": activities.draft_support_request,
             "open_support_work_item": activities.open_support_work_item,
             "send_support_reminder": activities.send_support_reminder,
+            "record_template_draft": _no_published_template,
         },
         arrivals=[lambda: holder[0].policy_override(notice)],
     )
@@ -1187,6 +1209,7 @@ async def test_a_rejecting_override_is_terminal_and_opens_nothing(
             "draft_support_request": activities.draft_support_request,
             "open_support_work_item": activities.open_support_work_item,
             "send_support_reminder": activities.send_support_reminder,
+            "record_template_draft": _no_published_template,
         },
         arrivals=[lambda: holder[0].policy_override(notice)],
     )

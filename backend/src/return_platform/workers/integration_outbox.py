@@ -201,6 +201,7 @@ async def _reconciliation_sweep(
         repository=repository,
         database=client[settings.mongo_database],
         timings=runtime.return_configuration.configuration.return_case,
+        gate=runtime.return_configuration.configuration.support_gate,
         task_queue=settings.return_workflow_task_queue,
     )
     await service.run_forever()

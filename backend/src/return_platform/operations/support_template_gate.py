@@ -739,6 +739,15 @@ class SupportTemplateGateService:
 
     # ---------------------------------------------------------------- reading
 
+    async def review(self, *, case_id: str, review_id: str) -> dict[str, Any]:
+        """One review document, straight through.
+
+        Here rather than reaching for `._reviews` at the call sites, so the
+        activity layer and the API layer read the aggregate through one door
+        and a future change of store is one edit.
+        """
+        return await self._reviews.get_review(case_id=case_id, review_id=review_id)
+
     async def state_of(self, *, case_id: str, review_id: str, request_id: str) -> GateDraft:
         """One review as the wait loop reads it. A vanished review is `None`d
         rather than raised: the loop's job is to stop waiting, not to crash."""
