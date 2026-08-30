@@ -15,6 +15,7 @@ from typing import Any, cast
 import pytest
 import pytest_asyncio
 from pymongo import AsyncMongoClient
+from pymongo.errors import DuplicateKeyError
 
 from return_platform.configuration.return_configuration import (
     ReturnPlatformConfiguration,
@@ -159,34 +160,64 @@ async def test_the_race_between_two_creators_leaves_one_thread(
     """The loser re-reads the winner's thread rather than opening its own.
 
     The read-then-insert check cannot see a concurrent creator; the unique
-    `caseId` index can, and this drives the path that catches it by making the
-    pre-check blind exactly once.
+    `caseId` index can, and this drives that path by blinding the idempotency
+    pre-read so the loser's insert actually reaches the index.
+
+    **The blind count is a magic number tied to production internals, so this
+    test verifies its own injection rather than trusting it.** The number is
+    the count of `caseId` reads before the insert, and it already moved 2 -> 1
+    when a redundant read was removed. At 0 nothing is blinded: the pre-read
+    finds the winner, the insert is never attempted, the index is never
+    reached, and every outcome assertion below still holds -- because the
+    sequential path satisfies them just as well, and the test silently decays
+    into a copy of `test_ensuring_the_thread_twice_yields_one_thread`. Since
+    this is the only guard on `created` being decided by the write, a silent
+    decay would leave that unguarded. So the assertions at the end check that
+    the race was *constructed*: the blind fired exactly once, and the loser's
+    insert was actually rejected by the unique index.
+
+    (Upward the number is self-limiting for a different reason: at 2 the
+    loser's re-read of the winner is blinded too and the code re-raises rather
+    than converging. That direction was always caught. Downward was not, which
+    is what these assertions fix.)
     """
     winner = await _thread(service)
 
     original_find_one = work_items.find_one
+    original_insert_one = work_items.insert_one
     blinded = {"count": 0}
+    rejected_by_index = {"count": 0}
 
     async def blind_once(query: Any, **kwargs: Any) -> Any:
-        # Blind the idempotency pre-check exactly once, so the insert below
-        # reaches the index. Exactly once and no more: the *next* `caseId` read
-        # is the loser re-reading the winner's thread, and blinding that one
-        # too would make the code re-raise rather than converge -- so the
-        # counter is load-bearing in both directions.
-        #
-        # There is one pre-check to blind, not two: `created` is now taken from
-        # the insert, so `ensure_case_support_thread` no longer performs a
-        # read of its own before delegating.
         if blinded["count"] < 1 and "caseId" in str(query):
             blinded["count"] += 1
             return None
         return await original_find_one(query, **kwargs)
 
+    async def recording_insert(document: Any, **kwargs: Any) -> Any:
+        try:
+            return await original_insert_one(document, **kwargs)
+        except DuplicateKeyError:
+            # The unique `caseId` index catching the race. Counted, not
+            # swallowed: the service's own handler is what must see it.
+            rejected_by_index["count"] += 1
+            raise
+
     work_items.find_one = blind_once  # type: ignore[method-assign]
+    work_items.insert_one = recording_insert  # type: ignore[method-assign]
     try:
         loser = await _thread(service)
     finally:
         work_items.find_one = original_find_one  # type: ignore[method-assign]
+        work_items.insert_one = original_insert_one  # type: ignore[method-assign]
+
+    # The race was actually constructed. Without these two, everything below
+    # passes on the ordinary sequential path and this test guards nothing.
+    assert blinded["count"] == 1, "the pre-read blind never fired: no race was constructed"
+    assert rejected_by_index["count"] == 1, (
+        "the loser's insert never reached the unique index: the DuplicateKeyError "
+        "path this test exists for did not execute"
+    )
 
     assert loser.workItemId == winner.workItemId
     assert loser.threadId == winner.threadId
