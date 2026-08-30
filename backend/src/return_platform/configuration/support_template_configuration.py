@@ -258,15 +258,36 @@ class TemplateVariantConfiguration(StrictConfigModel):
                 f"variant {self.variant_id!r} repeats field ids: "
                 f"{', '.join(sorted(duplicate_fields))}"
             )
+        # A subject is one line for the whole request, and a per-record field
+        # has one value per record -- so a subject naming one would have to pick
+        # a record, and "the last one rendered" is not a decision a template
+        # gets to make silently. It is refused here, where the operator can see
+        # why, rather than resolved arbitrarily at render time.
+        case_level_ids = {
+            field.field_id
+            for section in self.sections
+            if not section.per_record
+            for field in section.fields
+        }
+        placeholders = subject_placeholders(self.subject_template)
         unknown = [
-            placeholder
-            for placeholder in subject_placeholders(self.subject_template)
-            if placeholder not in set(field_ids)
+            placeholder for placeholder in placeholders if placeholder not in set(field_ids)
         ]
         if unknown:
             raise ValueError(
                 f"variant {self.variant_id!r} subject interpolates unknown field ids: "
                 f"{', '.join(unknown)}"
+            )
+        per_record = [
+            placeholder
+            for placeholder in placeholders
+            if placeholder not in case_level_ids
+        ]
+        if per_record:
+            raise ValueError(
+                f"variant {self.variant_id!r} subject interpolates per-record field ids: "
+                f"{', '.join(per_record)}; a request covering several records has one "
+                f"subject and would have to pick a record"
             )
         return self
 

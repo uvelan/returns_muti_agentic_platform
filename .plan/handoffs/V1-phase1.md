@@ -102,8 +102,11 @@ says so — **preview still works**, which is the point of separating them.
 capability `RETURNS_SESSION_READ`, response inside the platform envelope.
 
 - The template sent is the draft in the editor, not the published one.
-- The case is fabricated server-side; no case id is accepted, so a preview can
-  never read customer data.
+- The case is fabricated server-side (`support_template_draft.SAMPLE_CASE`); no
+  case id is accepted, so a preview can never read customer data. The sample is
+  expressed as `compose_support_handoff`'s arguments and its facts come from
+  `draft_facts`, so "previewing the default variant shows today's handoff" is a
+  test rather than a claim.
 - No graph port, so a preview spends no on-demand sync: a `graph:` binding
   previews as its fallback or as a gap, and the UI labels which.
 - Context clauses are free text, comma separated, trimmed, empties dropped.
@@ -120,7 +123,7 @@ capability `RETURNS_SESSION_READ`, response inside the platform envelope.
 | Editor | Read-only | All fields disabled, notice explains the missing capability. |
 | Publish | Confirm | "Publish this template as a new configuration release? Cases opened afterwards pin it." Declining calls nothing. |
 | Publish | Running | Button reads "Publishing..."; the four steps stream under the header, the failing one marked. |
-| Publish | Success | "Release … is published. Cases opened from now on pin it; cases already running keep the template they started with." |
+| Publish | Success | "Release … is published. Cases opened from now on pin it; cases already running keep the template they started with." Rendered by the **section**, not by the editor: publishing invalidates the runtime query, the refetch answers with the new release id, and `key={releaseId}` remounts the editor — a confirmation living inside it would be destroyed at the moment it was needed. |
 | Publish | Refused | The backend's message verbatim, `role="alert"`. |
 | Preview | Idle | "Nothing rendered yet. Set the case shape above, then render." |
 | Preview | Draft unparseable | Button disabled with a `title`; the live region explains and promises the preview returns. |

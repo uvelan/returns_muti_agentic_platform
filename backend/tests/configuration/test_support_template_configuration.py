@@ -133,6 +133,28 @@ class TestSubjectPlaceholders:
         with pytest.raises(ValidationError, match="unknown field ids: no_such_field"):
             _variant(subject_template="Return {no_such_field}")
 
+    def test_a_per_record_field_may_not_name_the_subject(self) -> None:
+        """RV advisory A1.
+
+        One request covering two RMAs has one subject, and a per-record field
+        has one value per record -- so a subject naming one would have to pick a
+        record. The renderer used to pick whichever rendered last, silently.
+        """
+        with pytest.raises(ValidationError, match="per-record field ids: rma"):
+            _variant(
+                subject_template="Return {rma}",
+                sections=[
+                    {
+                        "section_id": "record",
+                        "fields": [
+                            _field(
+                                "rma", source_binding="return_record:returnReference"
+                            ).model_dump()
+                        ],
+                    }
+                ],
+            )
+
     def test_escaped_braces_are_literal(self) -> None:
         assert subject_placeholders("{{not_a_field}} {order_number}") == ("order_number",)
 

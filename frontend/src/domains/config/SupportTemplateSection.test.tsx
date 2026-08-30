@@ -288,6 +288,33 @@ describe("publishing the change", () => {
     expect(published).toHaveTextContent(/keep the template they started with/);
   });
 
+  it("keeps the confirmation when the refetch brings back a new release", async () => {
+    // RV advisory A2. Publishing invalidates the runtime query, and in
+    // production the refetch answers with the *new* release id -- which changes
+    // the editor's `key`, remounts it, and destroys anything rendered inside
+    // it. The old test could not see this because the mock returned `rel-1`
+    // forever, so the key never changed and the confirmation never had to
+    // survive anything.
+    const user = userEvent.setup();
+    render(<SupportTemplateSection />, { wrapper: Wrapper });
+
+    const subject = await screen.findByDisplayValue("Return {order_number}");
+    await user.type(subject, "!");
+    mocks.runtime.mockResolvedValue({
+      release_id: "support-template-20260830-120000",
+      head_revision: 42,
+      configuration: { support_template: TEMPLATE },
+    });
+    await user.click(screen.getByRole("button", { name: /publish release/i }));
+
+    // The editor has remounted onto the new release...
+    expect(await screen.findByText(/Release support-template-20260830-120000/)).toBeInTheDocument();
+    // ...and the operator is still told what happened.
+    expect(screen.getByText(/is published/)).toHaveTextContent(
+      /keep the template they started with/,
+    );
+  });
+
   it("shows the backend's refusal verbatim", async () => {
     mocks.promote.mockRejectedValue(new Error("expected_head_revision does not match"));
     const user = userEvent.setup();

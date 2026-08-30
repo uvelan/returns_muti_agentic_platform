@@ -582,9 +582,15 @@ async def render_support_template(
             )
         )
 
+    # Case-level sections only. A per-record group renders the same `field_id`
+    # once per record, so flattening every section made the subject state
+    # whichever RMA happened to render last -- for a request covering several.
+    # Release validation refuses such a subject outright; this is what keeps the
+    # render from resolving one arbitrarily if it ever sees one anyway.
     values = {
         rendered.field_id: rendered.value
         for section in finished
+        if section.return_record_id is None
         for rendered in section.fields
     }
     return RenderedTemplate(

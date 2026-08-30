@@ -316,6 +316,33 @@ class TestPerRecordSections:
         (section,) = rendered.sections
         assert [field.value for field in section.fields] == ["RMA-1", "Not available"]
 
+    async def test_a_per_record_value_never_reaches_the_subject(self) -> None:
+        """RV advisory A1, from the render side.
+
+        Release validation refuses a subject naming a per-record field, so this
+        template is built past it. What must not happen is the render quietly
+        resolving one: two RMAs, and the subject would have stated the second
+        one's reference as if it were the request's.
+        """
+        template = self._template()
+        variant = template.variants[0].model_copy(update={"subject_template": "Return {rma}"})
+        template = template.model_copy(update={"variants": (variant,)})
+
+        rendered = await render_support_template(
+            template,
+            TemplateDraftInput(
+                case_id="c",
+                context=TemplateRenderContext(),
+                facts={},
+                return_records=(
+                    {"returnRecordId": "rec-1", "returnReference": "RMA-1"},
+                    {"returnRecordId": "rec-2", "returnReference": "RMA-2"},
+                ),
+            ),
+        )
+        assert "RMA-2" not in rendered.subject
+        assert rendered.subject == "Return Not available"
+
     async def test_an_undeclared_attribute_degrades_rather_than_reaching(self) -> None:
         """AMENDMENT-2, from the render side.
 

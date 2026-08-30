@@ -93,6 +93,12 @@ export function SupportTemplateSection() {
   const queryClient = useQueryClient();
   const runtime = useQuery({ queryKey: ["config", "runtime"], queryFn: configApi.runtime });
   const [steps, setSteps] = useState<readonly PublishStep[]>([]);
+  // Held here rather than inside the editor, and that is the whole point.
+  // Publishing invalidates the runtime query; the refetch returns the *new*
+  // release id, `key={active.releaseId}` changes, and the editor remounts --
+  // taking any confirmation rendered inside it with it. The operator would have
+  // watched four steps go green and then been told nothing.
+  const [published, setPublished] = useState<string | null>(null);
   const [, setDirty] = useState(false);
 
   if (runtime.isPending) return <p className="text-sm text-on-surface-variant">Loading...</p>;
@@ -117,6 +123,13 @@ export function SupportTemplateSection() {
           default variant is used when none of them match.
         </p>
       </header>
+
+      {published !== null ? (
+        <p role="status" className="rounded-xl border border-primary/20 bg-secondary-container px-4 py-3 text-sm text-on-secondary-container">
+          Release {published} is published. Cases opened from now on pin it; cases already running
+          keep the template they started with.
+        </p>
+      ) : null}
 
       {active.template === null ? (
         <p className="rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 text-sm text-on-surface-variant">
@@ -149,6 +162,7 @@ export function SupportTemplateSection() {
         onDirtyChange={setDirty}
         onSubmit={async (document: JsonObject) => {
           const releaseId = defaultReleaseId("support-template");
+          setPublished(null);
           await runPublishPipeline({
             releaseId,
             domainKey: RETURN_PLATFORM_DOMAIN_KEY,
@@ -156,15 +170,10 @@ export function SupportTemplateSection() {
             headRevision: active.headRevision,
             onSteps: setSteps,
           });
+          setPublished(releaseId);
           await queryClient.invalidateQueries({ queryKey: ["config"] });
           return releaseId;
         }}
-        renderResult={(releaseId) => (
-          <p role="status" className="rounded-xl border border-primary/20 bg-secondary-container px-4 py-3 text-sm text-on-secondary-container">
-            Release {releaseId} is published. Cases opened from now on pin it; cases already running
-            keep the template they started with.
-          </p>
-        )}
         footer={(document) => <VariantPreview template={document} />}
       />
     </div>
