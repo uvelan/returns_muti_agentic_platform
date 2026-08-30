@@ -49,10 +49,12 @@ from return_platform.configuration.support_gate_configuration import (
     TemplateReviewConfiguration,
     TemplateReviewTimeoutPolicy,
 )
+from return_platform.operations import fact_names
 from return_platform.operations.case_commands import (
     DurableCaseCommandStore,
     ensure_case_command_indexes,
 )
+from return_platform.operations.models import FactAcquisition
 from return_platform.operations.review_aggregate import (
     ReviewAggregateStore,
     ReviewState,
@@ -80,6 +82,7 @@ from return_platform.workflows.return_case_workflow import (
     TemplateReviewNotice,
     TemplateReviewRevisionInput,
 )
+from tests.operations.scoped_fact_double import ScopedFactDouble
 
 _async = pytest.mark.asyncio
 
@@ -218,15 +221,6 @@ class _Support:
     async def post_support_message(self, **kwargs: Any) -> _Post:
         self.posted.append(dict(kwargs))
         return _Post()
-
-
-class _Facts:
-    def __init__(self) -> None:
-        self.written: list[dict[str, Any]] = []
-
-    async def __call__(self, **fact: Any) -> bool:
-        self.written.append(dict(fact))
-        return True
 
 
 class _GateActivities:
@@ -389,13 +383,14 @@ def _gate_service(
     test_settings: Settings,
     configuration: ReturnPlatformConfiguration,
     support: _Support,
+    facts: ScopedFactDouble | None = None,
 ) -> SupportTemplateGateService:
     return SupportTemplateGateService(
         reviews=store,
         edit_rows=MongoDraftEditRows(mongo[test_settings.mongo_database]),
         support_service=support,
         configuration=lambda: configuration,
-        append_fact=_Facts(),
+        append_fact=facts or ScopedFactDouble(),
     )
 
 
@@ -575,7 +570,7 @@ async def test_a_release_with_no_template_falls_back_to_the_composed_path(
         edit_rows=MongoDraftEditRows(mongo[test_settings.mongo_database]),
         support_service=support,
         configuration=lambda: None,
-        append_fact=_Facts(),
+        append_fact=ScopedFactDouble(),
     )
     timings = ReturnCaseTimings(
         bay_wait_seconds=0,
@@ -644,6 +639,7 @@ async def test_escalate_parks_with_the_guard_blocked_reason(
     )
 
     assert instance._state.parked_reason == "TEMPLATE_REVIEW_GUARD_BLOCKED"  # noqa: SLF001
+
     assert support.posted == []
 
 
@@ -699,7 +695,8 @@ async def test_a_gap_forces_the_hold_even_under_auto_send(
     template's required fields genuinely cannot resolve.
     """
     support = _Support()
-    gate = _gate_service(store, mongo, test_settings, configuration, support)
+    facts = ScopedFactDouble()
+    gate = _gate_service(store, mongo, test_settings, configuration, support, facts=facts)
     activities = _GateActivities(gate, facts={})
     instance, _runtime = await _run_gate(
         monkeypatch,
@@ -717,6 +714,31 @@ async def test_a_gap_forces_the_hold_even_under_auto_send(
     assert support.posted == [], "a gapped draft must not reach Support"
     assert ReviewState(str(reviews[0]["state"])) is ReviewState.OPEN
     assert instance._state.parked_reason == "TEMPLATE_REVIEW_GUARD_BLOCKED"  # noqa: SLF001
+
+    # **The gap fact itself** (RV V1p2-1 F1). This is the only test in either
+    # suite that reaches `_record_draft_facts`' gap loop, so until now that
+    # write's call shape was pinned by nothing -- RV dropped its required
+    # `agent_id` and all 51 tests stayed green. Two things are asserted, and
+    # the first is what makes the second mean anything: the write *happened*,
+    # and it happened with the fields an operator reading the log needs.
+    #
+    # The call shape is enforced by `ScopedFactDouble`, which binds every write
+    # against the repository's real signature -- so a missing `agent_id` now
+    # fails here rather than in a worker, on the branch that fires exactly when
+    # a human most needs the record of why.
+    gap_facts = facts.named(fact_names.SUPPORT_TEMPLATE_GAP)
+    assert gap_facts, "a review-blocking gap must leave a record of why"
+    assert len(gap_facts) == len(reviews[0]["draftPayload"]["gaps"]), (
+        "one fact per gap -- a single fact for several would lose which field"
+    )
+    for gap_fact in gap_facts:
+        assert gap_fact["record_scope"] == str(reviews[0]["_id"]), (
+            "scoped to the attempt, so a redraft's gaps are not the first one's"
+        )
+        assert gap_fact["value"]["field_id"], "a gap that does not name a field is not actionable"
+        assert gap_fact["value"]["reason"]
+        assert gap_fact["agent_id"] == "support-template-gate"
+        assert gap_fact["acquisition_method"] is FactAcquisition.DERIVED
 
 
 # --------------------------------------------------------------------------- #
@@ -793,9 +815,7 @@ async def test_a_redraft_repoints_the_wait_and_the_new_attempt_can_be_sent(
         new_id = str(fresh["_id"])
         assert new_id != original
         redrafted.append(new_id)
-        instance.template_revised(
-            _notice(new_id, signal_id="sig-redraft", supersedes=original)
-        )
+        instance.template_revised(_notice(new_id, signal_id="sig-redraft", supersedes=original))
 
     async def approve_the_new_one() -> None:
         instance = holder[0]
@@ -871,9 +891,7 @@ async def test_a_supersedes_naming_a_review_this_case_never_held_is_refused(
     holder: list[ReturnCaseWorkflow] = []
 
     def stray() -> None:
-        holder[0].template_revised(
-            _notice("some-other-attempt", supersedes="never-held-here")
-        )
+        holder[0].template_revised(_notice("some-other-attempt", supersedes="never-held-here"))
 
     instance, _runtime = await _run_gate(
         monkeypatch,

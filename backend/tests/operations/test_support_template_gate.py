@@ -16,7 +16,6 @@ Contracts.md sect. 6. Three groups, and only the first is about rendering:
 
 from __future__ import annotations
 
-import inspect
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -35,7 +34,6 @@ from return_platform.operations.case_commands import (
     DurableCaseCommandStore,
     ensure_case_command_indexes,
 )
-from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.review_aggregate import (
     REVIEW_DRAFT_EDITS,
     ReviewAggregateStore,
@@ -65,6 +63,7 @@ from return_platform.operations.support_template_renderer import (
     render_support_template,
 )
 from tests.operations.mongo_double import FakeClient
+from tests.operations.scoped_fact_double import ScopedFactDouble
 
 _async = pytest.mark.asyncio
 
@@ -95,51 +94,6 @@ async def reviews(mongo: FakeClient, test_settings: Settings) -> ReviewAggregate
         test_settings,
         command_store=DurableCaseCommandStore(cast(Any, mongo), test_settings),
     )
-
-
-class _Facts:
-    """Whatever the gate wrote -- **bound to the signature that receives it**.
-
-    The first version of this double took `**fact` and recorded it, so every
-    kwarg name the gate used conformed to nothing. It used `acquisition` where
-    the repository takes `acquisition_method`, `occurred_at` where it takes
-    `observed_at`, an `actor_id` that is not a parameter at all, and it never
-    sent the **required** `agent_id`. All five of the gate's fact writes would
-    have raised `TypeError` the first time a worker ran one, and twenty-four
-    green tests could not see it, because the thing being exercised was this
-    class.
-
-    So it now does what `RepositoryCaseActivities.append_scoped_fact_once`
-    does -- pops `fact_id`, prefixes the scope, and binds the rest against
-    `OperationalRepository.append_scoped_case_fact`'s own signature. Every test
-    in this file therefore enforces the call shape, not only the two that were
-    written for it, and a rename on S1's side breaks these rather than
-    production.
-    """
-
-    _SIGNATURE = inspect.signature(OperationalRepository.append_scoped_case_fact)
-
-    def __init__(self) -> None:
-        self.written: list[dict[str, Any]] = []
-
-    async def __call__(self, *, record_scope: str | None = None, **fact: Any) -> bool:
-        derived = str(fact.pop("fact_id"))
-        if record_scope is not None:
-            derived = f"{derived}::{record_scope}"
-        # `self` is bound in production; a placeholder here keeps the bind about
-        # the keyword arguments, which are what the gate actually controls.
-        self._SIGNATURE.bind(
-            None,
-            fact_id=derived,
-            record_scope=record_scope,
-            identity_version=1,
-            **fact,
-        )
-        self.written.append({"fact_id": derived, "record_scope": record_scope, **fact})
-        return True
-
-    def named(self, name: str) -> list[dict[str, Any]]:
-        return [fact for fact in self.written if fact.get("fact_name") == name]
 
 
 class _Thread:
@@ -189,14 +143,14 @@ def _service(
     configuration: ReturnPlatformConfiguration,
     *,
     support: _Support | None = None,
-    facts: _Facts | None = None,
+    facts: ScopedFactDouble | None = None,
 ) -> SupportTemplateGateService:
     return SupportTemplateGateService(
         reviews=reviews,
         edit_rows=MongoDraftEditRows(mongo[test_settings.mongo_database]),
         support_service=support or _Support(),
         configuration=lambda: configuration,
-        append_fact=facts or _Facts(),
+        append_fact=facts or ScopedFactDouble(),
     )
 
 
@@ -691,7 +645,7 @@ async def test_an_absorbed_redelivery_still_reaches_sent(
     as a failure would leave the review `DELIVERY_FAILED` beside a message
     Support has actually read, and an operator would retry it forever.
     """
-    facts = _Facts()
+    facts = ScopedFactDouble()
     support = _Support(absorbed=True)
     service = _service(reviews, mongo, test_settings, configuration, support=support, facts=facts)
     await _approved_review(reviews, service)
@@ -774,7 +728,7 @@ async def test_delivering_twice_posts_once(
 ) -> None:
     """Replay safety. The second call sees `SENT` and does nothing at all."""
     support = _Support()
-    facts = _Facts()
+    facts = ScopedFactDouble()
     service = _service(reviews, mongo, test_settings, configuration, support=support, facts=facts)
     await _approved_review(reviews, service)
 
@@ -810,7 +764,7 @@ async def test_recording_a_draft_opens_one_review_and_logs_it(
     test_settings: Settings,
     configuration: ReturnPlatformConfiguration,
 ) -> None:
-    facts = _Facts()
+    facts = ScopedFactDouble()
     service = _service(reviews, mongo, test_settings, configuration, facts=facts)
 
     draft = await service.record_draft(
@@ -867,7 +821,7 @@ async def test_a_release_with_no_template_reports_it_rather_than_gapping(
         edit_rows=MongoDraftEditRows(mongo[test_settings.mongo_database]),
         support_service=_Support(),
         configuration=lambda: None,
-        append_fact=_Facts(),
+        append_fact=ScopedFactDouble(),
     )
 
     draft = await service.record_draft(
@@ -931,7 +885,7 @@ async def test_every_gate_fact_write_fits_the_repository_it_is_handed_to(
     Not a unit test of one call: a kwarg is wrong per *call site*, so exercising
     one would say nothing about the other four.
     """
-    facts = _Facts()
+    facts = ScopedFactDouble()
     support = _Support()
     gate = _service(reviews, mongo, test_settings, configuration, support=support, facts=facts)
 
@@ -973,7 +927,7 @@ async def test_the_revision_fact_carries_the_actor_under_the_agreed_key(
     migration a hunt instead of a rename. `agent_id` is asserted beside it, so
     "which software" and "which person" cannot quietly become one field.
     """
-    facts = _Facts()
+    facts = ScopedFactDouble()
     gate = _service(reviews, mongo, test_settings, configuration, facts=facts)
 
     await gate.record_revision(
