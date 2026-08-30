@@ -1,20 +1,50 @@
-import type { CasePanelView } from "../../../../../api/casePanel";
+import type { CasePanelView, PanelSectionView } from "../../../../../api/casePanel";
 
 /**
  * Reading the clarifications off the panel, and nothing else.
  *
  * Separated from the component because two different things are going on and
  * only one of them is React: **deciding what a clarification is** is a contract
- * question with a fact-shaped answer, and it wants tests that do not render
- * anything.
+ * question with a fact-shaped answer, and it wants tests that render nothing.
  *
  * The shape is the value of the `support_clarification_requested` fact, written
  * by `operations/return_support/message_classification.py`. Its keys are
  * camelCase because that is how facts are stored, and they are transcribed here
- * rather than generated for the reason `api/caseClarifications.ts` gives: the
- * panel declares `clarifications` as an untyped object list precisely so V3's
- * shape never enters V1's DTO (V1-phase2 handoff, sect. 2).
+ * rather than generated for the reason `api/caseClarifications.ts` gives: a
+ * contributed section's payload is an opaque JSON object precisely so V3's shape
+ * never enters V1's DTO (V1 phase 2 handoff, sect. 2).
+ *
+ * ---
+ *
+ * ## Where clarifications actually come from, and why this reads two places
+ *
+ * §9 names **two** vehicles and they do not agree with each other.
+ *
+ * Line 104 says the clarification reaches the console as a *panel section*. Line
+ * 106 declares `clarifications[]` on the panel DTO, and V1 phase 2's handoff
+ * repeats that in its frozen-DTO table — "arrive through the section registry",
+ * of a **top-level field**.
+ *
+ * Only one of those is buildable today. `register_panel_section`'s contributor
+ * Protocol returns `PanelSectionView | None` and has no way to write a top-level
+ * DTO field, and `api/case_panel.py` sets `clarifications=()` as a literal. So
+ * `panel.clarifications` is empty on every real panel and will stay empty until
+ * somebody changes V1's composer.
+ *
+ * The first draft of this file read **only** `panel.clarifications`, and would
+ * therefore have rendered nothing, ever, while every test that handed it a
+ * fabricated panel stayed green — the consumer-tested-against-a-synthetic-
+ * producer shape, exactly.
+ *
+ * So this reads **both**, section payload first, de-duplicated on
+ * `clarificationId`. Not defensiveness: whichever vehicle the batched
+ * integration pass ends up wiring, this section draws. Reading one and going
+ * dark on the other is how a feature disappears at integration time with no test
+ * anywhere turning red.
  */
+
+/** The section id V3 contributes under, on both sides of the seam. */
+export const CLARIFICATIONS_SECTION_ID = "clarifications";
 
 export type ResolutionChoiceKind = "MAP_OR_REJECT" | null;
 
@@ -43,18 +73,20 @@ function text(value: unknown): string | null {
 }
 
 function strings(value: unknown): readonly string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
 }
 
 /**
  * One raw entry, or `null` if it is not one.
  *
  * **A malformed entry is skipped, never thrown on.** The backend registry
- * catches a contributor that raises and degrades that section rather than
- * taking the panel down, because the reviews are what an associate is blocked
- * on (V1-phase2 handoff, sect. 2); the console half of that promise is this
- * function. An entry with no id and no question is not a clarification anybody
- * can answer, so drawing an empty card for it would be furniture.
+ * catches a contributor that raises and degrades that section rather than taking
+ * the panel down, because the reviews are what an associate is blocked on (V1
+ * phase 2 handoff, sect. 2); the console half of that promise is this function.
+ * An entry with no id and no question is not a clarification anybody can answer,
+ * so drawing an empty card for it would be furniture.
  */
 export function readClarification(raw: unknown): CaseClarification | null {
   if (typeof raw !== "object" || raw === null) return null;
@@ -76,10 +108,30 @@ export function readClarification(raw: unknown): CaseClarification | null {
   };
 }
 
-export function readClarifications(panel: CasePanelView): readonly CaseClarification[] {
-  return panel.clarifications
-    .map((entry) => readClarification(entry))
-    .filter((entry): entry is CaseClarification => entry !== null);
+/**
+ * Every clarification on this panel, from either vehicle, in a stable order.
+ *
+ * Section payload first, then anything on `panel.clarifications` the section did
+ * not already carry. First writer of an id wins, so a panel that grows a
+ * populated `clarifications[]` later does not draw every card twice — and the
+ * order does not shuffle when it does, because appending never reorders what is
+ * already in the list.
+ */
+export function readClarifications(
+  panel: CasePanelView,
+  section: PanelSectionView | undefined,
+): readonly CaseClarification[] {
+  const payload = section?.payload as { clarifications?: unknown } | undefined;
+  const fromSection = Array.isArray(payload?.clarifications) ? payload.clarifications : [];
+  const seen = new Set<string>();
+  const found: CaseClarification[] = [];
+  for (const raw of [...fromSection, ...panel.clarifications]) {
+    const clarification = readClarification(raw);
+    if (clarification === null || seen.has(clarification.clarificationId)) continue;
+    seen.add(clarification.clarificationId);
+    found.push(clarification);
+  }
+  return found;
 }
 
 /* -------------------------------------------------------------------------
@@ -98,7 +150,7 @@ export type CandidateRecord = {
  * The case's records, in the order the clarification named them.
  *
  * The clarification carries **ids**; the panel carries the narrow record
- * projection with the reference, status and method (V1-phase2 handoff, sect.
+ * projection with the reference, status and method (V1 phase 2 handoff, sect.
  * 2's `return_records[]` row). Joining them here is why the renderer takes the
  * whole panel: an id is not a thing anybody at a counter can recognise, and
  * asking somebody to pick between two opaque uuids is asking them to guess.
@@ -138,25 +190,31 @@ export function candidateRecords(
  * The ladder rungs and binding statuses, in an associate's language.
  *
  * Two producers write `resolutionAttempts` and they speak different
- * vocabularies: the artifact binder writes a `BindingStatus`
- * (`AMBIGUOUS`/`UNMATCHED`), and the resolution ladder writes the rungs it
- * climbed. Both end up in the same list, so both are translated here.
+ * vocabularies. The artifact binder writes a `BindingStatus` — today's only
+ * producer, `message_classification.py`, writes exactly `[decision.status.value]`.
+ * The resolution ladder writes the rungs it climbed, whose constants are
+ * `RUNG_FACTS = "case_facts"`, `RUNG_GRAPH = "graph"` and
+ * `RUNG_TOOL = "registered_tool"` in `resolution_state.py`.
  *
- * **An unrecognised value falls through to itself**, rendered as data. The
- * alternative -- "unknown step" -- would hide a rung a later release added from
- * exactly the person who is being asked to compensate for it, and this is the
- * `Pending`-word discipline `ReturnCopilotFabrication.test.ts` enforces applied
- * to a vocabulary rather than a value: do not invent a word for something the
- * platform said in words of its own.
+ * **Both tables are the literal backend strings.** The first draft of this file
+ * invented `facts`, `tools` and `clarification`, none of which any producer
+ * writes. Because an unrecognised value falls through to itself — deliberately —
+ * that mistake would have shown raw enum values to associates forever without
+ * producing a single wrong word anybody could report.
+ *
+ * The fall-through stays. It hides a rung a later release adds from exactly the
+ * person being asked to compensate for it, which is the `Pending`-word
+ * discipline `ReturnCopilotFabrication.test.ts` enforces applied to a vocabulary
+ * rather than to a value: do not invent a word for something the platform said
+ * in words of its own.
  */
 const ATTEMPT_WORDS: Record<string, string> = {
   AMBIGUOUS: "matched more than one of this case's returns",
   UNMATCHED: "named a return this case does not hold",
   BOUND: "matched one of this case's returns",
-  facts: "looked through what the case already knows",
+  case_facts: "looked through what the case already knows",
   graph: "looked it up in the knowledge graph",
-  tools: "asked the systems it is allowed to ask",
-  clarification: "came here",
+  registered_tool: "asked a system it is allowed to ask",
 };
 
 export function attemptWords(attempt: string): string {
@@ -166,9 +224,11 @@ export function attemptWords(attempt: string): string {
 /**
  * The field the platform needs, in an associate's language.
  *
- * `neededField` is an `ArtifactType` on the binding path
- * (`TRACKING_NUMBER`, `SHIPPING_LABEL`, …) and a resolver field name on the
- * other. Same fall-through rule, same reason.
+ * `neededField` is an `ArtifactType` on the binding path (`TRACKING_NUMBER`,
+ * `SHIPPING_LABEL`, …) and a resolver field name on the other. Same
+ * fall-through rule, same reason — and the transformation is mechanical rather
+ * than a lookup table, so a type added next release reads correctly without this
+ * file being edited.
  */
 export function neededFieldWords(neededField: string): string {
   return neededField.replaceAll("_", " ").toLowerCase();

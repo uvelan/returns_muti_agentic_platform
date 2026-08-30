@@ -125,5 +125,22 @@ export const COPILOT_TOKENS = {
      * must not take the caret out of the field they are in.
      */
     liveRegion: "text-xs text-outline min-h-[1rem]",
+    /**
+     * A question Support is asking this associate (V3, contracts.md sect. 9).
+     *
+     * Its own entry rather than a borrowed one. The first draft of V3's
+     * clarification card reused `review.conflict`, whose documented meaning is
+     * "another actor editing; a superseded draft; a confirmation" -- a question
+     * from a supplier is none of those, and reusing the nearest container is how
+     * a token's meaning erodes until it means "boxed".
+     *
+     * `secondary-container` because it is neither a failure (`gap`, error) nor
+     * somebody else's half-finished work (`conflict`, tertiary): it is an open
+     * item addressed to the person reading it, which is what `state.OPEN`
+     * already uses the secondary pair for. Every value is an M3 role, so a theme
+     * change reaches it with the rest of the console.
+     */
+    clarification:
+      "rounded-lg border border-secondary/50 bg-secondary-container/40 px-3 py-2 text-on-secondary-container",
   },
 } as const;
