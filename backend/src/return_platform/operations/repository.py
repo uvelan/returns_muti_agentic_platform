@@ -59,6 +59,9 @@ from return_platform.operations.order_lines.reservations import (
 from return_platform.operations.return_support.analysis_records import (
     ensure_support_analysis_indexes,
 )
+from return_platform.operations.return_support.ingress_store import (
+    ensure_support_ingress_indexes,
+)
 from return_platform.operations.review_aggregate import ensure_review_indexes
 from return_platform.operations.seed_manifest import (
     SOURCE_CUSTOMERS_DATASET,
@@ -487,6 +490,12 @@ class OperationalRepository(CaseRepository):
         # a second would give the event two analyses and no way to say which
         # one the case believes (contracts.md sect. 5).
         await ensure_support_analysis_indexes(self._db)
+        # The inbound side of the same plane: `(caseId, transportId,
+        # externalMessageId)` unique, which is what makes a Support message
+        # redelivered by its transport one event rather than two
+        # (contracts.md sect. 5). Defined beside the ingress store and called
+        # from here for the same one-place reason as the lines above.
+        await ensure_support_ingress_indexes(self._db)
         # One `ACTIVE` hold per (case, line), plus the availability read and the
         # expiry sweep's predicates. The unique partial index is what makes "a
         # case editing its own reservation" a well-defined operation rather than
