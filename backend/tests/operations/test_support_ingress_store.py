@@ -18,6 +18,7 @@ call that would succeed:
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
@@ -50,7 +51,7 @@ from return_platform.operations.return_support.ingress_store import (
     inbound_chain,
 )
 from return_platform.operations.support_events import IdempotencyConflictError
-from tests.operations.mongo_double import FakeClient, FakeCollection
+from tests.operations.mongo_double import FakeClient, FakeCollection, FakeSession
 
 CASE_ID = "case-9001"
 WORK_ITEM = "wi-9001"
@@ -445,3 +446,210 @@ async def test_the_dispatcher_drains_the_inbound_stream_in_order(
             break
 
     assert dispatcher.dispatched == ids
+
+
+# --------------------------------------------------------------------------- #
+# Concurrent arrival: the enqueuing half of acceptance 18
+# --------------------------------------------------------------------------- #
+#
+# The sequential test above proves the *dispatcher* honours a well-formed
+# chain. It cannot prove the store always produces one, because recording three
+# messages one after another never has two enqueues in flight -- and a fork is
+# only expressible when two are. Contracts sect. 7 assigns the population of
+# `causation_id` / `required_predecessor_ids[]` to the enqueuing store, so that
+# is the half these two tests cover.
+#
+# What the doubles below model, and why each half is faithful:
+#
+#   * `_interleave_reads` makes every collection call yield to the event loop
+#     first. A store method that is pure in-memory never context-switches, so
+#     without this two `asyncio.gather`ed calls run to completion one after the
+#     other and no interleaving is possible -- the double would be proving that
+#     concurrency does not happen rather than what happens under it. Real
+#     collection calls are network round trips and yield at every one.
+#
+#   * `_TransactionalClient` serialises `with_transaction`. That is the
+#     observable consequence of what MongoDB actually does here: the sequence
+#     `$inc` inside the transaction makes two concurrent enqueues conflict on
+#     the counter document, one aborts, and `with_transaction` re-runs it
+#     against state that now includes the winner. A lock reaches the same end
+#     state -- the second body runs after the first has committed -- without
+#     modelling the abort/retry machinery itself.
+#
+# Neither double weakens the test: with the tail read moved back outside the
+# transaction, both tests fail (see the ledger's fault-injection table).
+
+
+class _TransactionalClient(FakeClient):
+    """A `FakeClient` whose transactions are serialised, as Mongo's are here."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.transaction_lock = asyncio.Lock()
+
+    def start_session(self) -> Any:
+        client = self
+
+        class _SerializedSession(FakeSession):
+            async def with_transaction(self, callback: Any) -> Any:
+                async with client.transaction_lock:
+                    return await FakeSession.with_transaction(self, callback)
+
+        session = _SerializedSession(self)
+
+        class _Context:
+            async def __aenter__(self) -> Any:
+                return session
+
+            async def __aexit__(self, *_: Any) -> bool:
+                return False
+
+        return _Context()
+
+
+@pytest.fixture
+def interleaved_reads(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make every collection call a place the event loop may switch."""
+    for name in ("find_one", "insert_one", "find_one_and_update", "update_one"):
+        original = getattr(FakeCollection, name)
+
+        def yielding(*args: Any, _original: Any = original, **kwargs: Any) -> Any:
+            async def run() -> Any:
+                await asyncio.sleep(0)
+                return await _original(*args, **kwargs)
+
+            return run()
+
+        monkeypatch.setattr(FakeCollection, name, yielding)
+
+
+@pytest_asyncio.fixture
+async def concurrent_store(
+    test_settings: Settings,
+) -> tuple[DurableSupportIngressStore, FakeCollection]:
+    client = _TransactionalClient()
+    database = client[test_settings.mongo_database]
+    store = DurableSupportIngressStore(cast(Any, client), test_settings, _configuration())
+    await store.ensure_indexes()
+    await ensure_integration_outbox_indexes(database)
+    return store, database["integration_outbox"]
+
+
+def _assert_is_a_chain(chain: list[tuple[str, tuple[str, ...]]]) -> None:
+    """Every link names the one before it, and no id is named twice.
+
+    Stated as two properties rather than as an expected list, because a fork is
+    precisely the shape an expected-list assertion written from a sequential
+    run would still accept: the *sequence numbers* are distinct and correct in
+    both cases, and only the predecessors differ.
+    """
+    ids = [event_id for event_id, _ in chain]
+    predecessors = [names for _, names in chain]
+
+    assert predecessors[0] == (), "the first link on a case has no predecessor"
+    for position in range(1, len(chain)):
+        assert predecessors[position] == (ids[position - 1],), (
+            f"event at stream position {position} names {predecessors[position]}, "
+            f"but the event before it is {ids[position - 1]!r} -- this is a fork, "
+            "not a chain"
+        )
+    named = [names[0] for names in predecessors if names]
+    assert len(named) == len(set(named)), (
+        f"two events name the same predecessor ({named}): they sit at the same "
+        "depth, so once it delivers both become dispatchable at once and the "
+        "dispatcher may run them in either order"
+    )
+
+
+@pytest.mark.asyncio
+async def test_two_messages_arriving_together_still_form_a_chain(
+    concurrent_store: tuple[DurableSupportIngressStore, FakeCollection],
+    interleaved_reads: None,
+) -> None:
+    """Contracts sect. 7's enqueuing half, under the arrival that breaks it.
+
+    A burst on one case is ordinary -- a transport flushing a queue, an agent
+    sending two lines, a redelivery overlapping a fresh arrival. With the chain
+    tail resolved outside the transaction, both of these read the same tail and
+    both name it, and the result is two events at one depth.
+    """
+    store, outbox = concurrent_store
+
+    first = await _record(store, _event(external_message_id="m-1"))
+    second, third = await asyncio.gather(
+        _record(store, _event(external_message_id="m-2")),
+        _record(store, _event(external_message_id="m-3")),
+    )
+    assert len({first.support_event_id, second.support_event_id, third.support_event_id}) == 3
+
+    chain = inbound_chain(list(outbox.documents.values()))
+    assert len(chain) == 3
+    _assert_is_a_chain(chain)
+
+
+@pytest.mark.asyncio
+async def test_a_chain_built_under_concurrent_arrival_still_drains_in_order(
+    concurrent_store: tuple[DurableSupportIngressStore, FakeCollection],
+    interleaved_reads: None,
+    test_settings: Settings,
+) -> None:
+    """The end-to-end consequence, through S2's real dispatcher.
+
+    The chain assertion above is the cause; this is the effect, and it is the
+    one acceptance 18 is actually written about. The queue is loaded against
+    the answer exactly as the sequential test loads it -- newest command made
+    oldest-due -- so an unordered dispatcher delivers backwards. Delivery order
+    must equal chain order, whichever way the two concurrent arrivals happened
+    to be sequenced.
+    """
+    store, outbox = concurrent_store
+
+    await _record(store, _event(external_message_id="m-1"))
+    await asyncio.gather(
+        _record(store, _event(external_message_id="m-2")),
+        _record(store, _event(external_message_id="m-3")),
+    )
+
+    chain = inbound_chain(list(outbox.documents.values()))
+    _assert_is_a_chain(chain)
+    chain_order = [event_id for event_id, _ in chain]
+
+    dispatcher = _RecordingDispatcher()
+    worker = IntegrationOutboxDispatcher(
+        cast(Any, store._client),  # noqa: SLF001 - the client the store committed through
+        test_settings,
+        {SUPPORT_MESSAGE_CLASSIFY_TOPIC: cast(TopicDispatcher, dispatcher)},
+        worker_id="worker-a",
+    )
+
+    by_event = {str(document["eventId"]): document for document in outbox.documents.values()}
+
+    def load_against_the_answer() -> None:
+        """Make the newest waiting command the oldest-due -- on *every* pass.
+
+        `claim` sorts by `(nextAttemptAt, createdAt)`, so giving every waiting
+        command the same `nextAttemptAt` hands the tie-break to `createdAt` --
+        which is enqueue order, which is the answer. Re-staggering each round is
+        what keeps the queue adversarial for the whole drain instead of only
+        the first pass; a deferred command comes back with `now + 2s`, so
+        without this the queue quietly sorts itself into the right order.
+        """
+        now = datetime.now(UTC)
+        for offset, event_id in enumerate(reversed(chain_order)):
+            document = by_event[event_id]
+            if document["status"] in ("PENDING", "RETRY"):
+                document["nextAttemptAt"] = now - timedelta(seconds=30 - offset * 10)
+                document["leaseOwner"] = None
+                document["leaseUntil"] = None
+
+    load_against_the_answer()
+    for _ in range(20):
+        if not await worker.dispatch_once():
+            load_against_the_answer()
+            if not await worker.dispatch_once():
+                break
+
+    assert dispatcher.dispatched == chain_order, (
+        "the queue offered the newest command first; delivery order must still "
+        "be chain order, and a forked chain is exactly what lets it not be"
+    )
