@@ -50,6 +50,23 @@ RETURNS_AUDIT_READ: Final = "returns.audit.read"
 #: must not answer for a human, and an override is precisely a human deciding
 #: that the published rule set is wrong about this one return.
 RETURNS_POLICY_OVERRIDE: Final = "returns.policy.override"
+#: Recovering a review whose delivery failed -- `POST
+#: .../reviews/{id}/recovery/{retry|abandon}` (contracts.md sect. 6, and the
+#: **one** capability T0's investigation found the vocabulary short of).
+#:
+#: **Separate from `RETURNS_SUPPORT_ACT`, and narrower on purpose.** Approving a
+#: review is deciding what Support is told; retrying a delivery is re-driving a
+#: send the platform already committed to, under the *same* delivery identity,
+#: and abandoning one is a terminal, audited "this message is never going out".
+#: Neither is the act of the person who wrote the message -- they are what
+#: somebody does when the machinery underneath it failed, and the associate
+#: whose draft it was is rarely the right person to decide that.
+#:
+#: Held by `ALL_CAPABILITIES` and by `RETURN_SUPPORT`, which is the desk that
+#: works the failure. Deliberately **not** held by `RETURN_PLATFORM_SERVICE`:
+#: abandonment is a human judgement with an audited actor, and a service
+#: account answering for one would be an unattributed close.
+RETURNS_REVIEW_RECOVERY: Final = "returns.review.recovery"
 
 # Configuration domain -- `/api/config`.
 CONFIG_RUNTIME_READ: Final = "config.runtime.read"
@@ -108,6 +125,7 @@ ALL_CAPABILITIES: Final = frozenset(
         RETURNS_WAREHOUSE_ACT,
         RETURNS_AUDIT_READ,
         RETURNS_POLICY_OVERRIDE,
+        RETURNS_REVIEW_RECOVERY,
         CONFIG_RUNTIME_READ,
         CONFIG_RELEASE_READ,
         CONFIG_RELEASE_PROMOTE,
@@ -162,7 +180,15 @@ _ROLE_CAPABILITIES: Final[dict[str, frozenset[str]]] = {
     r.WORKSPACE_EDITOR: _READ_ONLY_EVERYWHERE
     | {CONFIG_SOURCE_WRITE, GRAPH_SCHEMA_DRAFT_WRITE, GOVERNANCE_PROPOSAL_WRITE},
     r.RETURN_ASSOCIATE: frozenset({RETURNS_SESSION_READ, RETURNS_SESSION_WRITE}),
-    r.RETURN_SUPPORT: frozenset({RETURNS_SESSION_READ, RETURNS_SESSION_WRITE, RETURNS_SUPPORT_ACT}),
+    r.RETURN_SUPPORT: frozenset(
+        {
+            RETURNS_SESSION_READ,
+            RETURNS_SESSION_WRITE,
+            RETURNS_SUPPORT_ACT,
+            # The desk that works a failed delivery is the desk that recovers it.
+            RETURNS_REVIEW_RECOVERY,
+        }
+    ),
     r.LOGISTICS_COORDINATOR: frozenset(
         {RETURNS_SESSION_READ, RETURNS_SESSION_WRITE, RETURNS_LOGISTICS_ACT}
     ),

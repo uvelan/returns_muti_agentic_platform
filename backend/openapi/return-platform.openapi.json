@@ -1759,6 +1759,39 @@
         "title": "APIResponse[BayAssessment]",
         "type": "object"
       },
+      "APIResponse_CasePanelView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CasePanelView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[CasePanelView]",
+        "type": "object"
+      },
       "APIResponse_CaseProjection_": {
         "additionalProperties": false,
         "properties": {
@@ -2021,6 +2054,39 @@
           "meta"
         ],
         "title": "APIResponse[DiscoveryAssessment]",
+        "type": "object"
+      },
+      "APIResponse_EditStateResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditStateResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[EditStateResult]",
         "type": "object"
       },
       "APIResponse_FeedbackAssessment_": {
@@ -2741,6 +2807,39 @@
           "meta"
         ],
         "title": "APIResponse[ReturnWorkflowAssessment]",
+        "type": "object"
+      },
+      "APIResponse_ReviewActionResult_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewActionResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ReviewActionResult]",
         "type": "object"
       },
       "APIResponse_RmaTicketView_": {
@@ -4416,6 +4515,58 @@
         "title": "APIResponse[list[dict[str, Any]]]",
         "type": "object"
       },
+      "AcceptedCommandView": {
+        "additionalProperties": false,
+        "description": "A command the platform accepted and has not necessarily applied yet.\n\n**Unfiltered by actor** -- see the module docstring. It is what makes \"I\npressed Send and nothing happened\" answerable: the command is recorded, the\nsignal has not landed yet, and the panel can say so instead of showing an\nunchanged review.",
+        "properties": {
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "applied": {
+            "default": false,
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "recorded_at_iso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recorded At Iso"
+          },
+          "review_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Id"
+          },
+          "signal_id": {
+            "title": "Signal Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "signal_id",
+          "kind",
+          "actor_id"
+        ],
+        "title": "AcceptedCommandView",
+        "type": "object"
+      },
       "ActivationRequest": {
         "additionalProperties": false,
         "properties": {
@@ -5798,6 +5949,35 @@
         "title": "ApproveRequest",
         "type": "object"
       },
+      "ApproveReviewRequest": {
+        "additionalProperties": false,
+        "description": "**The exact field names contracts.md sect. 6 fixes.**\n\nAll three are required and none is optional-with-a-default. A default would\nmake \"approve whatever is there now\" expressible, and the whole purpose of\nthe CAS is that the associate approves the bytes they read -- a draft that\nwas re-rendered under them must fail, not silently go out.",
+        "properties": {
+          "canonical_approved_payload_hash": {
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Canonical Approved Payload Hash",
+            "type": "string"
+          },
+          "canonical_edit_version": {
+            "minimum": 0.0,
+            "title": "Canonical Edit Version",
+            "type": "integer"
+          },
+          "draft_version": {
+            "minimum": 0.0,
+            "title": "Draft Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "draft_version",
+          "canonical_edit_version",
+          "canonical_approved_payload_hash"
+        ],
+        "title": "ApproveReviewRequest",
+        "type": "object"
+      },
       "ApprovedItemProjection": {
         "additionalProperties": false,
         "description": "One line an RMA authorized, at the quantity it authorized.",
@@ -6468,6 +6648,22 @@
         "title": "BranchStagingRequest",
         "type": "object"
       },
+      "CancelReviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "CancelReviewRequest",
+        "type": "object"
+      },
       "CapturedTurnFact": {
         "additionalProperties": false,
         "description": "One fact this conversation has established, reported back to the caller.\n\n**The only wire form of `observedFacts`.** The conversation's captured facts\nare merged and kept on the conversation document, flushed into the case fact\nlog at confirmation, and shown to the model every turn -- and until this\nfield existed none of that was visible to the console. A screen whose\nheading promises *extracted facts* therefore had nothing to read but\nstatement prose, and rendering the agent's narration (\"Line 1 has no product\nrecorded against it\") as an extracted field is the same defect as a\nfabricated value wearing a different hat.\n\n`name` is the `clarification_policy.fields` field name, so it is the\noperator's vocabulary and not a second one; `label` is that field's\nassociate-facing wording. `status` is `FactStatus`, and it is carried rather\nthan filtered here because a `CONFLICTING` or `AMBIGUOUS` fact is something\nthe conversation still owes the associate a question about -- a caller that\nrendered it as settled would be asserting more than the platform knows.\n\nProvenance is deliberately narrow: no `turnId`, no `sourceMessageId`, no\n`observedAt`. Those are audit fields the case fact log already keeps, and\nthe caller of a turn has no use for them that is worth widening the\nconversation's wire surface for.",
@@ -6664,6 +6860,84 @@
           "factName"
         ],
         "title": "CaseFactProjection",
+        "type": "object"
+      },
+      "CasePanelView": {
+        "additionalProperties": false,
+        "description": "The one shape the panel and `CaseOperationsPage` both read.\n\n**Frozen at merge.** Anything V2 or V3 wants to show goes in `sections`\nthrough the registry.",
+        "properties": {
+          "accepted_commands": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AcceptedCommandView"
+            },
+            "title": "Accepted Commands",
+            "type": "array"
+          },
+          "case_id": {
+            "title": "Case Id",
+            "type": "string"
+          },
+          "clarifications": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Clarifications",
+            "type": "array"
+          },
+          "execution": {
+            "$ref": "#/components/schemas/PanelExecutionView"
+          },
+          "parked_messages": {
+            "default": 0,
+            "title": "Parked Messages",
+            "type": "integer"
+          },
+          "return_records": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Return Records",
+            "type": "array"
+          },
+          "reviews": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReviewPanelView"
+            },
+            "title": "Reviews",
+            "type": "array"
+          },
+          "sections": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PanelSectionView"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "support_digest": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Support Digest",
+            "type": "array"
+          },
+          "timers": {
+            "$ref": "#/components/schemas/PanelTimersView"
+          }
+        },
+        "required": [
+          "case_id",
+          "execution"
+        ],
+        "title": "CasePanelView",
         "type": "object"
       },
       "CaseProjection": {
@@ -8664,6 +8938,99 @@
         "title": "DriftKind",
         "type": "string"
       },
+      "EditStateRequest": {
+        "additionalProperties": false,
+        "description": "One coalesced autosave.\n\n`client_edit_id` is what makes a retried save a no-op rather than a version\nbump -- the browser sends the same id for the same keystroke batch, so a\nflaky connection costs nothing.\n\n`base_draft_version` is the version the edit was made *against*. A mismatch\nis a 409 rather than a merge: the draft was re-rendered under the editor and\nsilently rebasing their words onto different facts is how a message comes to\nsay something nobody wrote.",
+        "properties": {
+          "base_draft_version": {
+            "minimum": 0.0,
+            "title": "Base Draft Version",
+            "type": "integer"
+          },
+          "client_edit_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Client Edit Id",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          }
+        },
+        "required": [
+          "client_edit_id",
+          "base_draft_version",
+          "payload"
+        ],
+        "title": "EditStateRequest",
+        "type": "object"
+      },
+      "EditStateResult": {
+        "additionalProperties": false,
+        "properties": {
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "base_draft_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Draft Version"
+          },
+          "client_edit_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Edit Id"
+          },
+          "edit_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Edit Version"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
+          },
+          "review_id": {
+            "title": "Review Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "review_id",
+          "actor_id"
+        ],
+        "title": "EditStateResult",
+        "type": "object"
+      },
       "ElementChange": {
         "additionalProperties": false,
         "properties": {
@@ -10494,6 +10861,152 @@
           }
         },
         "title": "PageMeta",
+        "type": "object"
+      },
+      "PanelExecutionView": {
+        "additionalProperties": false,
+        "description": "The Temporal `execution_state` query, as the panel needs it.\n\nDegradable: the workflow host being unreachable is an expected transient,\nand the rest of the panel -- reviews, records, the thread digest -- is read\nfrom Mongo and is still true.",
+        "properties": {
+          "awaiting": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Awaiting",
+            "type": "array"
+          },
+          "business_complete": {
+            "default": false,
+            "title": "Business Complete",
+            "type": "boolean"
+          },
+          "case_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Status"
+          },
+          "parked_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parked Reason"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "default": "ok",
+            "title": "Status",
+            "type": "string"
+          },
+          "work_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Item Id"
+          }
+        },
+        "title": "PanelExecutionView",
+        "type": "object"
+      },
+      "PanelSectionView": {
+        "additionalProperties": false,
+        "description": "One contributed section. **V2 and V3 add sections, never fields.**\n\nThe payload is an opaque JSON object rather than a typed sub-model, and\nthat is the seam: a typed field per section would put V2's and V3's shapes\ninto this file and into every OpenAPI regeneration V1 owns. Each\ncontributor owns its own payload's shape and its own tests for it.",
+        "properties": {
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "section_id": {
+            "title": "Section Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "section_id"
+        ],
+        "title": "PanelSectionView",
+        "type": "object"
+      },
+      "PanelTimersView": {
+        "additionalProperties": false,
+        "description": "Absolute instants. The countdown is the browser's (contracts.md sect. 9).",
+        "properties": {
+          "support_deadline_iso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Support Deadline Iso"
+          },
+          "template_review_deadline_iso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Review Deadline Iso"
+          },
+          "template_review_max_reminders": {
+            "default": 0,
+            "title": "Template Review Max Reminders",
+            "type": "integer"
+          },
+          "template_review_reminders_sent": {
+            "default": 0,
+            "title": "Template Review Reminders Sent",
+            "type": "integer"
+          }
+        },
+        "title": "PanelTimersView",
         "type": "object"
       },
       "PatchDomainPayload": {
@@ -12357,6 +12870,19 @@
         "title": "RecoveryAction",
         "type": "string"
       },
+      "RecoveryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "RecoveryRequest",
+        "type": "object"
+      },
       "RelationshipShapeView": {
         "additionalProperties": false,
         "properties": {
@@ -12667,6 +13193,30 @@
           "new_label"
         ],
         "title": "RenameEntity",
+        "type": "object"
+      },
+      "ResolveEditRequest": {
+        "additionalProperties": false,
+        "description": "Select, merge or discard, resolved to one canonical payload.\n\nThe *choice* is the UI's; what arrives here is its result, plus the edit row\nids it was resolved from, so the audit says which drafts the canonical one\ncame out of rather than only what it says.",
+        "properties": {
+          "canonical_payload": {
+            "additionalProperties": true,
+            "title": "Canonical Payload",
+            "type": "object"
+          },
+          "resolved_from_actor_edit_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "title": "Resolved From Actor Edit Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "canonical_payload"
+        ],
+        "title": "ResolveEditRequest",
         "type": "object"
       },
       "ResponseMeta": {
@@ -14714,6 +15264,201 @@
           "items"
         ],
         "title": "ReturnWorkflowAssessmentRequest",
+        "type": "object"
+      },
+      "ReviewActionResult": {
+        "additionalProperties": false,
+        "properties": {
+          "canonical_edit_version": {
+            "title": "Canonical Edit Version",
+            "type": "integer"
+          },
+          "draft_version": {
+            "title": "Draft Version",
+            "type": "integer"
+          },
+          "duplicate": {
+            "default": false,
+            "title": "Duplicate",
+            "type": "boolean"
+          },
+          "review_id": {
+            "title": "Review Id",
+            "type": "string"
+          },
+          "signal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signal Id"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "review_id",
+          "state",
+          "draft_version",
+          "canonical_edit_version"
+        ],
+        "title": "ReviewActionResult",
+        "type": "object"
+      },
+      "ReviewPanelView": {
+        "additionalProperties": false,
+        "description": "One review, keyed `(review_kind, scope_id)` (contracts.md sect. 9).\n\nCarries every non-terminal review *including* `APPROVING`,\n`DELIVERY_FAILED` and `HELD_FOR_OPERATIONS` -- a review the associate can\nno longer edit is precisely the one they most need to see -- plus recently\nterminal ones for visibility.\n\n`draft` is the payload as it currently stands; `gaps` come only from the\nrenderer. `conflict_present` is the case-scoped marker's answer for this\nreview, never a per-actor fact.",
+        "properties": {
+          "abandon_audit": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Abandon Audit"
+          },
+          "approved_at_iso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved At Iso"
+          },
+          "approved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approved By"
+          },
+          "canonical_edit_version": {
+            "title": "Canonical Edit Version",
+            "type": "integer"
+          },
+          "conflict_present": {
+            "title": "Conflict Present",
+            "type": "boolean"
+          },
+          "draft": {
+            "additionalProperties": true,
+            "title": "Draft",
+            "type": "object"
+          },
+          "draft_version": {
+            "title": "Draft Version",
+            "type": "integer"
+          },
+          "gaps": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "hold_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hold Reason"
+          },
+          "last_delivery_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Delivery Error Code"
+          },
+          "recovery_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery Status"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "review_id": {
+            "title": "Review Id",
+            "type": "string"
+          },
+          "review_kind": {
+            "title": "Review Kind",
+            "type": "string"
+          },
+          "scope_id": {
+            "title": "Scope Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "review_id",
+          "review_kind",
+          "scope_id",
+          "request_id",
+          "state",
+          "draft_version",
+          "canonical_edit_version",
+          "conflict_present"
+        ],
+        "title": "ReviewPanelView",
+        "type": "object"
+      },
+      "ReviseReviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "ReviseReviewRequest",
         "type": "object"
       },
       "RevisionView": {
@@ -25749,6 +26494,585 @@
         "summary": "Continue Conversation",
         "tags": [
           "Associate Returns"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/panel": {
+      "get": {
+        "description": "The panel, with its `ETag`.\n\nA matching `If-None-Match` answers 304 with the same headers and no body.\nComposition ran anyway -- see the module docstring -- and that is the whole\ntrade DR-10 makes: bandwidth, not work.",
+        "operationId": "read_case_panel_api_v1_cases__case_id__panel_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_CasePanelView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Case Panel",
+        "tags": [
+          "Case panel"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/reviews/{review_id}/approve": {
+      "post": {
+        "description": "`OPEN -> APPROVING`, atomically, with the command and its outbox row.\n\nThrough `SupportTemplateGateService.approve` rather than the store, which\nis carry-forward conditions 5a and 8: the editing actor set is recomputed\nfrom the edit rows first, so a torn conflict flag cannot let this endpoint\nfreeze the agent's draft while two associates' edits are silently\ndiscarded. That is one read on a path that already does several, and it\ncannot be retrofitted once this endpoint has shipped.\n\nThe three CAS values are the request's, not the store's, so approving a\ndraft that moved under the associate is a 409 rather than a send.",
+        "operationId": "approve_review_api_v1_cases__case_id__reviews__review_id__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ReviewActionResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve Review",
+        "tags": [
+          "Case reviews"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/reviews/{review_id}/cancel": {
+      "post": {
+        "description": "`OPEN -> CANCELLED`. Terminal, and the case parks on it.\n\n\"The case parks on it\" is the command's doing, not the store's: without the\nnotice the execution keeps waiting on a review nobody is ever going to\nanswer and parks `TEMPLATE_REVIEW_UNANSWERED` at the deadline instead of\n`TEMPLATE_REVIEW_CANCELLED` immediately -- a different reason, on a\ndifferent day, for a decision a person made now.\n\nRe-entrant: cancelling an already-cancelled review records no second state\nmove and re-records the same deterministic command, so a client that lost\nthe first answer gets the same one rather than a 409 over its own success.",
+        "operationId": "cancel_review_api_v1_cases__case_id__reviews__review_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ReviewActionResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Review",
+        "tags": [
+          "Case reviews"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/reviews/{review_id}/edit-state": {
+      "get": {
+        "description": "**This actor's** private edit row (contracts.md sect. 9).\n\n`private, no-store` and nothing else. An autosaved draft is one person's\nunfinished thinking about a message to a customer's supplier; it is not in\nthe shared panel body, it is not in the panel hash, and it is not written to\ndisk by a cache. `no-cache` would still permit storage; `no-store` is the\none that does not.",
+        "operationId": "read_edit_state_api_v1_cases__case_id__reviews__review_id__edit_state_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_EditStateResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Edit State",
+        "tags": [
+          "Case reviews"
+        ]
+      },
+      "put": {
+        "description": "Autosave. **Field values are neutralised here** (carry-forward condition 7).\n\nA field edit replaces one value inside an agent-authored frame, which is\nstructurally the `associate_notes` finding: the reader cannot tell the frame\nfrom the value. So the payload is put through composition's own `_safe`\nbefore it is stored -- at write time rather than at send time, so what the\nassociate sees on re-render is what Support will receive, and the diff\nagainst the agent's draft is honest.\n\nA whole-body override is *not* neutralised, and that distinction is\nexplained where it is implemented, in `operations/support_template_gate.py`.",
+        "operationId": "write_edit_state_api_v1_cases__case_id__reviews__review_id__edit_state_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditStateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_EditStateResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Write Edit State",
+        "tags": [
+          "Case reviews"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/reviews/{review_id}/edit-state/resolve": {
+      "post": {
+        "description": "Resolve several actors' edits into the canonical one.\n\nThe conflict marker clears in the same transaction as the write -- that is\nS2's, and it is why this endpoint does not clear anything itself. An empty\n`resolved_from_actor_edit_ids` is legal and means *discard*: the canonical\nedit came from nobody's row, which is a real resolution and a different one\nfrom selecting a row that happens to match.",
+        "operationId": "resolve_edit_state_api_v1_cases__case_id__reviews__review_id__edit_state_resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveEditRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ReviewActionResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Edit State",
+        "tags": [
+          "Case reviews"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/reviews/{review_id}/recovery/abandon": {
+      "post": {
+        "description": "Terminal, audited, and still on the panel (contracts.md sect. 6).\n\nThe reason is required -- there is no default and no empty string -- because\n\"this message is never going out\" is a decision somebody has to own, and an\nunattributed one is the unaudited close in another shape.",
+        "operationId": "abandon_review_api_v1_cases__case_id__reviews__review_id__recovery_abandon_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ReviewActionResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Abandon Review",
+        "tags": [
+          "Case reviews"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/reviews/{review_id}/recovery/retry": {
+      "post": {
+        "description": "`DELIVERY_FAILED -> APPROVING`, with the **same** delivery identity.\n\nA redelivery of one message, never a second message that happens to say the\nsame thing: the stored `logical_operation_id`, `delivery_id` and frozen\npayload ride the command, and a retry the receiver already holds comes back\nabsorbed -- **which still reaches `SENT`** (contracts.md sect. 7).\n\nIts own capability, not `RETURNS_SUPPORT_ACT`: re-driving a send the\nplatform already committed to is not the act of the person who wrote the\nmessage. See `security/capabilities.py`.",
+        "operationId": "retry_review_delivery_api_v1_cases__case_id__reviews__review_id__recovery_retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoveryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ReviewActionResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Review Delivery",
+        "tags": [
+          "Case reviews"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/reviews/{review_id}/revise": {
+      "post": {
+        "description": "Ask for the draft again. Approval refuses until the re-render lands.\n\nThe re-render itself is the workflow's -- `rerender_template_draft` reads\nthe case's facts, and an endpoint that rendered would be a second renderer\nwith a second idea of what the case says. So the flag is only half of this\nendpoint: without the command that follows it, `pendingRevision` would block\napproval forever and nothing would ever produce the draft it is waiting for.\n\n`note` travels on the command and is neutralised onto the fact log by\n`record_template_revision`, which is where the activity already expected to\nfind it.\n\nThe signal id is `(review_id, draft_version)` rather than a fresh uuid: one\nrevision per version of a draft is exactly the rule -- you cannot ask twice\nfor the same bytes to be re-rendered -- and it makes a retried request a\nrecognised duplicate instead of a second re-render.",
+        "operationId": "revise_review_api_v1_cases__case_id__reviews__review_id__revise_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviseReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ReviewActionResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revise Review",
+        "tags": [
+          "Case reviews"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/reviews/{review_id}/template-review/redraft": {
+      "post": {
+        "description": "Mint a new attempt under the same `(case_id, request_id)` scope.\n\nThe new attempt carries the **current** draft payload, not a fresh render:\nrendering is the workflow's, and an endpoint that rendered would be reading\nthe case behind the execution that owns it. The workflow's re-render lands\nthrough `rerender_template_draft` when the revision signal arrives.\n\n**`supersedes` is what makes a redraft reach the execution at all.** The new\nattempt has a new `review_id`, and the workflow's wait map holds the old\none; a plain revision notice naming the new id would be discarded as \"not\nthis case's attempt\", and the request would sit unanswerable behind a review\nthat had already been cancelled. Naming the attempt being replaced lets the\nworkflow re-point its map -- and keeps that a privilege of a notice that\nmatches what the workflow is actually holding, rather than of any notice\nthat disagrees with it.",
+        "operationId": "redraft_review_api_v1_cases__case_id__reviews__review_id__template_review_redraft_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ReviewActionResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Redraft Review",
+        "tags": [
+          "Case reviews"
         ]
       }
     },

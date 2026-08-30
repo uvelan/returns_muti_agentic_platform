@@ -753,6 +753,142 @@ async def test_a_cancelled_review_ends_the_wait_and_sends_nothing(
 
 
 @_async
+async def test_a_redraft_repoints_the_wait_and_the_new_attempt_can_be_sent(
+    monkeypatch: pytest.MonkeyPatch,
+    store: ReviewAggregateStore,
+    mongo: Any,
+    test_settings: Settings,
+    configuration: ReturnPlatformConfiguration,
+) -> None:
+    """The redraft path, end to end -- and it was completely broken.
+
+    `redraft` cancels one attempt and mints another with a **new** `review_id`.
+    The wait map still held the old one, so every later decision about the
+    request was discarded as "not this case's open attempt" and the case sat
+    unanswerable behind a review that had already been cancelled. The producer's
+    half -- that the endpoint emits a revision notice carrying `supersedes` --
+    is asserted in `tests/api/test_case_panel_and_reviews.py`; this is the
+    consumer's.
+
+    Both halves of the outcome are asserted, because either alone is weak: the
+    map has to be re-pointed at the new attempt (otherwise the approval below is
+    the *old* review's, which is cancelled and would refuse), and the message
+    has to actually reach Support.
+    """
+    support = _Support()
+    gate = _gate_service(store, mongo, test_settings, configuration, support)
+    holder: list[ReturnCaseWorkflow] = []
+    redrafted: list[str] = []
+
+    async def redraft_then_approve() -> None:
+        instance = holder[0]
+        original = next(iter(instance._state.template_reviews.values()))  # noqa: SLF001
+        current = await store.get_review(case_id=CASE_ID, review_id=original)
+        fresh = await store.redraft(
+            case_id=CASE_ID,
+            review_id=original,
+            actor_id="associate-a",
+            draft_payload=dict(current["draftPayload"]),
+        )
+        new_id = str(fresh["_id"])
+        assert new_id != original
+        redrafted.append(new_id)
+        instance.template_revised(
+            _notice(new_id, signal_id="sig-redraft", supersedes=original)
+        )
+
+    async def approve_the_new_one() -> None:
+        instance = holder[0]
+        # Read from the map, so this asserts the re-pointing rather than
+        # assuming it: approving `redrafted[0]` directly would pass even if the
+        # workflow were still holding the cancelled attempt.
+        held = next(iter(instance._state.template_reviews.values()))  # noqa: SLF001
+        assert held == redrafted[0], "the wait must be re-pointed at the new attempt"
+        await _approve(store, gate, held)
+        instance.template_approved(_notice(held, signal_id="sig-approve-new"))
+
+    instance, _runtime = await _run_gate(
+        monkeypatch,
+        _GateActivities(gate),
+        _timings(configuration, review_wait_seconds=600, reminder_interval_seconds=300),
+        holder=holder,
+        arrivals=[redraft_then_approve, approve_the_new_one],
+    )
+
+    assert len(support.posted) == 1, "the redrafted attempt reached Support"
+    assert instance._state.parked_reason is None  # noqa: SLF001
+    sent = await store.get_review(case_id=CASE_ID, review_id=redrafted[0])
+    assert ReviewState(str(sent["state"])) is ReviewState.SENT
+
+
+@_async
+async def test_a_revision_naming_an_unheld_review_is_still_ignored_without_supersedes(
+    monkeypatch: pytest.MonkeyPatch,
+    store: ReviewAggregateStore,
+    mongo: Any,
+    test_settings: Settings,
+    configuration: ReturnPlatformConfiguration,
+) -> None:
+    """Re-pointing is a privilege of a notice that names what we are holding.
+
+    Without this, `supersedes` would have widened the router into "any revision
+    may claim any request", which is the multi-RMA failure the original guard
+    existed to prevent. The notice below is a revision for a review this case
+    never held and it names no predecessor, so it is discarded exactly as an
+    approval would be -- and the wait runs to its deadline.
+    """
+    support = _Support()
+    gate = _gate_service(store, mongo, test_settings, configuration, support)
+    holder: list[ReturnCaseWorkflow] = []
+
+    def stray() -> None:
+        holder[0].template_revised(_notice("review-from-another-case"))
+
+    instance, _runtime = await _run_gate(
+        monkeypatch,
+        _GateActivities(gate),
+        _timings(configuration, review_wait_seconds=120, reminder_interval_seconds=60),
+        holder=holder,
+        arrivals=[stray],
+    )
+
+    assert support.posted == []
+    assert instance._state.parked_reason == "TEMPLATE_REVIEW_UNANSWERED"  # noqa: SLF001
+
+
+@_async
+async def test_a_supersedes_naming_a_review_this_case_never_held_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+    store: ReviewAggregateStore,
+    mongo: Any,
+    test_settings: Settings,
+    configuration: ReturnPlatformConfiguration,
+) -> None:
+    """The sharper half: a notice that *does* carry `supersedes`, pointing at
+    something this workflow is not holding, must not re-point anything."""
+    support = _Support()
+    gate = _gate_service(store, mongo, test_settings, configuration, support)
+    holder: list[ReturnCaseWorkflow] = []
+
+    def stray() -> None:
+        holder[0].template_revised(
+            _notice("some-other-attempt", supersedes="never-held-here")
+        )
+
+    instance, _runtime = await _run_gate(
+        monkeypatch,
+        _GateActivities(gate),
+        _timings(configuration, review_wait_seconds=120, reminder_interval_seconds=60),
+        holder=holder,
+        arrivals=[stray],
+    )
+
+    assert support.posted == []
+    assert "some-other-attempt" not in instance._state.template_reviews.values()  # noqa: SLF001
+    assert instance._state.parked_reason == "TEMPLATE_REVIEW_UNANSWERED"  # noqa: SLF001
+
+
+@_async
 async def test_an_approved_request_is_sent_while_another_is_still_being_read(
     monkeypatch: pytest.MonkeyPatch,
     store: ReviewAggregateStore,

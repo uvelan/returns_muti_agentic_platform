@@ -634,16 +634,27 @@ class TemplateReviewNotice:
     supplies it and no client supplies a timestamp -- the same rule
     `PolicyOverrideNotice` states, for the same reason.
 
-    `request_id` is what routes the notice into the wait map. It is carried
-    rather than derived because the map's keys are the *grouping*'s ids, and a
-    workflow that re-derived them would be re-reading a release that may have
-    moved since the drafts were created.
+    **Every field but `review_id` is defaulted, and that is not laxity.** This
+    dataclass is decoded from the *signal payload of a durable command record*,
+    and those payloads are built by several producers -- the review aggregate's
+    own `approve` (contracts.md sect. 6, whose payload carries `review_id` and
+    `scope_id` because sect. 7 fixes those two and no others) and this slice's
+    revise/cancel/redraft endpoints. A required field that one producer does not
+    send is not a validation error a human ever sees: the signal fails to decode
+    at the worker, the command sits in the outbox, and the case waits to its
+    deadline for a decision somebody already made. Defaulted fields make a
+    producer's omission a *degraded* notice rather than a lost one.
+
+    `request_id` is consequently **advisory**. The workflow routes on
+    `review_id` through its own `template_reviews` map, which is the same
+    question asked of the state the workflow actually holds rather than of the
+    sender -- see `_request_for_review`.
     """
 
     review_id: str
-    request_id: str
-    actor: str
-    signal_id: str
+    request_id: str = ""
+    actor: str = ""
+    signal_id: str = ""
     scope_id: str | None = None
     #: Free text from a person, relayed to nothing: the gate logs it through
     #: the activity, which neutralises it on the way onto the fact log.
@@ -652,6 +663,14 @@ class TemplateReviewNotice:
     #: notice about the draft it is holding from one about a superseded render.
     draft_version: int = 0
     canonical_edit_version: int = 0
+    #: Set only by `redraft`: the attempt this one replaces. A redraft mints a
+    #: new `review_id` under the same `(case_id, request_id)` scope, so without
+    #: this the workflow would hold the *cancelled* attempt's id forever and
+    #: discard every later decision about the request as "not this case's".
+    #: Named rather than inferred, because "replace what you are holding" is a
+    #: privilege and a notice that merely disagrees with the map must not have
+    #: it.
+    supersedes: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1432,6 +1451,70 @@ class ReturnCaseWorkflow:
         if self._accept_template_signal(notice.signal_id):
             self._state.pending_template_notices.append(("cancelled", notice))
 
+    # The `SUPPORT_REPLY` half of the same three decisions (brief item 3:
+    # "reply signals routed to the same map"). One notice list, one dedupe, one
+    # router -- a reply review is a review, and the difference between the two
+    # kinds is which slice opens them, not what approving one means.
+    #
+    # V1 opens no `SUPPORT_REPLY` review, so until V3 does, one of these routes
+    # to a review this case is not holding and `_routed_request` discards it
+    # with a log. That is the *correct* answer, and it is a different thing from
+    # what would happen without these handlers: an unknown signal name, which
+    # fails V3's first delivery at the worker rather than on the panel.
+    @workflow.signal(name="reply_approved")
+    def reply_approved(self, notice: TemplateReviewNotice) -> None:
+        if self._accept_template_signal(notice.signal_id):
+            self._state.pending_template_notices.append(("approved", notice))
+
+    @workflow.signal(name="reply_revised")
+    def reply_revised(self, notice: TemplateReviewNotice) -> None:
+        if self._accept_template_signal(notice.signal_id):
+            self._state.pending_template_notices.append(("revised", notice))
+
+    @workflow.signal(name="reply_cancelled")
+    def reply_cancelled(self, notice: TemplateReviewNotice) -> None:
+        if self._accept_template_signal(notice.signal_id):
+            self._state.pending_template_notices.append(("cancelled", notice))
+
+    @workflow.signal(name="review_delivery_retry")
+    def review_delivery_retry(self, notice: dict[str, Any]) -> None:
+        """An operator re-driving a delivery that failed (contracts.md sect. 6).
+
+        **Typed as a raw mapping, deliberately.** This payload is built by the
+        review aggregate's `retry_delivery` and carries the stored
+        `logical_operation_id`, `delivery_id` and `content_hash` alongside the
+        review id -- fields no notice dataclass declares. A dataclass parameter
+        would make the whole signal fail to decode at the worker over keys the
+        handler does not need, and a delivery an operator asked for would be
+        lost at exactly the moment somebody was already recovering from a
+        failure.
+
+        Routed as an approval because that is what it is: the same frozen
+        payload, the same delivery identity, re-driven. `_routed_request`
+        answers whether this case is still holding the review -- and when it is
+        not, because the gate already treated `DELIVERY_FAILED` as settled and
+        moved on, the notice is discarded with a log and the review keeps its
+        state on the panel. See the ledger: re-driving a delivery *after* the
+        gate has closed is an open question for the orchestrator, not something
+        this handler can decide.
+        """
+        review_id = str(notice.get("review_id") or "")
+        signal_id = str(notice.get("signal_id") or "")
+        if not review_id or not self._accept_template_signal(signal_id):
+            return
+        self._state.pending_template_notices.append(
+            (
+                "approved",
+                TemplateReviewNotice(
+                    review_id=review_id,
+                    scope_id=(
+                        None if notice.get("scope_id") is None else str(notice["scope_id"])
+                    ),
+                    signal_id=signal_id,
+                ),
+            )
+        )
+
     @workflow.signal(name="clarification_answered")
     def clarification_answered(self, notice: ClarificationAnsweredNotice) -> None:
         """V3's, and **a stub on purpose** -- see `_V3_CLARIFICATION_ACTIVITY`.
@@ -2201,6 +2284,60 @@ class ReturnCaseWorkflow:
             for state in self._state.template_review_states.values()
         )
 
+    def _request_for_review(self, review_id: str) -> str | None:
+        """Which request this case is currently holding that review for.
+
+        The reverse of `template_reviews`, and the *only* routing question.
+        Asked of the workflow's own map rather than of `notice.request_id`,
+        because the map is the state that decides what gets sent and a sender
+        that named a request it is not this case's attempt for would otherwise
+        route a decision by assertion.
+        """
+        if not review_id:
+            return None
+        for request_id, current in self._state.template_reviews.items():
+            if current == review_id:
+                return request_id
+        return None
+
+    def _routed_request(self, action: str, notice: TemplateReviewNotice) -> str | None:
+        """The request a notice acts on, or `None` to discard it.
+
+        Two ways in, and the second is narrow on purpose:
+
+        1. The notice names a review this case is holding. Ordinary.
+        2. The notice is a **revision that supersedes** the review this case is
+           holding for some request -- a redraft, which cancels one attempt and
+           mints another under the same `(case_id, request_id)` scope. The map
+           is re-pointed at the new attempt and the request goes back to `OPEN`.
+
+        Anything else is recorded and discarded: a superseded attempt's late
+        decision, or a notice for another case's review that reached this
+        workflow id. Acting on one would send a message on the strength of an
+        approval of something else, which is the multi-RMA failure in its
+        single-record clothes.
+        """
+        request_id = self._request_for_review(notice.review_id)
+        if request_id is not None:
+            return request_id
+        if action == "revised" and notice.supersedes:
+            superseded = self._request_for_review(notice.supersedes)
+            if superseded is not None:
+                workflow.logger.info(
+                    "review %s supersedes %s for request %s",
+                    notice.review_id,
+                    notice.supersedes,
+                    superseded,
+                )
+                self._state.template_reviews[superseded] = notice.review_id
+                self._state.template_review_states[superseded] = "OPEN"
+                return superseded
+        workflow.logger.warning(
+            "template notice names review %s, which is not this case's open attempt; ignoring",
+            notice.review_id,
+        )
+        return None
+
     async def _apply_template_notices(
         self, intended_work_item_id: str, timings: ReturnCaseTimings
     ) -> None:
@@ -2213,19 +2350,8 @@ class ReturnCaseWorkflow:
         workflow_input = self._require_input()
         while self._state.pending_template_notices:
             action, notice = self._state.pending_template_notices.pop(0)
-            request_id = notice.request_id
-            if self._state.template_reviews.get(request_id) != notice.review_id:
-                # A decision about a review this case is not waiting on -- a
-                # superseded attempt, or a notice for another case's review that
-                # reached this workflow id. Recorded and ignored rather than
-                # applied: acting on it would send a message on the strength of
-                # an approval of something else.
-                workflow.logger.warning(
-                    "template notice names review %s, which is not this case's open "
-                    "attempt for %s; ignoring",
-                    notice.review_id,
-                    request_id,
-                )
+            request_id = self._routed_request(action, notice)
+            if request_id is None:
                 continue
 
             if action == "cancelled":

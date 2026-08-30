@@ -320,19 +320,48 @@ def unresolved_edit_actors(
     Non-empty in the one state approval must refuse and the flag can miss:
     several actors hold rows, and the canonical edit -- if there is one at all
     -- does not cover them.
+
+    **A row is covered two ways, and the second one is not decoration.** Named
+    in `resolved_from_actor_edit_ids`, or written *before* the canonical edit
+    was resolved. Contracts.md sect. 6 offers three resolutions -- select, merge
+    and **discard** -- and a discard names no row at all: the canonical payload
+    came from nobody's draft, which is a real resolution and a deliberate one.
+    Coverage by the id list alone made every discarded conflict permanently
+    unapprovable: the marker cleared, the panel said "resolved", and this
+    recompute refused the approval on rows the resolution had already answered.
+    Recency is the relation the resolution actually establishes; the id list
+    says which drafts it was *made from*, which is an audit question.
+
+    Timestamps are used only when both sides have one. A row or a canonical edit
+    written before either carried one falls back to the id list rather than
+    being silently treated as stale.
     """
     actors = {str(row["actorId"]) for row in rows if row.get("actorId") is not None}
     if len(actors) < 2:
         return frozenset()
     canonical = review.get("canonicalEdit")
     covered: set[str] = set()
+    resolved_at: Any = None
     if isinstance(canonical, Mapping):
         covered = {
             str(item)
             for item in cast(Sequence[Any], canonical.get("resolved_from_actor_edit_ids") or ())
         }
-    outstanding = {str(row["actorId"]) for row in rows if str(row.get("_id", "")) not in covered}
+        resolved_at = canonical.get("resolved_at")
+    outstanding = {
+        str(row["actorId"])
+        for row in rows
+        if str(row.get("_id", "")) not in covered
+        and not _answered_by(row.get("updatedAt"), resolved_at)
+    }
     return frozenset(outstanding) if len(outstanding) > 1 else frozenset()
+
+
+def _answered_by(edited_at: Any, resolved_at: Any) -> bool:
+    """Whether a resolution at `resolved_at` already accounts for this row."""
+    if not isinstance(edited_at, datetime) or not isinstance(resolved_at, datetime):
+        return False
+    return edited_at <= resolved_at
 
 
 # --------------------------------------------------------------------------- #

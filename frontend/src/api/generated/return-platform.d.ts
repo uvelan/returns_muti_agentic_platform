@@ -2983,6 +2983,278 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/panel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Case Panel
+         * @description The panel, with its `ETag`.
+         *
+         *     A matching `If-None-Match` answers 304 with the same headers and no body.
+         *     Composition ran anyway -- see the module docstring -- and that is the whole
+         *     trade DR-10 makes: bandwidth, not work.
+         */
+        get: operations["read_case_panel_api_v1_cases__case_id__panel_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/reviews/{review_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Review
+         * @description `OPEN -> APPROVING`, atomically, with the command and its outbox row.
+         *
+         *     Through `SupportTemplateGateService.approve` rather than the store, which
+         *     is carry-forward conditions 5a and 8: the editing actor set is recomputed
+         *     from the edit rows first, so a torn conflict flag cannot let this endpoint
+         *     freeze the agent's draft while two associates' edits are silently
+         *     discarded. That is one read on a path that already does several, and it
+         *     cannot be retrofitted once this endpoint has shipped.
+         *
+         *     The three CAS values are the request's, not the store's, so approving a
+         *     draft that moved under the associate is a 409 rather than a send.
+         */
+        post: operations["approve_review_api_v1_cases__case_id__reviews__review_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/reviews/{review_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Review
+         * @description `OPEN -> CANCELLED`. Terminal, and the case parks on it.
+         *
+         *     "The case parks on it" is the command's doing, not the store's: without the
+         *     notice the execution keeps waiting on a review nobody is ever going to
+         *     answer and parks `TEMPLATE_REVIEW_UNANSWERED` at the deadline instead of
+         *     `TEMPLATE_REVIEW_CANCELLED` immediately -- a different reason, on a
+         *     different day, for a decision a person made now.
+         *
+         *     Re-entrant: cancelling an already-cancelled review records no second state
+         *     move and re-records the same deterministic command, so a client that lost
+         *     the first answer gets the same one rather than a 409 over its own success.
+         */
+        post: operations["cancel_review_api_v1_cases__case_id__reviews__review_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/reviews/{review_id}/edit-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Edit State
+         * @description **This actor's** private edit row (contracts.md sect. 9).
+         *
+         *     `private, no-store` and nothing else. An autosaved draft is one person's
+         *     unfinished thinking about a message to a customer's supplier; it is not in
+         *     the shared panel body, it is not in the panel hash, and it is not written to
+         *     disk by a cache. `no-cache` would still permit storage; `no-store` is the
+         *     one that does not.
+         */
+        get: operations["read_edit_state_api_v1_cases__case_id__reviews__review_id__edit_state_get"];
+        /**
+         * Write Edit State
+         * @description Autosave. **Field values are neutralised here** (carry-forward condition 7).
+         *
+         *     A field edit replaces one value inside an agent-authored frame, which is
+         *     structurally the `associate_notes` finding: the reader cannot tell the frame
+         *     from the value. So the payload is put through composition's own `_safe`
+         *     before it is stored -- at write time rather than at send time, so what the
+         *     associate sees on re-render is what Support will receive, and the diff
+         *     against the agent's draft is honest.
+         *
+         *     A whole-body override is *not* neutralised, and that distinction is
+         *     explained where it is implemented, in `operations/support_template_gate.py`.
+         */
+        put: operations["write_edit_state_api_v1_cases__case_id__reviews__review_id__edit_state_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/reviews/{review_id}/edit-state/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Edit State
+         * @description Resolve several actors' edits into the canonical one.
+         *
+         *     The conflict marker clears in the same transaction as the write -- that is
+         *     S2's, and it is why this endpoint does not clear anything itself. An empty
+         *     `resolved_from_actor_edit_ids` is legal and means *discard*: the canonical
+         *     edit came from nobody's row, which is a real resolution and a different one
+         *     from selecting a row that happens to match.
+         */
+        post: operations["resolve_edit_state_api_v1_cases__case_id__reviews__review_id__edit_state_resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/reviews/{review_id}/recovery/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Abandon Review
+         * @description Terminal, audited, and still on the panel (contracts.md sect. 6).
+         *
+         *     The reason is required -- there is no default and no empty string -- because
+         *     "this message is never going out" is a decision somebody has to own, and an
+         *     unattributed one is the unaudited close in another shape.
+         */
+        post: operations["abandon_review_api_v1_cases__case_id__reviews__review_id__recovery_abandon_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/reviews/{review_id}/recovery/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Review Delivery
+         * @description `DELIVERY_FAILED -> APPROVING`, with the **same** delivery identity.
+         *
+         *     A redelivery of one message, never a second message that happens to say the
+         *     same thing: the stored `logical_operation_id`, `delivery_id` and frozen
+         *     payload ride the command, and a retry the receiver already holds comes back
+         *     absorbed -- **which still reaches `SENT`** (contracts.md sect. 7).
+         *
+         *     Its own capability, not `RETURNS_SUPPORT_ACT`: re-driving a send the
+         *     platform already committed to is not the act of the person who wrote the
+         *     message. See `security/capabilities.py`.
+         */
+        post: operations["retry_review_delivery_api_v1_cases__case_id__reviews__review_id__recovery_retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/reviews/{review_id}/revise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revise Review
+         * @description Ask for the draft again. Approval refuses until the re-render lands.
+         *
+         *     The re-render itself is the workflow's -- `rerender_template_draft` reads
+         *     the case's facts, and an endpoint that rendered would be a second renderer
+         *     with a second idea of what the case says. So the flag is only half of this
+         *     endpoint: without the command that follows it, `pendingRevision` would block
+         *     approval forever and nothing would ever produce the draft it is waiting for.
+         *
+         *     `note` travels on the command and is neutralised onto the fact log by
+         *     `record_template_revision`, which is where the activity already expected to
+         *     find it.
+         *
+         *     The signal id is `(review_id, draft_version)` rather than a fresh uuid: one
+         *     revision per version of a draft is exactly the rule -- you cannot ask twice
+         *     for the same bytes to be re-rendered -- and it makes a retried request a
+         *     recognised duplicate instead of a second re-render.
+         */
+        post: operations["revise_review_api_v1_cases__case_id__reviews__review_id__revise_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cases/{case_id}/reviews/{review_id}/template-review/redraft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redraft Review
+         * @description Mint a new attempt under the same `(case_id, request_id)` scope.
+         *
+         *     The new attempt carries the **current** draft payload, not a fresh render:
+         *     rendering is the workflow's, and an endpoint that rendered would be reading
+         *     the case behind the execution that owns it. The workflow's re-render lands
+         *     through `rerender_template_draft` when the revision signal arrives.
+         *
+         *     **`supersedes` is what makes a redraft reach the execution at all.** The new
+         *     attempt has a new `review_id`, and the workflow's wait map holds the old
+         *     one; a plain revision notice naming the new id would be discarded as "not
+         *     this case's attempt", and the request would sit unanswerable behind a review
+         *     that had already been cancelled. Naming the attempt being replaced lets the
+         *     workflow re-point its map -- and keeps that a privilege of a notice that
+         *     matches what the workflow is actually holding, rather than of any notice
+         *     that disagrees with it.
+         */
+        post: operations["redraft_review_api_v1_cases__case_id__reviews__review_id__template_review_redraft_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/config/support-template/preview": {
         parameters: {
             query?: never;
@@ -4463,6 +4735,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[CasePanelView] */
+        APIResponse_CasePanelView_: {
+            data?: components["schemas"]["CasePanelView"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[CaseProjection] */
         APIResponse_CaseProjection_: {
             data?: components["schemas"]["CaseProjection"] | null;
@@ -4508,6 +4786,12 @@ export interface components {
         /** APIResponse[DiscoveryAssessment] */
         APIResponse_DiscoveryAssessment_: {
             data?: components["schemas"]["DiscoveryAssessment"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[EditStateResult] */
+        APIResponse_EditStateResult_: {
+            data?: components["schemas"]["EditStateResult"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -4641,6 +4925,12 @@ export interface components {
         /** APIResponse[ReturnWorkflowAssessment] */
         APIResponse_ReturnWorkflowAssessment_: {
             data?: components["schemas"]["ReturnWorkflowAssessment"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[ReviewActionResult] */
+        APIResponse_ReviewActionResult_: {
+            data?: components["schemas"]["ReviewActionResult"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -4969,6 +5259,32 @@ export interface components {
             }[] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
+        };
+        /**
+         * AcceptedCommandView
+         * @description A command the platform accepted and has not necessarily applied yet.
+         *
+         *     **Unfiltered by actor** -- see the module docstring. It is what makes "I
+         *     pressed Send and nothing happened" answerable: the command is recorded, the
+         *     signal has not landed yet, and the panel can say so instead of showing an
+         *     unchanged review.
+         */
+        AcceptedCommandView: {
+            /** Actor Id */
+            actor_id: string;
+            /**
+             * Applied
+             * @default false
+             */
+            applied: boolean;
+            /** Kind */
+            kind: string;
+            /** Recorded At Iso */
+            recorded_at_iso?: string | null;
+            /** Review Id */
+            review_id?: string | null;
+            /** Signal Id */
+            signal_id: string;
         };
         /** ActivationRequest */
         ActivationRequest: {
@@ -5475,6 +5791,23 @@ export interface components {
             note?: string | null;
         };
         /**
+         * ApproveReviewRequest
+         * @description **The exact field names contracts.md sect. 6 fixes.**
+         *
+         *     All three are required and none is optional-with-a-default. A default would
+         *     make "approve whatever is there now" expressible, and the whole purpose of
+         *     the CAS is that the associate approves the bytes they read -- a draft that
+         *     was re-rendered under them must fail, not silently go out.
+         */
+        ApproveReviewRequest: {
+            /** Canonical Approved Payload Hash */
+            canonical_approved_payload_hash: string;
+            /** Canonical Edit Version */
+            canonical_edit_version: number;
+            /** Draft Version */
+            draft_version: number;
+        };
+        /**
          * ApprovedItemProjection
          * @description One line an RMA authorized, at the quantity it authorized.
          */
@@ -5762,6 +6095,11 @@ export interface components {
             /** Staginglocation */
             stagingLocation: string;
         };
+        /** CancelReviewRequest */
+        CancelReviewRequest: {
+            /** Reason */
+            reason: string;
+        };
         /**
          * CapturedTurnFact
          * @description One fact this conversation has established, reported back to the caller.
@@ -5873,6 +6211,60 @@ export interface components {
             supersedesFactId?: string | null;
             /** Value */
             value?: string | number | boolean | null;
+        };
+        /**
+         * CasePanelView
+         * @description The one shape the panel and `CaseOperationsPage` both read.
+         *
+         *     **Frozen at merge.** Anything V2 or V3 wants to show goes in `sections`
+         *     through the registry.
+         */
+        CasePanelView: {
+            /**
+             * Accepted Commands
+             * @default []
+             */
+            accepted_commands: components["schemas"]["AcceptedCommandView"][];
+            /** Case Id */
+            case_id: string;
+            /**
+             * Clarifications
+             * @default []
+             */
+            clarifications: {
+                [key: string]: unknown;
+            }[];
+            execution: components["schemas"]["PanelExecutionView"];
+            /**
+             * Parked Messages
+             * @default 0
+             */
+            parked_messages: number;
+            /**
+             * Return Records
+             * @default []
+             */
+            return_records: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Reviews
+             * @default []
+             */
+            reviews: components["schemas"]["ReviewPanelView"][];
+            /**
+             * Sections
+             * @default []
+             */
+            sections: components["schemas"]["PanelSectionView"][];
+            /**
+             * Support Digest
+             * @default []
+             */
+            support_digest: {
+                [key: string]: unknown;
+            }[];
+            timers?: components["schemas"]["PanelTimersView"];
         };
         /**
          * CaseProjection
@@ -6678,6 +7070,46 @@ export interface components {
          * @enum {string}
          */
         DriftKind: "DATASET_ADDED" | "DATASET_REMOVED" | "FIELD_ADDED" | "FIELD_REMOVED" | "FIELD_TYPE_CHANGED";
+        /**
+         * EditStateRequest
+         * @description One coalesced autosave.
+         *
+         *     `client_edit_id` is what makes a retried save a no-op rather than a version
+         *     bump -- the browser sends the same id for the same keystroke batch, so a
+         *     flaky connection costs nothing.
+         *
+         *     `base_draft_version` is the version the edit was made *against*. A mismatch
+         *     is a 409 rather than a merge: the draft was re-rendered under the editor and
+         *     silently rebasing their words onto different facts is how a message comes to
+         *     say something nobody wrote.
+         */
+        EditStateRequest: {
+            /** Base Draft Version */
+            base_draft_version: number;
+            /** Client Edit Id */
+            client_edit_id: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+        };
+        /** EditStateResult */
+        EditStateResult: {
+            /** Actor Id */
+            actor_id: string;
+            /** Base Draft Version */
+            base_draft_version?: number | null;
+            /** Client Edit Id */
+            client_edit_id?: string | null;
+            /** Edit Version */
+            edit_version?: number | null;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            } | null;
+            /** Review Id */
+            review_id: string;
+        };
         /** ElementChange */
         ElementChange: {
             /** @default DESTRUCTIVE */
@@ -7375,6 +7807,83 @@ export interface components {
              */
             page_size: number;
         };
+        /**
+         * PanelExecutionView
+         * @description The Temporal `execution_state` query, as the panel needs it.
+         *
+         *     Degradable: the workflow host being unreachable is an expected transient,
+         *     and the rest of the panel -- reviews, records, the thread digest -- is read
+         *     from Mongo and is still true.
+         */
+        PanelExecutionView: {
+            /**
+             * Awaiting
+             * @default []
+             */
+            awaiting: string[];
+            /**
+             * Business Complete
+             * @default false
+             */
+            business_complete: boolean;
+            /** Case Status */
+            case_status?: string | null;
+            /** Parked Reason */
+            parked_reason?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Status
+             * @default ok
+             */
+            status: string;
+            /** Work Item Id */
+            work_item_id?: string | null;
+        };
+        /**
+         * PanelSectionView
+         * @description One contributed section. **V2 and V3 add sections, never fields.**
+         *
+         *     The payload is an opaque JSON object rather than a typed sub-model, and
+         *     that is the seam: a typed field per section would put V2's and V3's shapes
+         *     into this file and into every OpenAPI regeneration V1 owns. Each
+         *     contributor owns its own payload's shape and its own tests for it.
+         */
+        PanelSectionView: {
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /** Reason */
+            reason?: string | null;
+            /** Section Id */
+            section_id: string;
+            /**
+             * Status
+             * @default ok
+             */
+            status: string;
+        };
+        /**
+         * PanelTimersView
+         * @description Absolute instants. The countdown is the browser's (contracts.md sect. 9).
+         */
+        PanelTimersView: {
+            /** Support Deadline Iso */
+            support_deadline_iso?: string | null;
+            /** Template Review Deadline Iso */
+            template_review_deadline_iso?: string | null;
+            /**
+             * Template Review Max Reminders
+             * @default 0
+             */
+            template_review_max_reminders: number;
+            /**
+             * Template Review Reminders Sent
+             * @default 0
+             */
+            template_review_reminders_sent: number;
+        };
         /** PatchDomainPayload */
         PatchDomainPayload: {
             /** Patch */
@@ -8030,7 +8539,15 @@ export interface components {
          *     cannot act on any of them.
          * @enum {string}
          */
-        RecoveryAction: "RELAUNCHED" | "ALREADY_RUNNING" | "REFUSED_TERMINAL" | "DEFERRED_UNKNOWN" | "RELAUNCH_FAILED" | "CASE_NOT_FOUND";
+        RecoveryAction: "RELAUNCHED" | "ALREADY_RUNNING" | "REFUSED_TERMINAL" | "DEFERRED_UNKNOWN" | "RELAUNCH_FAILED" | "CASE_NOT_FOUND" | "OPERATIONS_REQUIRED";
+        /** RecoveryRequest */
+        RecoveryRequest: {
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+        };
         /** RelationshipShapeView */
         RelationshipShapeView: {
             /** Cardinality */
@@ -8163,6 +8680,22 @@ export interface components {
              * @default
              */
             rationale: string;
+        };
+        /**
+         * ResolveEditRequest
+         * @description Select, merge or discard, resolved to one canonical payload.
+         *
+         *     The *choice* is the UI's; what arrives here is its result, plus the edit row
+         *     ids it was resolved from, so the audit says which drafts the canonical one
+         *     came out of rather than only what it says.
+         */
+        ResolveEditRequest: {
+            /** Canonical Payload */
+            canonical_payload: {
+                [key: string]: unknown;
+            };
+            /** Resolved From Actor Edit Ids */
+            resolved_from_actor_edit_ids?: string[];
         };
         /** ResponseMeta */
         ResponseMeta: {
@@ -8920,6 +9453,85 @@ export interface components {
             proposedReturnMethod: components["schemas"]["NormalizedReturnMethod"];
             /** Sessionid */
             sessionId: string;
+        };
+        /** ReviewActionResult */
+        ReviewActionResult: {
+            /** Canonical Edit Version */
+            canonical_edit_version: number;
+            /** Draft Version */
+            draft_version: number;
+            /**
+             * Duplicate
+             * @default false
+             */
+            duplicate: boolean;
+            /** Review Id */
+            review_id: string;
+            /** Signal Id */
+            signal_id?: string | null;
+            /** State */
+            state: string;
+        };
+        /**
+         * ReviewPanelView
+         * @description One review, keyed `(review_kind, scope_id)` (contracts.md sect. 9).
+         *
+         *     Carries every non-terminal review *including* `APPROVING`,
+         *     `DELIVERY_FAILED` and `HELD_FOR_OPERATIONS` -- a review the associate can
+         *     no longer edit is precisely the one they most need to see -- plus recently
+         *     terminal ones for visibility.
+         *
+         *     `draft` is the payload as it currently stands; `gaps` come only from the
+         *     renderer. `conflict_present` is the case-scoped marker's answer for this
+         *     review, never a per-actor fact.
+         */
+        ReviewPanelView: {
+            /** Abandon Audit */
+            abandon_audit?: {
+                [key: string]: unknown;
+            } | null;
+            /** Approved At Iso */
+            approved_at_iso?: string | null;
+            /** Approved By */
+            approved_by?: string | null;
+            /** Canonical Edit Version */
+            canonical_edit_version: number;
+            /** Conflict Present */
+            conflict_present: boolean;
+            /** Draft */
+            draft?: {
+                [key: string]: unknown;
+            };
+            /** Draft Version */
+            draft_version: number;
+            /**
+             * Gaps
+             * @default []
+             */
+            gaps: {
+                [key: string]: unknown;
+            }[];
+            /** Hold Reason */
+            hold_reason?: string | null;
+            /** Last Delivery Error Code */
+            last_delivery_error_code?: string | null;
+            /** Recovery Status */
+            recovery_status?: string | null;
+            /** Request Id */
+            request_id: string;
+            /** Review Id */
+            review_id: string;
+            /** Review Kind */
+            review_kind: string;
+            /** Scope Id */
+            scope_id: string;
+            /** State */
+            state: string;
+        };
+        /** ReviseReviewRequest */
+        ReviseReviewRequest: {
+            /** Note */
+            note?: string | null;
         };
         /** RevisionView */
         RevisionView: {
@@ -15026,6 +15638,353 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_AssociateConversationView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_case_panel_api_v1_cases__case_id__panel_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_CasePanelView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_review_api_v1_cases__case_id__reviews__review_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ReviewActionResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_review_api_v1_cases__case_id__reviews__review_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ReviewActionResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_edit_state_api_v1_cases__case_id__reviews__review_id__edit_state_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_EditStateResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    write_edit_state_api_v1_cases__case_id__reviews__review_id__edit_state_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EditStateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_EditStateResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_edit_state_api_v1_cases__case_id__reviews__review_id__edit_state_resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveEditRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ReviewActionResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    abandon_review_api_v1_cases__case_id__reviews__review_id__recovery_abandon_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ReviewActionResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_review_delivery_api_v1_cases__case_id__reviews__review_id__recovery_retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ReviewActionResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revise_review_api_v1_cases__case_id__reviews__review_id__revise_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviseReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ReviewActionResult_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    redraft_review_api_v1_cases__case_id__reviews__review_id__template_review_redraft_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ReviewActionResult_"];
                 };
             };
             /** @description Validation Error */

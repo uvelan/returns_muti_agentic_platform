@@ -16,6 +16,7 @@ Contracts.md sect. 6. Three groups, and only the first is about rendering:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -581,6 +582,68 @@ def test_an_edit_added_after_resolution_reopens_the_recompute() -> None:
     ]
     review = {"canonicalEdit": {"resolved_from_actor_edit_ids": ["e1"]}}
     assert unresolved_edit_actors(rows, review) == frozenset({"b", "c"})
+
+
+_EARLIER = datetime(2026, 8, 30, 9, 0, tzinfo=UTC)
+_RESOLVED = datetime(2026, 8, 30, 9, 5, tzinfo=UTC)
+_LATER = datetime(2026, 8, 30, 9, 10, tzinfo=UTC)
+
+
+def test_a_discarded_resolution_names_no_row_and_still_clears_the_recompute() -> None:
+    """Contracts.md sect. 6 offers **discard** as a resolution, and it names no
+    edit row -- the canonical payload came from nobody's draft.
+
+    Covered by the id list alone, this state refused forever: the marker
+    cleared, the panel said "resolved", and approval answered `409
+    ReviewConflictError` on rows the resolution had already answered. Found by
+    driving the endpoints end to end rather than by reading the function.
+    """
+    rows = [
+        {"_id": "e1", "actorId": "a", "updatedAt": _EARLIER},
+        {"_id": "e2", "actorId": "b", "updatedAt": _EARLIER},
+    ]
+    review = {
+        "canonicalEdit": {"resolved_from_actor_edit_ids": [], "resolved_at": _RESOLVED}
+    }
+    assert unresolved_edit_actors(rows, review) == frozenset()
+
+
+def test_two_actors_editing_again_after_a_resolution_reopen_it() -> None:
+    """The other direction, so recency is not a blanket amnesty.
+
+    Both rows are written *after* the resolution and neither is named, so the
+    canonical edit answers neither of them and approval must refuse again.
+    """
+    rows = [
+        {"_id": "e1", "actorId": "a", "updatedAt": _LATER},
+        {"_id": "e2", "actorId": "b", "updatedAt": _LATER},
+    ]
+    review = {
+        "canonicalEdit": {"resolved_from_actor_edit_ids": [], "resolved_at": _RESOLVED}
+    }
+    assert unresolved_edit_actors(rows, review) == frozenset({"a", "b"})
+
+
+def test_a_lone_late_editor_after_a_resolution_is_not_a_conflict_here() -> None:
+    """One person typing over a resolved draft is the ordinary case, not a
+    disagreement -- the module's own rule for a sole actor.
+
+    **This is a behaviour change from the untimestamped answer above**, and it
+    is not a hole: S2's flag path sets `conflictPresent` the moment a second
+    actor holds a row, and the recompute only ever *adds* a refusal to a review
+    whose flag reads clean. The state below is flagged, so `approve` refuses on
+    the flag whatever this function says. What changes is that the recompute no
+    longer disagrees with the resolution about rows the resolution answered.
+    """
+    rows = [
+        {"_id": "e1", "actorId": "a", "updatedAt": _EARLIER},
+        {"_id": "e2", "actorId": "b", "updatedAt": _EARLIER},
+        {"_id": "e3", "actorId": "c", "updatedAt": _LATER},
+    ]
+    review = {
+        "canonicalEdit": {"resolved_from_actor_edit_ids": [], "resolved_at": _RESOLVED}
+    }
+    assert unresolved_edit_actors(rows, review) == frozenset()
 
 
 # --------------------------------------------------------------------------- #
