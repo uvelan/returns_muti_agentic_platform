@@ -56,6 +56,10 @@ import { CarrierTransitMode } from "./modes/CarrierTransitMode";
 import { WarehouseReceivingMode } from "./modes/WarehouseReceivingMode";
 import { ReturnSettlementMode } from "./modes/ReturnSettlementMode";
 import { useElapsedSeconds } from "../../hooks/useElapsedSeconds";
+// V2's panel sections register at import time. One side-effect import per screen
+// that mounts `CasePanel`; a renderer nobody imports never draws, and the panel
+// shows the contributed section as a placeholder that reads like a deployment skew.
+import "./panes/casePanel/support/installSupportSections";
 
 /**
  * What the model has extracted from the conversation, for the
