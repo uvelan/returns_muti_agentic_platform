@@ -1,3 +1,4 @@
+import type { components } from "./generated/return-platform";
 import { APIError, apiClient } from "./client";
 
 /**
@@ -7,40 +8,42 @@ import { APIError, apiClient } from "./client";
  *
  * ---
  *
- * **The types here are hand-written, and that is a defect with a scheduled
- * fix rather than a preference.** Every other client module on this surface
- * imports `./generated/return-platform`, which `npm run contracts:generate`
- * emits from the backend's own OpenAPI -- `casePanel.ts` says so at the top and
- * is right to. This route is **not mounted yet**: `api/case_clarifications.py`
- * exists, is tested, and is absent from `main.py`, so it is absent from the
- * committed document and there is nothing to generate from.
+ * **Types are generated, never mirrored**, the same way `casePanel.ts` puts it.
+ * They were hand-transcribed for exactly as long as they had to be: the router
+ * existed and was tested but was absent from `main.py`, so the route was absent
+ * from the committed document and there was nothing to generate from. The
+ * integration pass mounted it, regeneration published it, and the tripwire in
+ * `caseClarifications.contract.test.ts` -- which existed to fail on this very
+ * day -- sent the transcriptions here to be deleted.
  *
- * The shapes below are therefore transcribed from
- * `ClarificationAnswerRequest` and `ClarificationAnswerAcceptedView` in that
- * module, and `caseClarifications.contract.test.ts` **fails the moment the
- * route appears in the committed OpenAPI** -- which is the point. The
- * integration pass that mounts the router is told, by a red test, to come here
- * and delete these declarations in favour of the generated ones.
- *
- * Transcribing rather than approximating matters more than usual here because
- * the request model is `extra="forbid"`: one wrong key name is a 422 in
- * production that no amount of frontend testing against a permissive mock would
- * find.
+ * What is *not* generated is the refusal vocabulary below. Which of three
+ * refusals came back, and whether pressing the button again could plausibly do
+ * anything, are decisions about the contract rather than its shape.
  */
 
-/** The two things an associate may do with an unmatched artifact. */
+/**
+ * The two things an associate may do with an unmatched artifact.
+ *
+ * The document types `resolutionChoice` as a bare pattern-constrained string,
+ * which `openapi-typescript` renders as `string | null`. The pattern is
+ * `^(map|reject)$`, so the union below is that pattern read back as a type: it
+ * is what the form's radio state is, and keeping it means a misspelt choice is
+ * a compile error here rather than a 422 at the counter.
+ */
 export const MAP_CHOICE = "map";
 export const REJECT_CHOICE = "reject";
 
 export type ResolutionChoice = typeof MAP_CHOICE | typeof REJECT_CHOICE;
 
 /**
- * `MAX_ANSWER_CHARACTERS` in `api/case_clarifications.py`.
+ * `MAX_ANSWER_CHARACTERS` in `api/case_clarifications.py`, published as
+ * `answerText.maxLength`.
  *
- * The server **refuses** rather than truncates, for the reason that module
- * gives: the cut half of a truncated answer may be the part that identified the
- * record. So the form must refuse too, rather than sending something it knows
- * will bounce.
+ * A `maxLength` is one of the keywords `openapi-typescript` cannot carry into a
+ * type, so this stays a constant. The server **refuses** rather than truncates,
+ * for the reason that module gives: the cut half of a truncated answer may be
+ * the part that identified the record. So the form must refuse too, rather than
+ * sending something it knows will bounce.
  */
 export const MAX_ANSWER_CHARACTERS = 4_000;
 
@@ -49,23 +52,22 @@ export const MAX_ANSWER_CHARACTERS = 4_000;
  *
  * No `actorId` and no `caseId`: the actor comes from the capability check and
  * the case from the path. A body that could name either would be a body that
- * could answer somebody else's clarification.
+ * could answer somebody else's clarification -- and the model is
+ * `extra="forbid"`, so a fourth key is a 422 rather than a field ignored.
+ *
+ * `Required<>` because the two nullable fields carry `None` defaults, which
+ * JSON Schema marks non-required and the generator therefore renders optional.
+ * Omitting them and sending `null` are the same request; making the caller
+ * write which one it means is what stops a dropped field from reading as a
+ * deliberate `null`.
  */
-export type ClarificationAnswerRequest = {
-  readonly answerText: string;
-  readonly resolutionChoice: ResolutionChoice | null;
-  readonly returnRecordId: string | null;
-};
+export type ClarificationAnswerRequest = Required<
+  components["schemas"]["ClarificationAnswerRequest"]
+>;
 
 /** Exactly the six fields `ClarificationAnswerAcceptedView` declares. */
-export type ClarificationAnswerAccepted = {
-  readonly caseId: string;
-  readonly clarificationId: string;
-  readonly commandId: string;
-  readonly signalId: string;
-  readonly outboxCommandId: string;
-  readonly duplicate: boolean;
-};
+export type ClarificationAnswerAccepted =
+  components["schemas"]["ClarificationAnswerAcceptedView"];
 
 export function clarificationAnswerPath(caseId: string, clarificationId: string): string {
   return `/api/v1/cases/${encodeURIComponent(caseId)}/clarifications/${encodeURIComponent(

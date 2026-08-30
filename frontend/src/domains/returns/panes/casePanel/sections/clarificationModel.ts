@@ -10,9 +10,12 @@ import type { CasePanelView, PanelSectionView } from "../../../../../api/casePan
  * The shape is the value of the `support_clarification_requested` fact, written
  * by `operations/return_support/message_classification.py`. Its keys are
  * camelCase because that is how facts are stored, and they are transcribed here
- * rather than generated for the reason `api/caseClarifications.ts` gives: a
- * contributed section's payload is an opaque JSON object precisely so V3's shape
- * never enters V1's DTO (V1 phase 2 handoff, sect. 2).
+ * rather than generated because there is nothing to generate from and there is
+ * not meant to be: a contributed section's payload is an opaque JSON object
+ * precisely so V3's shape never enters V1's DTO (V1 phase 2 handoff, sect. 2),
+ * so the document types it as a free-form object. This is *not* the transcribing
+ * `api/caseClarifications.ts` used to do -- that shape was published by the
+ * answer route and is generated now; this one never will be.
  *
  * ---
  *
