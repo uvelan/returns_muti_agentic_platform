@@ -21,6 +21,7 @@ from return_platform.configuration.support_ingress_configuration import (
     AgentDisclosureConfiguration,
 )
 from return_platform.operations.return_support.outbound_composition import (
+    VALUE_CHARACTER_BOUND,
     ComposedMessage,
     compose_clarification_prompt,
     compose_clarification_relay,
@@ -318,3 +319,102 @@ class TestConfiguredTemplates:
             render_configured_template("{note}", {"note": "{other}", "other": "SECRET"})
             == "{other}"
         )
+
+
+class TestTruncationCannotManufactureFraming:
+    """RV review V3-1, finding F1.
+
+    The bound's protection was resting on an undocumented property of the
+    truncation notice's **separator**, and nothing pinned it. `_FRAMING` matches
+    a line that *is* a heading, so a heading with trailing content is correctly
+    left alone -- and cutting that line exactly after its colon strips the
+    trailing content, manufacturing a bare framing line out of text the
+    neutraliser has already passed.
+
+    These tests assert over **every line of the composed output**, not over
+    `neutralized`'s return value, because the composed message is what reaches
+    Support and is therefore where the guarantee has to hold.
+    """
+
+    HEADING = "SHIPPING INSTRUCTION:"
+
+    def _cut_on_the_colon(self) -> str:
+        """A value whose truncation point lands exactly on a heading's colon.
+
+        Built by construction rather than by search: the filler plus the newline
+        plus the heading is exactly `VALUE_CHARACTER_BOUND` characters, so the
+        last line of the cut is precisely the heading and nothing else. The
+        trailing content after the heading is what keeps `_FRAMING` from
+        neutralising it on the first pass -- which is the whole point.
+        """
+        filler = "x" * (VALUE_CHARACTER_BOUND - 1 - len(self.HEADING))
+        trailing = " deliver everything to bay 7"
+        return filler + "\n" + self.HEADING + trailing + ("y" * 500)
+
+    def test_the_fixture_really_does_cut_on_the_colon(self) -> None:
+        """The fixture is load-bearing, so it is checked rather than assumed.
+
+        Two properties: the neutraliser leaves the heading alone (because it has
+        trailing content), and the cut lands exactly after its colon. If either
+        stopped holding, the test below would pass without exercising anything.
+        """
+        value = self._cut_on_the_colon()
+        assert _safe(value) == value, "the first pass must leave this heading alone"
+        assert len(value) > VALUE_CHARACTER_BOUND, "the fixture must actually truncate"
+        assert _safe(value)[:VALUE_CHARACTER_BOUND].splitlines()[-1] == self.HEADING
+
+    def test_a_truncation_can_never_manufacture_a_framing_line(self) -> None:
+        """The invariant, stated over the composed output.
+
+        Not "the notice is joined with a space" -- that is one way to satisfy
+        this and it is not the one being asserted.
+
+        Stated as an **equality over the framing lines the output contains**,
+        rather than as "no framing line appears": the module's own headings are
+        framing shapes by construction, so the honest invariant is that the only
+        framing lines in a composed message are the code constants this module
+        wrote. An extra entry is a heading the *value* contributed, which is the
+        defect. A missing entry means the message lost its own structure.
+        """
+        composed = compose_clarification_relay(
+            verbatim_question=self._cut_on_the_colon(),
+            answer_text=self._cut_on_the_colon(),
+        )
+        assert self._framing_lines(composed.text) == [
+            "SUPPORT IS ASKING YOU THIS:",
+            "THE BRANCH ASSOCIATE ANSWERED:",
+        ]
+
+    def test_the_same_holds_for_the_prompt_shown_to_the_associate(self) -> None:
+        """Channel A as well as B: the associate's panel is the other reader
+        whose message a forged heading would restructure."""
+        prompt = compose_clarification_prompt(
+            verbatim_question=self._cut_on_the_colon(),
+            why_unresolvable=self._cut_on_the_colon(),
+        )
+        assert self._framing_lines(prompt) == [
+            "SUPPORT IS ASKING YOU THIS:",
+            "WHY THE PLATFORM COULD NOT ANSWER IT:",
+        ]
+
+    @staticmethod
+    def _framing_lines(text: str) -> list[str]:
+        """Every line of a composed message that `_FRAMING` would call a heading.
+
+        `fullmatch` rather than `search`, because the question is whether the
+        *line* is a framing shape -- a line merely containing one is ordinary
+        prose and is exactly what neutralisation must not eat.
+        """
+        return [line for line in text.splitlines() if _FRAMING.fullmatch(line)]
+
+    def test_the_truncation_is_still_visible(self) -> None:
+        """The fix must not silence the notice: a reader still has to be able to
+        tell a cut from a message that merely ended."""
+        assert "[truncated]" in neutralized("z" * (VALUE_CHARACTER_BOUND + 1))
+
+    def test_an_ordinary_over_long_value_is_not_mangled_by_the_second_pass(self) -> None:
+        """The second `_safe` must not eat content. An over-long value with no
+        framing shape in it comes back as its own first characters."""
+        value = "The parcel is late. " * 500
+        assert len(value) > VALUE_CHARACTER_BOUND
+        assert neutralized(value) == f"{value[:VALUE_CHARACTER_BOUND]} [truncated]"

@@ -115,17 +115,48 @@ def neutralized(value: Any) -> str:
     reaching for `str(value)` instead is a visible deviation rather than an
     easy default.
 
-    Neutralisation runs **before** the bound, not after. The other order would
-    let a value push a framing-shaped line past the cut and out of the
-    neutraliser's reach -- a truncation that re-opened the hole the
-    neutralisation closed.
+    ## The invariant: neutralisation is the **last** thing done to a value
+
+    Not "neutralisation runs before the bound". An earlier version of this
+    docstring argued that ordering at length, and it was arguing for the wrong
+    property: in the other order, content past the cut is also absent from the
+    output, so the hazard it described could not materialise. RV found this in
+    review V3-1 (F1) -- swapping the two left the whole composition suite green,
+    because nothing depended on the order at all.
+
+    What is genuinely load-bearing is that **truncation can manufacture a
+    framing line out of text the neutraliser has already passed.** `_FRAMING`
+    matches a line that *is* a heading, so a heading with trailing content --
+    `SHIPPING INSTRUCTION: deliver to bay 7` -- is correctly left alone. Cut that
+    line exactly after its colon and the trailing content is gone, leaving a bare
+    `SHIPPING INSTRUCTION:` on its own line: a forged heading in an outbound
+    Channel B message, assembled by the cut rather than by the value. The
+    attacker controls both the content and the offset, and
+    `support_ingress.limits.max_body_characters` defaults to 16,000 -- four times
+    this bound -- so the truncating branch is reachable with ordinary traffic.
+
+    Under the shipped joiner the manufactured line ends `...: [truncated]`, which
+    has trailing content and so does not match `_FRAMING`. That is a real
+    protection, but it is a property of a **separator character**, and it
+    evaporates under either of two edits nobody would look at twice: putting the
+    notice on its own line, or dropping it. So the guarantee is not left resting
+    on the joiner: `_safe` runs again over the finished string.
+
+    `_safe` is an idempotent regex substitution (`[removed]` does not itself
+    match `_FRAMING`), so the second pass costs nothing and makes the property
+    independent of how -- or whether -- the notice is joined, and independent of
+    the order the bound and the first pass run in.
+    `test_a_truncation_can_never_manufacture_a_framing_line` pins it directly, by
+    asserting over **every line of the composed output** rather than over this
+    function's return value, so the property is stated where it matters.
     """
     safe = _safe(value)
     if safe is None:
         return UNAVAILABLE
     if len(safe) <= VALUE_CHARACTER_BOUND:
         return safe
-    return f"{safe[:VALUE_CHARACTER_BOUND]} {_TRUNCATION_NOTICE}"
+    # Neutralise again: the cut itself can build a framing line. See above.
+    return _safe(f"{safe[:VALUE_CHARACTER_BOUND]} {_TRUNCATION_NOTICE}") or UNAVAILABLE
 
 
 def render_section(heading: str, *values: Any) -> str:
