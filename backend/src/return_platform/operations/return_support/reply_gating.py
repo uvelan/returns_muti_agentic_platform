@@ -155,7 +155,19 @@ class SupportThreadPort(Protocol):
 
 
 class ScopedFactWriterPort(Protocol):
-    async def __call__(self, *, record_scope: str | None, **fact: Any) -> bool: ...
+    """`ReturnCaseActivities.append_scoped_fact_once`, structurally.
+
+    `actor_id` is bound **explicitly** rather than left to `**fact`, even though
+    the shipped signature would accept it either way. A `**fact` bag type-checks
+    whatever a caller puts in it, so a misspelling reaches the repository as an
+    unknown keyword and a test double captures it without complaint -- which is
+    how one server-stamped principal turns into two spellings of it. Naming the
+    parameter here is what makes the misspelling an error at the call site.
+    """
+
+    async def __call__(
+        self, *, record_scope: str | None, actor_id: str | None = None, **fact: Any
+    ) -> bool: ...
 
 
 async def gate_reply(

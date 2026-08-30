@@ -117,8 +117,14 @@ class StubThreads:
 class StubFactWriter:
     written: list[dict[str, Any]] = field(default_factory=list)
 
-    async def __call__(self, *, record_scope: str | None, **fact: Any) -> bool:
-        self.written.append({"record_scope": record_scope, **fact})
+    async def __call__(
+        self, *, record_scope: str | None, actor_id: str | None = None, **fact: Any
+    ) -> bool:
+        # `actor_id` is bound explicitly, never absorbed through `**fact`: a bag
+        # captures a misspelling silently, and this double is what would then
+        # certify the wrong key. Recorded under its own name so the assertions
+        # below are about the parameter the repository actually receives.
+        self.written.append({"record_scope": record_scope, "actor_id": actor_id, **fact})
         return True
 
 
@@ -346,6 +352,11 @@ async def test_the_draft_fact_is_written_on_both_paths(
     assert writer.written == [
         {
             "record_scope": None,
+            # No actor: the resolver composed this on its own initiative, with
+            # no command and no principal behind it. `None` is the honest value
+            # rather than a missing key -- see `CaseRepository`, which writes
+            # `actorId` always, `None` included.
+            "actor_id": None,
             "fact_id": f"{SUPPORT_REPLY_DRAFT}-evt-1",
             "case_id": "case-1",
             "fact_name": SUPPORT_REPLY_DRAFT,

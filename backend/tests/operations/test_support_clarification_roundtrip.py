@@ -15,13 +15,16 @@ half of the reset that *is* a decision rather than a mechanism is extracted as
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from pymongo.errors import DuplicateKeyError
 
 from return_platform.configuration.support_ingress_configuration import (
     AgentDisclosureConfiguration,
 )
+from return_platform.operations.case_repository import CaseRepository
 from return_platform.operations.fact_names import SUPPORT_CLARIFICATION_ANSWERED
 from return_platform.operations.models import FactAcquisition, FactChannel
 from return_platform.operations.return_support.clarification import (
@@ -37,6 +40,7 @@ from return_platform.operations.return_support.outbound_composition import (
 )
 from return_platform.operations.return_support.reply_gating import reply_delivery_identity
 from return_platform.operations.return_support.resolution_ladder import AGENT_ID
+from return_platform.workflows.return_case_activities import ReturnCaseActivities
 
 DISCLOSURE = AgentDisclosureConfiguration(
     display_name="Returns Assistant",
@@ -88,8 +92,14 @@ class StubThreads:
 class StubFactWriter:
     written: list[dict[str, Any]] = field(default_factory=list)
 
-    async def __call__(self, *, record_scope: str | None, **fact: Any) -> bool:
-        self.written.append({"record_scope": record_scope, **fact})
+    async def __call__(
+        self, *, record_scope: str | None, actor_id: str | None = None, **fact: Any
+    ) -> bool:
+        # `actor_id` is bound explicitly, never absorbed through `**fact`: a bag
+        # captures a misspelling silently, and this double is what would then
+        # certify the wrong key. Recorded under its own name so the assertions
+        # below are about the parameter the repository actually receives.
+        self.written.append({"record_scope": record_scope, "actor_id": actor_id, **fact})
         return True
 
 
@@ -125,6 +135,11 @@ async def test_the_answer_is_recorded_as_a_stated_channel_a_fact() -> None:
     assert writer.written == [
         {
             "record_scope": None,
+            # The server-stamped principal, as the repository's own parameter.
+            # There is deliberately no `answeredBy` in `value` beside it: two
+            # spellings of one principal is how provenance stops being
+            # queryable, which is what S1 phase 1b ended.
+            "actor_id": "associate-7",
             "fact_id": f"{SUPPORT_CLARIFICATION_ANSWERED}-clar-1",
             "case_id": "case-1",
             "fact_name": SUPPORT_CLARIFICATION_ANSWERED,
@@ -133,7 +148,6 @@ async def test_the_answer_is_recorded_as_a_stated_channel_a_fact() -> None:
                 "supportEventId": "evt-1",
                 "answerText": "It belongs to RMA-4471.",
                 "resolutionChoice": None,
-                "answeredBy": "associate-7",
             },
             "agent_id": AGENT_ID,
             "channel": FactChannel.CHANNEL_A,
@@ -396,3 +410,107 @@ def test_a_reset_never_moves_a_deadline_inwards() -> None:
         )
         == "2026-08-30T18:00:00+00:00"
     )
+
+
+# ------------------------------- the actor, where it is actually stored
+
+
+class _FactsCollection:
+    """Enough of the facts collection for one insert: unique `factId`."""
+
+    def __init__(self) -> None:
+        self.documents: list[dict[str, Any]] = []
+
+    async def insert_one(self, document: dict[str, Any], session: Any = None) -> None:
+        del session
+        if any(held["factId"] == document["factId"] for held in self.documents):
+            raise DuplicateKeyError("factId")
+        self.documents.append(document)
+
+
+class _CasesCollection:
+    async def update_one(self, query: Any, update: Any, session: Any = None) -> Any:
+        del query, update, session
+        return SimpleNamespace(matched_count=1)
+
+
+class _Repository(CaseRepository):
+    """The shipped repository, its collections and transaction swapped out.
+
+    The same shape S1 phase 1b's own suite uses. The point is that the write
+    path under test is the **real** `append_scoped_case_fact`, so what this
+    asserts is the document that method actually produces.
+    """
+
+    def __init__(self) -> None:
+        self.case_facts = _FactsCollection()  # type: ignore[assignment]
+        self.cases = _CasesCollection()  # type: ignore[assignment]
+
+    async def _in_transaction(self, callback: Any) -> Any:
+        return await callback(None)
+
+
+class TestTheStoredActorField:
+    """RV V3-2's merge condition: the actor must land in the fact document's own
+    `actorId`, not in a value-level spelling of it.
+
+    Every other test in this file asserts what `record_clarification_answer`
+    *passes*. That is necessary and not sufficient: a double records whatever it
+    is handed, so a test built only on doubles certifies the call, never the
+    document. These drive the real `ReturnCaseActivities.append_scoped_fact_once`
+    over the real `CaseRepository` and read the stored document back.
+    """
+
+    async def _stored(self, answer: ClarificationAnswer) -> dict[str, Any]:
+        repository = _Repository()
+        activities = ReturnCaseActivities(  # type: ignore[arg-type]
+            repository=repository, support_service=None
+        )
+        wrote = await record_clarification_answer(
+            answer, append_scoped_fact_once=activities.append_scoped_fact_once
+        )
+        assert wrote is True
+        assert len(repository.case_facts.documents) == 1
+        return repository.case_facts.documents[0]
+
+    @pytest.mark.asyncio
+    async def test_the_stored_document_carries_the_actor_under_actor_id(self) -> None:
+        """camelCase `actorId`, by exact value, on the document itself."""
+        stored = await self._stored(ANSWER)
+        assert stored["actorId"] == "associate-7"
+
+    @pytest.mark.asyncio
+    async def test_the_value_carries_no_second_spelling_of_the_actor(self) -> None:
+        """Gone, not joined by a second one.
+
+        Asserted as an exact key set on `value` rather than as "answeredBy is
+        absent": a negative assertion would still pass if some other value-level
+        actor key appeared under a different name, which is the same defect.
+        """
+        stored = await self._stored(ANSWER)
+        assert set(stored["value"]) == {
+            "clarificationId",
+            "supportEventId",
+            "answerText",
+            "resolutionChoice",
+        }
+
+    @pytest.mark.asyncio
+    async def test_the_actor_is_distinct_from_the_agent_that_wrote_the_fact(self) -> None:
+        """`agentId` is which software wrote it; `actorId` is on whose authority.
+
+        Pinned together, because a write that put the agent id in both fields
+        would satisfy an `actorId is not None` check while losing exactly the
+        distinction the field was added for.
+        """
+        stored = await self._stored(ANSWER)
+        assert (stored["agentId"], stored["actorId"]) == (AGENT_ID, "associate-7")
+
+    @pytest.mark.asyncio
+    async def test_a_mapped_answer_stores_both_the_actor_and_its_record_scope(self) -> None:
+        stored = await self._stored(
+            replace(ANSWER, resolution_choice="map", return_record_id="rec-9")
+        )
+        assert (stored["actorId"], stored["record_scope"]) == ("associate-7", "rec-9")
+        # The scoped identity derivation still applies on top of the actor.
+        assert stored["factId"] == f"{SUPPORT_CLARIFICATION_ANSWERED}-clar-1::rec-9"

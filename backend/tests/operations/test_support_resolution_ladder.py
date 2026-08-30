@@ -180,8 +180,14 @@ class StubTools:
 class StubFactWriter:
     written: list[dict[str, Any]] = field(default_factory=list)
 
-    async def __call__(self, *, record_scope: str | None, **fact: Any) -> bool:
-        self.written.append({"record_scope": record_scope, **fact})
+    async def __call__(
+        self, *, record_scope: str | None, actor_id: str | None = None, **fact: Any
+    ) -> bool:
+        # `actor_id` is bound explicitly, never absorbed through `**fact`: a bag
+        # captures a misspelling silently, and this double is what would then
+        # certify the wrong key. Recorded under its own name so the assertions
+        # below are about the parameter the repository actually receives.
+        self.written.append({"record_scope": record_scope, "actor_id": actor_id, **fact})
         return True
 
 
@@ -576,6 +582,9 @@ async def test_budget_exhaustion_writes_the_fact_and_escalates() -> None:
     assert writer.written == [
         {
             "record_scope": None,
+            # No actor: exhaustion is DERIVED from the platform's own counters,
+            # with no command behind it.
+            "actor_id": None,
             "fact_id": f"{SUPPORT_RESOLVER_BUDGET_EXHAUSTED}-evt-1",
             "case_id": "case-1",
             "fact_name": SUPPORT_RESOLVER_BUDGET_EXHAUSTED,

@@ -287,9 +287,18 @@ class ToolExecutorPort(Protocol):
 
 
 class ScopedFactWriterPort(Protocol):
-    """`ReturnCaseActivities.append_scoped_fact_once`, structurally."""
+    """`ReturnCaseActivities.append_scoped_fact_once`, structurally.
 
-    async def __call__(self, *, record_scope: str | None, **fact: Any) -> bool: ...
+    `actor_id` is named rather than absorbed into `**fact` for the reason
+    `reply_gating.ScopedFactWriterPort` states. The ladder's own fact -- budget
+    exhaustion -- is `DERIVED` from the platform's counters with no command
+    behind it, so it passes no actor and the parameter defaults to `None`; that
+    is the honest value, not an omission.
+    """
+
+    async def __call__(
+        self, *, record_scope: str | None, actor_id: str | None = None, **fact: Any
+    ) -> bool: ...
 
 
 @dataclass(frozen=True, slots=True)

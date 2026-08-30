@@ -158,12 +158,17 @@ async def record_clarification_answer(
 
     The actor is the server-stamped one from the endpoint's capability check
     (sect. 4: command-originated facts carry server-stamped `actorId`), never
-    anything in the request body. It is carried in the fact's **value**, as
-    `answeredBy`, and not as a top-level field: S1's shipped
-    `append_scoped_case_fact` has no `actor_id` parameter, and adding one is a
-    change to a shared S1 signature this slice does not own. Recorded for the
-    orchestrator in the delta report; the observable property -- the answering
-    principal is on the fact, stamped by the server -- holds either way.
+    anything in the request body. It travels as the **`actor_id` parameter**, so
+    it lands in the fact document's own `actorId` field and is queryable as
+    provenance.
+
+    That parameter did not exist when this module was first written -- S1's
+    `append_scoped_case_fact` had no `actor_id`, so the actor was carried inside
+    the fact's `value` as `answeredBy`, and the gap was reported rather than
+    worked around. S1 phase 1b then shipped the real field, and this adopted it:
+    the value-level spelling is **gone**, not joined by a second one. Two
+    spellings of one idea is how provenance stops being queryable, which is the
+    defect S1 phase 1b existed to end.
 
     Record-scoped where the clarification named a record, case-scoped where it
     did not -- an unmatched artifact belongs to no record yet, which is the
@@ -181,13 +186,15 @@ async def record_clarification_answer(
             # rendering is where neutralisation and the length bound apply.
             "answerText": answer.answer_text,
             "resolutionChoice": answer.resolution_choice,
-            "answeredBy": answer.actor_id,
         },
         agent_id=AGENT_ID,
         channel=FactChannel.CHANNEL_A,
         acquisition_method=FactAcquisition.STATED,
         source_system="RETURN_SUPPORT",
         source_path="CASE_CLARIFICATION_ANSWER",
+        # Server-stamped provenance, not a value (S1 phase 1b). `agent_id` says
+        # which component wrote the fact; `actor_id` says on whose authority.
+        actor_id=answer.actor_id,
     )
 
 
