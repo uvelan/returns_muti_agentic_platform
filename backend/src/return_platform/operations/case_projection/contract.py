@@ -161,12 +161,29 @@ class CaseFactProjection(ProjectionModel):
     `value` is deliberately untyped -- the fact log is heterogeneous by design --
     but every provenance field beside it is not, because provenance is what makes
     a fact admissible to policy evaluation (plan sect. 7.3).
+
+    **`actorId` is not `agentId`.** The agent is what produced the observation;
+    the actor is the principal on whose authority a *command* caused it
+    (contracts.md sect. 4, server-stamped). Without it a UI asking "who
+    authorised this" got "nobody" for every case-level command fact, which is
+    the one provenance question an audit actually asks. `None` is the honest
+    answer for an observation, which has no actor at all.
+
+    Still omitted, deliberately: `record_scope` and `identity_version`, because
+    this projection is keyed by fact *name* over the unscoped
+    `latest_case_facts` -- per-record facts collapse before they reach here, so a
+    `recordScope` field would name whichever scope won the collapse and imply a
+    per-record view that does not exist. It belongs with the
+    `latest_case_facts_scoped` convergence (contracts.md sect. 10's registered
+    follow-up), not ahead of it. `turnId` and `correlationId` are request-tracing
+    links rather than provenance, and are not what the audit question needs.
     """
 
     factId: Reference
     factName: Reference
     value: str | int | float | bool | None = None
     agentId: Reference | None = None
+    actorId: Reference | None = None
     channel: Reference | None = None
     sourceSystem: Reference | None = None
     acquisitionMethod: Reference | None = None
