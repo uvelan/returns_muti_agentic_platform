@@ -8955,6 +8955,7 @@
           },
           "payload": {
             "additionalProperties": true,
+            "maxProperties": 100,
             "title": "Payload",
             "type": "object"
           }
@@ -13201,6 +13202,7 @@
         "properties": {
           "canonical_payload": {
             "additionalProperties": true,
+            "maxProperties": 100,
             "title": "Canonical Payload",
             "type": "object"
           },

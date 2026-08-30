@@ -41,7 +41,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Annotated, Any, cast
+from typing import Annotated, Any, Final, cast
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -387,6 +387,12 @@ def _missing(error: ReviewNotFoundError) -> HTTPException:
 # --------------------------------------------------------------------------- #
 
 
+#: A draft payload's top-level keys. The shipped template renders six; a
+#: hundred is room for every variant an operator could publish and a refusal for
+#: anything that is not a draft.
+_MAX_PAYLOAD_KEYS: Final = 100
+
+
 class _Body(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -491,7 +497,14 @@ class EditStateRequest(_Body):
 
     client_edit_id: str = Field(min_length=1, max_length=128)
     base_draft_version: int = Field(ge=0)
-    payload: dict[str, Any]
+    #: **Bounded**, because an autosave is the one write on this surface a
+    #: client controls the size of and it fires every 800 ms. Unbounded, a
+    #: single tab could grow one review's edit row without limit under a
+    #: capability meant for editing a message -- which is the shape of RV's
+    #: phase-1 advisory A4 about the preview endpoint, on a write path.
+    #: 256 KB is roughly two orders of magnitude above the largest draft the
+    #: shipped template can render, so it bounds abuse without bounding use.
+    payload: dict[str, Any] = Field(max_length=_MAX_PAYLOAD_KEYS)
 
 
 class ResolveEditRequest(_Body):
@@ -502,7 +515,7 @@ class ResolveEditRequest(_Body):
     came out of rather than only what it says.
     """
 
-    canonical_payload: dict[str, Any]
+    canonical_payload: dict[str, Any] = Field(max_length=_MAX_PAYLOAD_KEYS)
     resolved_from_actor_edit_ids: list[str] = Field(default_factory=list, max_length=50)
 
 

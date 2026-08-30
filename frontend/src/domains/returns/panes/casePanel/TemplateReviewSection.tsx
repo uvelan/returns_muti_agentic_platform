@@ -1,4 +1,4 @@
-import { useCallback, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -99,6 +99,30 @@ export function TemplateReviewSection({ caseId, review, onChanged }: Props) {
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [rawMode, setRawMode] = useState(false);
+  /**
+   * Which irreversible action is waiting for a second press.
+   *
+   * **Three of the five actions cannot be taken back**, and one click is not
+   * enough for any of them: sending posts a message on a supplier's support
+   * desk, cancelling parks the case terminally, and abandoning closes a
+   * delivery for good with an audited actor. The other two -- rebuild and
+   * discard-and-start-again -- change only what is on this screen, and asking
+   * twice for those would be the confirmation habit that makes people stop
+   * reading confirmations.
+   *
+   * Inline rather than `window.confirm`, which phase 1 registered as a
+   * follow-up for the config publish and which cannot be styled, cannot be
+   * read by a screen reader as part of this section, and blocks the tab.
+   */
+  const [confirming, setConfirming] = useState<ConfirmKind | null>(null);
+  /**
+   * Which action's button should take focus on the next action bar.
+   *
+   * WCAG 2.4.3. A keyboard associate who backs out of a confirmation must land
+   * back on the control they pressed, not on `<body>` -- which in a long draft
+   * means having lost their place entirely.
+   */
+  const [restoreFocusTo, setRestoreFocusTo] = useState<ConfirmKind | null>(null);
   const headingId = useId();
   const statusId = useId();
 
@@ -201,7 +225,7 @@ export function TemplateReviewSection({ caseId, review, onChanged }: Props) {
             ))}
           </ul>
           <p className="mt-1">
-            This message cannot be sent until the case knows these. Ask for a fresh draft once it
+            This message cannot be sent until the case knows these. Rebuild the draft once it
             does.
           </p>
         </div>
@@ -257,6 +281,15 @@ export function TemplateReviewSection({ caseId, review, onChanged }: Props) {
         </div>
       ) : null}
 
+      {/*
+        One `<dl>` per section, each under its own real heading, rather than one
+        `<dl>` wrapping headings and nested groups. `<dl>` may contain only
+        `<dt>`, `<dd>` and `<div>` wrappers around them -- a `<p>` inside one is
+        invalid and screen readers announce the list's structure wrongly. The
+        headings are `<h4>`, not styled paragraphs: a fake heading is invisible
+        to heading navigation, which is how somebody using a screen reader skims
+        a long draft.
+      */}
       <dl className="divide-y divide-outline-variant/20">
         <div className={COPILOT_TOKENS.review.field.row}>
           <dt className={COPILOT_TOKENS.review.field.label}>Subject</dt>
@@ -264,12 +297,14 @@ export function TemplateReviewSection({ caseId, review, onChanged }: Props) {
             {editor.payload.subject ?? "Pending"}
           </dd>
         </div>
-        {sections.map((section) => (
+      </dl>
+      {sections.map((section) => (
           <div key={section.section_id} className="py-2">
-            <p className={COPILOT_TOKENS.section.kicker}>
+            <h4 className={COPILOT_TOKENS.section.kicker}>
               {section.title}
               {section.return_record_id !== null ? ` · ${section.return_record_id}` : ""}
-            </p>
+            </h4>
+            <dl className="divide-y divide-outline-variant/20">
             {section.fields.map((field) => {
               const key = fieldKey(section.section_id, field.field_id);
               const value = editor.values[key] ?? field.value;
@@ -322,9 +357,9 @@ export function TemplateReviewSection({ caseId, review, onChanged }: Props) {
                 </div>
               );
             })}
+            </dl>
           </div>
         ))}
-      </dl>
 
       {editable ? (
         <div className="space-y-2">
@@ -365,36 +400,63 @@ export function TemplateReviewSection({ caseId, review, onChanged }: Props) {
         </p>
       ) : null}
 
-      <ReviewActions
-        busy={busy}
-        blocked={blocked}
-        editable={editable}
-        review={review}
-        onSend={send}
-        onRevise={() => {
-          void act(() => casePanelApi.revise(caseId, review.review_id));
-        }}
-        onCancel={() => {
-          void act(() =>
-            casePanelApi.cancel(caseId, review.review_id, "Cancelled by the branch associate."),
-          );
-        }}
-        onRedraft={() => {
-          void act(() => casePanelApi.redraft(caseId, review.review_id));
-        }}
-        onRetry={() => {
-          void act(() => casePanelApi.retryDelivery(caseId, review.review_id));
-        }}
-        onAbandon={() => {
-          void act(() =>
-            casePanelApi.abandon(
-              caseId,
-              review.review_id,
-              "Abandoned by the branch associate after a failed delivery.",
-            ),
-          );
-        }}
-      />
+      {confirming === null ? (
+        <ReviewActions
+          busy={busy}
+          blocked={blocked}
+          editable={editable}
+          review={review}
+          focusOnMount={restoreFocusTo}
+          onSend={() => {
+            setConfirming("send");
+          }}
+          onRevise={() => {
+            void act(() => casePanelApi.revise(caseId, review.review_id));
+          }}
+          onCancel={() => {
+            setConfirming("cancel");
+          }}
+          onRedraft={() => {
+            void act(() => casePanelApi.redraft(caseId, review.review_id));
+          }}
+          onRetry={() => {
+            void act(() => casePanelApi.retryDelivery(caseId, review.review_id));
+          }}
+          onAbandon={() => {
+            setConfirming("abandon");
+          }}
+        />
+      ) : (
+        <ConfirmAction
+          kind={confirming}
+          busy={busy}
+          onCancel={() => {
+            setConfirming(null);
+            setRestoreFocusTo(confirming);
+          }}
+          onConfirm={() => {
+            setConfirming(null);
+            setRestoreFocusTo(null);
+            if (confirming === "send") {
+              send();
+              return;
+            }
+            if (confirming === "cancel") {
+              void act(() =>
+                casePanelApi.cancel(caseId, review.review_id, "Cancelled by the branch associate."),
+              );
+              return;
+            }
+            void act(() =>
+              casePanelApi.abandon(
+                caseId,
+                review.review_id,
+                "Abandoned by the branch associate after a failed delivery.",
+              ),
+            );
+          }}
+        />
+      )}
     </section>
   );
 }
@@ -419,6 +481,8 @@ type ActionProps = {
   readonly blocked: boolean;
   readonly editable: boolean;
   readonly review: ReviewPanelView;
+  /** The action whose button takes focus when this bar mounts. See 2.4.3. */
+  readonly focusOnMount: ConfirmKind | null;
   readonly onSend: () => void;
   readonly onRevise: () => void;
   readonly onCancel: () => void;
@@ -432,6 +496,7 @@ function ReviewActions({
   blocked,
   editable,
   review,
+  focusOnMount,
   onSend,
   onRevise,
   onCancel,
@@ -439,6 +504,16 @@ function ReviewActions({
   onRetry,
   onAbandon,
 }: ActionProps) {
+  const sendRef = useRef<HTMLButtonElement | null>(null);
+  const cancelRef = useRef<HTMLButtonElement | null>(null);
+  const abandonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (focusOnMount === "send") sendRef.current?.focus();
+    if (focusOnMount === "cancel") cancelRef.current?.focus();
+    if (focusOnMount === "abandon") abandonRef.current?.focus();
+  }, [focusOnMount]);
+
   if (isRecoverable(review)) {
     return (
       <div className={COPILOT_TOKENS.review.action.bar}>
@@ -452,12 +527,13 @@ function ReviewActions({
           Try sending again
         </button>
         <button
+          ref={abandonRef}
           type="button"
           className={COPILOT_TOKENS.review.action.danger}
           aria-disabled={busy}
           onClick={onAbandon}
         >
-          Stop trying
+          Stop trying to send
         </button>
       </div>
     );
@@ -474,6 +550,7 @@ function ReviewActions({
         This one is reachable, announced as disabled, and explains itself.
       */}
       <button
+        ref={sendRef}
         type="button"
         className={COPILOT_TOKENS.review.action.primary}
         aria-disabled={busy || blocked}
@@ -498,7 +575,7 @@ function ReviewActions({
         aria-disabled={busy}
         onClick={onRevise}
       >
-        Ask for a fresh draft
+        Rebuild from the latest facts
       </button>
       <button
         type="button"
@@ -506,16 +583,131 @@ function ReviewActions({
         aria-disabled={busy}
         onClick={onRedraft}
       >
-        Start over
+        Discard and start again
       </button>
       <button
+        ref={cancelRef}
         type="button"
         className={COPILOT_TOKENS.review.action.danger}
         aria-disabled={busy}
         onClick={onCancel}
       >
-        Do not send
+        Cancel this request
       </button>
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------
+ * Confirming the three that cannot be taken back
+ * ---------------------------------------------------------------------- */
+
+type ConfirmKind = "send" | "cancel" | "abandon";
+
+/**
+ * What each confirmation says, and the shape is the same every time: **what
+ * will happen**, then **what it costs**, then two buttons labelled with the
+ * actions rather than with "OK" and "Cancel".
+ *
+ * "Are you sure?" is the version of this that teaches people to click through
+ * it. Naming the consequence -- "Support will see this message", "this return
+ * will stop waiting" -- is what makes the second press a decision rather than a
+ * reflex.
+ */
+const CONFIRMATIONS: Record<
+  ConfirmKind,
+  { readonly question: string; readonly consequence: string; readonly confirm: string }
+> = {
+  send: {
+    question: "Send this message to Support?",
+    consequence:
+      "Support will see it as it is written above. A message cannot be recalled once it has been sent.",
+    confirm: "Send it",
+  },
+  cancel: {
+    question: "Cancel this request?",
+    consequence:
+      "Support will not be asked, and this return will stop waiting for an answer. This cannot be undone.",
+    confirm: "Cancel the request",
+  },
+  abandon: {
+    question: "Stop trying to send this message?",
+    consequence:
+      "The platform will make no further attempts. Your name and your reason are recorded against the decision.",
+    confirm: "Stop trying",
+  },
+};
+
+function ConfirmAction({
+  kind,
+  busy,
+  onConfirm,
+  onCancel,
+}: {
+  readonly kind: ConfirmKind;
+  readonly busy: boolean;
+  readonly onConfirm: () => void;
+  readonly onCancel: () => void;
+}) {
+  const copy = CONFIRMATIONS[kind];
+  const confirmRef = useRef<HTMLButtonElement | null>(null);
+
+  /*
+   * Focus moves here, and this is the one place on this surface where taking
+   * focus is right: the associate asked for it by pressing a button, and the
+   * alternative is a prompt a keyboard user has to hunt for. It is *not* the
+   * rule for arriving content, which never moves focus -- see `useDraftEditor`.
+   *
+   * Giving focus **back** is not this component's job, and the first attempt at
+   * making it so was wrong in an instructive way: it captured
+   * `document.activeElement` and restored it on unmount, which never fires
+   * because the action bar unmounts with the prompt and the node it captured is
+   * gone by then. The restore therefore lives in the parent, which knows *which
+   * action* opened this and can focus that button on the bar it renders next.
+   */
+  useEffect(() => {
+    confirmRef.current?.focus();
+  }, []);
+
+  return (
+    <div
+      role="group"
+      aria-label={copy.question}
+      className={`${COPILOT_TOKENS.review.conflict} mt-3`}
+      onKeyDown={(event) => {
+        // Escape backs out, which is what a person expects from anything that
+        // took their focus -- and it is the fastest way out for somebody who
+        // pressed the wrong button.
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onCancel();
+        }
+      }}
+    >
+      <p className="font-semibold">{copy.question}</p>
+      <p className="mt-1">{copy.consequence}</p>
+      <div className={COPILOT_TOKENS.review.action.bar}>
+        <button
+          ref={confirmRef}
+          type="button"
+          className={
+            kind === "send"
+              ? COPILOT_TOKENS.review.action.primary
+              : COPILOT_TOKENS.review.action.danger
+          }
+          aria-disabled={busy}
+          onClick={() => {
+            if (!busy) onConfirm();
+          }}
+        >
+          {copy.confirm}
+        </button>
+        {/* "Keep editing", not "Cancel" -- on the cancel confirmation, a button
+            labelled "Cancel" would be asking whether to cancel the cancel. */}
+        <button type="button" className={COPILOT_TOKENS.review.action.secondary} onClick={onCancel}>
+          Keep editing
+        </button>
+      </div>
     </div>
   );
 }

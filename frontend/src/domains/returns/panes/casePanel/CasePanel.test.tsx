@@ -173,9 +173,50 @@ describe("the keyboard path: review, edit, send", () => {
 
     await user.keyboard("{Enter}");
 
+    // Sending is not undoable, so it asks once -- naming the consequence rather
+    // than "Are you sure?", which is the version people learn to click through.
+    const confirm = await screen.findByRole("button", { name: "Send it" });
+    expect(screen.getByText(/cannot be recalled once it has been sent/)).toBeVisible();
+    // Focus moved to the confirmation. This is the one place on this surface
+    // where taking focus is right: the associate asked for it, and the
+    // alternative is a prompt a keyboard user has to hunt for.
+    expect(confirm).toHaveFocus();
+
+    await user.keyboard("{Enter}");
+
     await waitFor(() => {
       expect(screen.getByText("Sending")).toBeVisible();
     });
+  });
+
+  it("sends nothing when the confirmation is declined", async () => {
+    // The half that makes the confirmation real. A prompt whose second button
+    // sent anyway would be worse than none.
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByRole("heading", { name: "Message to Support" });
+
+    await user.click(screen.getByRole("button", { name: /Send to Support/ }));
+    await user.click(await screen.findByRole("button", { name: "Keep editing" }));
+
+    expect(screen.queryByText("Sending")).toBeNull();
+    // And the associate is back where they were, not in a dead end.
+    expect(screen.getByRole("button", { name: /Send to Support/ })).toBeVisible();
+  });
+
+  it("names the consequence on every irreversible action, and only those", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByRole("heading", { name: "Message to Support" });
+
+    await user.click(screen.getByRole("button", { name: /Cancel this request/ }));
+    expect(screen.getByText(/this return will stop waiting for an answer/)).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Keep editing" }));
+
+    // Rebuilding changes only what is on this screen. Asking twice for that is
+    // the confirmation habit that makes people stop reading confirmations.
+    await user.click(screen.getByRole("button", { name: /Rebuild from the latest facts/ }));
+    expect(screen.queryByRole("button", { name: "Keep editing" })).toBeNull();
   });
 
   it("keeps a blocked Send focusable and says why", async () => {
@@ -235,6 +276,26 @@ describe("a poll landing mid-edit", () => {
     expect(field).toHaveFocus();
     expect(screen.getByDisplayValue("my careful wording")).toBeVisible();
     expect(screen.getByText(/Your edits are kept/)).toBeVisible();
+  });
+
+  it("gives focus back when a confirmation is declined", async () => {
+    // WCAG 2.4.3. The button that opened the prompt unmounts with it, so
+    // without the restore a keyboard associate who backs out lands on `<body>`
+    // and has lost their place in a long draft entirely.
+    const user = userEvent.setup();
+    renderPanel();
+    await screen.findByRole("heading", { name: "Message to Support" });
+
+    const send = screen.getByRole("button", { name: /Send to Support/ });
+    send.focus();
+    await user.keyboard("{Enter}");
+    await screen.findByRole("button", { name: "Send it" });
+
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Send to Support/ })).toHaveFocus();
+    });
   });
 
   it("announces politely rather than assertively", async () => {

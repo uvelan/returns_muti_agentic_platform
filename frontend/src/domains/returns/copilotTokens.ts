@@ -77,9 +77,18 @@ export const COPILOT_TOKENS = {
       CANCELLED: "bg-surface-container-high text-outline",
       ABANDONED: "bg-surface-container-high text-outline",
     },
-    /** Where a field's value came from. Provenance, not decoration -- sect. 8. */
+    /**
+     * Where a field's value came from. Provenance, not decoration -- sect. 8.
+     *
+     * `text-xs` (0.75rem), not smaller. The first draft of this used
+     * `text-[0.6875rem]` to keep the chips out of the way, which breaks this
+     * file's own stated rule at the top -- *strict minimum readable text size
+     * (>= 12px / 0.75rem)*. Provenance is precisely the thing an associate
+     * squints at when deciding whether to trust a value, so it is the last
+     * place to shave a pixel off.
+     */
     provenance:
-      "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.6875rem] font-medium bg-surface-container-high text-outline",
+      "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-surface-container-high text-outline",
     /** A field the release marked required and the case cannot answer. */
     gap: "rounded-lg border border-error/40 bg-error-container/30 px-3 py-2 text-xs text-on-error-container",
     /** Somebody else is editing this. Case-level, never one actor's contents. */

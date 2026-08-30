@@ -30,9 +30,10 @@ from typing import Any, cast
 
 import pytest
 import pytest_asyncio
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.testclient import TestClient
 from temporalio.converter import value_to_type
+from temporalio.service import RPCError, RPCStatusCode
 
 from return_platform.api.case_panel import router as panel_router
 from return_platform.api.case_reviews import router as reviews_router
@@ -175,10 +176,31 @@ async def store(mongo: FakeClient, test_settings: Settings) -> ReviewAggregateSt
     return reviews
 
 
+class _Temporal:
+    """A workflow host that answers one RPC status.
+
+    Real `RPCError`s, because the panel branches on `error.status` and a
+    stand-in exception would let a wrong branch pass.
+    """
+
+    def __init__(self, status: RPCStatusCode) -> None:
+        self._status = status
+
+    def get_workflow_handle(self, workflow_id: str) -> Any:
+        status = self._status
+
+        class _Handle:
+            async def query(self, _name: str) -> Any:
+                raise RPCError(f"{workflow_id} is not answering", status, b"")
+
+        return _Handle()
+
+
 def _client(
     mongo: FakeClient,
     test_settings: Settings,
     *,
+    temporal: Any = None,
     subject: str = "associate-a",
     roles: frozenset[str] = frozenset({r.RETURN_SUPPORT}),
     tenant_id: str = TENANT,
@@ -200,9 +222,10 @@ def _client(
         # `settings` and `mongo`, and those are real.
         catalog=cast(Any, None),
         mongo=cast(Any, mongo),
-        #: No Temporal in this process. The panel must still compose, with the
-        #: execution section degraded -- which is the property, not a shortcut.
-        temporal=None,
+        #: `None` unless a test supplies one: no Temporal in this process is
+        #: itself a state the panel must compose through, with the execution
+        #: section degraded -- the property, not a shortcut.
+        temporal=temporal,
     )
     app.state.settings = test_settings
     app.include_router(panel_router)
@@ -1312,3 +1335,117 @@ def test_a_review_past_open_serves_no_approval_hash(
 
     assert view.reviews[0].state == ReviewState.CANCELLED.value
     assert view.reviews[0].approval_hash is None
+
+
+# --------------------------------------------------------------------------- #
+# The review findings
+# --------------------------------------------------------------------------- #
+
+
+def test_a_contributor_that_refuses_is_a_refusal_not_a_degraded_section(
+    store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
+) -> None:
+    """This module's own rule, and the one place the broad catch broke it.
+
+    "Degradation only for expected timeouts and transient failures; auth,
+    contract and invariant failures are real errors" (contracts.md sect. 9). The
+    catch-all around contributors swallowed `HTTPException` too, so a section
+    that answered 403 rendered as "temporarily unavailable" -- a panel hiding a
+    security answer behind a spinner, which is the exact sentence the module
+    docstring uses to say it must not.
+    """
+
+    async def refuses(_context: Any) -> PanelSectionView:
+        raise HTTPException(status_code=403, detail={"code": "NO", "message": "not yours"})
+
+    register_panel_section("guarded", refuses)
+    with _client(mongo, test_settings) as client:
+        answer = client.get(f"/api/v1/cases/{CASE_ID}/panel")
+
+    assert answer.status_code == 403
+
+
+def test_a_contributor_that_breaks_is_still_only_a_degraded_section(
+    store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
+) -> None:
+    """The other half, so the fix above did not turn every contributor fault
+    into a 500 and hand V2 the ability to blank the screen."""
+
+    async def breaks(_context: Any) -> PanelSectionView:
+        raise RuntimeError("V2 is having a bad day")
+
+    register_panel_section("relay", breaks)
+    with _client(mongo, test_settings) as client:
+        answer = client.get(f"/api/v1/cases/{CASE_ID}/panel")
+
+    assert answer.status_code == 200
+    view = CasePanelView.model_validate(answer.json()["data"])
+    assert view.sections[0].status == "degraded"
+
+
+def test_a_workflow_this_deployment_cannot_see_degrades_rather_than_500s(
+    store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
+) -> None:
+    """A case raised before the gate, or one whose execution aged out.
+
+    Temporal answers `NOT_FOUND`, which is a normal answer and not a panel
+    failure: the reviews are read from Mongo and are perfectly true. Letting it
+    propagate would take them down with it.
+    """
+    with _client(mongo, test_settings, temporal=_Temporal(RPCStatusCode.NOT_FOUND)) as client:
+        answer = client.get(f"/api/v1/cases/{CASE_ID}/panel")
+
+    assert answer.status_code == 200
+    view = CasePanelView.model_validate(answer.json()["data"])
+    assert view.execution.status == "degraded"
+    assert view.execution.reason == "EXECUTION_NOT_AVAILABLE"
+    assert view.reviews, "a case the workflow host cannot see still has its reviews"
+
+
+def test_an_unclassified_workflow_error_is_not_hidden_behind_degraded(
+    store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
+) -> None:
+    """The direction that keeps the degradation honest.
+
+    `PERMISSION_DENIED` from the workflow host is a real problem somebody has to
+    fix, and a panel that rendered it as "temporarily unavailable" would hide it
+    for as long as anybody was willing to keep refreshing.
+    """
+    with _client(
+        mongo, test_settings, temporal=_Temporal(RPCStatusCode.PERMISSION_DENIED)
+    ) as client:
+        with pytest.raises(RPCError):
+            client.get(f"/api/v1/cases/{CASE_ID}/panel")
+
+
+def test_an_unbounded_autosave_payload_is_refused(
+    store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
+) -> None:
+    """The one write on this surface whose size a client chooses, firing every
+    800 ms under a capability meant for editing a message."""
+    with _client(mongo, test_settings) as client:
+        answer = client.put(
+            f"/api/v1/cases/{CASE_ID}/reviews/{REVIEW_ID}/edit-state",
+            json={
+                "client_edit_id": "c-1",
+                "base_draft_version": 1,
+                "payload": {f"key-{index}": "x" for index in range(500)},
+            },
+        )
+
+    assert answer.status_code == 422
+
+
+def test_an_ordinary_draft_is_comfortably_inside_the_bound(
+    store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
+) -> None:
+    """A bound that refused a real draft would be worse than none. The shipped
+    template renders six top-level keys; the limit is a hundred."""
+    with _client(mongo, test_settings) as client:
+        answer = client.put(
+            f"/api/v1/cases/{CASE_ID}/reviews/{REVIEW_ID}/edit-state",
+            json={"client_edit_id": "c-1", "base_draft_version": 1, "payload": DRAFT},
+        )
+
+    assert answer.status_code == 200
+    assert len(DRAFT) < 100

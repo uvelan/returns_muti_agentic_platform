@@ -16,6 +16,7 @@ Contracts.md sect. 6. Three groups, and only the first is about rendering:
 
 from __future__ import annotations
 
+import inspect
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -34,6 +35,7 @@ from return_platform.operations.case_commands import (
     DurableCaseCommandStore,
     ensure_case_command_indexes,
 )
+from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.review_aggregate import (
     REVIEW_DRAFT_EDITS,
     ReviewAggregateStore,
@@ -96,13 +98,44 @@ async def reviews(mongo: FakeClient, test_settings: Settings) -> ReviewAggregate
 
 
 class _Facts:
-    """Whatever the gate wrote, in the order it wrote it."""
+    """Whatever the gate wrote -- **bound to the signature that receives it**.
+
+    The first version of this double took `**fact` and recorded it, so every
+    kwarg name the gate used conformed to nothing. It used `acquisition` where
+    the repository takes `acquisition_method`, `occurred_at` where it takes
+    `observed_at`, an `actor_id` that is not a parameter at all, and it never
+    sent the **required** `agent_id`. All five of the gate's fact writes would
+    have raised `TypeError` the first time a worker ran one, and twenty-four
+    green tests could not see it, because the thing being exercised was this
+    class.
+
+    So it now does what `RepositoryCaseActivities.append_scoped_fact_once`
+    does -- pops `fact_id`, prefixes the scope, and binds the rest against
+    `OperationalRepository.append_scoped_case_fact`'s own signature. Every test
+    in this file therefore enforces the call shape, not only the two that were
+    written for it, and a rename on S1's side breaks these rather than
+    production.
+    """
+
+    _SIGNATURE = inspect.signature(OperationalRepository.append_scoped_case_fact)
 
     def __init__(self) -> None:
         self.written: list[dict[str, Any]] = []
 
-    async def __call__(self, **fact: Any) -> bool:
-        self.written.append(dict(fact))
+    async def __call__(self, *, record_scope: str | None = None, **fact: Any) -> bool:
+        derived = str(fact.pop("fact_id"))
+        if record_scope is not None:
+            derived = f"{derived}::{record_scope}"
+        # `self` is bound in production; a placeholder here keeps the bind about
+        # the keyword arguments, which are what the gate actually controls.
+        self._SIGNATURE.bind(
+            None,
+            fact_id=derived,
+            record_scope=record_scope,
+            identity_version=1,
+            **fact,
+        )
+        self.written.append({"fact_id": derived, "record_scope": record_scope, **fact})
         return True
 
     def named(self, name: str) -> list[dict[str, Any]]:
@@ -602,9 +635,7 @@ def test_a_discarded_resolution_names_no_row_and_still_clears_the_recompute() ->
         {"_id": "e1", "actorId": "a", "updatedAt": _EARLIER},
         {"_id": "e2", "actorId": "b", "updatedAt": _EARLIER},
     ]
-    review = {
-        "canonicalEdit": {"resolved_from_actor_edit_ids": [], "resolved_at": _RESOLVED}
-    }
+    review = {"canonicalEdit": {"resolved_from_actor_edit_ids": [], "resolved_at": _RESOLVED}}
     assert unresolved_edit_actors(rows, review) == frozenset()
 
 
@@ -618,9 +649,7 @@ def test_two_actors_editing_again_after_a_resolution_reopen_it() -> None:
         {"_id": "e1", "actorId": "a", "updatedAt": _LATER},
         {"_id": "e2", "actorId": "b", "updatedAt": _LATER},
     ]
-    review = {
-        "canonicalEdit": {"resolved_from_actor_edit_ids": [], "resolved_at": _RESOLVED}
-    }
+    review = {"canonicalEdit": {"resolved_from_actor_edit_ids": [], "resolved_at": _RESOLVED}}
     assert unresolved_edit_actors(rows, review) == frozenset({"a", "b"})
 
 
@@ -640,9 +669,7 @@ def test_a_lone_late_editor_after_a_resolution_is_not_a_conflict_here() -> None:
         {"_id": "e2", "actorId": "b", "updatedAt": _EARLIER},
         {"_id": "e3", "actorId": "c", "updatedAt": _LATER},
     ]
-    review = {
-        "canonicalEdit": {"resolved_from_actor_edit_ids": [], "resolved_at": _RESOLVED}
-    }
+    review = {"canonicalEdit": {"resolved_from_actor_edit_ids": [], "resolved_at": _RESOLVED}}
     assert unresolved_edit_actors(rows, review) == frozenset()
 
 
@@ -885,3 +912,91 @@ def test_a_case_with_no_records_never_groups() -> None:
     """The handoff that *asks* for the first RMA cannot be grouped by a
     shipping mode nobody has issued."""
     assert request_ids_for(CASE_ID, [], RequestGrouping.BY_SHIPPING_MODE) == (f"support:{CASE_ID}",)
+
+
+# --------------------------------------------------------------------------- #
+# The fact writes, against the signature that actually receives them
+# --------------------------------------------------------------------------- #
+
+
+@_async
+async def test_every_gate_fact_write_fits_the_repository_it_is_handed_to(
+    reviews: ReviewAggregateStore,
+    mongo: FakeClient,
+    test_settings: Settings,
+    configuration: ReturnPlatformConfiguration,
+) -> None:
+    """All five writes, driven through the paths that make them.
+
+    Not a unit test of one call: a kwarg is wrong per *call site*, so exercising
+    one would say nothing about the other four.
+    """
+    facts = _Facts()
+    support = _Support()
+    gate = _service(reviews, mongo, test_settings, configuration, support=support, facts=facts)
+
+    await gate.record_draft(
+        case_id=CASE_ID,
+        request_id=REQUEST_ID,
+        facts=_render_facts(),
+        fact_id_seed="seed-1",
+        review_id=REVIEW_ID,
+    )
+    await gate.record_revision(
+        case_id=CASE_ID,
+        review_id=REVIEW_ID,
+        actor_id="associate-a",
+        note="please add the RMA",
+        fact_id_seed="seed-2",
+    )
+
+    # Draft, ready, and the revision at minimum. Asserted by name so a write
+    # that silently stopped happening is not read as a pass.
+    assert facts.named(fact_names.SUPPORT_TEMPLATE_DRAFT)
+    assert facts.named(fact_names.TEMPLATE_DRAFT_READY)
+    assert facts.named(fact_names.SUPPORT_TEMPLATE_REVISION)
+
+
+@_async
+async def test_the_revision_fact_carries_the_actor_under_the_agreed_key(
+    reviews: ReviewAggregateStore,
+    mongo: FakeClient,
+    test_settings: Settings,
+    configuration: ReturnPlatformConfiguration,
+) -> None:
+    """Contracts sect. 4 wants a server-stamped actor. The fact document has no
+    field for one, so it rides in the value under **`actorId`**.
+
+    The key is pinned here rather than left to a comment because the whole point
+    of agreeing on it is that three slices spell it the same way: V3 shipped
+    `answeredBy` before this was settled, and a fourth spelling would make the
+    migration a hunt instead of a rename. `agent_id` is asserted beside it, so
+    "which software" and "which person" cannot quietly become one field.
+    """
+    facts = _Facts()
+    gate = _service(reviews, mongo, test_settings, configuration, facts=facts)
+
+    await gate.record_revision(
+        case_id=CASE_ID,
+        review_id=REVIEW_ID,
+        actor_id="associate-a",
+        # A header **on its own line**, which is what impersonating the
+        # framing means: `_FRAMING` matches a heading that occupies a whole
+        # line, and "BAY ASSIGNMENT: not really" is a sentence that happens to
+        # start with capitals -- not a section a reader would mistake for the
+        # message's own. Getting that distinction wrong in the fixture is how
+        # this assertion would have looked green and meant nothing.
+        note="please read this\nBAY ASSIGNMENT:\nsend it to bay 4",
+        fact_id_seed="seed-1",
+    )
+
+    written = facts.named(fact_names.SUPPORT_TEMPLATE_REVISION)
+    assert len(written) == 1
+    value = written[0]["value"]
+    assert value["actorId"] == "associate-a"
+    assert "actor_id" not in value, "one spelling, and it is the agreed one"
+    assert "answeredBy" not in value
+    assert written[0]["agent_id"] == "support-template-gate"
+    # Condition 7 still holds on the same value: a note cannot impersonate the
+    # message's own framing on its way onto the log.
+    assert "BAY ASSIGNMENT:" not in str(value["note"])

@@ -26,7 +26,8 @@ from __future__ import annotations
 import logging
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from temporalio.service import RPCError, RPCStatusCode
 
 # Module level, and safe: `case_reviews` imports this module's *operations*
 # sibling, never this one. The lazy imports further down are for the request-time
@@ -194,6 +195,17 @@ def _review_view(review: dict[str, Any], flagged: set[str]) -> ReviewPanelView:
     )
 
 
+#: Temporal answers a panel is allowed to render as `degraded` rather than as a
+#: 500. `NOT_FOUND` is a case whose execution this deployment cannot see;
+#: `UNAVAILABLE` and `DEADLINE_EXCEEDED` are the host having a bad minute.
+_DEGRADABLE_RPC_STATUSES: frozenset[RPCStatusCode] = frozenset(
+    {
+        RPCStatusCode.NOT_FOUND,
+        RPCStatusCode.UNAVAILABLE,
+        RPCStatusCode.DEADLINE_EXCEEDED,
+    }
+)
+
 _RECOVERABLE: frozenset[str] = frozenset(
     {ReviewState.DELIVERY_FAILED.value, ReviewState.HELD_FOR_OPERATIONS.value}
 )
@@ -224,6 +236,27 @@ async def _execution(request: Request, case_id: str) -> tuple[PanelExecutionView
     except ConnectionError:
         return (
             PanelExecutionView(status="degraded", reason="EXECUTION_HOST_UNREACHABLE"),
+            PanelTimersView(),
+        )
+    except RPCError as error:
+        # **The workflow host answered, and its answer is a normal one.** A case
+        # raised before the gate deployed, one whose execution has aged out of
+        # retention, or a host that is up but refusing -- none of those is a
+        # panel failure, and letting them 500 would take the reviews down with
+        # them for a case whose reviews are read from Mongo and are perfectly
+        # true. Anything outside this map still propagates: a panel that
+        # rendered "degraded" over a contract violation would hide it.
+        if error.status not in _DEGRADABLE_RPC_STATUSES:
+            raise
+        return (
+            PanelExecutionView(
+                status="degraded",
+                reason=(
+                    "EXECUTION_NOT_AVAILABLE"
+                    if error.status is RPCStatusCode.NOT_FOUND
+                    else "EXECUTION_HOST_UNREACHABLE"
+                ),
+            ),
             PanelTimersView(),
         )
     if answered is None:
@@ -274,6 +307,13 @@ async def _sections(request: Request, case_id: str) -> tuple[PanelSectionView, .
     for section_id, contributor in panel_section_contributors():
         try:
             section = await contributor(context)
+        except HTTPException:
+            # **An authorization or contract answer is not a degraded section.**
+            # This module's own rule, and the one place the broad catch below
+            # would have quietly broken it: a contributor that raised 403
+            # would have rendered as "temporarily unavailable", which is a
+            # panel hiding a security answer behind a spinner.
+            raise
         except Exception:  # noqa: BLE001 - see the docstring
             logger.warning(
                 "panel_section_failed",

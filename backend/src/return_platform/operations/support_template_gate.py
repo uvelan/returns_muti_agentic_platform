@@ -129,6 +129,11 @@ __all__ = [
 #: The payload keys `approve()` hashes and the panel renders. Named because
 #: three modules build one of these and a typo in any of them is a message with
 #: a missing section that still passes its own hash check.
+#: Which software wrote a gate fact. `agent_id` is required by
+#: `append_scoped_case_fact` and answers a different question from the actor:
+#: this is the component, the actor is the person.
+_GATE_AGENT_ID: Final = "support-template-gate"
+
 PAYLOAD_TEMPLATE_ID: Final = "template_id"
 PAYLOAD_VARIANT_ID: Final = "variant_id"
 PAYLOAD_SUBJECT: Final = "subject"
@@ -647,11 +652,23 @@ class SupportTemplateGateService:
             case_id=case_id,
             fact_id=f"{fact_id_seed}:{fact_names.SUPPORT_TEMPLATE_REVISION}",
             fact_name=fact_names.SUPPORT_TEMPLATE_REVISION,
-            value={"review_id": review_id, "actor_id": actor_id, "note": _safe(note)},
-            acquisition=FactAcquisition.ASSOCIATE_EDIT,
+            # **`actorId`, in the value, and this is the agreed spelling.**
+            # Contracts sect. 4 says a command-originated fact carries a
+            # server-stamped `actorId`, and the persisted fact document has no
+            # such field -- `append_scoped_case_fact` takes `agent_id` (which
+            # software this was) and nothing for *which person decided*. The
+            # orchestrator has reopened S1 to add the top-level field; until it
+            # lands, every slice writes the actor under this exact key so the
+            # migration is a mechanical rename rather than a hunt across three
+            # vocabularies (V3 shipped `answeredBy` before this was settled).
+            #
+            # **Move this to the real parameter when S1 ships it**, and delete
+            # the key from the value in the same change.
+            value={"review_id": review_id, "actorId": actor_id, "note": _safe(note)},
+            agent_id=_GATE_AGENT_ID,
+            acquisition_method=FactAcquisition.ASSOCIATE_EDIT,
             channel=FactChannel.SYSTEM,
-            actor_id=actor_id,
-            occurred_at=datetime.now(UTC),
+            observed_at=datetime.now(UTC),
         )
 
     # --------------------------------------------------------------- delivery
@@ -754,9 +771,10 @@ class SupportTemplateGateService:
                 "absorbed": bool(post.absorbed) if post is not None else False,
                 "payload_hash": canonical_payload_digest(payload),
             },
-            acquisition=FactAcquisition.DERIVED,
+            agent_id=_GATE_AGENT_ID,
+            acquisition_method=FactAcquisition.DERIVED,
             channel=FactChannel.CHANNEL_B,
-            occurred_at=datetime.now(UTC),
+            observed_at=datetime.now(UTC),
         )
         return DeliveryOutcome(
             review_id=review_id,
@@ -814,9 +832,10 @@ class SupportTemplateGateService:
                 "variant_id": rendered.variant_id,
                 "content_hash": canonical_payload_digest(payload),
             },
-            acquisition=FactAcquisition.DERIVED,
+            agent_id=_GATE_AGENT_ID,
+            acquisition_method=FactAcquisition.DERIVED,
             channel=FactChannel.SYSTEM,
-            occurred_at=datetime.now(UTC),
+            observed_at=datetime.now(UTC),
         )
         for gap in rendered.gaps:
             await self._append_fact(
@@ -825,9 +844,10 @@ class SupportTemplateGateService:
                 fact_id=f"{fact_id_seed}:{fact_names.SUPPORT_TEMPLATE_GAP}:{gap.field_id}",
                 fact_name=fact_names.SUPPORT_TEMPLATE_GAP,
                 value={"review_id": review_id, "field_id": gap.field_id, "reason": gap.reason},
-                acquisition=FactAcquisition.DERIVED,
+                agent_id=_GATE_AGENT_ID,
+                acquisition_method=FactAcquisition.DERIVED,
                 channel=FactChannel.SYSTEM,
-                occurred_at=datetime.now(UTC),
+                observed_at=datetime.now(UTC),
             )
         await self._append_fact(
             record_scope=None,
@@ -835,9 +855,10 @@ class SupportTemplateGateService:
             fact_id=f"{fact_id_seed}:{fact_names.TEMPLATE_DRAFT_READY}",
             fact_name=fact_names.TEMPLATE_DRAFT_READY,
             value=review_id,
-            acquisition=FactAcquisition.DERIVED,
+            agent_id=_GATE_AGENT_ID,
+            acquisition_method=FactAcquisition.DERIVED,
             channel=FactChannel.SYSTEM,
-            occurred_at=datetime.now(UTC),
+            observed_at=datetime.now(UTC),
         )
 
     @staticmethod
