@@ -18,6 +18,7 @@ import httpx
 from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
+from return_platform.ai.gateway.final_dispatch import ALLOW_ALL
 from return_platform.configuration.runtime_activation import build_worker_runtime_activation
 from return_platform.configuration.runtime_integrations import verify_runtime_validation_receipts
 from return_platform.configuration.runtime_loader import (
@@ -41,6 +42,9 @@ from return_platform.operations.integrations.outbox import (
 )
 from return_platform.operations.integrations.temporal_signal import TemporalSignalDispatcher
 from return_platform.operations.repository import OperationalRepository
+from return_platform.operations.return_support.composition import (
+    build_support_message_classify_dispatcher,
+)
 from return_platform.operations.support_events import SUPPORT_RESPONSE_SIGNAL_TOPIC
 from return_platform.workflows.return_case_recovery import build_case_recovery_service
 
@@ -89,6 +93,27 @@ async def run() -> None:
         dispatchers[CASE_COMMAND_SIGNAL_TOPIC] = CaseCommandSignalDispatcher(
             client_factory=lambda: Client.connect(settings.temporal_target),
         )
+        # Support-message analysis (contracts.md sect. 5), built by the slice
+        # that owns the decisions rather than assembled here: a route pool, an
+        # attempt recorder and two stage invokers put together at a wiring site
+        # is how a `routing_policy_version` became a literal the first time.
+        # The topic comes back beside the dispatcher because a table keyed by
+        # the wrong constant is a queue nothing ever drains, and it fails
+        # silently -- an unregistered topic simply never dispatches.
+        #
+        # `interception=ALLOW_ALL` is stated rather than defaulted: this process
+        # has no interception store, and AI-01 is the incident where a
+        # mechanism two of three callers never opted into looked like a
+        # mechanism everyone had. No `route_pool=` either -- this worker owns no
+        # pool of its own, so there is no circuit state here to share.
+        classify_topic, classify_dispatcher = build_support_message_classify_dispatcher(
+            settings=settings,
+            mongo=client,
+            return_configuration=runtime.return_configuration.configuration,
+            ai_gateway=runtime.ai_gateway_configuration,
+            interception=ALLOW_ALL,
+        )
+        dispatchers[classify_topic] = classify_dispatcher
         if (
             settings.support_ticket_mode == "INTERNAL_WITH_EXTERNAL_MIRROR"
             and settings.support_ticket_base_url is not None
