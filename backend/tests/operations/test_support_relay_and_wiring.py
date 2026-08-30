@@ -193,20 +193,34 @@ async def test_a_fan_out_writes_one_entry_per_record() -> None:
 
 
 def test_the_entry_id_cannot_collide_across_a_shifted_boundary() -> None:
-    """Length-prefixed, so a boundary that moves does not collide.
+    """Length-prefixed, so a part that contains the separator cannot forge one.
 
-    The shift has to be across *adjacent* parts to be a real test: a plain
-    concatenation of ("a", "bc", ...) and ("ab", "c", ...) produces the same
-    string, and the earlier version of this test varied two non-adjacent parts,
-    which no join could have collapsed. It passed with the prefixes removed.
+    This test has been wrong twice, in two different ways, and the docstring is
+    the record of what it actually pins now.
+
+    The parts are joined with `|`. A collision therefore needs **both** things:
+    the shifted boundary must be between *adjacent* parts (a shift across a
+    fixed part in the middle can never collapse), and one of those parts must
+    be able to contain the separator itself. Adjacency alone is not enough --
+    `"a|bc|K|r"` and `"ab|c|K|r"` differ under a plain join, so a test built
+    from separator-free inputs passes with the length prefixes deleted, which
+    is exactly what the previous two versions of this test did.
+
+    The inputs below carry a `|` inside a part. Under the shipped
+    length-prefixed encoding they stay distinct (`1:a|3:b|c|...` against
+    `3:a|b|1:c|...`); under a bare `"|".join` they both render `a|b|c|K|r` and
+    the two identities become one.
     """
     one = system_entry_id(
-        case_id="a", support_event_id="bc", entry_kind="K", return_record_id="r"
+        case_id="a", support_event_id="b|c", entry_kind="K", return_record_id="r"
     )
     two = system_entry_id(
-        case_id="ab", support_event_id="c", entry_kind="K", return_record_id="r"
+        case_id="a|b", support_event_id="c", entry_kind="K", return_record_id="r"
     )
-    assert one != two
+    assert one != two, (
+        "a part containing the separator forged a boundary: the length prefixes "
+        "are what stop it, and this is the only input shape that shows it"
+    )
 
 
 @pytest.mark.asyncio

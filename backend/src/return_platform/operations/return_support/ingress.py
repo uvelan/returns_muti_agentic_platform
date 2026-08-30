@@ -28,6 +28,7 @@ them.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -41,6 +42,8 @@ from return_platform.configuration.support_ingress_configuration import (
 )
 from return_platform.operations.artifact_binding import ArtifactType, ExtractedArtifact
 from return_platform.operations.support_events import support_return_record
+
+logger = logging.getLogger("return_platform.support_ingress")
 
 #: The transport half of the dedupe identity for the structured endpoint.
 #: A named constant because the identity is `(case_id, transport_id,
@@ -59,6 +62,18 @@ _SUPPORT_EVENT_NAMESPACE: Final = uuid.UUID("6f0d1a2e-9c3b-4f5a-8d6e-1b2c3d4e5f6
 #: members of the frozen sect. 5 taxonomy; neither is inferred.
 STRUCTURED_ISSUED_INTENT: Final = "rma_issued"
 STRUCTURED_REJECTION_INTENT: Final = "rejection"
+
+#: The longest artifact value this platform will carry, matching the widest
+#: stored column one lands in (`ReturnOutcomeRecord.labelReference`, 256). An
+#: artifact value is a model's reading of support-authored text and reaches an
+#: associate's screen, so the bound is code rather than prompt: instructions
+#: are advice to a model, and this is a parser.
+MAX_ARTIFACT_VALUE_CHARS: Final = 256
+
+#: The longest *claimed* return reference on a loose artifact, matching
+#: `ReturnOutcomeRecord.returnReference` (128). A claim longer than any
+#: reference the store can hold cannot match one.
+MAX_ARTIFACT_BINDING_CHARS: Final = 128
 
 
 class SupportEventStatus:
@@ -389,6 +404,22 @@ def extracted_artifacts(payload: Mapping[str, Any]) -> tuple[ExtractedArtifact, 
     are written against a closed `ArtifactType`, and a type nobody has a
     binding rule for cannot be bound, cannot be clarified about, and would
     otherwise arrive at `bind_artifact` as a `KeyError` at persistence time.
+
+    **Values are length-bounded here, in code.** An artifact value is a model's
+    reading of support-authored text and it ends up interpolated into a
+    clarification an associate reads. Until now the only bounds on it were the
+    prompt's instructions and the task's `maximumOutputTokens`, and a prompt is
+    not a parser -- so the guarantee was instructed rather than structural. The
+    ceilings match the stored columns the same values land in
+    (`ReturnOutcomeRecord`: 256 for a label reference, 128 for a return
+    reference), because a value the authoritative store cannot hold is not a
+    value worth carrying.
+
+    Over-long values are **dropped, not truncated**. A truncated tracking
+    number is not a shorter tracking number; it is a different one, and binding
+    it would attach the wrong parcel to a real return. Dropping leaves the
+    message on file with its raw body intact, which is where a person can still
+    read what Support actually wrote.
     """
     raw = payload.get("artifacts")
     if not isinstance(raw, Sequence):
@@ -402,11 +433,33 @@ def extracted_artifacts(payload: Mapping[str, Any]) -> tuple[ExtractedArtifact, 
         value = str(item.get("value", "")).strip()
         if artifact_type is None or not value:
             continue
+        if len(value) > MAX_ARTIFACT_VALUE_CHARS:
+            logger.warning(
+                "support_artifact_value_too_long",
+                extra={
+                    "artifactType": artifact_type.value,
+                    "length": len(value),
+                    "limit": MAX_ARTIFACT_VALUE_CHARS,
+                },
+            )
+            continue
+        binding = _optional(item.get("binding"))
+        if binding is not None and len(binding) > MAX_ARTIFACT_BINDING_CHARS:
+            # The binding is a *claim* about which return this belongs to, and
+            # a claim longer than any return reference the platform can store
+            # cannot match one. Dropped to `None` rather than dropping the
+            # artifact: with no reference it falls into S1's no-reference rules
+            # and becomes a clarification, which is the honest outcome.
+            logger.warning(
+                "support_artifact_binding_too_long",
+                extra={"length": len(binding), "limit": MAX_ARTIFACT_BINDING_CHARS},
+            )
+            binding = None
         artifacts.append(
             ExtractedArtifact(
                 artifact_type=artifact_type,
                 value=value,
-                binding=_optional(item.get("binding")),
+                binding=binding,
             )
         )
     return tuple(artifacts)

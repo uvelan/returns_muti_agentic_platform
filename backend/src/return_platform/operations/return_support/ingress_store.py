@@ -317,14 +317,31 @@ class DurableSupportIngressStore(DurableSupportEventStore):
                 quota_exceeded=exceeded,
             )
 
-        command = await self._classify_command(
-            event=event,
-            command_id=str(command_id),
-            workflow_id=workflow_id,
-            now=stamp,
-        )
-
         async def transaction(mongo_session: Any) -> None:
+            # Inside the transaction, and passed the session -- both halves
+            # matter, and the second is what makes the first mean anything.
+            #
+            # Resolving the chain tail outside the transaction is a fork
+            # waiting for two messages to arrive together on one case: both
+            # reads see the same tail, both name it as predecessor, and the two
+            # events end up at the same depth with nothing ordering them
+            # against each other. Sequence numbers stay distinct -- the `$inc`
+            # is server-side and correct -- which is exactly why the defect is
+            # invisible to an enqueue-order assertion.
+            #
+            # In here, the `$inc` on the per-`(case, stream)` counter is part of
+            # this transaction. Two concurrent enqueues therefore conflict on
+            # that one document, one aborts, and `with_transaction` re-runs it
+            # -- re-reading a tail that now includes the winner. The chain is a
+            # chain because the counter write serialises the tail read, not
+            # because the callers happened not to overlap.
+            command = await self._classify_command(
+                event=event,
+                command_id=str(command_id),
+                workflow_id=workflow_id,
+                now=stamp,
+                session=mongo_session,
+            )
             await self._inbound.insert_one(dict(document), session=mongo_session)
             await self._outbox_collection.insert_one(dict(command), session=mongo_session)
 
@@ -375,22 +392,28 @@ class DurableSupportIngressStore(DurableSupportEventStore):
             support_event_id = str(parked["supportEventId"])
             command_id = str(uuid.uuid4())
             now = datetime.now(UTC)
-            command = await self._classify_command_fields(
-                case_id=case_id,
-                support_event_id=support_event_id,
-                work_item_id=str(parked.get("workItemId") or ""),
-                command_id=command_id,
-                workflow_id=workflow_id,
-                now=now,
-            )
+            work_item_id = str(parked.get("workItemId") or "")
 
             async def transaction(
                 mongo_session: Any,
-                _command: dict[str, Any] = command,
                 _event_id: str = support_event_id,
                 _command_id: str = command_id,
+                _work_item_id: str = work_item_id,
                 _now: datetime = now,
             ) -> None:
+                # Inside the transaction for the same reason as the accept
+                # path: two drains racing the same backlog would otherwise both
+                # read the same tail and fork it, which is the failure mode
+                # "reprocess in stream order" exists to rule out.
+                _command = await self._classify_command_fields(
+                    case_id=case_id,
+                    support_event_id=_event_id,
+                    work_item_id=_work_item_id,
+                    command_id=_command_id,
+                    workflow_id=workflow_id,
+                    now=_now,
+                    session=mongo_session,
+                )
                 await self._outbox_collection.insert_one(
                     dict(_command), session=mongo_session
                 )
@@ -426,6 +449,7 @@ class DurableSupportIngressStore(DurableSupportEventStore):
         command_id: str,
         workflow_id: str,
         now: datetime,
+        session: Any,
     ) -> dict[str, Any]:
         return await self._classify_command_fields(
             case_id=event.case_id,
@@ -434,6 +458,7 @@ class DurableSupportIngressStore(DurableSupportEventStore):
             command_id=command_id,
             workflow_id=workflow_id,
             now=now,
+            session=session,
         )
 
     async def _classify_command_fields(
@@ -445,6 +470,7 @@ class DurableSupportIngressStore(DurableSupportEventStore):
         command_id: str,
         workflow_id: str,
         now: datetime,
+        session: Any,
     ) -> dict[str, Any]:
         """One classify command, with its ordering fields filled in.
 
@@ -454,8 +480,15 @@ class DurableSupportIngressStore(DurableSupportEventStore):
         says *what must finish first*, and they diverge as soon as an event is
         caused by something on another stream. Filling both from the chain now
         is what makes acceptance 18 hold rather than merely be claimed.
+
+        **`session` is required, not optional.** Every caller is inside a
+        transaction, and a default of `None` would let a future one call this
+        outside one and get a chain that forks under concurrent arrival --
+        silently, because the sequence numbers would still be distinct and only
+        the *predecessor* would be wrong. Making the parameter mandatory is how
+        that stops being a thing anyone has to remember.
         """
-        predecessor = await self._last_enqueued_inbound_event(case_id)
+        predecessor = await self._last_enqueued_inbound_event(case_id, session=session)
         fields = await ordered_command_fields(
             self._database,
             case_id=case_id,
@@ -463,6 +496,7 @@ class DurableSupportIngressStore(DurableSupportEventStore):
             event_id=support_event_id,
             causation_id=predecessor,
             required_predecessor_ids=() if predecessor is None else (predecessor,),
+            session=session,
         )
         return {
             "_id": command_id,
@@ -484,7 +518,9 @@ class DurableSupportIngressStore(DurableSupportEventStore):
             **fields,
         }
 
-    async def _last_enqueued_inbound_event(self, case_id: str) -> str | None:
+    async def _last_enqueued_inbound_event(
+        self, case_id: str, *, session: Any
+    ) -> str | None:
         """The tail of this case's inbound chain, or `None` for the first link.
 
         Read from the *outbox* rather than from the message collection, because
@@ -492,10 +528,15 @@ class DurableSupportIngressStore(DurableSupportEventStore):
         stream yet, and naming one as a predecessor would be
         `UnknownPredecessorError` at best and a permanently-held dependent at
         worst.
+
+        Read *in the caller's transaction*, so this is the tail as of the same
+        point the sequence is allocated. Outside one it is a read that a
+        concurrent commit invalidates the instant it returns.
         """
         latest = await self._outbox_collection.find_one(
             {"aggregateId": case_id, "stream": CaseStream.INBOUND.value},
             sort=[("streamSequence", -1)],
+            session=session,
         )
         if latest is None:
             return None
