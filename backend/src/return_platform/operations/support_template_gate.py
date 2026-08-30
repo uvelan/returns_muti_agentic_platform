@@ -92,12 +92,14 @@ from return_platform.operations.case_commands import CaseCommandReceipt
 from return_platform.operations.models import FactAcquisition, FactChannel
 from return_platform.operations.review_aggregate import (
     REVIEW_DRAFT_EDITS,
+    TERMINAL_REVIEW_STATES,
     ReviewAggregateStore,
     ReviewConflictError,
     ReviewKind,
     ReviewNotFoundError,
     ReviewState,
     ReviewStateError,
+    TemplateReviewParkReason,
     canonical_review_payload,
 )
 from return_platform.operations.support_events import canonical_payload_digest
@@ -785,6 +787,54 @@ class SupportTemplateGateService:
         )
 
     # ---------------------------------------------------------------- reading
+
+    async def hold_unsettled(self, *, case_id: str) -> tuple[str, ...]:
+        """Park every review the gate is still holding (AMENDMENT-5, rule 2).
+
+        Called when the gate closes, whatever closed it -- settled, deadline,
+        or cancellation. **Rule 1 alone leaves an operator with only a
+        refusal**; this leaves them a legal action, and it is the half that
+        actually guarantees the property the amendment is for: no review is ever
+        in a state with no legal exit.
+
+        Every non-terminal state is moved, not only `APPROVING`. An `OPEN`
+        review after the gate has closed is the same trap through the approve
+        endpoint: approving CASes to `APPROVING`, the workflow discards the
+        notice, and `APPROVING`'s three exits are all workflow-driven. Moving it
+        out shuts that door rather than guarding it.
+
+        Idempotent, and it has to be: the gate can close more than once across a
+        `continue_as_new` boundary, and a case that reopens a held review and
+        parks again must not have its first hold reason overwritten. A review
+        already `HELD_FOR_OPERATIONS` is skipped by the state guard rather than
+        re-held, and a terminal one is left alone.
+
+        Returns the ids it moved, so the caller can log what it parked rather
+        than asserting it parked something.
+        """
+        held: list[str] = []
+        for review in await self._reviews.list_reviews(case_id):
+            state = ReviewState(str(review["state"]))
+            if state in TERMINAL_REVIEW_STATES or state is ReviewState.HELD_FOR_OPERATIONS:
+                continue
+            await self._reviews.hold_for_operations(
+                case_id=case_id,
+                review_id=str(review["_id"]),
+                reason=TemplateReviewParkReason.TEMPLATE_REVIEW_UNANSWERED,
+            )
+            held.append(str(review["_id"]))
+        return tuple(held)
+
+    async def holds_review(self, *, case_id: str, review_id: str) -> bool:
+        """Whether the review aggregate still shows this review as recoverable.
+
+        Not the liveness question rule 1 asks -- that one is asked of the
+        *execution*, because the execution is what would discard the notice.
+        This is here so a caller that has already established liveness can tell
+        a genuinely retryable review from one somebody abandoned in between.
+        """
+        review = await self._reviews.get_review(case_id=case_id, review_id=review_id)
+        return ReviewState(str(review["state"])) is ReviewState.DELIVERY_FAILED
 
     async def review(self, *, case_id: str, review_id: str) -> dict[str, Any]:
         """One review document, straight through.

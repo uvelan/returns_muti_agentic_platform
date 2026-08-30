@@ -58,6 +58,7 @@ from return_platform.operations.models import FactAcquisition
 from return_platform.operations.review_aggregate import (
     ReviewAggregateStore,
     ReviewState,
+    TemplateReviewParkReason,
     canonical_review_payload,
     ensure_review_indexes,
 )
@@ -257,7 +258,18 @@ class _GateActivities:
             "rerender_template_draft": self.rerender_template_draft,
             "record_template_revision": self.record_template_revision,
             "snapshot_sent_template": self.snapshot_sent_template,
+            # AMENDMENT-5 rule 2. Over the **real** gate service, like the four
+            # above: a double that answered "held nothing" would make every
+            # assertion below true of a gate that parks nothing at all.
+            "hold_unsettled_reviews": self.hold_unsettled_reviews,
         }
+
+    async def hold_unsettled_reviews(self, request: Any) -> Any:
+        from return_platform.workflows.return_case_workflow import HoldUnsettledReviewsResult
+
+        return HoldUnsettledReviewsResult(
+            held_review_ids=await self._gate.hold_unsettled(case_id=request.case_id)
+        )
 
     async def record_case_status(self, request: Any) -> None:
         del request
@@ -614,7 +626,16 @@ async def test_nobody_answering_parks_the_case_and_sends_nothing(
     assert instance._state.parked_reason == "TEMPLATE_REVIEW_UNANSWERED"  # noqa: SLF001
     assert support.posted == []
     reviews = await store.list_reviews(CASE_ID)
-    assert ReviewState(str(reviews[0]["state"])) is ReviewState.OPEN
+    # **AMENDMENT-5 changed this assertion, and the old one was right until it
+    # did.** Before the amendment the deadline left every review `OPEN`, on the
+    # reasoning that a late reviewer can still answer. That is true and it built
+    # a trap: with the gate closed, approving an `OPEN` review CASes it to
+    # `APPROVING`, the workflow discards the notice, and `APPROVING`'s three
+    # exits are all workflow-driven. The review would be stuck for good.
+    #
+    # So the gate parks what it was holding, and the late reviewer's path is now
+    # the reopen from `HELD_FOR_OPERATIONS` rather than an approve into nothing.
+    assert ReviewState(str(reviews[0]["state"])) is ReviewState.HELD_FOR_OPERATIONS
 
 
 @_async
@@ -712,7 +733,10 @@ async def test_a_gap_forces_the_hold_even_under_auto_send(
     reviews = await store.list_reviews(CASE_ID)
     assert reviews[0]["draftPayload"]["gaps"], "the fixture must actually gap"
     assert support.posted == [], "a gapped draft must not reach Support"
-    assert ReviewState(str(reviews[0]["state"])) is ReviewState.OPEN
+    # Parked on close, per AMENDMENT-5 rule 2 -- see
+    # `test_nobody_answering_parks_the_case_and_sends_nothing` for why this is
+    # no longer `OPEN`. The gap rule itself is unchanged: nothing was sent.
+    assert ReviewState(str(reviews[0]["state"])) is ReviewState.HELD_FOR_OPERATIONS
     assert instance._state.parked_reason == "TEMPLATE_REVIEW_GUARD_BLOCKED"  # noqa: SLF001
 
     # **The gap fact itself** (RV V1p2-1 F1). This is the only test in either
@@ -955,8 +979,11 @@ async def test_an_approved_request_is_sent_while_another_is_still_being_read(
 
     states = instance._state.template_review_states  # noqa: SLF001
     assert len(states) == 2, "the fixture must genuinely produce two requests"
-    # The first was never answered and the wait ended on the deadline.
-    assert states[REQUEST_ID] == ReviewState.OPEN.value
+    # The first was never answered and the wait ended on the deadline, so the
+    # close parked it (AMENDMENT-5 rule 2). The point of this test is unchanged
+    # and is the other assertion: the approved request went out **while** this
+    # one was unanswered.
+    assert states[REQUEST_ID] == ReviewState.HELD_FOR_OPERATIONS.value
     assert instance._state.parked_reason == "TEMPLATE_REVIEW_UNANSWERED"  # noqa: SLF001
 
 
@@ -1215,3 +1242,176 @@ def test_omitting_the_block_gives_the_reviewed_default_not_no_gate() -> None:
 
     assert timings.template_review_enabled is True
     assert timings.template_review_on_timeout == "hold"
+
+
+# --------------------------------------------------------------------------- #
+# AMENDMENT-5 rule 2: no review is left in a state with no legal exit
+# --------------------------------------------------------------------------- #
+
+
+@_async
+async def test_a_gate_closing_over_a_failed_delivery_parks_it_with_an_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    store: ReviewAggregateStore,
+    mongo: Any,
+    test_settings: Settings,
+    configuration: ReturnPlatformConfiguration,
+) -> None:
+    """The half that makes the guarantee rather than the refusal.
+
+    Rule 1 stops a retry stranding a review; on its own it leaves the operator
+    with nothing but a 409. This asserts the **property**, not the transition:
+    after the gate closes, the review is in a state that has a legal exit, and
+    the exits are reachable by the API rather than only by the workflow.
+    """
+    support = _Support()
+    gate = _gate_service(store, mongo, test_settings, configuration, support)
+    holder: list[ReturnCaseWorkflow] = []
+
+    async def approve_then_fail_the_send() -> None:
+        review_id = next(iter(holder[0]._state.template_reviews.values()))  # noqa: SLF001
+        await _approve(store, gate, review_id)
+        await store.mark_delivery_failed(
+            case_id=CASE_ID, review_id=review_id, error_code="SUPPORT_UNREACHABLE"
+        )
+
+    await _run_gate(
+        monkeypatch,
+        _GateActivities(gate),
+        _timings(configuration, review_wait_seconds=120, reminder_interval_seconds=60),
+        holder=holder,
+        arrivals=[approve_then_fail_the_send],
+    )
+
+    review = (await store.list_reviews(CASE_ID))[0]
+    state = ReviewState(str(review["state"]))
+    assert state is ReviewState.HELD_FOR_OPERATIONS
+    assert review["holdReason"] == TemplateReviewParkReason.TEMPLATE_REVIEW_UNANSWERED.value
+
+    # **The absence of the stranded state, asserted directly.** A review the
+    # gate has stopped holding must not be in any state whose exits are all
+    # workflow-driven -- which is what `APPROVING` is, and what the endpoint
+    # used to be able to put it into.
+    assert state is not ReviewState.APPROVING
+    assert state not in {ReviewState.OPEN, ReviewState.DELIVERY_FAILED}
+
+    # And both exits actually work from here, which is the point of choosing
+    # this state over any other.
+    reopened = await store.resume_from_hold(
+        case_id=CASE_ID, review_id=str(review["_id"]), actor_id="operator-a"
+    )
+    assert ReviewState(str(reopened["state"])) is ReviewState.OPEN
+    held_again = await store.hold_for_operations(
+        case_id=CASE_ID,
+        review_id=str(review["_id"]),
+        reason=TemplateReviewParkReason.TEMPLATE_REVIEW_UNANSWERED,
+    )
+    assert ReviewState(str(held_again["state"])) is ReviewState.HELD_FOR_OPERATIONS
+    abandoned = await store.abandon(
+        case_id=CASE_ID,
+        review_id=str(review["_id"]),
+        actor_id="operator-a",
+        reason="support resolved it on the phone",
+    )
+    assert ReviewState(str(abandoned["state"])) is ReviewState.ABANDONED
+
+
+@_async
+async def test_every_state_the_gate_can_close_over_ends_with_a_legal_exit(
+    monkeypatch: pytest.MonkeyPatch,
+    store: ReviewAggregateStore,
+    mongo: Any,
+    test_settings: Settings,
+    configuration: ReturnPlatformConfiguration,
+) -> None:
+    """The amendment says *every* non-terminal review, and this checks the word.
+
+    A test that only covered `DELIVERY_FAILED` would miss the `OPEN` case, which
+    is the one that is not obvious: an `OPEN` review after the gate has closed
+    is the same trap through the **approve** endpoint, because approving CASes
+    it to `APPROVING` and the workflow discards the notice.
+    """
+    support = _Support()
+    gate = _gate_service(store, mongo, test_settings, configuration, support)
+
+    # Closed with the review untouched, so it is `OPEN` on the way out.
+    await _run_gate(
+        monkeypatch,
+        _GateActivities(gate),
+        _timings(configuration, review_wait_seconds=120, reminder_interval_seconds=60),
+    )
+
+    review = (await store.list_reviews(CASE_ID))[0]
+    assert ReviewState(str(review["state"])) is ReviewState.HELD_FOR_OPERATIONS, (
+        "an OPEN review left behind by a closed gate can still be approved into "
+        "a state the workflow will never settle"
+    )
+
+
+@_async
+async def test_a_continue_as_new_is_not_a_close(
+    monkeypatch: pytest.MonkeyPatch,
+    store: ReviewAggregateStore,
+    mongo: Any,
+    test_settings: Settings,
+    configuration: ReturnPlatformConfiguration,
+) -> None:
+    """The one exit that must **not** park anything.
+
+    A `continue_as_new` unwinds this method and the next run re-enters it,
+    holding the same reviews. Parking on the way out would settle the gate
+    against itself: `HELD_FOR_OPERATIONS` is a resolved state, so the resumed
+    run would find every review settled and send nothing -- for a case nobody
+    had answered.
+    """
+    support = _Support()
+    gate = _gate_service(store, mongo, test_settings, configuration, support)
+
+    with pytest.raises(_ContinueAsNew):
+        await _run_gate(
+            monkeypatch,
+            _GateActivities(gate),
+            _timings(configuration, review_wait_seconds=600, reminder_interval_seconds=60),
+            suggest_continue_as_new=True,
+        )
+
+    review = (await store.list_reviews(CASE_ID))[0]
+    assert ReviewState(str(review["state"])) is ReviewState.OPEN, (
+        "a resumed gate must still have something to wait for"
+    )
+
+
+def test_the_workflows_state_words_are_the_aggregates() -> None:
+    """The workflow spells review states as **string literals**, on purpose.
+
+    `return_case_workflow.py` imports nothing from `review_aggregate`, which
+    keeps S2's module -- and everything it imports -- out of the Temporal
+    workflow sandbox. The cost is that the state names live in two places, and
+    this is the test that stops them drifting: a rename in S2's enum fails here
+    rather than in a running gate that silently never settles.
+
+    Both directions, because either alone is weak. Every word the workflow uses
+    must be a real state, and every non-terminal-plus-resolved state the
+    aggregate has must be accounted for -- a state S2 adds and the workflow has
+    never heard of would make `_reviews_settled` wait for ever.
+    """
+    aggregate_words = {state.value for state in ReviewState}
+
+    assert workflow_module._RESOLVED_REVIEW_STATES <= aggregate_words  # noqa: SLF001
+    assert "HELD_FOR_OPERATIONS" in aggregate_words
+    assert "OPEN" in aggregate_words
+    assert "CANCELLED" in aggregate_words
+
+    # The resolved set is exactly "not waiting on a human decision": every
+    # terminal state, plus the two the gate stops holding.
+    assert workflow_module._RESOLVED_REVIEW_STATES == {  # noqa: SLF001
+        ReviewState.SENT.value,
+        ReviewState.CANCELLED.value,
+        ReviewState.ABANDONED.value,
+        ReviewState.DELIVERY_FAILED.value,
+        ReviewState.HELD_FOR_OPERATIONS.value,
+    }
+    assert aggregate_words - workflow_module._RESOLVED_REVIEW_STATES == {  # noqa: SLF001
+        ReviewState.OPEN.value,
+        ReviewState.APPROVING.value,
+    }, "the two states the gate genuinely waits on"

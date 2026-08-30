@@ -112,6 +112,8 @@ from return_platform.workflows.return_case_workflow import (
     CaseEligibilityOutcome,
     DraftSupportRequestInput,
     EvaluateCaseEligibilityInput,
+    HoldUnsettledReviewsInput,
+    HoldUnsettledReviewsResult,
     OpenSupportWorkItemInput,
     PolicyGateState,
     RecordCaseCustomerInput,
@@ -1775,6 +1777,30 @@ class ReturnCaseActivities:
             note=request.note,
             fact_id_seed=request.fact_id_seed,
         )
+
+    @activity.defn(name="hold_unsettled_reviews")
+    async def hold_unsettled_reviews(
+        self, request: HoldUnsettledReviewsInput
+    ) -> HoldUnsettledReviewsResult:
+        """Park every review the gate was still holding when it closed.
+
+        AMENDMENT-5, rule 2, and the half that makes the guarantee rather than
+        the refusal: rule 1 stops a retry stranding a review, but on its own it
+        leaves an operator with only a 409. This leaves them a legal action, and
+        it is what makes "no review is ever in a state with no legal exit" true
+        rather than merely intended.
+
+        Idempotent by the aggregate's own state guard -- an already-held or
+        terminal review is skipped, not re-held, so a first hold reason survives
+        a second close.
+        """
+        held = await self._gate().hold_unsettled(case_id=request.case_id)
+        if held:
+            logger.info(
+                "template_reviews_held_on_gate_close",
+                extra={"case_id": request.case_id, "review_ids": list(held)},
+            )
+        return HoldUnsettledReviewsResult(held_review_ids=held)
 
     @activity.defn(name="snapshot_sent_template")
     async def snapshot_sent_template(

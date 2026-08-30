@@ -755,6 +755,25 @@ class TemplateReviewRevisionInput:
 
 
 @dataclass(frozen=True, slots=True)
+class HoldUnsettledReviewsInput:
+    """What `hold_unsettled_reviews` is given (AMENDMENT-5, rule 2)."""
+
+    case_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class HoldUnsettledReviewsResult:
+    """Which reviews the close actually parked.
+
+    Returned rather than voided so the workflow can record what it did. An
+    activity that answered nothing would make "the gate parks what it was
+    holding" a claim with no observation behind it.
+    """
+
+    held_review_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class SnapshotSentTemplateInput:
     """Send one approved review, and settle it.
 
@@ -1507,9 +1526,7 @@ class ReturnCaseWorkflow:
                 "approved",
                 TemplateReviewNotice(
                     review_id=review_id,
-                    scope_id=(
-                        None if notice.get("scope_id") is None else str(notice["scope_id"])
-                    ),
+                    scope_id=(None if notice.get("scope_id") is None else str(notice["scope_id"])),
                     signal_id=signal_id,
                 ),
             )
@@ -2223,6 +2240,13 @@ class ReturnCaseWorkflow:
         )
         self._state.template_review_deadline_iso = deadline.isoformat()
         self._state.template_review_open = True
+        # **A `continue_as_new` is not a close.** The next run re-enters this
+        # method and goes on holding the same reviews, so parking them here
+        # would settle the gate against itself -- `HELD_FOR_OPERATIONS` is a
+        # resolved state, so the resumed run would find every review settled and
+        # send nothing, for a case nobody had answered. Every *other* exit,
+        # including an exception, is a real close.
+        continuing = False
         try:
             while not self._reviews_settled() and self._state.cancellation is None:
                 await self._apply_template_notices(intended_work_item_id, timings)
@@ -2268,9 +2292,49 @@ class ReturnCaseWorkflow:
 
                 if workflow.info().is_continue_as_new_suggested():
                     await workflow.wait_condition(lambda: workflow.all_handlers_finished())
+                    continuing = True
                     workflow.continue_as_new(self._continued_input())
         finally:
             self._state.template_review_open = False
+            if not continuing:
+                await self._hold_unsettled_reviews()
+
+    async def _hold_unsettled_reviews(self) -> None:
+        """The gate is closing. Nothing it was holding may be left unreachable.
+
+        AMENDMENT-5, rule 2. Called from every real exit -- settled, deadline,
+        cancellation, or an exception -- and **not** from `continue_as_new`,
+        which is not a close.
+
+        Best-effort by design, and the reasoning is worth stating: this runs in
+        a `finally`, so a failure here would otherwise replace whatever was
+        already unwinding -- including a cancellation -- with an activity error,
+        and the case would lose the reason it was ending. A review left
+        unparked is visible on the panel and recoverable by a later close; an
+        exception swallowed by this one is not. The activity's own retry policy
+        is the first line, and this is the second.
+        """
+        workflow_input = self._require_input()
+        try:
+            result: HoldUnsettledReviewsResult = await workflow.execute_activity(
+                "hold_unsettled_reviews",
+                HoldUnsettledReviewsInput(case_id=workflow_input.case_id),
+                result_type=HoldUnsettledReviewsResult,
+                start_to_close_timeout=_PERSIST_TIMEOUT,
+                retry_policy=_PERSIST_RETRY,
+            )
+        except Exception:  # noqa: BLE001 - see the docstring
+            workflow.logger.warning("the review gate could not park its unsettled reviews on close")
+            return
+        for review_id in result.held_review_ids:
+            request_id = self._request_for_review(review_id)
+            if request_id is not None:
+                # The literal, matching this file's convention: the workflow
+                # module imports nothing from `review_aggregate`, which keeps
+                # S2's module out of the Temporal sandbox. The name is pinned
+                # against the enum by
+                # `test_the_workflows_state_words_are_the_aggregates`.
+                self._state.template_review_states[request_id] = "HELD_FOR_OPERATIONS"
 
     def _reviews_settled(self) -> bool:
         """Every review this case opened has reached a state nobody waits on.
@@ -2464,10 +2528,17 @@ class ReturnCaseWorkflow:
     ) -> None:
         """Nobody answered inside the window. `on_timeout` decides.
 
-        `hold` and `escalate` both park the case and **leave every review
-        `OPEN`**: the deadline passing does not make a draft un-reviewable, and
-        a reviewer who arrives late can still answer one. The difference is the
-        park reason, which is what an operations alert keys on.
+        `hold` and `escalate` both park the case; the difference is the park
+        reason, which is what an operations alert keys on.
+
+        **They no longer leave reviews `OPEN`** (AMENDMENT-5, rule 2). They used
+        to, on the reasoning that a deadline passing does not make a draft
+        un-reviewable -- which is true, and which built a trap: with the gate
+        closed, approving an `OPEN` review CASes it to `APPROVING`, the workflow
+        discards the notice, and `APPROVING`'s three exits are all
+        workflow-driven. The late reviewer's path is now the reopen from
+        `HELD_FOR_OPERATIONS`, which is a legal action rather than a dead end.
+        The parking itself is `_hold_unsettled_reviews`, on the way out.
 
         `auto_send` approves as the reserved `SYSTEM` actor -- the same
         transition, refused by the same rejections -- and is refused outright

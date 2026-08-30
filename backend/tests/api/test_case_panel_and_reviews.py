@@ -196,6 +196,41 @@ class _Temporal:
         return _Handle()
 
 
+@dataclass(frozen=True)
+class _ExecutionState:
+    """The parts of `ReturnCaseState` this surface reads.
+
+    `template_reviews` is the `(request_id, review_id)` map the running gate
+    holds -- the liveness answer AMENDMENT-5 rule 1 asks for, and already on the
+    query because the panel composes from it.
+    """
+
+    template_reviews: tuple[tuple[str, str], ...] = ()
+    status: str = "AWAITING_TEMPLATE_REVIEW"
+    work_item_id: str | None = None
+    awaiting: tuple[str, ...] = ()
+    business_complete: bool = False
+    parked_reason: str | None = None
+    template_review_deadline_iso: str | None = None
+    template_review_reminders_sent: int = 0
+
+
+class _LiveExecution:
+    """A workflow host that answers, and says what its gate is holding."""
+
+    def __init__(self, *, holding: tuple[tuple[str, str], ...] = ()) -> None:
+        self.state = _ExecutionState(template_reviews=holding)
+
+    def get_workflow_handle(self, _workflow_id: str) -> Any:
+        state = self.state
+
+        class _Handle:
+            async def query(self, _name: str) -> Any:
+                return state
+
+        return _Handle()
+
+
 def _client(
     mongo: FakeClient,
     test_settings: Settings,
@@ -972,7 +1007,10 @@ async def test_a_retry_reuses_the_delivery_identity_it_was_given(
     failed = await _failed_delivery(store, mongo, test_settings)
     assert failed["deliveryId"], "approval freezes the delivery identity"
 
-    with _client(mongo, test_settings) as client:
+    # The gate is still holding this review, which is what makes the retry
+    # legal at all (AMENDMENT-5 rule 1).
+    live = _LiveExecution(holding=((REQUEST_ID, REVIEW_ID),))
+    with _client(mongo, test_settings, temporal=live) as client:
         answer = client.post(
             f"/api/v1/cases/{CASE_ID}/reviews/{REVIEW_ID}/recovery/retry",
             json={"reason": "support came back up"},
@@ -1449,3 +1487,115 @@ def test_an_ordinary_draft_is_comfortably_inside_the_bound(
 
     assert answer.status_code == 200
     assert len(DRAFT) < 100
+
+
+# --------------------------------------------------------------------------- #
+# AMENDMENT-5 rule 1: a retry into a closed gate is refused, not swallowed
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_a_retry_after_the_gate_closed_is_refused_and_changes_nothing(
+    store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
+) -> None:
+    """The trap, and the guard that stops the operator building it.
+
+    Before AMENDMENT-5 this endpoint always succeeded: S2 CASes
+    `DELIVERY_FAILED -> APPROVING` and records the command in one transaction.
+    With the gate closed, the workflow discards the notice, the redelivery never
+    happens, and the review sits in `APPROVING` -- whose only three exits are
+    all workflow-driven -- while `abandon` is refused from there. **The
+    operator's own recovery action strands the review permanently.**
+
+    The load-bearing assertion is the last one: the review is **still**
+    `DELIVERY_FAILED`. A 409 that had already moved the state would be a refusal
+    in name only.
+    """
+    failed = await _failed_delivery(store, mongo, test_settings)
+    assert ReviewState(str(failed["state"])) is ReviewState.DELIVERY_FAILED
+
+    # The gate has closed: the execution holds nothing.
+    with _client(mongo, test_settings, temporal=_LiveExecution(holding=())) as client:
+        answer = client.post(
+            f"/api/v1/cases/{CASE_ID}/reviews/{REVIEW_ID}/recovery/retry",
+            json={"reason": "support came back up"},
+        )
+
+    assert answer.status_code == 409
+    detail = answer.json()["detail"]
+    assert detail["code"] == "ExecutionNoLongerHoldingReview"
+    # Naming the legal action is the point of refusing here rather than
+    # succeeding into a discard.
+    assert detail["state"] == ReviewState.HELD_FOR_OPERATIONS.value
+    assert "Reopen" in detail["message"]
+
+    after = await store.get_review(case_id=CASE_ID, review_id=REVIEW_ID)
+    assert ReviewState(str(after["state"])) is ReviewState.DELIVERY_FAILED, (
+        "a refusal that had already moved the state would be a refusal in name only"
+    )
+    assert not [
+        command
+        for command in await _commands(mongo, test_settings)
+        if command["kind"] == CaseCommandKind.REVIEW_DELIVERY_RETRY.value
+    ], "no command may be recorded for a redelivery nothing will apply"
+
+
+@pytest.mark.asyncio
+async def test_a_retry_we_cannot_adjudicate_is_503_not_409(
+    store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
+) -> None:
+    """ "The gate has closed" and "we cannot tell whether it has" are different
+    answers, and only one of them is retryable.
+
+    Failing closed either way is right -- a retry into an unknown execution is
+    exactly what builds the trap -- but telling an operator "this is final" when
+    the truth is "ask again in a minute" would send them to abandon a message
+    that was still perfectly deliverable.
+    """
+    await _failed_delivery(store, mongo, test_settings)
+
+    with _client(mongo, test_settings, temporal=_Temporal(RPCStatusCode.UNAVAILABLE)) as client:
+        answer = client.post(
+            f"/api/v1/cases/{CASE_ID}/reviews/{REVIEW_ID}/recovery/retry",
+            json={"reason": "support came back up"},
+        )
+
+    assert answer.status_code == 503
+    assert answer.json()["detail"]["code"] == "EXECUTION_LIVENESS_UNKNOWN"
+    assert answer.json()["detail"]["retryable"] is True
+    after = await store.get_review(case_id=CASE_ID, review_id=REVIEW_ID)
+    assert ReviewState(str(after["state"])) is ReviewState.DELIVERY_FAILED
+
+
+@pytest.mark.asyncio
+async def test_a_retried_recovery_post_records_one_command_not_two(
+    store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
+) -> None:
+    """RV advisory A1. This endpoint used a random `signal_id` while every other
+    decision on the surface used a deterministic one, so an operator who lost
+    the response and pressed again recorded a *second* command for one decision
+    -- throwing away the dedupe the command store already provides, at the one
+    endpoint a human retries by hand.
+    """
+    await _failed_delivery(store, mongo, test_settings)
+    live = _LiveExecution(holding=((REQUEST_ID, REVIEW_ID),))
+
+    with _client(mongo, test_settings, temporal=live) as client:
+        first = client.post(
+            f"/api/v1/cases/{CASE_ID}/reviews/{REVIEW_ID}/recovery/retry", json={"reason": "x"}
+        )
+        assert first.status_code == 200
+        # The review is `APPROVING` now, so the second POST is refused by the
+        # state guard -- but the *command* count is the property under test, and
+        # it is what a lost response would have doubled.
+        client.post(
+            f"/api/v1/cases/{CASE_ID}/reviews/{REVIEW_ID}/recovery/retry", json={"reason": "x"}
+        )
+
+    retries = [
+        command
+        for command in await _commands(mongo, test_settings)
+        if command["kind"] == CaseCommandKind.REVIEW_DELIVERY_RETRY.value
+    ]
+    assert len(retries) == 1
+    assert retries[0]["signalId"] == f"review_delivery_retry:{REVIEW_ID}"

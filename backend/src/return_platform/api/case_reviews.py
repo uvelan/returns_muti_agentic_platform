@@ -45,6 +45,7 @@ from typing import Annotated, Any, Final, cast
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
+from temporalio.service import RPCError
 
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
 from return_platform.operations.case_commands import (
@@ -203,6 +204,38 @@ async def case_execution_state(
             ),
         ),
     )
+
+
+async def execution_holds_review(request: Request, case_id: str, review_id: str) -> bool | None:
+    """Whether the running execution is still holding this review.
+
+    **The liveness question AMENDMENT-5 rule 1 asks**, and it is asked of the
+    *execution* rather than of the review aggregate on purpose: the aggregate
+    says what state the review is in, but only the execution knows whether
+    anything is still listening for a decision about it. A retry that satisfies
+    the aggregate and not the execution is exactly the one that strands the
+    review.
+
+    `execution_state` already carries `template_reviews` -- the
+    `(request_id, review_id)` pairs this run holds -- because the panel composes
+    from it. No new query and no new field.
+
+    `None` means **could not determine**: no Temporal client in this process, or
+    the host would not answer. The caller refuses on `None`, and 503 rather than
+    409, because "the gate has closed" and "we cannot tell whether it has" are
+    different answers and only one of them is retryable.
+    """
+    resources = getattr(request.app.state, "resources", None)
+    temporal = getattr(resources, "temporal", None) if resources is not None else None
+    if temporal is None:
+        return None
+    try:
+        handle = temporal.get_workflow_handle(return_case_workflow_id(case_id))
+        state = await handle.query("execution_state")
+    except (TimeoutError, ConnectionError, RPCError):
+        return None
+    held = getattr(state, "template_reviews", ()) or ()
+    return any(str(pair[1]) == review_id for pair in held if len(tuple(pair)) == 2)
 
 
 def _attribute(state: Any, name: str) -> str | None:
@@ -942,14 +975,59 @@ async def retry_review_delivery(
     message. See `security/capabilities.py`.
     """
     del body
+    actor_id = _actor_of(request)
     await require_case_access(request, case_id)
+
+    # **AMENDMENT-5, rule 1 -- and this check must come before the CAS, not
+    # after it.** `retry_delivery` moves `DELIVERY_FAILED -> APPROVING` and
+    # records the command in one transaction, and it always succeeded. If the
+    # gate has already closed, the workflow discards the notice, the redelivery
+    # never happens, and the review sits in `APPROVING` -- whose only three
+    # exits are workflow-driven -- while `abandon` is refused from there. The
+    # operator's own recovery action built the trap.
+    holds = await execution_holds_review(request, case_id, review_id)
+    if holds is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "EXECUTION_LIVENESS_UNKNOWN",
+                "message": (
+                    "This process cannot reach the workflow host, so it cannot tell whether "
+                    "a redelivery would be applied. Nothing was changed; try again shortly."
+                ),
+                "retryable": True,
+            },
+        )
+    if not holds:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "ExecutionNoLongerHoldingReview",
+                # Names the legal action, which is the whole point of refusing
+                # here rather than succeeding into a discard: rule 2 has already
+                # moved this review to `HELD_FOR_OPERATIONS`, from which
+                # reopening and abandoning are both legal.
+                "message": (
+                    "This return is no longer waiting on that message, so it cannot be "
+                    "re-sent. Reopen the review to send it again, or stop trying and record "
+                    "why."
+                ),
+                "retryable": False,
+                "state": ReviewState.HELD_FOR_OPERATIONS.value,
+            },
+        )
+
     dependencies = panel_dependencies(request)
-    signal_id = str(uuid.uuid4())
+    # Deterministic, like every other decision on this surface (RV advisory A1).
+    # A random id made a client that lost the response record a *second* command
+    # for one decision, which is the dedupe the command store already provides
+    # being thrown away at the one endpoint an operator retries by hand.
+    signal_id = f"{CaseCommandKind.REVIEW_DELIVERY_RETRY.value}:{review_id}"
     try:
         review, receipt = await dependencies.reviews.retry_delivery(
             case_id=case_id,
             review_id=review_id,
-            actor_id=_actor_of(request),
+            actor_id=actor_id,
             workflow_id=return_case_workflow_id(case_id),
             signal_id=signal_id,
             correlation_id=str(getattr(request.state, "correlation_id", "")) or None,

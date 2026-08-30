@@ -74,6 +74,7 @@ def create_return_workflow_worker(
             case_activities.record_template_draft,
             case_activities.record_template_revision,
             case_activities.rerender_template_draft,
+            case_activities.hold_unsettled_reviews,
             case_activities.snapshot_sent_template,
         )
     return Worker(
