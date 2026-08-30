@@ -19,6 +19,12 @@ per case by `configurationReleaseId` like every other section of
   rules); `literal:` is constant text -- the banner and fixed action lines of
   today's handoff, which no case-bound source could produce. It resolves to
   itself, can never gap, and carries no expression grammar of any kind.
+- `return_record:<attr>` names **an attribute the record projection declares**
+  and nothing else (contracts.md AMENDMENT-2). The allowlist is derived from
+  `ReturnRecordProjection.model_fields`, so it cannot drift from the projection
+  it describes, and an undeclared name is a refused release rather than a
+  reach into an open namespace -- `return_record:__class__` used to resolve to
+  a class object and render `<class '...'>` into a message a person reads.
 
 Everything here is `extra="forbid"`: an unknown key in a release is a refused
 release, not a silently ignored one.
@@ -26,6 +32,7 @@ release, not a silently ignored one.
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Annotated, Final
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
@@ -40,6 +47,7 @@ __all__ = [
     "TemplateSectionConfiguration",
     "TemplateVariantConfiguration",
     "binding_source",
+    "record_attributes",
     "subject_placeholders",
 ]
 
@@ -47,6 +55,25 @@ NonBlank = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1,
 
 #: The closed set of binding source prefixes. Order is documentation only.
 BINDING_SOURCES: Final[tuple[str, ...]] = ("case_fact", "return_record", "graph", "literal")
+
+
+@lru_cache(maxsize=1)
+def record_attributes() -> frozenset[str]:
+    """Every attribute a `return_record:` binding may name (AMENDMENT-2).
+
+    **Derived, never hand-listed:** the projection is the declaration, so a
+    field added there becomes bindable in the same commit and a field removed
+    there stops being bindable. A hand-copied list would be a second definition
+    of the record's surface, and the copy is always the one that drifts.
+
+    Imported inside the function because the projection package pulls the agent
+    registry, which imports `return_configuration`, which imports this module --
+    a real cycle, not a style preference. Cached, because `binding_source` runs
+    per field per render.
+    """
+    from return_platform.operations.case_projection.contract import ReturnRecordProjection
+
+    return frozenset(ReturnRecordProjection.model_fields)
 
 
 class StrictConfigModel(BaseModel):
@@ -63,7 +90,28 @@ def binding_source(source_binding: str) -> tuple[str, str]:
         )
     if not path.strip() and source != "literal":
         raise ValueError(f"binding {source_binding!r} names no path")
+    if source == "return_record" and path not in record_attributes():
+        # AMENDMENT-2. Refused here rather than at render time, so a template
+        # that reaches outside the projection cannot become a release at all.
+        raise ValueError(
+            f"return_record:{path} names no attribute the record projection declares; "
+            f"allowed: {', '.join(sorted(record_attributes()))}"
+        )
     return source, path
+
+
+def _declared_source(source_binding: str) -> str | None:
+    """The binding's source prefix, or `None` when it is not a valid binding.
+
+    `per_record` asks a structural question about a template that has already
+    been validated, so a refusal is unreachable there -- but it is asked while
+    *planning* a render, before any field is resolved, and a plan that raises
+    would take down the whole handoff over one bad field. So the question is
+    answered rather than refused, and the refusal happens per field, where it
+    can become a gap.
+    """
+    source, separator, _ = source_binding.partition(":")
+    return source if separator and source in BINDING_SOURCES else None
 
 
 def subject_placeholders(subject_template: str) -> tuple[str, ...]:
@@ -183,10 +231,7 @@ class TemplateSectionConfiguration(StrictConfigModel):
 
     @property
     def per_record(self) -> bool:
-        return any(
-            binding_source(field.source_binding)[0] == "return_record"
-            for field in self.fields
-        )
+        return any(_declared_source(field.source_binding) == "return_record" for field in self.fields)
 
 
 class TemplateVariantConfiguration(StrictConfigModel):

@@ -304,6 +304,38 @@ class TestPerRecordSections:
         (section,) = rendered.sections
         assert [field.value for field in section.fields] == ["RMA-1", "Not available"]
 
+    async def test_an_undeclared_attribute_degrades_rather_than_reaching(self) -> None:
+        """AMENDMENT-2, from the render side.
+
+        Release validation already refuses `return_record:__class__`, so this
+        template is built past it. The point is what the *resolver* does if it
+        is ever handed such a name anyway: it must treat it as an absent value
+        -- a gap or a fallback -- and never resolve it, so `<class '...'>`
+        cannot reach the message a person on the Support desk reads, and no
+        exception escapes to the caller either.
+        """
+        template = self._template()
+        reaching = template.variants[0].sections[0].fields[0].model_copy(
+            update={"source_binding": "return_record:__class__", "required": True}
+        )
+        section = template.variants[0].sections[0].model_copy(
+            update={"fields": (reaching,)}
+        )
+        variant = template.variants[0].model_copy(update={"sections": (section,)})
+        template = template.model_copy(update={"variants": (variant,)})
+
+        rendered = await render_support_template(
+            template,
+            TemplateDraftInput(
+                case_id="c",
+                context=TemplateRenderContext(),
+                facts={},
+                return_records=({"returnRecordId": "rec-1", "returnReference": "RMA-1"},),
+            ),
+        )
+        assert rendered.text.find("class") == -1
+        assert [gap.field_id for gap in rendered.gaps] == ["rma"]
+
 
 class TestGraphBatching:
     pytestmark = pytest.mark.asyncio

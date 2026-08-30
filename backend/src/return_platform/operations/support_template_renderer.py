@@ -26,7 +26,9 @@ selector with no clauses matches nothing (see
   which lines trace to the fact log and which to the draft-time snapshot.
 - `return_record:<attr>` reads one attribute off that record's projection
   (`ReturnRecordProjection` or an equivalent mapping); only meaningful inside
-  a per-record section, which is any section holding such a binding.
+  a per-record section, which is any section holding such a binding. The
+  attribute must be one the projection **declares** (contracts.md
+  AMENDMENT-2): the reach is the projection's surface, not an open namespace.
 - `graph:<source>/<path>` reads through `SupportTemplateGraphPort`. Missing
   values are **batched**: the render collects every missing graph binding,
   issues one `synchronize(source, paths)` per source, then retries them all
@@ -37,8 +39,10 @@ selector with no clauses matches nothing (see
   contract the batching exists for.
 - `literal:<text>` is the text, verbatim. It cannot fail and cannot gap.
 
-`fallback` applies only after the declared binding fails (absent value or a
-formatter refusal). A `required` field that still has nothing is a
+`fallback` applies only after the declared binding fails (absent value, a
+formatter refusal, or a binding release validation would have refused -- which
+should be unreachable, and is answered as a field-level failure rather than an
+exception that takes the whole handoff down). A `required` field that still has nothing is a
 `TemplateGap{field_id, reason}` -- review-blocking, and the only place gaps
 come from. A non-required field with no fallback simply does not render,
 because printing a guessed value is the failure mode this whole module
@@ -64,6 +68,7 @@ from return_platform.configuration.support_template_configuration import (
     TemplateSectionConfiguration,
     TemplateVariantConfiguration,
     binding_source,
+    record_attributes,
 )
 from return_platform.operations.template_formatters import (
     UNAVAILABLE,
@@ -243,6 +248,19 @@ def _record_id(record: Any) -> str:
 
 
 def _record_attribute(record: Any, attribute: str) -> Any:
+    """One declared projection attribute, and nothing else (AMENDMENT-2).
+
+    The allowlist is checked here as well as at release validation, and not
+    because a validated release can get past that check -- it cannot. It is
+    checked here because this function is the only thing standing between a
+    name and `getattr`, and a reader auditing the reach should be able to
+    settle the question by reading this function rather than by proving that
+    every caller upstream validated first. An undeclared name resolves to
+    `None`, which the caller turns into an ordinary binding failure -- a gap
+    or a fallback, never an exception escaping to the render.
+    """
+    if attribute not in record_attributes():
+        return None
     if isinstance(record, Mapping):
         return record.get(attribute)
     return getattr(record, attribute, None)
@@ -496,7 +514,24 @@ async def render_support_template(
         for field_configuration in section.fields:
             if not _visible(field_configuration.visibility_rule, context):
                 continue
-            source, path = binding_source(field_configuration.source_binding)
+            try:
+                source, path = binding_source(field_configuration.source_binding)
+            except ValueError as refusal:
+                # A binding release validation would have refused. Reaching it
+                # here means something bypassed that gate, and the answer is a
+                # field-level failure -- a gap, or a fallback -- rather than an
+                # exception that takes the whole handoff down with it. The
+                # render still says, per field, that it could not resolve.
+                rendered, gap = _formatted(
+                    field_configuration,
+                    _Resolution(None, failure=str(refusal)),
+                    "binding",
+                    field_configuration.source_binding,
+                )
+                if gap is not None:
+                    gaps.append(gap)
+                rendered_fields.append(rendered)
+                continue
             if source == "literal":
                 resolution = _Resolution(path)
             elif source == "case_fact":

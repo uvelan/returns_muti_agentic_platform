@@ -17,8 +17,10 @@ from return_platform.configuration.support_template_configuration import (
     TemplateSectionConfiguration,
     TemplateVariantConfiguration,
     binding_source,
+    record_attributes,
     subject_placeholders,
 )
+from return_platform.operations.case_projection.contract import ReturnRecordProjection
 
 _PRODUCTION_YAML = Path(__file__).resolve().parents[2] / "config" / "returns" / "production.yaml"
 
@@ -88,6 +90,42 @@ class TestBindingGrammar:
         source, path = binding_source("literal:- Review the complete return request.")
         assert source == "literal"
         assert path == "- Review the complete return request."
+
+
+class TestRecordAttributeReach:
+    """contracts.md AMENDMENT-2: `return_record:` reaches the projection's
+    declared surface and nothing else."""
+
+    @pytest.mark.parametrize(
+        "attribute",
+        ["returnRecordId", "returnReference", "status", "returnMethod", "returnLocation"],
+    )
+    def test_a_declared_attribute_is_accepted(self, attribute: str) -> None:
+        assert _field(source_binding=f"return_record:{attribute}").source_binding.endswith(
+            attribute
+        )
+
+    def test_the_allowlist_is_the_projection_itself(self) -> None:
+        # Derived, not hand-listed: a field added to the projection is bindable
+        # without an edit to the configuration module.
+        assert record_attributes() == frozenset(ReturnRecordProjection.model_fields)
+        assert "artifacts" in record_attributes()
+
+    def test_a_dunder_is_refused_at_release_validation(self) -> None:
+        # `return_record:__class__` resolved to a class object and rendered
+        # `<class '...'>` into a message a person on the Support desk reads.
+        with pytest.raises(ValidationError, match="declares"):
+            _field(source_binding="return_record:__class__")
+
+    def test_a_method_on_the_projection_is_refused(self) -> None:
+        # Declared *fields*, not the whole attribute surface: `active_shipments`
+        # is a real method and still not a binding target.
+        with pytest.raises(ValidationError, match="declares"):
+            _field(source_binding="return_record:active_shipments")
+
+    def test_an_undeclared_attribute_is_refused(self) -> None:
+        with pytest.raises(ValidationError, match="declares"):
+            _field(source_binding="return_record:no_such_attribute")
 
 
 class TestSubjectPlaceholders:
