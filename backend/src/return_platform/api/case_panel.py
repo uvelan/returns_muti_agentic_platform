@@ -27,12 +27,15 @@ import logging
 from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from temporalio.service import RPCError, RPCStatusCode
 
 # Module level, and safe: `case_reviews` imports this module's *operations*
 # sibling, never this one. The lazy imports further down are for the request-time
 # helpers, which is a different problem (they reach app state).
 from return_platform.api.case_reviews import ReviewRefusal
+from return_platform.api.execution_liveness import (
+    ExecutionAnswer,
+    classify_execution_failure,
+)
 from return_platform.operations.case_panel import (
     AcceptedCommandView,
     CasePanelView,
@@ -195,17 +198,6 @@ def _review_view(review: dict[str, Any], flagged: set[str]) -> ReviewPanelView:
     )
 
 
-#: Temporal answers a panel is allowed to render as `degraded` rather than as a
-#: 500. `NOT_FOUND` is a case whose execution this deployment cannot see;
-#: `UNAVAILABLE` and `DEADLINE_EXCEEDED` are the host having a bad minute.
-_DEGRADABLE_RPC_STATUSES: frozenset[RPCStatusCode] = frozenset(
-    {
-        RPCStatusCode.NOT_FOUND,
-        RPCStatusCode.UNAVAILABLE,
-        RPCStatusCode.DEADLINE_EXCEEDED,
-    }
-)
-
 _RECOVERABLE: frozenset[str] = frozenset(
     {ReviewState.DELIVERY_FAILED.value, ReviewState.HELD_FOR_OPERATIONS.value}
 )
@@ -229,31 +221,39 @@ async def _execution(request: Request, case_id: str) -> tuple[PanelExecutionView
     try:
         answered = await case_execution_state(request, case_id)
     except TimeoutError:
+        # Kept ahead of the shared classifier, which would also read this as
+        # `UNREACHABLE`. The panel renders a *reason an operator reads*, and
+        # "the query timed out" is a finer and more useful answer than "the host
+        # is unreachable"; the endpoint only needs the retry decision, which is
+        # the same either way. A finer reason here is not a disagreement with
+        # the endpoint -- it is the same classification, said more precisely for
+        # a surface that has room to say it.
         return (
             PanelExecutionView(status="degraded", reason="EXECUTION_QUERY_TIMEOUT"),
             PanelTimersView(),
         )
-    except ConnectionError:
-        return (
-            PanelExecutionView(status="degraded", reason="EXECUTION_HOST_UNREACHABLE"),
-            PanelTimersView(),
-        )
-    except RPCError as error:
+    except Exception as error:
         # **The workflow host answered, and its answer is a normal one.** A case
         # raised before the gate deployed, one whose execution has aged out of
-        # retention, or a host that is up but refusing -- none of those is a
-        # panel failure, and letting them 500 would take the reviews down with
-        # them for a case whose reviews are read from Mongo and are perfectly
-        # true. Anything outside this map still propagates: a panel that
+        # retention, or a host having a bad minute -- none of those is a panel
+        # failure, and letting them 500 would take the reviews down with them
+        # for a case whose reviews are read from Mongo and are perfectly true.
+        # Anything the classifier does not own still propagates: a panel that
         # rendered "degraded" over a contract violation would hide it.
-        if error.status not in _DEGRADABLE_RPC_STATUSES:
+        #
+        # Classified through the **shared** reader, so this surface and the
+        # recovery endpoint cannot disagree about a status code again -- they
+        # did, about `NOT_FOUND`, and it cost an operator the exit they were
+        # entitled to (RV V1p2-2, F3 and A4).
+        answer = classify_execution_failure(error)
+        if answer is None:
             raise
         return (
             PanelExecutionView(
                 status="degraded",
                 reason=(
                     "EXECUTION_NOT_AVAILABLE"
-                    if error.status is RPCStatusCode.NOT_FOUND
+                    if answer is ExecutionAnswer.ABSENT
                     else "EXECUTION_HOST_UNREACHABLE"
                 ),
             ),

@@ -45,8 +45,11 @@ from typing import Annotated, Any, Final, cast
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
-from temporalio.service import RPCError
 
+from return_platform.api.execution_liveness import (
+    ExecutionAnswer,
+    classify_execution_failure,
+)
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
 from return_platform.operations.case_commands import (
     CaseCommandKind,
@@ -232,8 +235,18 @@ async def execution_holds_review(request: Request, case_id: str, review_id: str)
     try:
         handle = temporal.get_workflow_handle(return_case_workflow_id(case_id))
         state = await handle.query("execution_state")
-    except (TimeoutError, ConnectionError, RPCError):
-        return None
+    except Exception as error:
+        answer = classify_execution_failure(error)
+        if answer is None:
+            # Not a liveness answer -- a `PERMISSION_DENIED`, a bad payload, a
+            # bug. Somebody's incident, and hiding it behind "try again shortly"
+            # would keep it hidden for as long as anyone kept pressing.
+            raise
+        # **`NOT_FOUND` is an answer, not a failure.** There is no such
+        # execution, so nothing is holding this review, and there will not be
+        # in thirty seconds. Collapsing it into "cannot tell" is what told an
+        # operator to come back later about a workflow that does not exist.
+        return False if answer is ExecutionAnswer.ABSENT else None
     held = getattr(state, "template_reviews", ()) or ()
     return any(str(pair[1]) == review_id for pair in held if len(tuple(pair)) == 2)
 
@@ -483,6 +496,34 @@ _REFUSALS: dict[int | str, dict[str, Any]] = {
         "model": ReviewRefusal,
         "description": "No such case, or no such review on it.",
     },
+}
+
+#: Why a retry is refused from each state that is not `DELIVERY_FAILED`, in the
+#: associate's words and **naming what they can do instead**.
+#:
+#: A bare "wrong state" would be the 409 that sends somebody back to press the
+#: same button. `HELD_FOR_OPERATIONS` is the one that matters most -- it is the
+#: state rule 2 created so an operator would have an exit, and it is where the
+#: ordinary gate-closes-then-operator-arrives sequence lands.
+_RETRY_REFUSALS_BY_STATE: dict[ReviewState, str] = {
+    ReviewState.HELD_FOR_OPERATIONS: (
+        "This message is held for operations, so it cannot be re-sent as it stands. "
+        "Reopen the review to send it again, or stop trying and record why."
+    ),
+    ReviewState.OPEN: (
+        "This message has not been sent yet, so there is nothing to re-send. Review it "
+        "and send it when you are ready."
+    ),
+    ReviewState.APPROVING: "This message is being sent now. Wait for it to finish.",
+    ReviewState.SENT: "Support has already received this message.",
+    ReviewState.CANCELLED: (
+        "This message was cancelled and will not be sent. Start a fresh draft if Support "
+        "still needs to be asked."
+    ),
+    ReviewState.ABANDONED: (
+        "Delivery of this message was abandoned. Start a fresh draft if Support still "
+        "needs to be asked."
+    ),
 }
 
 #: The recovery retry's extra answer (AMENDMENT-5, rule 1). Declared for the
@@ -773,6 +814,18 @@ async def approve_review(
     """
     await require_case_access(request, case_id)
     dependencies = panel_dependencies(request)
+    # **Random here, deterministic on retry, and the asymmetry is deliberate**
+    # (RV advisory A3 -- recorded at the site so a later tidier does not "fix
+    # the inconsistency"). The rule: *deterministic where a repeat means
+    # "again", random where it means "somebody else".* A deterministic approval
+    # id would collide with the frozen CAS key, so a **second** actor approving
+    # the same version would meet `record_command`'s "same signalId, same
+    # payload -> idempotent no-op" and read a duplicate receipt as success --
+    # when the message that actually went out was the *first* actor's. Random,
+    # they meet the frozen CAS instead and get the 409 that correctly says
+    # somebody else approved this version. Retry is genuinely the other case:
+    # a second operator asking for the same stored delivery identity is asking
+    # for the same thing, so its id is derived (see `retry_review_delivery`).
     signal_id = str(uuid.uuid4())
     try:
         review, receipt = await dependencies.gate.approve(
@@ -992,14 +1045,42 @@ async def retry_review_delivery(
     del body
     actor_id = _actor_of(request)
     await require_case_access(request, case_id)
+    dependencies = panel_dependencies(request)
 
-    # **AMENDMENT-5, rule 1 -- and this check must come before the CAS, not
-    # after it.** `retry_delivery` moves `DELIVERY_FAILED -> APPROVING` and
-    # records the command in one transaction, and it always succeeded. If the
-    # gate has already closed, the workflow discards the notice, the redelivery
-    # never happens, and the review sits in `APPROVING` -- whose only three
-    # exits are workflow-driven -- while `abandon` is refused from there. The
-    # operator's own recovery action built the trap.
+    # **The review's own state first, then liveness** (RV V1p2-2 F3).
+    #
+    # Asking the workflow host first turned a *definitive* refusal into an
+    # indefinite one on the path that is most common in production. The ordinary
+    # sequence is: gate closes, rule 2 parks the review, operator arrives -- so
+    # the review is `HELD_FOR_OPERATIONS`, and any transient host wobble answered
+    # "try again shortly" for a review that can **never** be retried, and never
+    # named `resume_from_hold` or `abandon`. That is precisely the exit rule 2
+    # exists to provide.
+    #
+    # **This does not disturb AMENDMENT-5's ordering.** The amendment's concern
+    # is that a guard must not run *after* the state-moving transaction; reading
+    # is not the CAS, and `retry_delivery` performs this same read internally
+    # before its own guard. The liveness check still runs before anything moves.
+    try:
+        current = await dependencies.reviews.get_review(case_id=case_id, review_id=review_id)
+    except ReviewNotFoundError as error:
+        raise _missing(error) from None
+    state = ReviewState(str(current["state"]))
+    if state is not ReviewState.DELIVERY_FAILED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "ReviewStateError",
+                "message": _RETRY_REFUSALS_BY_STATE.get(
+                    state, "This message cannot be re-sent from its current state."
+                ),
+                "retryable": False,
+                "state": state.value,
+            },
+        )
+
+    # Only now is liveness the question. The state permits a retry; what remains
+    # is whether anything is still listening for one.
     holds = await execution_holds_review(request, case_id, review_id)
     if holds is None:
         raise HTTPException(
@@ -1018,21 +1099,23 @@ async def retry_review_delivery(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "code": "ExecutionNoLongerHoldingReview",
-                # Names the legal action, which is the whole point of refusing
-                # here rather than succeeding into a discard: rule 2 has already
-                # moved this review to `HELD_FOR_OPERATIONS`, from which
-                # reopening and abandoning are both legal.
+                # **Names the legal action, and only the ones that really are.**
+                # The state here is `DELIVERY_FAILED` -- the guard above has
+                # already refused every other -- and its two arrows are
+                # `APPROVING`, which is what we are refusing, and `ABANDONED`.
+                # Reopening is *not* legal from here (it is an arrow out of
+                # `HELD_FOR_OPERATIONS`), so offering it would send an operator
+                # to a second refusal.
                 "message": (
                     "This return is no longer waiting on that message, so it cannot be "
-                    "re-sent. Reopen the review to send it again, or stop trying and record "
-                    "why."
+                    "re-sent. Stop trying and record why, or start a fresh draft if "
+                    "Support still needs to be asked."
                 ),
                 "retryable": False,
-                "state": ReviewState.HELD_FOR_OPERATIONS.value,
+                "state": state.value,
             },
         )
 
-    dependencies = panel_dependencies(request)
     # Deterministic, like every other decision on this surface (RV advisory A1).
     # A random id made a client that lost the response record a *second* command
     # for one decision, which is the dedupe the command store already provides

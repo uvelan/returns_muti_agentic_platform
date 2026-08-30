@@ -168,7 +168,17 @@ def test_router_mounting_is_the_bulk_of_create_app_and_that_is_allowed() -> None
     # Support at `.../work-items/{id}/inbound-messages`. A separate router from
     # `return_support` because `.../messages` on that prefix is the associate's
     # own surface -- see AMENDMENT-3 in `.plan/contracts.md`.
-    assert len(mounts) == 36, (
-        f"{len(mounts)} routers are mounted, expected 36; if Wave F deleted one, "
+    # 36 -> 38 for V1 phase 2's two: `case_panel_router` (`api/case_panel.py`,
+    # the composed read) and `case_reviews_router` (`api/case_reviews.py`, every
+    # mutation on it). Two routers over one `/api/v1/cases` prefix rather than
+    # one, because the read is hashed and cacheable and the mutations are
+    # neither -- a single module would have made that difference a comment.
+    #
+    # Taken from the walk, not from the failure: `ast.walk` over `main.py`
+    # measures 38, and trunk measured 36 before this branch added exactly these
+    # two. Fitting the number to the test is how this reading came to be 33
+    # while `main.py` mounted 35.
+    assert len(mounts) == 38, (
+        f"{len(mounts)} routers are mounted, expected 38; if Wave F deleted one, "
         "update this number in the same commit"
     )
