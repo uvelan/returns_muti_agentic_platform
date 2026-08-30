@@ -42,6 +42,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
+from return_platform.configuration.support_ingress_configuration import FALLBACK_INTENT
 from return_platform.platform.capabilities.tool_schemas import (
     UnknownInputSchemaError,
     known_input_schema_refs,
@@ -176,6 +177,41 @@ class SupportResolverConfiguration(StrictConfigModel):
     #: Model invocations one case may spend on resolution, across all its
     #: support questions. Exhaustion writes a fact and escalates.
     per_case_llm_budget: int = Field(default=12, gt=0)
+    #: Which classified intents reach the resolution ladder at all.
+    #:
+    #: **`info_request` alone by default**, and that is a substantive choice
+    #: rather than a conservative one. Of sect. 5's closed taxonomy --
+    #: `info_request, rma_issued, label_issued, shipping_instruction,
+    #: tracking_provided, partial_fulfillment, rejection, acknowledgement,
+    #: other` -- `info_request` is the only member in which Support is *asking*
+    #: rather than *telling*. The other seven are Support informing the platform,
+    #: and V2's extraction already commits what they say; running a ladder over
+    #: one of them would compose a reply to a statement.
+    #:
+    #: Released rather than hardcoded because "which questions the platform tries
+    #: to answer by itself" is exactly the kind of reach a deployment should be
+    #: able to narrow to nothing (`()` disables resolution entirely) or widen
+    #: deliberately -- not a constant in a dispatcher.
+    trigger_intents: tuple[NonBlank, ...] = ("info_request",)
+
+    @model_validator(mode="after")
+    def the_fallback_intent_cannot_trigger(self) -> SupportResolverConfiguration:
+        """`other` may not be a trigger intent, and this is refused at parse time.
+
+        `other` is not a classification; it is `coerce_intent`'s sink for
+        *everything the classifier did not recognise*. Triggering on it would
+        run the ladder -- and spend the model budget -- on every unclassifiable
+        message on every case, which is the opposite of the closed set sect. 5
+        exists to keep closed. A release that names it is refused with this
+        sentence rather than discovered as a bill.
+        """
+        if FALLBACK_INTENT in self.trigger_intents:
+            raise ValueError(
+                f"{FALLBACK_INTENT!r} cannot be a trigger intent: it is the sink for every "
+                "classification the released taxonomy does not recognise, so triggering on "
+                "it triggers on everything"
+            )
+        return self
 
     def bindings_for_intent(self, intent: str) -> tuple[ToolBindingConfiguration, ...]:
         """Eligible bindings for a validated intent, in declaration order.
