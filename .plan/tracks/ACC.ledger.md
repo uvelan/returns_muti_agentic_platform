@@ -151,3 +151,89 @@ configuration)` + `ResolveBusinessDeadlineInput(from_iso, working_seconds,
 business_calendar_id, timezone)` — all as declared, none adapted.
 
 **Next step:** step:03 — kill/restart harness scaffolding (brief item 1).
+
+---
+
+## step:03 — kill/restart harness scaffolding (brief item 1)
+
+**Files (all new):** `backend/tests/harness/chaos_restart.py`,
+`backend/tests/harness/test_chaos_restart.py`,
+`backend/tests/harness/test_chaos_restart_smoke_real_infra.py`.
+
+**Primitives only.** No scenario tests: items 14–18, 20 and 23 are assertions
+about code that does not exist until V3 merges, and a scenario written ahead of
+its subject is a scenario written against a guess.
+
+- `WorkerSpec` / `WorkerProcess` — start, `kill`, `stop`, `restart`, `pid`,
+  `is_running`, context manager. `RETURN_WORKFLOW_WORKER` and
+  `ORDER_DISCOVERY_WORKER` point at `backend/scripts/run_*_worker.py`, the same
+  entry points `compose.yaml` (`command: ["python", "/app/scripts/…"]`) and
+  `scripts/run_worker_host.sh` launch. A real subprocess, never an in-process
+  `Worker(...)`: an in-process kill leaves the interpreter, its `finally`
+  blocks and its buffers intact, which is not the failure being tested.
+- `kill()` is abrupt and takes the tree — `SIGKILL` to the process group on
+  POSIX (`start_new_session=True` at launch), `taskkill /F /T` on Windows
+  (`CREATE_NEW_PROCESS_GROUP`). `stop()` is the graceful one and is named apart
+  so a scenario cannot reach for it by accident and silently test the drain path
+  instead of crash recovery. Both idempotent, so teardown runs unconditionally
+  after a failed scenario without burying the real error.
+- `wait_until` / `wait_for_workflow` — polling waiters that treat **a raising
+  probe as "not yet"**. This is the crux: a Temporal query against a workflow
+  whose only worker has just been killed raises rather than returning pending,
+  so a waiter that let the first exception through would fail inside the very
+  window every restart scenario opens on purpose. `wait_for_workflow` is built
+  on `describe()` (answered by the service from history) rather than a query
+  (answered by a worker), for the same reason. Timeouts raise `ChaosTimeout(
+  AssertionError)` naming `what` and carrying either the last observation or the
+  last error.
+- `assert_once` / `assert_remains_once` — the effectively-once observable from
+  contracts.md §7. Both failure directions are reported distinctly (none = the
+  send was lost; several = receiver dedupe did not hold) with the records
+  printed. `assert_remains_once` holds the assertion open across a window
+  because delivery is at-least-once and the retry lands *after* the restart — a
+  single snapshot taken as the worker comes back tests the timing, not the
+  guarantee.
+
+**Suite classification.** `chaos_restart.py` constructs no driver: clients and
+handles arrive as arguments and `DescribableWorkflow` is a `Protocol`. That is
+deliberate — `test_the_normal_suite_never_needs_live_infrastructure` AST-scans
+every `.py` under `tests/` except `conftest.py`, so a helper that built a client
+would force *every scenario importing it* into the live suite. Pinned by
+`test_the_harness_opens_no_connection_of_its_own`.
+
+- `test_chaos_restart.py` → **`unit`**. Proves the primitives against a trivial
+  subprocess and fake probes: start/kill idempotence, restart yields a new pid,
+  **the kill takes orphan children with it** (measured by a child heartbeat
+  going stale — an orphaned worker still polling a task queue would poison every
+  later scenario), env overlay rather than replacement, waiter tolerance of
+  raising probes, timeout messages, and the once/remains-once assertions.
+- `test_chaos_restart_smoke_real_infra.py` → **`live_infra`** by the
+  `_real_infra.py` suffix *and* an explicit `pytestmark`, deselected from the
+  default run by `addopts`. Starts the real `run_return_workflow_worker.py`,
+  lets it settle 20s (a worker that dies during startup reports `is_running` a
+  millisecond after `start()`), kills it, starts it again, asserts a new pid.
+  Three assertions and no fourth — it smoke-tests the harness and says nothing
+  about return behaviour.
+
+**Commands:**
+- `python -m pytest tests/harness -q` → **31 passed, 1 deselected**
+- `python -m pytest tests/harness -m live_infra --collect-only` → **1 collected,
+  31 deselected** — the deselected one is the smoke test, confirming the
+  boundary in both directions
+- `ruff check` / `ruff format` → clean (`wait_until`/`assert_once`/
+  `assert_remains_once` converted to PEP 695 type parameters; the async waiters'
+  `timeout` renamed `timeout_seconds` for ASYNC109)
+
+The live smoke test has **not** been executed — the five datastores are not
+running in this worktree and `run_real_infra_suite.sh` preflights them by
+design. Recorded as unverified-against-live; it is deselected from every run
+this phase makes, and item 9 executes the live suite after V3.
+
+**Anchors verified:** `backend/scripts/run_return_workflow_worker.py` and
+`run_order_discovery_worker.py` exist (asserted in-test, not assumed);
+`compose.yaml` service commands; `_LIVE_INFRA_MODULE_SUFFIXES`; `_SUITE_MARKERS`
+precedence (explicit marker beats suffix beats fixtures); `addopts -m "not
+live_infra and not browser"`; `run_real_infra_suite.sh` port preflight + `-m
+live_infra` selection.
+
+**Next step:** step:04 — full-suite verification and delta report.
