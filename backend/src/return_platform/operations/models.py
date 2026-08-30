@@ -168,6 +168,15 @@ class FactAcquisition(StrEnum):
     OBSERVED = "OBSERVED"
     DERIVED = "DERIVED"
     INFERRED = "INFERRED"
+    #: A branch associate edited a system-produced draft; the value is what a
+    #: person deliberately changed it to, which is neither STATED free text nor
+    #: an OBSERVED source-system reading. Command-originated facts carrying this
+    #: method have their acting associate server-stamped, never client-supplied.
+    ASSOCIATE_EDIT = "ASSOCIATE_EDIT"
+    #: A compaction summary over earlier facts. DERIVED is close but wrong: a
+    #: summary is lossy by construction, and a reader deciding whether to trust
+    #: it needs to know it is a digest rather than a computation.
+    CONTEXT_SUMMARY = "CONTEXT_SUMMARY"
 
 
 class CaseView(MutableContract):
@@ -227,6 +236,15 @@ class CaseFactView(MutableContract):
     recordedAt: datetime
     supersedesFactId: str | None = None
     correlationId: str | None = None
+    #: Which return record this fact is about: a `returnRecordId`, or `None`
+    #: for a case-level fact. Additive by default -- every fact written before
+    #: this field existed is a case-level fact, and stays valid unchanged.
+    record_scope: str | None = None
+    #: Version of the fact-identity derivation that produced `factId`. Stamped
+    #: only by the scoped append path (`append_scoped_fact_once`); absent on
+    #: every legacy fact, whose per-callsite derivation is implicitly the
+    #: unversioned original.
+    identity_version: int | None = None
 
 
 class ReturnRecordShipmentView(MutableContract):
