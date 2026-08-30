@@ -137,9 +137,15 @@ export function SupportReplyBody({
         place it helps.
       */}
       {draft.disclosesAgent && editable && editor.bodyOverride !== null ? (
-        <p className={COPILOT_TOKENS.review.gap}>
-          Check the line that says this reply came from the platform is still there. Support is
-          told when an answer is not hand-written.
+        /*
+          `conflict` (tertiary), not `gap` (error). `gap` is documented as "a
+          required detail the case cannot answer", and this is not that: the
+          reply is sendable, and this is a caution about one line of it. Dressing
+          a caution as an error is how people learn to send past errors.
+        */
+        <p className={COPILOT_TOKENS.review.conflict}>
+          Keep the line saying this reply came from the platform. Support is told when an answer
+          was not hand-written.
         </p>
       ) : null}
     </div>

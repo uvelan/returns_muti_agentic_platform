@@ -119,7 +119,7 @@ describe("what the associate is told", () => {
     renderPanel();
     await screen.findByRole("heading", { name: "Message to Support" });
     expect(screen.queryByRole("heading", { name: "Support is asking you this" })).toBeNull();
-    expect(screen.queryByText(/could not be read just now/)).toBeNull();
+    expect(screen.queryByText(/Could not check whether Support is waiting/)).toBeNull();
   });
 
   it("says so when the section could not be composed, rather than drawing nothing", async () => {
@@ -128,7 +128,7 @@ describe("what the associate is told", () => {
     // associate should go and look at the thread themselves.
     servePanel([], { status: "degraded" });
     renderPanel();
-    expect(await screen.findByText(/could not be read just now/)).toBeVisible();
+    expect(await screen.findByText(/Could not check whether Support is waiting/)).toBeVisible();
   });
 });
 
@@ -231,7 +231,7 @@ describe("binding a loose artifact, or refusing to", () => {
     renderPanel();
 
     await user.type(await screen.findByLabelText("How do you know?"), "It is the pallet in bay 3.");
-    await user.click(screen.getByRole("button", { name: /Send this to Support/ }));
+    await user.click(screen.getByRole("button", { name: "Send my answer to Support" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Choose which return this belongs to, or say it belongs to none of them.",
@@ -244,7 +244,7 @@ describe("binding a loose artifact, or refusing to", () => {
     renderPanel();
 
     await user.click(await screen.findByRole("radio", { name: /None of these/ }));
-    await user.click(screen.getByRole("button", { name: /Send this to Support/ }));
+    await user.click(screen.getByRole("button", { name: "Send my answer to Support" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Write your answer first. Support sees exactly what you write here.",
@@ -269,7 +269,13 @@ describe("the answer that goes back", () => {
 
     await user.click(await screen.findByRole("radio", { name: /RMA-88121/ }));
     await user.type(screen.getByLabelText("How do you know?"), "  The pallet in bay 3.  ");
-    await user.click(screen.getByRole("button", { name: /Send this to Support/ }));
+    await user.click(screen.getByRole("button", { name: "Send my answer to Support" }));
+    // Read back before it goes: the value and the RMA, in the only two
+    // identifiers an associate would recognise.
+    expect(
+      await screen.findByText("Attach 1Z999AA10123456784 to RMA-88121, and send your answer to Support?"),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Send it" }));
 
     await waitFor(() => {
       expect(posted).toEqual([
@@ -292,7 +298,11 @@ describe("the answer that goes back", () => {
 
     await user.click(await screen.findByRole("radio", { name: /None of these/ }));
     await user.type(screen.getByLabelText("How do you know?"), "Not ours — no such return.");
-    await user.click(screen.getByRole("button", { name: /Send this to Support/ }));
+    await user.click(screen.getByRole("button", { name: "Send my answer to Support" }));
+    expect(
+      await screen.findByText("Tell Support this belongs to none of the returns on this case?"),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Send it" }));
 
     await waitFor(() => {
       expect(posted).toEqual([
@@ -303,6 +313,52 @@ describe("the answer that goes back", () => {
         },
       ]);
     });
+  });
+
+  it("sends nothing until the second press, and Escape backs out of it", async () => {
+    // The whole reason the confirmation exists: the first press must not be the
+    // one that reaches a supplier. Asserted by what did *not* happen.
+    const posted: unknown[] = [];
+    servePanel([clarification()]);
+    serveAnswer(posted);
+
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole("radio", { name: /RMA-88120/ }));
+    await user.type(screen.getByLabelText("How do you know?"), "It is the parcel.");
+    await user.click(screen.getByRole("button", { name: "Send my answer to Support" }));
+
+    expect(
+      await screen.findByText("Attach 1Z999AA10123456784 to RMA-88120, and send your answer to Support?"),
+    ).toBeVisible();
+    expect(posted).toEqual([]);
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("button", { name: "Send it" })).toBeNull();
+    expect(posted).toEqual([]);
+
+    // And the answer they typed is still there -- backing out of a confirmation
+    // must not cost somebody their sentence.
+    expect(screen.getByLabelText("How do you know?")).toHaveValue("It is the parcel.");
+  });
+
+  it("names the record by its RMA, not by the id nobody can recognise", async () => {
+    servePanel([clarification({ candidateRecordIds: ["rec-1", "rec-ghost"] })]);
+    const user = userEvent.setup();
+    renderPanel();
+
+    // A candidate the panel holds no record for is still offered -- dropping it
+    // would shorten the list of things the artifact could belong to -- and the
+    // read-back then has only the id to name it by, which it says plainly
+    // rather than pretending to a reference it does not have.
+    await user.click(await screen.findByRole("radio", { name: "rec-ghost" }));
+    await user.type(screen.getByLabelText("How do you know?"), "It is that one.");
+    await user.click(screen.getByRole("button", { name: "Send my answer to Support" }));
+
+    expect(
+      await screen.findByText("Attach 1Z999AA10123456784 to rec-ghost, and send your answer to Support?"),
+    ).toBeVisible();
   });
 
   it("confirms what committed, and does not claim Support has seen it", async () => {
@@ -317,7 +373,8 @@ describe("the answer that goes back", () => {
 
     await user.click(await screen.findByRole("radio", { name: /None of these/ }));
     await user.type(screen.getByLabelText("How do you know?"), "Not ours.");
-    await user.click(screen.getByRole("button", { name: /Send this to Support/ }));
+    await user.click(screen.getByRole("button", { name: "Send my answer to Support" }));
+    await user.click(await screen.findByRole("button", { name: "Send it" }));
 
     const receipt = await screen.findByText("Your answer is recorded. Support will be told.");
     expect(receipt.textContent).toBe("Your answer is recorded. Support will be told.");
@@ -347,7 +404,8 @@ describe("the answer that goes back", () => {
 
     await user.click(await screen.findByRole("radio", { name: /None of these/ }));
     await user.type(screen.getByLabelText("How do you know?"), "Not ours.");
-    await user.click(screen.getByRole("button", { name: /Send this to Support/ }));
+    await user.click(screen.getByRole("button", { name: "Send my answer to Support" }));
+    await user.click(await screen.findByRole("button", { name: "Send it" }));
 
     // The refusal's own words, never a status code: an associate shown "409"
     // presses the button again.
@@ -419,8 +477,15 @@ describe("a question arriving while somebody is working", () => {
     // The submit button is `aria-disabled`, never `disabled`, so it is still in
     // the tab order and can still be reached and explained.
     expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: /Send this to Support/ }),
+      screen.getByRole("button", { name: "Send my answer to Support" }),
     );
+    await user.keyboard("{Enter}");
+
+    // The confirmation takes focus deliberately -- the associate asked for it by
+    // pressing a button -- so Enter alone commits, and the whole path from the
+    // first radio to the send is walkable without a pointer.
+    const confirm = await screen.findByRole("button", { name: "Send it" });
+    expect(document.activeElement).toBe(confirm);
     await user.keyboard("{Enter}");
 
     await waitFor(() => {

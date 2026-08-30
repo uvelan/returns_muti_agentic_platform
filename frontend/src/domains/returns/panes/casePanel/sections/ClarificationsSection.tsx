@@ -1,4 +1,4 @@
-import { useCallback, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { HelpCircle, Link2, Send, Unlink } from "lucide-react";
 
 import {
@@ -79,8 +79,8 @@ export function ClarificationsSection({ section, panel, caseId }: PanelSectionRe
      */
     return (
       <p role="status" className={COPILOT_TOKENS.typography.caption}>
-        Whether Support is waiting on an answer could not be read just now. It will be retried on
-        the next refresh.
+        Could not check whether Support is waiting on an answer. This will be retried
+        automatically.
       </p>
     );
   }
@@ -190,9 +190,23 @@ function ClarificationCard({
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<string | null>(null);
+  /**
+   * Whether the answer is waiting for a second press.
+   *
+   * **The same discipline V1 applies to Send, for the same reason.** Answering
+   * relays text to a supplier's support desk and cannot be recalled, and a panel
+   * where one send-to-Support button asks twice and the one beside it does not
+   * is a panel that teaches people the confirmation is decoration.
+   *
+   * It is not a copy of V1's prompt, though, and the difference is the point:
+   * this one **reads the decision back** in the words that carry it -- the
+   * artifact, and the RMA it is about to be attached to. "Send this?" confirms a
+   * press; "Attach 1Z999… to RMA-88121?" confirms a *binding*, which is the
+   * thing that puts a carton on the wrong lorry when it is wrong.
+   */
+  const [confirming, setConfirming] = useState(false);
 
-  const submit = useCallback(async () => {
-    setRefusal(null);
+  const check = useCallback((): string | null => {
 
     /*
      * The four refusals below mirror the server's, and none of them replaces
@@ -202,18 +216,13 @@ function ClarificationCard({
      * counter instead of after a round trip.
      */
     if (answerText.trim().length === 0) {
-      setRefusal("Write your answer first. Support sees exactly what you write here.");
-      return;
+      return "Write your answer first. Support sees exactly what you write here.";
     }
     if (answerText.length > MAX_ANSWER_CHARACTERS) {
-      setRefusal(
-        `That is longer than ${String(MAX_ANSWER_CHARACTERS)} characters. Shorten it — it is refused rather than cut, because the part that gets cut is often the part naming the return.`,
-      );
-      return;
+      return `That is longer than ${String(MAX_ANSWER_CHARACTERS)} characters. Shorten it — it is refused rather than cut, because the part that gets cut is often the part naming the return.`;
     }
     if (mapOrReject && choice === null) {
-      setRefusal("Choose which return this belongs to, or say it belongs to none of them.");
-      return;
+      return "Choose which return this belongs to, or say it belongs to none of them.";
     }
     /*
      * **The one that is not a convenience.** A `map` with no record is refused
@@ -225,10 +234,12 @@ function ClarificationCard({
      * could type an RMA into is a box they can type the wrong RMA into.
      */
     if (choice === MAP_CHOICE && recordId === null) {
-      setRefusal("Pick the return it belongs to.");
-      return;
+      return "Pick the return it belongs to.";
     }
+    return null;
+  }, [answerText, choice, mapOrReject, recordId]);
 
+  const commit = useCallback(async () => {
     setBusy(true);
     try {
       const accepted = await caseClarificationsApi.answer(caseId, clarification.clarificationId, {
@@ -250,6 +261,7 @@ function ClarificationCard({
       );
     } finally {
       setBusy(false);
+      setConfirming(false);
     }
   }, [answerText, caseId, choice, clarification.clarificationId, mapOrReject, recordId]);
 
@@ -320,7 +332,9 @@ function ClarificationCard({
           className="space-y-3"
           onSubmit={(event) => {
             event.preventDefault();
-            void submit();
+            const problem = check();
+            setRefusal(problem);
+            setConfirming(problem === null);
           }}
         >
           {mapOrReject ? (
@@ -350,7 +364,16 @@ function ClarificationCard({
               value={answerText}
               rows={3}
               maxLength={MAX_ANSWER_CHARACTERS}
-              aria-describedby={`${fieldId}-answer-hint`}
+              /*
+                The refusal describes the field, not only the form. Without it a
+                screen-reader user who tabs back to the textarea after an alert
+                has been announced has no way to hear the reason again.
+              */
+              aria-describedby={
+                refusal === null
+                  ? `${fieldId}-answer-hint`
+                  : `${fieldId}-answer-refusal ${fieldId}-answer-hint`
+              }
               className={`${COPILOT_TOKENS.review.field.input} mt-1`}
               onChange={(event) => {
                 setAnswerText(event.target.value);
@@ -365,31 +388,183 @@ function ClarificationCard({
           </div>
 
           {refusal !== null ? (
-            <p role="alert" className={COPILOT_TOKENS.review.gap}>
+            <p id={`${fieldId}-answer-refusal`} role="alert" className={COPILOT_TOKENS.review.gap}>
               {refusal}
             </p>
           ) : null}
 
-          <div className={COPILOT_TOKENS.review.action.bar}>
-            {/*
-              `aria-disabled`, never `disabled`. A disabled button leaves the tab
-              order, so a keyboard associate tabbing here would find nothing and
-              no way to learn why. This one is reachable, announced as disabled
-              while the answer is in flight, and it is `submit`, so the form is
-              completable without a mouse from the first field.
-            */}
-            <button
-              type="submit"
-              className={COPILOT_TOKENS.review.action.primary}
-              aria-disabled={busy}
-            >
-              <Send aria-hidden="true" className="size-3.5" />
-              Send this to Support
-            </button>
-          </div>
+          {confirming ? (
+            <ConfirmAnswer
+              question={confirmationQuestion(clarification, choice, recordId, candidates)}
+              busy={busy}
+              onConfirm={() => {
+                void commit();
+              }}
+              onCancel={() => {
+                setConfirming(false);
+              }}
+            />
+          ) : (
+            <div className={COPILOT_TOKENS.review.action.bar}>
+              {/*
+                `aria-disabled`, never `disabled`. A disabled button leaves the
+                tab order, so a keyboard associate tabbing here would find
+                nothing and no way to learn why. This one is reachable,
+                announced as disabled while the answer is in flight, and it is
+                `submit`, so the form is completable without a mouse from the
+                first field.
+              */}
+              <button
+                type="submit"
+                className={COPILOT_TOKENS.review.action.primary}
+                aria-disabled={busy}
+              >
+                <Send aria-hidden="true" className="size-3.5" />
+                {/*
+                  Not "Send to Support" -- V1's review section puts a button with
+                  exactly that name on the same panel, doing a different thing.
+                  Two controls sharing an accessible name and not an effect is
+                  the case the naming guidance singles out, and the two effects
+                  here are "send the message we drafted" and "send the answer you
+                  wrote". Naming the object separates them.
+                */}
+                Send my answer to Support
+              </button>
+            </div>
+          )}
         </form>
       )}
     </article>
+  );
+}
+
+/* -------------------------------------------------------------------------
+ * The second press
+ * ---------------------------------------------------------------------- */
+
+/**
+ * The decision, read back in the words that carry it.
+ *
+ * Not "Send this answer?" -- a press an associate has already decided to make
+ * confirms nothing. What can go wrong here is **which return** the artifact gets
+ * attached to, so that is what the sentence names: the value Support sent and
+ * the RMA it is about to belong to. An associate who picked the wrong radio
+ * reads their own mistake back in the only two identifiers they would recognise.
+ *
+ * The reject sentence names the consequence instead, because there is no record
+ * to name: telling Support the artifact belongs to none of this case's returns
+ * is a claim about the case, and it is the claim that sends them looking
+ * elsewhere.
+ */
+/*
+ * Not exported: the sentence is asserted through the rendered confirmation, not
+ * called directly, and exporting a plain function beside a component costs the
+ * module fast refresh for no test that needed it.
+ */
+function confirmationQuestion(
+  clarification: CaseClarification,
+  choice: ResolutionChoice | null,
+  recordId: string | null,
+  candidates: readonly CandidateRecord[],
+): string {
+  /*
+   * `recordId !== null` rather than `choice === MAP_CHOICE` alone, and the
+   * difference is not defensiveness: `check()` already refuses a map with no
+   * record, so the null branch is unreachable -- and the first draft filled it
+   * with "that return", which `ReturnCopilotFabrication.test.ts` correctly
+   * failed. A read-back is the last place to be vague, because being vague there
+   * is how somebody confirms a binding they did not read. If the record is ever
+   * missing the sentence falls back to the honest general one below rather than
+   * naming a return it cannot name.
+   */
+  if (choice === MAP_CHOICE && recordId !== null) {
+    const picked = candidates.find((candidate) => candidate.returnRecordId === recordId);
+    // The RMA if the case has one, and the raw id if it does not -- a candidate
+    // with no record on the panel is still offered, and saying its id is more
+    // use than pretending to a reference.
+    const record =
+      picked === undefined || picked.returnReference === "" ? recordId : picked.returnReference;
+    const value = clarification.artifactValue ?? neededFieldWords(clarification.neededField);
+    return `Attach ${value} to ${record}, and send your answer to Support?`;
+  }
+  if (choice === REJECT_CHOICE) {
+    return "Tell Support this belongs to none of the returns on this case?";
+  }
+  return "Send your answer to Support?";
+}
+
+function ConfirmAnswer({
+  question,
+  busy,
+  onConfirm,
+  onCancel,
+}: {
+  readonly question: string;
+  readonly busy: boolean;
+  readonly onConfirm: () => void;
+  readonly onCancel: () => void;
+}) {
+  const confirmRef = useRef<HTMLButtonElement | null>(null);
+  const questionId = useId();
+
+  /*
+   * Focus moves here, and this is the one place on this surface where taking it
+   * is right: the associate asked for it by pressing a button. It is *not* the
+   * rule for arriving content, which never moves focus -- that is what the live
+   * region above exists to avoid.
+   */
+  useEffect(() => {
+    confirmRef.current?.focus();
+  }, []);
+
+  return (
+    <div
+      role="group"
+      /*
+        `aria-labelledby`, not `aria-label`: the question is already on the
+        screen, and duplicating it into an attribute makes a screen reader say it
+        twice -- once as the group's name and once as its first child.
+      */
+      aria-labelledby={questionId}
+      className={COPILOT_TOKENS.review.conflict}
+      onKeyDown={(event) => {
+        // Escape backs out, which is what a person expects from anything that
+        // took their focus, and it is the fastest way out of a wrong press.
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onCancel();
+        }
+      }}
+    >
+      <p id={questionId} className="font-semibold">
+        {question}
+      </p>
+      <p className="mt-1">
+        Support sees your answer exactly as you wrote it. A message cannot be recalled once it has
+        been sent.
+      </p>
+      <div className={COPILOT_TOKENS.review.action.bar}>
+        <button
+          ref={confirmRef}
+          type="button"
+          className={COPILOT_TOKENS.review.action.primary}
+          aria-disabled={busy}
+          onClick={() => {
+            if (!busy) onConfirm();
+          }}
+        >
+          <Send aria-hidden="true" className="size-3.5" />
+          Send it
+        </button>
+        <button
+          type="button"
+          className={COPILOT_TOKENS.review.action.secondary}
+          onClick={onCancel}
+        >
+          Keep editing
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -441,6 +616,18 @@ function ArtifactEvidence({ clarification }: { readonly clarification: CaseClari
  * one the case already holds -- which the radios already offer -- or a wrong
  * one, silently accepted.
  */
+/**
+ * One choice row, sized to be hittable.
+ *
+ * A bare `<input type="radio">` is about 13px square, well under the 24px
+ * minimum target. The control is grown to `size-4` and the whole row is padded,
+ * so the label -- which is associated by `for`/`id` and therefore activates the
+ * radio -- carries the rest of the target. The choice being made here is which
+ * physical package a label belongs to; a fiddly hit area is a mis-click that
+ * sends a carton to the wrong address.
+ */
+const CHOICE_ROW = "flex items-start gap-2 py-2 min-h-[2.25rem]";
+
 function MapOrReject({
   fieldId,
   candidates,
@@ -478,12 +665,12 @@ function MapOrReject({
       {candidates.map((candidate) => {
         const id = `${fieldId}-record-${candidate.returnRecordId}`;
         return (
-          <div key={candidate.returnRecordId} className="flex items-start gap-2">
+          <div key={candidate.returnRecordId} className={CHOICE_ROW}>
             <input
               type="radio"
               id={id}
               name={`${fieldId}-resolution`}
-              className="mt-1 accent-primary"
+              className="mt-0.5 size-4 accent-primary"
               checked={choice === MAP_CHOICE && recordId === candidate.returnRecordId}
               onChange={() => {
                 onRecord(candidate.returnRecordId);
@@ -500,12 +687,12 @@ function MapOrReject({
         );
       })}
 
-      <div className="flex items-start gap-2">
+      <div className={CHOICE_ROW}>
         <input
           type="radio"
           id={`${fieldId}-reject`}
           name={`${fieldId}-resolution`}
-          className="mt-1 accent-primary"
+          className="mt-0.5 size-4 accent-primary"
           checked={choice === REJECT_CHOICE}
           onChange={() => {
             onChoice(REJECT_CHOICE);

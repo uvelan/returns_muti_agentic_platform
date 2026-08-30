@@ -105,8 +105,7 @@ export const caseClarificationHandlers = [
       }
 
       const held = answered.get(clarificationId);
-      const duplicate =
-        held !== undefined && held.answerText === answerText && held.recordId === recordId;
+      const duplicate = held?.answerText === answerText && held.recordId === recordId;
       if (held !== undefined && !duplicate) {
         // A *different* answer to an already-answered clarification is the 409;
         // the same answer again is a retry and is still a 202.

@@ -41,7 +41,7 @@ const document = Object.values(
     import: "default",
     eager: true,
   }),
-).map((raw) => JSON.parse(raw as string) as OpenApiDocument)[0];
+).map((raw) => JSON.parse(raw) as OpenApiDocument)[0];
 
 const CONTRACT_PATH = "/api/v1/cases/{case_id}/clarifications/{clarification_id}/answer";
 const CASE = "case-mock-2026";

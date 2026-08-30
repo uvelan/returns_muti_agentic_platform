@@ -215,12 +215,12 @@ describe("a gated reply an associate has to decide about", () => {
     renderPanel();
 
     const field = await screen.findByLabelText("The reply");
-    expect(screen.queryByText(/came from the platform is still there/)).toBeNull();
+    expect(screen.queryByText(/Keep the line saying this reply came from the platform/)).toBeNull();
 
     await user.click(field);
     await user.keyboard(" Checked.");
 
-    expect(await screen.findByText(/came from the platform is still there/)).toBeVisible();
+    expect(await screen.findByText(/Keep the line saying this reply came from the platform/)).toBeVisible();
   });
 });
 
