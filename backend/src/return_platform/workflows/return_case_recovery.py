@@ -85,16 +85,20 @@ from enum import StrEnum
 from typing import Any, Final, Protocol, cast
 
 from pymongo.asynchronous.database import AsyncDatabase
+from pymongo.errors import DuplicateKeyError
 from temporalio.client import Client, WorkflowExecutionStatus
 from temporalio.service import RPCError, RPCStatusCode
 
 from return_platform.configuration.return_configuration import ReturnCaseTimingConfiguration
+from return_platform.operations.fact_names import SUPPORT_STREAM_SKIP
 from return_platform.operations.integrations.outbox import (
     DEAD_LETTER_STATUS,
     INTEGRATION_OUTBOX_COLLECTION,
+    PARKED_STREAM_STATUS,
     REQUIRES_RECONCILIATION,
+    CaseStream,
 )
-from return_platform.operations.models import CaseStatus
+from return_platform.operations.models import CaseStatus, FactAcquisition, FactChannel
 from return_platform.operations.support_events import SUPPORT_EVENT_AGGREGATE_TYPE
 from return_platform.workflows.case_divergence import (
     CaseDivergence,
@@ -115,6 +119,7 @@ __all__ = [
     "RECONCILED",
     "CaseExecutionProbePort",
     "CaseRecoveryOutcome",
+    "CaseStreamRecovery",
     "MongoReconciliationOutbox",
     "ReconciliationOutboxPort",
     "RecoverableCaseRepositoryPort",
@@ -122,6 +127,7 @@ __all__ = [
     "RecoveryCaseRepositoryPort",
     "ReturnCaseRecoveryService",
     "ReturnCaseWorkflowRecovery",
+    "ScopedCaseFactRepositoryPort",
     "TemporalCaseExecutionProbe",
     "build_case_recovery_service",
 ]
@@ -419,6 +425,175 @@ class MongoReconciliationOutbox:
             },
         )
         return result.modified_count == 1
+
+
+class ScopedCaseFactRepositoryPort(Protocol):
+    """The one case-store write the stream skip audit needs."""
+
+    async def append_scoped_case_fact(self, **fact: Any) -> dict[str, Any]: ...
+
+
+class CaseStreamRecovery:
+    """The audited operator decisions over a parked case stream.
+
+    Contracts.md sect. 7: a dead-lettered predecessor parks its stream and
+    dependents, and only an operator resumes it -- by *skipping* the dead
+    letter (the platform gives up on delivering it, records who decided so and
+    why as the `support_stream_skip` fact, and lets the stream move) or by
+    *retrying* it (back to the queue with its delivery identity intact).
+
+    Both writes are compare-and-set on `orderingResolved`, the same shape
+    `MongoReconciliationOutbox` uses on `reconciliationState` and for the same
+    reason: a second operator clicking the same button matches nothing.
+    The two fields are deliberately separate planes -- `reconciliationState`
+    is whether the *payload* is still owed anywhere, `orderingResolved` is
+    whether the *stream* may pass the command -- so skipping for ordering
+    never erases the record that a reconciler may still owe an answer.
+    """
+
+    def __init__(
+        self,
+        database: AsyncDatabase[dict[str, object]],
+        *,
+        fact_repository: ScopedCaseFactRepositoryPort,
+    ) -> None:
+        self._collection = database[INTEGRATION_OUTBOX_COLLECTION]
+        self._fact_repository = fact_repository
+
+    async def skip_dead_lettered_command(
+        self,
+        *,
+        case_id: str,
+        stream: CaseStream,
+        event_id: str,
+        actor_id: str,
+        reason: str,
+    ) -> bool:
+        """Give up on one dead letter, audit it, and let its stream resume.
+
+        The fact write is idempotent on its derived id: a repeated skip of the
+        same event re-records nothing, exactly as `append_scoped_fact_once`
+        behaves on the workflow paths -- and the CAS above it means the repeat
+        never gets that far anyway.
+        """
+        now = datetime.now(UTC)
+        result = await self._collection.update_one(
+            {
+                "aggregateId": case_id,
+                "stream": stream.value,
+                "eventId": event_id,
+                "status": DEAD_LETTER_STATUS,
+                "orderingResolved": {"$ne": True},
+            },
+            {
+                "$set": {
+                    "orderingResolved": True,
+                    "orderingResolution": {
+                        "action": "SKIPPED",
+                        "actorId": actor_id,
+                        "reason": reason[:2_000],
+                        "at": now,
+                    },
+                    "updatedAt": now,
+                }
+            },
+        )
+        if result.modified_count != 1:
+            return False
+        await self._unpark(case_id, stream)
+        try:
+            await self._fact_repository.append_scoped_case_fact(
+                fact_id=f"support-stream-skip:{case_id}:{stream.value}:{event_id}",
+                case_id=case_id,
+                fact_name=SUPPORT_STREAM_SKIP,
+                value={
+                    "stream": stream.value,
+                    "event_id": event_id,
+                    "actor_id": actor_id,
+                    "reason": reason[:2_000],
+                },
+                agent_id=actor_id,
+                channel=FactChannel.SYSTEM,
+                acquisition_method=FactAcquisition.STATED,
+                record_scope=None,
+                identity_version=_scoped_fact_identity_version(),
+            )
+        except DuplicateKeyError:
+            # The audit already exists -- a crash after the CAS and before the
+            # fact on a previous attempt. The decision stands recorded once.
+            logger.debug(
+                "stream_skip_fact_already_recorded",
+                extra={"case_id": case_id, "event_id": event_id},
+            )
+        return True
+
+    async def retry_dead_lettered_command(
+        self, *, case_id: str, stream: CaseStream, event_id: str
+    ) -> bool:
+        """Put one dead letter back on the queue and let its stream resume.
+
+        `attemptCount` is not reset and the payload is not touched, exactly as
+        `MongoReconciliationOutbox.requeue_command` argues: the history of how
+        hard the platform tried is audit, and the delivery identity travelling
+        in the payload is what keeps the retry a redelivery.
+        """
+        now = datetime.now(UTC)
+        result = await self._collection.update_one(
+            {
+                "aggregateId": case_id,
+                "stream": stream.value,
+                "eventId": event_id,
+                "status": DEAD_LETTER_STATUS,
+                "orderingResolved": {"$ne": True},
+            },
+            {
+                "$set": {
+                    "status": "PENDING",
+                    "orderingResolved": True,
+                    "orderingResolution": {"action": "RETRIED", "at": now},
+                    "nextAttemptAt": now,
+                    "updatedAt": now,
+                    "leaseOwner": None,
+                    "leaseUntil": None,
+                }
+            },
+        )
+        if result.modified_count != 1:
+            return False
+        await self._unpark(case_id, stream)
+        return True
+
+    async def _unpark(self, case_id: str, stream: CaseStream) -> int:
+        now = datetime.now(UTC)
+        result = await self._collection.update_many(
+            {
+                "aggregateId": case_id,
+                "stream": stream.value,
+                "status": PARKED_STREAM_STATUS,
+            },
+            {
+                "$set": {
+                    "status": "PENDING",
+                    "parkedReason": None,
+                    "nextAttemptAt": now,
+                    "updatedAt": now,
+                }
+            },
+        )
+        return int(result.modified_count)
+
+
+def _scoped_fact_identity_version() -> int:
+    """S1's stamped fact-identity version, resolved at call time.
+
+    A function rather than a module-level import because
+    `workflows.return_case_activities` transitively imports this module's
+    neighbours; deferring keeps the import graph exactly as it was before this
+    class existed.
+    """
+    from return_platform.workflows.return_case_activities import SCOPED_FACT_IDENTITY_VERSION
+
+    return SCOPED_FACT_IDENTITY_VERSION
 
 
 class RecoveryAction(StrEnum):

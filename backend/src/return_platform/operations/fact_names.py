@@ -22,3 +22,15 @@ SUPPORT_ARTIFACT_AMBIGUOUS: Final[str] = "support_artifact_ambiguous"
 #: or that no record could take at all. Never creates a record; it waits for
 #: the map-or-reject clarification.
 SUPPORT_ARTIFACT_UNMATCHED: Final[str] = "support_artifact_unmatched"
+
+#: An operator's audited decision to skip a dead-lettered predecessor and let
+#: its parked case stream resume (contracts.md sect. 7). Written by the skip
+#: operation itself, so the decision is on the case the moment it takes
+#: effect, with the actor and reason beside it.
+SUPPORT_STREAM_SKIP: Final[str] = "support_stream_skip"
+
+#: A persisted compaction summary over earlier case facts, consumed -- never
+#: regenerated -- by `assemble_case_context` (contracts.md sect. 10). Recorded
+#: with `AcquisitionMethod.CONTEXT_SUMMARY`; compaction never discards the
+#: facts it summarises.
+CONTEXT_SUMMARY: Final[str] = "context_summary"

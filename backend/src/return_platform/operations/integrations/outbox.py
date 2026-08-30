@@ -6,8 +6,10 @@ import asyncio
 import hashlib
 import logging
 import uuid
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from enum import StrEnum
 from typing import Any, Final, Protocol, cast
 
 import httpx
@@ -27,6 +29,75 @@ logger = logging.getLogger("return_platform.integration_outbox")
 #: the collection handle the repository exposes.
 INTEGRATION_OUTBOX_COLLECTION: Final = "integration_outbox"
 
+#: Per-`(caseId, stream)` sequence counters, allocated by CAS at enqueue time
+#: (contracts.md sect. 7). One document per pair, `_id = "{caseId}:{stream}"`,
+#: `$inc`-upserted inside the enqueuing transaction so an aborted enqueue can at
+#: worst leave a gap, never a duplicate.
+CASE_STREAM_SEQUENCES_COLLECTION: Final = "case_stream_sequences"
+
+
+class CaseStream(StrEnum):
+    """The four per-case delivery streams (contracts.md sect. 7).
+
+    A closed set rather than a free string: the stream is half of a unique
+    index key and the unit a dead-lettered predecessor parks, so a writer
+    inventing its own spelling would invent its own ordering domain.
+    """
+
+    INBOUND = "inbound"
+    OUTBOUND = "outbound"
+    REVIEW_COMMANDS = "review_commands"
+    OMC = "omc"
+
+
+#: Where a whole stream comes to rest when a predecessor in it has
+#: dead-lettered and nobody has yet skipped or retried it. Deliberately not in
+#: `CLAIMABLE_STATUSES`: parking *is* not being claimed. Distinct from
+#: `DEAD_LETTER` because nothing is wrong with the parked commands themselves.
+PARKED_STREAM_STATUS: Final = "PARKED_STREAM"
+
+#: `lastErrorCode` for a command released back to the queue because a
+#: predecessor has not completed yet. Not an error; named so the operator
+#: surface can tell an ordering wait from a delivery failure.
+WAITING_ON_PREDECESSOR: Final = "WAITING_ON_PREDECESSOR"
+
+#: `parkedReason` written on every command a dead-lettered predecessor parks.
+PREDECESSOR_DEAD_LETTERED: Final = "PREDECESSOR_DEAD_LETTERED"
+
+
+class UnknownPredecessorError(ValueError):
+    """An enqueue named a predecessor event that does not exist on this case.
+
+    Refused at enqueue rather than discovered at dispatch: a dangling
+    predecessor id would hold its dependent forever with nothing an operator
+    could retry, and -- because predecessors must already exist when they are
+    referenced -- this check is also the cycle guard's other half.
+    """
+
+    def __init__(self, case_id: str, event_id: str, predecessor_id: str) -> None:
+        super().__init__(
+            f"event {event_id!r} on case {case_id!r} names predecessor "
+            f"{predecessor_id!r}, which is not an enqueued event on that case"
+        )
+        self.case_id = case_id
+        self.event_id = event_id
+        self.predecessor_id = predecessor_id
+
+
+class PredecessorCycleError(ValueError):
+    """An event named itself as its own predecessor.
+
+    The only cycle that is expressible: every other predecessor must already
+    exist at enqueue time (`UnknownPredecessorError` otherwise), ids are
+    unique, and an existing event's predecessor list is immutable -- so no
+    already-enqueued event can ever reference a later one.
+    """
+
+    def __init__(self, case_id: str, event_id: str) -> None:
+        super().__init__(f"event {event_id!r} on case {case_id!r} cannot precede itself")
+        self.case_id = case_id
+        self.event_id = event_id
+
 
 @dataclass(frozen=True, slots=True)
 class OutboxCommand:
@@ -37,6 +108,14 @@ class OutboxCommand:
     idempotency_key: str
     payload: dict[str, Any]
     attempt_count: int
+    #: Ordering fields (contracts.md sect. 7). All default to "not ordered":
+    #: every command written before the streams existed dispatches exactly as
+    #: it always did.
+    stream: str | None = None
+    stream_sequence: int | None = None
+    event_id: str | None = None
+    causation_id: str | None = None
+    required_predecessor_ids: tuple[str, ...] = field(default=())
 
 
 @dataclass(frozen=True, slots=True)
@@ -208,6 +287,101 @@ async def ensure_integration_outbox_indexes(
     await collection.create_index("leaseUntil")
     await collection.create_index([("createdAt", DESCENDING)])
     await collection.create_index([("status", ASCENDING), ("reconciliationState", ASCENDING)])
+    # Ordering (contracts.md sect. 7). Both partial on the field existing as a
+    # string, so the millions of commands written before streams existed cost
+    # nothing and collide with nothing. Named, unlike the five above, because
+    # these exist nowhere yet -- there is no deployed default-named copy for a
+    # named `create_index` to conflict with.
+    await collection.create_index(
+        [("aggregateId", ASCENDING), ("stream", ASCENDING), ("streamSequence", ASCENDING)],
+        unique=True,
+        partialFilterExpression={"stream": {"$type": "string"}},
+        name="case_stream_sequence_unique",
+    )
+    await collection.create_index(
+        "eventId",
+        unique=True,
+        partialFilterExpression={"eventId": {"$type": "string"}},
+        name="case_stream_event_id_unique",
+    )
+
+
+async def allocate_case_stream_sequence(
+    database: AsyncDatabase[dict[str, object]],
+    *,
+    case_id: str,
+    stream: CaseStream,
+    session: Any = None,
+) -> int:
+    """The next sequence in one case's stream, allocated by CAS.
+
+    `$inc` on an upserted counter document is atomic on the server, so two
+    concurrent enqueues get distinct numbers whichever commits first; the
+    unique `(aggregateId, stream, streamSequence)` index on the outbox is the
+    second lock on the same door. Passed the enqueuing transaction's `session`
+    so an aborted enqueue leaves at most a gap in the numbering -- gaps are
+    harmless (ordering is by predecessors, the sequence is identity and audit),
+    duplicates are not.
+    """
+    document = await database[CASE_STREAM_SEQUENCES_COLLECTION].find_one_and_update(
+        {"_id": f"{case_id}:{stream.value}"},
+        {
+            "$inc": {"nextSequence": 1},
+            "$setOnInsert": {"caseId": case_id, "stream": stream.value},
+        },
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+        session=session,
+    )
+    raw = cast(dict[str, Any], document)
+    return int(raw["nextSequence"])
+
+
+async def ordered_command_fields(
+    database: AsyncDatabase[dict[str, object]],
+    *,
+    case_id: str,
+    stream: CaseStream,
+    event_id: str,
+    causation_id: str | None = None,
+    required_predecessor_ids: Sequence[str] = (),
+    session: Any = None,
+) -> dict[str, Any]:
+    """Validate and allocate the ordering fields for one outbox enqueue.
+
+    The enqueue-time validation contracts.md sect. 7 requires: every referenced
+    predecessor must already exist as an enqueued event on this case
+    (`UnknownPredecessorError`), and an event cannot precede itself
+    (`PredecessorCycleError` -- with existence required and predecessor lists
+    immutable, self-reference is the only expressible cycle). A parentless
+    event carries an empty list and is immediately dispatchable.
+
+    Returns the document fields the caller merges into its outbox command
+    inside its own transaction; nothing is written here except the sequence
+    counter.
+    """
+    if not event_id:
+        raise ValueError("an ordered command needs an eventId")
+    predecessors = [str(predecessor) for predecessor in required_predecessor_ids]
+    if event_id in predecessors:
+        raise PredecessorCycleError(case_id, event_id)
+    outbox = database[INTEGRATION_OUTBOX_COLLECTION]
+    for predecessor_id in predecessors:
+        existing = await outbox.find_one(
+            {"aggregateId": case_id, "eventId": predecessor_id}, session=session
+        )
+        if existing is None:
+            raise UnknownPredecessorError(case_id, event_id, predecessor_id)
+    sequence = await allocate_case_stream_sequence(
+        database, case_id=case_id, stream=stream, session=session
+    )
+    return {
+        "stream": stream.value,
+        "streamSequence": sequence,
+        "eventId": event_id,
+        "causationId": causation_id,
+        "requiredPredecessorIds": predecessors,
+    }
 
 
 class HttpTicketDispatcher:
@@ -378,6 +552,11 @@ class IntegrationOutboxDispatcher:
         if document is None:
             return None
         raw = cast(dict[str, Any], document)
+        stream = raw.get("stream")
+        stream_sequence = raw.get("streamSequence")
+        event_id = raw.get("eventId")
+        causation_id = raw.get("causationId")
+        predecessors = raw.get("requiredPredecessorIds")
         return OutboxCommand(
             id=str(raw["_id"]),
             topic=str(raw["topic"]),
@@ -386,6 +565,141 @@ class IntegrationOutboxDispatcher:
             idempotency_key=str(raw["idempotencyKey"]),
             payload=cast(dict[str, Any], raw.get("payload", {})),
             attempt_count=int(raw.get("attemptCount", 1)),
+            stream=str(stream) if isinstance(stream, str) else None,
+            stream_sequence=int(stream_sequence) if isinstance(stream_sequence, int) else None,
+            event_id=str(event_id) if isinstance(event_id, str) else None,
+            causation_id=str(causation_id) if isinstance(causation_id, str) else None,
+            required_predecessor_ids=tuple(
+                str(predecessor) for predecessor in (predecessors or ())
+            ),
+        )
+
+    async def _ordering_hold(self, command: OutboxCommand) -> str | None:
+        """Whether a claimed command may dispatch yet, per contracts.md sect. 7.
+
+        `None` means dispatch. `"DEFER"` means a predecessor is still in
+        flight: release the claim and let the queue come back to it.
+        `"PARK"` means a predecessor -- named, or earlier in this command's
+        stream -- has dead-lettered without being skipped or retried, so the
+        stream stops until an operator decides.
+
+        A predecessor counts as complete when it is `DELIVERED` or when an
+        operator's audited skip stamped `orderingResolved` on it. A parentless
+        command with no stream never reaches this method's queries at all.
+        """
+        if command.required_predecessor_ids:
+            by_event_id: dict[str, dict[str, Any]] = {}
+            cursor = self._collection.find(
+                {
+                    "aggregateId": command.aggregate_id,
+                    "eventId": {"$in": list(command.required_predecessor_ids)},
+                }
+            )
+            async for document in cursor:
+                raw = cast(dict[str, Any], document)
+                by_event_id[str(raw.get("eventId"))] = raw
+            for predecessor_id in command.required_predecessor_ids:
+                predecessor = by_event_id.get(predecessor_id)
+                if predecessor is None:
+                    # Enqueue validation guarantees existence, so a missing
+                    # predecessor is torn state mid-repair. Wait, do not guess.
+                    return "DEFER"
+                if predecessor.get("orderingResolved") is True:
+                    continue
+                status = str(predecessor.get("status"))
+                if status == "DELIVERED":
+                    continue
+                if status == DEAD_LETTER_STATUS:
+                    return "PARK"
+                return "DEFER"
+        if command.stream is not None and command.stream_sequence is not None:
+            blocker = await self._collection.find_one(
+                {
+                    "aggregateId": command.aggregate_id,
+                    "stream": command.stream,
+                    "streamSequence": {"$lt": command.stream_sequence},
+                    "status": DEAD_LETTER_STATUS,
+                    "orderingResolved": {"$ne": True},
+                }
+            )
+            if blocker is not None:
+                return "PARK"
+        return None
+
+    async def _release_for_predecessor(self, command: OutboxCommand) -> None:
+        """Put a claimed command back without burning an attempt.
+
+        An ordering wait is not a delivery failure: the backoff table and the
+        attempt audit are about the target refusing us, and a command that
+        waited politely for its predecessor must not arrive there pre-aged.
+        """
+        now = datetime.now(UTC)
+        await self._collection.update_one(
+            {"_id": command.id, "leaseOwner": self._worker_id},
+            {
+                "$set": {
+                    "status": "RETRY",
+                    "lastErrorCode": WAITING_ON_PREDECESSOR,
+                    "nextAttemptAt": now + timedelta(seconds=2),
+                    "updatedAt": now,
+                    "leaseOwner": None,
+                    "leaseUntil": None,
+                },
+                "$inc": {"attemptCount": -1},
+            },
+        )
+
+    async def _park_stream(self, command: OutboxCommand) -> None:
+        """Stop one case's stream on a dead-lettered predecessor.
+
+        The claimed command and every claimable command in the same
+        `(case, stream)` move to `PARKED_STREAM`, which `claim()` never takes.
+        Commands enqueued into the stream *after* this park are caught by the
+        `_ordering_hold` earlier-dead-letter query, so the bulk flip here is
+        visibility for the operator listing rather than the only guard.
+
+        The `logger.error` is the operations alert (contracts.md sect. 7): it
+        is one line per parking decision, and the parked rows themselves are
+        the bounded, listable surface the operator acts on via
+        `CaseStreamRecovery` skip/retry.
+        """
+        now = datetime.now(UTC)
+        await self._collection.update_one(
+            {"_id": command.id, "leaseOwner": self._worker_id},
+            {
+                "$set": {
+                    "status": PARKED_STREAM_STATUS,
+                    "parkedReason": PREDECESSOR_DEAD_LETTERED,
+                    "updatedAt": now,
+                    "leaseOwner": None,
+                    "leaseUntil": None,
+                },
+                "$inc": {"attemptCount": -1},
+            },
+        )
+        if command.stream is not None:
+            await self._collection.update_many(
+                {
+                    "aggregateId": command.aggregate_id,
+                    "stream": command.stream,
+                    "status": {"$in": list(CLAIMABLE_STATUSES)},
+                },
+                {
+                    "$set": {
+                        "status": PARKED_STREAM_STATUS,
+                        "parkedReason": PREDECESSOR_DEAD_LETTERED,
+                        "updatedAt": now,
+                    }
+                },
+            )
+        logger.error(
+            "case_stream_parked",
+            extra={
+                "aggregate_id": command.aggregate_id,
+                "stream": command.stream,
+                "event_id": command.event_id,
+                "reason": PREDECESSOR_DEAD_LETTERED,
+            },
         )
 
     async def _mark_delivered(self, command: OutboxCommand, result: DispatchResult) -> None:
@@ -466,6 +780,14 @@ class IntegrationOutboxDispatcher:
         command = await self.claim()
         if command is None:
             return False
+        if command.required_predecessor_ids or command.stream is not None:
+            hold = await self._ordering_hold(command)
+            if hold == "DEFER":
+                await self._release_for_predecessor(command)
+                return True
+            if hold == "PARK":
+                await self._park_stream(command)
+                return True
         dispatcher = self._dispatchers.get(command.topic)
         if dispatcher is None:
             await self._mark_failed(
