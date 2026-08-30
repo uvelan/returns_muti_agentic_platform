@@ -51,3 +51,9 @@ SUPPORT_MESSAGE_INTENT: Final[str] = "support_message_intent"
 #: the value, the evidence span, the candidate records and the map-or-reject
 #: choice. V3 owns the answer flow; V2 only writes the question.
 SUPPORT_CLARIFICATION_REQUESTED: Final[str] = "support_clarification_requested"
+
+#: One case's resolution spend has reached `support_resolver.per_case_llm_budget`
+#: (contracts.md sect. 9). Written by the ladder's escalation node at the moment
+#: the budget stops it, so the case carries the reason it stopped answering --
+#: exhaustion is visible work, never a silent halt.
+SUPPORT_RESOLVER_BUDGET_EXHAUSTED: Final[str] = "support_resolver_budget_exhausted"
