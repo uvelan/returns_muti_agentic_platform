@@ -40,6 +40,7 @@ import { ReturnCopilotShell } from "./panes/ReturnCopilotShell";
 import { ConversationPane, type ChatHistoryEntry } from "./panes/ConversationPane";
 import { ProgressTruthPane } from "./panes/ProgressTruthPane";
 import { BusinessObjectPane } from "./panes/BusinessObjectPane";
+import { CasePanel } from "./panes/casePanel/CasePanel";
 import { extractedReturnFields } from "./extractedFields";
 import { caseRecords, caseShipments, deriveCopilotMode } from "./types";
 
@@ -1137,6 +1138,18 @@ export function ReturnCopilotPage() {
                 onStartNewReturn={resetToFreshReturn}
               />
             )}
+            {/*
+              **The support review, in every mode, below the mode's own pane.**
+              Not gated on `activeMode`: the platform can need to ask Support
+              something at almost any point -- an RMA before the goods move, a
+              disposition question after they arrive -- and hiding the draft
+              because the associate happens to be looking at the warehouse step
+              would be the gate holding a message nobody knows about.
+
+              It renders nothing at all until there is a review, so it costs an
+              empty case one poll and no pixels.
+            */}
+            {caseId === null ? null : <CasePanel caseId={caseId} />}
           </BusinessObjectPane>
         }
       />

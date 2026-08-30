@@ -43,4 +43,87 @@ export const COPILOT_TOKENS = {
     heading: "text-base font-semibold text-on-surface",
     badge: "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium",
   },
+  /**
+   * The review panel's own vocabulary (V1 phase 2).
+   *
+   * Added here rather than inside the components for the reason the file
+   * exists: a component that invented its own colours would be the second place
+   * the visual language lives, and the first divergence nobody notices is a
+   * "sending" badge that is a different amber from every other one.
+   *
+   * Every value is an M3 role, never a hex. The audit before this was written
+   * found `COPILOT_TOKENS` covering layout, header, chat dock, section and
+   * typography, and carrying **no** state scale and **no** form controls --
+   * which is exactly what a review section needs for six review states and an
+   * editable field.
+   */
+  review: {
+    /**
+     * One review state, as a badge.
+     *
+     * Six entries because the aggregate has six non-initial states and the
+     * panel shows every one of them: a review an associate can no longer edit
+     * is precisely the one they most need to see. Colour is never the only
+     * signal -- each badge also carries its word and an icon at the call site
+     * -- because a state distinguished only by hue is unreadable to a
+     * colour-blind associate and invisible to a screen reader.
+     */
+    state: {
+      OPEN: "bg-secondary-container text-on-secondary-container",
+      APPROVING: "bg-tertiary-container text-on-tertiary-container",
+      SENT: "bg-primary-container text-on-primary-container",
+      DELIVERY_FAILED: "bg-error-container text-on-error-container",
+      HELD_FOR_OPERATIONS: "bg-error-container text-on-error-container",
+      CANCELLED: "bg-surface-container-high text-outline",
+      ABANDONED: "bg-surface-container-high text-outline",
+    },
+    /**
+     * Where a field's value came from. Provenance, not decoration -- sect. 8.
+     *
+     * `text-xs` (0.75rem), not smaller. The first draft of this used
+     * `text-[0.6875rem]` to keep the chips out of the way, which breaks this
+     * file's own stated rule at the top -- *strict minimum readable text size
+     * (>= 12px / 0.75rem)*. Provenance is precisely the thing an associate
+     * squints at when deciding whether to trust a value, so it is the last
+     * place to shave a pixel off.
+     */
+    provenance:
+      "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-surface-container-high text-outline",
+    /** A field the release marked required and the case cannot answer. */
+    gap: "rounded-lg border border-error/40 bg-error-container/30 px-3 py-2 text-xs text-on-error-container",
+    /** Somebody else is editing this. Case-level, never one actor's contents. */
+    conflict:
+      "rounded-lg border border-tertiary/50 bg-tertiary-container/40 px-3 py-2 text-xs text-on-tertiary-container",
+    field: {
+      row: "grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)] gap-3 py-1.5 items-start",
+      label: "text-xs font-medium text-outline pt-1.5",
+      value: "text-sm text-on-surface break-words",
+      /**
+       * `min-h` rather than `rows`, and `field-sizing-content` where the
+       * browser has it: a draft field that scrolls inside three lines hides
+       * the thing the associate is checking.
+       */
+      input:
+        "w-full rounded-lg border border-outline-control bg-surface px-2.5 py-1.5 text-sm text-on-surface outline-none transition focus:border-primary focus:ring-1 focus:ring-primary field-sizing-content min-h-[2.25rem]",
+      edited: "border-tertiary bg-tertiary-container/20",
+    },
+    action: {
+      primary:
+        "inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-sm font-medium text-on-primary transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 aria-disabled:opacity-50 aria-disabled:pointer-events-none",
+      secondary:
+        "inline-flex items-center gap-1.5 rounded-lg border border-outline-control px-3 py-2 text-sm font-medium text-on-surface transition hover:bg-surface-container-high focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 aria-disabled:opacity-50 aria-disabled:pointer-events-none",
+      danger:
+        "inline-flex items-center gap-1.5 rounded-lg border border-error/50 px-3 py-2 text-sm font-medium text-error transition hover:bg-error-container/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error focus-visible:ring-offset-2 aria-disabled:opacity-50 aria-disabled:pointer-events-none",
+      /** A row of actions. Wraps, because a narrow pane must not clip Send. */
+      bar: "flex flex-wrap items-center gap-2 pt-3",
+    },
+    /**
+     * Where an autosave, a re-render or an arriving message announces itself.
+     *
+     * `polite`, never `assertive`, and never focused: an associate mid-sentence
+     * must not be interrupted, and a support artifact arriving while they type
+     * must not take the caret out of the field they are in.
+     */
+    liveRegion: "text-xs text-outline min-h-[1rem]",
+  },
 } as const;

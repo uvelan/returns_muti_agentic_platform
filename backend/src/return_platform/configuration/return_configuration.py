@@ -15,6 +15,7 @@ from return_platform.configuration.context_assembly_configuration import (
     ContextAssemblyConfiguration,
 )
 from return_platform.configuration.settings import PRODUCTION_ENVIRONMENT
+from return_platform.configuration.support_gate_configuration import SupportGateConfiguration
 from return_platform.configuration.support_ingress_configuration import (
     SupportIngressConfiguration,
 )
@@ -1713,6 +1714,12 @@ class ReturnPlatformConfiguration(StrictConfigModel):
     support_template: SupportTemplateConfiguration = Field(
         default_factory=SupportTemplateConfiguration
     )
+
+    #: The review gate over the outbound support request (contracts.md sect. 6).
+    #: Defaulted so a release cut before the block still loads, and the default
+    #: has the gate *enabled* (DR-4) -- an older release must not become one
+    #: that sends unreviewed messages.
+    support_gate: SupportGateConfiguration = Field(default_factory=SupportGateConfiguration)
 
     #: How a case's facts become the context a model reasons over (contracts.md
     #: sect. 10). Defaulted so a release cut before the block still loads.

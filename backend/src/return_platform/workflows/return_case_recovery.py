@@ -90,6 +90,7 @@ from temporalio.client import Client, WorkflowExecutionStatus
 from temporalio.service import RPCError, RPCStatusCode
 
 from return_platform.configuration.return_configuration import ReturnCaseTimingConfiguration
+from return_platform.configuration.support_gate_configuration import SupportGateConfiguration
 from return_platform.operations.case_projection.status_mapping import UnmappedCaseStatusError
 from return_platform.operations.fact_names import SUPPORT_STREAM_SKIP
 from return_platform.operations.integrations.outbox import (
@@ -1218,6 +1219,7 @@ def build_case_recovery_service(
     database: AsyncDatabase[dict[str, object]] | None,
     timings: ReturnCaseTimingConfiguration,
     task_queue: str,
+    gate: SupportGateConfiguration | None = None,
 ) -> ReturnCaseRecoveryService:
     """Assemble the service from the four things every process already holds.
 
@@ -1230,15 +1232,39 @@ def build_case_recovery_service(
     ask "why is this case stuck" needs no dead-letter queue, and passing `None`
     yields a service whose reads work and whose command requeue is a no-op
     rather than a crash.
+
+    **The command horizon is armed here, and it is the same object as the
+    outbox.** `MongoReconciliationOutbox` implements both ports over one
+    collection -- `list_commands_requiring_reconciliation` for the dead letters
+    and `list_unapplied_commands_past_horizon` for the ones still politely
+    retrying -- so building two would be two readers of one queue disagreeing
+    about what is in it. Until this argument was passed, `_stale_commands`
+    answered `()` for every case and the horizon rule was inert: a case whose
+    approval command had committed and never reached the workflow was relaunched
+    rather than surfaced. That degradation was honest (the outcome said
+    `RELAUNCHED`, never a fabricated `OPERATIONS_REQUIRED`) and it is now over.
+
+    Arming it is V1's, not S2's: this is the *only* place the ports are chosen,
+    and the alternative -- a second factory at each call site that assembles the
+    same service with one more port -- is exactly the duplication the paragraph
+    above refuses. Nothing in S2's persistence contract, signatures or
+    transitions changes.
     """
+    reconciliation = None if database is None else MongoReconciliationOutbox(database)
     return ReturnCaseRecoveryService(
         launcher=TemporalCaseWorkflowLauncher(
             client=temporal,
             repository=repository,
             timings=timings,
             task_queue=task_queue,
+            # A relaunched case re-enters the review gate, so its input needs
+            # the same block a freshly-confirmed one gets. Without this a
+            # deployment that turned the gate off would have it back on for
+            # exactly the cases that were already having a bad day.
+            gate=gate,
         ),
         repository=repository,
         probe=TemporalCaseExecutionProbe(client=temporal),
-        outbox=None if database is None else MongoReconciliationOutbox(database),
+        outbox=reconciliation,
+        command_horizon=reconciliation,
     )

@@ -10,18 +10,33 @@ type ErrorDetails = {
 export class APIError extends Error {
   public readonly status: number;
   public readonly correlationId: string | undefined;
+  /**
+   * The refusal's own `detail` object, when it sent one.
+   *
+   * `message` is what a person is shown; this is what a caller can *branch* on.
+   * The review endpoints put the review's state and the field that moved in
+   * here, because a UI that only has "409" can offer nothing but "try again",
+   * while one that has `{code: "ReviewStateError", state: "APPROVING"}` can say
+   * "this review is already being sent" and hide the button.
+   *
+   * Deliberately `unknown`: every router on this platform raises its own detail
+   * shape and typing it here would make this file the place they are all
+   * written down. Callers narrow it.
+   */
+  public readonly detail: unknown;
 
   public constructor(
     message: string,
     status: number,
     correlationId?: string,
-    options?: ErrorOptions,
+    options?: ErrorOptions & { readonly detail?: unknown },
   ) {
     super(message, options);
 
     this.name = "APIError";
     this.status = status;
     this.correlationId = correlationId;
+    this.detail = options?.detail;
   }
 }
 
@@ -311,6 +326,9 @@ export async function apiClient<T>(
       response.status,
       errorDetails.correlationId
         ?? headerCorrelationId,
+      // The raw detail, alongside the message extracted from it. See
+      // `APIError.detail`.
+      { detail: isRecord(payload) ? payload.detail : undefined },
     );
   }
 

@@ -90,12 +90,36 @@ class ReviewState(StrEnum):
 
 
 #: The frozen transition table. Everything not listed is a 409.
+#: **AMENDMENT-5 widened this table**, and the two added arrows both come from
+#: one rule: *the gate, on closing, moves every non-terminal review to
+#: `HELD_FOR_OPERATIONS`*, so that no review is ever in a state with no legal
+#: exit. `APPROVING -> HELD_FOR_OPERATIONS` was already here; a gate closing over
+#: an `OPEN` or `DELIVERY_FAILED` review had nowhere to put it.
+#:
+#: `OPEN -> HELD_FOR_OPERATIONS` is the load-bearing one and it is not obvious.
+#: An `OPEN` review looks safe -- approve and cancel are both API-reachable --
+#: but once the gate has closed, *approving* it CASes to `APPROVING`, the
+#: workflow discards the notice, and `APPROVING`'s three exits are all
+#: workflow-driven. The trap the amendment describes for the retry endpoint is
+#: reachable through the approve endpoint too, and moving `OPEN` reviews out on
+#: close is what shuts that door rather than guarding it.
+#:
+#: **This is an S2-owned file changed by V1** (contracts.md sect. 10 gives S2
+#: the state transitions). It is done here rather than returned to S2 because
+#: AMENDMENT-5 is the orchestrator amending sect. 6 itself and names this
+#: transition as the ruling -- implementing a written amendment is not inventing
+#: a contract -- but it is called out loudly for RV, and nothing else in S2's
+#: semantics is touched.
 _TRANSITIONS: Final[Mapping[ReviewState, frozenset[ReviewState]]] = {
-    ReviewState.OPEN: frozenset({ReviewState.APPROVING, ReviewState.CANCELLED}),
+    ReviewState.OPEN: frozenset(
+        {ReviewState.APPROVING, ReviewState.CANCELLED, ReviewState.HELD_FOR_OPERATIONS}
+    ),
     ReviewState.APPROVING: frozenset(
         {ReviewState.SENT, ReviewState.DELIVERY_FAILED, ReviewState.HELD_FOR_OPERATIONS}
     ),
-    ReviewState.DELIVERY_FAILED: frozenset({ReviewState.APPROVING, ReviewState.ABANDONED}),
+    ReviewState.DELIVERY_FAILED: frozenset(
+        {ReviewState.APPROVING, ReviewState.ABANDONED, ReviewState.HELD_FOR_OPERATIONS}
+    ),
     ReviewState.HELD_FOR_OPERATIONS: frozenset({ReviewState.OPEN, ReviewState.ABANDONED}),
     ReviewState.SENT: frozenset(),
     ReviewState.CANCELLED: frozenset(),
@@ -837,7 +861,16 @@ class ReviewAggregateStore:
             case_id=case_id,
             review_id=review_id,
             action="hold for operations",
-            allowed_states=(ReviewState.APPROVING,),
+            # All three non-terminal states the gate can be holding when it
+            # closes (AMENDMENT-5). `HELD_FOR_OPERATIONS` is deliberately absent
+            # -- re-holding an already-held review would rewrite its hold reason
+            # with a later one, losing why it was held in the first place; the
+            # caller treats that as the no-op it is.
+            allowed_states=(
+                ReviewState.APPROVING,
+                ReviewState.OPEN,
+                ReviewState.DELIVERY_FAILED,
+            ),
             new_state=ReviewState.HELD_FOR_OPERATIONS,
             actor_id=SYSTEM_ACTOR,
             reason=value,

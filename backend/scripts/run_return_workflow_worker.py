@@ -41,15 +41,21 @@ from return_platform.dynamic_knowledge.integration.targeted_sync import (
     build_targeted_graph_access,
 )
 from return_platform.dynamic_knowledge.release_store import SchemaReleaseStore
+from return_platform.operations.case_commands import DurableCaseCommandStore
 from return_platform.operations.order_lines.case_detail import SourceOrderLineDetails
-from return_platform.operations.shipment_tracking import ShipmentTrackingStore
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_support.service import ReturnSupportService
+from return_platform.operations.review_aggregate import ReviewAggregateStore
 from return_platform.operations.seed_manifest import (
     SOURCE_PRODUCTS_DATASET,
     SOURCE_SALES_DATASET,
 )
+from return_platform.operations.shipment_tracking import ShipmentTrackingStore
 from return_platform.operations.sql_business_state import SQLBusinessStateRepository
+from return_platform.operations.support_template_gate import (
+    MongoDraftEditRows,
+    SupportTemplateGateService,
+)
 from return_platform.operations.warehouse.case_placement import CaseBayPlacement
 from return_platform.workflows.persistence import ReturnSessionRepository
 from return_platform.workflows.return_case_activities import ReturnCaseActivities
@@ -149,14 +155,36 @@ async def _run() -> None:
             settings,
             shipment_graph_sync=GraphShipmentStateSync.from_access(graph),
         )
+        support_service = ReturnSupportService(
+            client=mongo,
+            settings=settings,
+            configuration=runtime.return_configuration.configuration,
+            operational_repository=operational_repository,
+        )
+        # The review gate (contracts.md sect. 6). Built here because this is the
+        # process that owns `ReturnCaseWorkflow`, and built from the *same*
+        # Mongo client the review aggregate and the command outbox live in --
+        # sect. 6's transactional boundary is "co-located in one transactional
+        # datastore", and a second client would be a second connection pool
+        # against which `with_transaction` means nothing.
+        review_store = ReviewAggregateStore(
+            mongo,
+            settings,
+            command_store=DurableCaseCommandStore(mongo, settings),
+        )
+        template_gate = SupportTemplateGateService(
+            reviews=review_store,
+            # Required rather than defaulted: a gate whose conflict recompute is
+            # silently absent is worse than one that refuses to build.
+            edit_rows=MongoDraftEditRows(mongo[settings.mongo_database]),
+            support_service=support_service,
+            configuration=lambda: activation.state.return_configuration.configuration,
+            append_fact=lambda **fact: case_activities.append_scoped_fact_once(**fact),
+        )
         case_activities = ReturnCaseActivities(
             repository=operational_repository,
-            support_service=ReturnSupportService(
-                client=mongo,
-                settings=settings,
-                configuration=runtime.return_configuration.configuration,
-                operational_repository=operational_repository,
-            ),
+            support_service=support_service,
+            template_gate=template_gate,
             graph_sync=GraphReturnRecordSync.from_access(graph),
             # RMA-01. The authoritative SQL return store. Wired here because this
             # is the process that owns `ReturnCaseWorkflow`. Without it the

@@ -64,6 +64,17 @@ from return_platform.operations.order_lines.reservations import (
 )
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_issuance import ReturnRecordStorePort
+from return_platform.operations.review_aggregate import (
+    SYSTEM_ACTOR,
+    PendingRevisionError,
+    ReviewConflictError,
+    ReviewState,
+    ReviewStateError,
+    ReviewVersionMismatchError,
+    TemplateReviewParkReason,
+    canonical_review_payload,
+)
+from return_platform.operations.support_events import canonical_payload_digest
 from return_platform.operations.support_handoff import (
     SupportHandoffBay,
     SupportHandoffCustomer,
@@ -72,6 +83,15 @@ from return_platform.operations.support_handoff import (
     SupportHandoffPolicy,
     SupportHandoffReturn,
     compose_support_handoff,
+)
+from return_platform.operations.support_template_draft import (
+    snapshot_as_facts,
+    support_template_snapshot,
+)
+from return_platform.operations.support_template_gate import (
+    PAYLOAD_GAPS,
+    SupportTemplateGateService,
+    request_ids_for,
 )
 from return_platform.policy.evaluator import PolicyClock, evaluate_return_eligibility
 from return_platform.policy.outcome import PolicyOutcome
@@ -92,6 +112,8 @@ from return_platform.workflows.return_case_workflow import (
     CaseEligibilityOutcome,
     DraftSupportRequestInput,
     EvaluateCaseEligibilityInput,
+    HoldUnsettledReviewsInput,
+    HoldUnsettledReviewsResult,
     OpenSupportWorkItemInput,
     PolicyGateState,
     RecordCaseCustomerInput,
@@ -101,9 +123,15 @@ from return_platform.workflows.return_case_workflow import (
     ResolveBusinessDeadlineInput,
     ResolvedBusinessDeadline,
     SendSupportReminderInput,
+    SnapshotSentTemplateInput,
     SupportOutcomeReceipt,
     SupportReturnRecord,
     SynchronizeReturnRecordsInput,
+    TemplateDeliveryResult,
+    TemplateReviewDraftInput,
+    TemplateReviewDraftResult,
+    TemplateReviewDraftSet,
+    TemplateReviewRevisionInput,
 )
 
 __all__ = [
@@ -473,6 +501,7 @@ class ReturnCaseActivities:
         order_line_details: OrderLineDetailPort | None = None,
         configuration: Callable[[], ReturnPlatformConfiguration | None] | None = None,
         shipment_tracking: Any | None = None,
+        template_gate: SupportTemplateGateService | None = None,
     ) -> None:
         self._repository = repository
         self._support = support_service
@@ -489,6 +518,13 @@ class ReturnCaseActivities:
         # release it started with would go on using a holiday list a release
         # has since corrected.
         self._configuration = configuration
+        #: The review gate (contracts.md sect. 6). Optional so every existing
+        #: worker and test double keeps constructing, and **`None` refuses
+        #: loudly** rather than degrading -- see `_gate`. A process whose
+        #: histories carry the gate patch and whose activities cannot open a
+        #: review is misconfigured, and an activity that quietly did nothing
+        #: would leave the case waiting on a review nobody created.
+        self._gate_service = template_gate
 
     async def _append_fact_once(self, **fact: Any) -> bool:
         """Append one derived-id fact, treating an existing one as already done.
@@ -635,7 +671,8 @@ class ReturnCaseActivities:
             return True
         facts = await self._repository.latest_case_facts(request.case_id)
         return any(
-            _text_of(record.get("value")) for name, record in facts.items()
+            _text_of(record.get("value"))
+            for name, record in facts.items()
             if name in _RETURN_DETAIL_FACTS
         )
 
@@ -1263,6 +1300,32 @@ class ReturnCaseActivities:
         result says so, and none of it stops the handoff. A return that cannot be
         described is still a return Support has to be told about.
         """
+        handoff = compose_support_handoff(**await self._handoff_arguments(request))
+        facts = await self._handoff_facts(request.case_id)
+        return SupportRequestDraft(
+            text=handoff.text + await self._drafted_note(request.case_id, facts),
+            payload=handoff.payload,
+            subject=handoff.subject,
+        )
+
+    async def _handoff_facts(self, case_id: str) -> dict[str, Any]:
+        latest = await self._repository.latest_case_facts(case_id)
+        return {name: fact.get("value") for name, fact in latest.items()}
+
+    async def _handoff_arguments(self, request: DraftSupportRequestInput) -> dict[str, Any]:
+        """Everything `compose_support_handoff` is called with, assembled once.
+
+        Lifted out of `draft_support_request` unchanged, and the extraction is
+        the seam phase 1 built for: `support_template_snapshot` takes **this
+        exact argument list**, deliberately, so the composed handoff and the
+        templated one are one handoff by two routes rather than two assemblies
+        somebody has to keep in step.
+
+        A second copy of these reads is precisely how the two paths would come
+        to disagree about what the case says, which is the shape of the
+        divergence phase 1 spent a whole review round on. One assembly, two
+        renderings.
+        """
         # Three narrow reads, not the whole case projection. The projection
         # assembles fifteen blocks this message does not use and needs a
         # requirement table to do it; the handoff needs the case's own row, its
@@ -1315,7 +1378,7 @@ class ReturnCaseActivities:
 
         item_methods = self._derive_item_methods(selected, details)
 
-        handoff = compose_support_handoff(
+        return dict(
             case_id=request.case_id,
             work_item_id=request.work_item_id,
             created_at=_moment_of(case.get("updatedAt")),
@@ -1366,11 +1429,6 @@ class ReturnCaseActivities:
             required_details_complete=required_details_complete,
             outstanding_support_dimensions=outstanding_support_dimensions,
             support_state_known=known,
-        )
-        return SupportRequestDraft(
-            text=handoff.text + await self._drafted_note(request.case_id, facts),
-            payload=handoff.payload,
-            subject=handoff.subject,
         )
 
     def _derive_item_methods(
@@ -1566,6 +1624,309 @@ class ReturnCaseActivities:
                 exc_info=True,
             )
             return {}
+
+    # --- the template review gate (contracts.md sect. 6) ---------------------
+    #
+    # Four activities, all of them thin. The work is
+    # `operations/support_template_gate.py`, which knows nothing about Temporal
+    # and is therefore exercisable branch by branch without a worker; these
+    # exist to be *names the workflow can reference as strings* and to assemble
+    # the render input from the case.
+
+    def _gate(self) -> SupportTemplateGateService:
+        """The gate service, or a clear refusal.
+
+        Raised rather than degraded. Every one of these activities is reached
+        only from inside `workflow.patched(...)`, so a deployment that has the
+        gate in its histories and no review store in its worker is
+        misconfigured -- and an activity that quietly did nothing would leave a
+        case waiting on a review that was never opened, which is the failure
+        mode with no operator signal at all.
+        """
+        if self._gate_service is None:
+            raise RuntimeError(
+                "the support template review gate is not wired in this process: "
+                "ReturnCaseActivities was built without a review store"
+            )
+        return self._gate_service
+
+    async def _render_inputs(
+        self, request: TemplateReviewDraftInput
+    ) -> tuple[dict[tuple[str | None, str], dict[str, Any]], tuple[Any, ...]]:
+        """The facts and records one render reads.
+
+        Two halves, merged, and the merge order is the point. The **scoped fact
+        log** goes in first, carrying each value's `factId` so the panel can put
+        a provenance chip on it; the **draft snapshot** goes over the top for
+        the derived values no fact stands behind. A snapshot key never
+        overwrites a real fact of the same name, because
+        `support_template_draft.SNAPSHOT_KEYS` and `FACT_LOG_KEYS` are disjoint
+        and a test in that module holds them so.
+        """
+        scoped = await self._repository.latest_case_facts_scoped(request.case_id)
+        facts: dict[tuple[str | None, str], dict[str, Any]] = {
+            key: dict(value) for key, value in scoped.items()
+        }
+        arguments = await self._handoff_arguments(
+            DraftSupportRequestInput(
+                case_id=request.case_id,
+                configuration_release_id=request.configuration_release_id,
+                work_item_id=request.work_item_id,
+            )
+        )
+        facts.update(snapshot_as_facts(support_template_snapshot(**arguments)))
+        records = tuple(await self._return_records(request.case_id))
+        return facts, records
+
+    async def _return_records(self, case_id: str) -> Sequence[Any]:
+        """This case's record projections, or none.
+
+        Best-effort: a projection that cannot be assembled leaves the per-record
+        sections empty rather than failing the draft. The opening handoff has no
+        records at all by construction -- it is the message that *asks* for the
+        first RMA -- so "none" is the ordinary answer here, not a degradation.
+        """
+        try:
+            state = await self._repository.load_case_projection_state(case_id)
+        except Exception:  # noqa: BLE001 - see the docstring
+            logger.warning(
+                "return_records_unavailable_for_template",
+                extra={"case_id": case_id},
+                exc_info=True,
+            )
+            return ()
+        return () if state is None or state.returnRecords is None else state.returnRecords
+
+    @activity.defn(name="record_template_draft")
+    async def record_template_draft(
+        self, request: TemplateReviewDraftInput
+    ) -> TemplateReviewDraftSet:
+        """Open every review this case's grouping asks for. One call, one set.
+
+        The grouping is resolved here rather than in the workflow because it
+        reads the case's return records, and a workflow may not. What comes
+        back is the whole map -- so the wait is keyed on ids the *history*
+        holds, not on ids re-derived from a release that may have moved.
+
+        No `review_id` is supplied per request and none is needed:
+        `create_review` is idempotent on `(case_id, request_id, kind, scope)`
+        over non-terminal attempts, so a retried activity finds the live review
+        and returns it rather than opening a second answer to one question.
+        """
+        gate = self._gate()
+        facts, records = await self._render_inputs(request)
+        request_ids = request_ids_for(request.case_id, records, gate.gate().request_grouping)
+        drafts: list[TemplateReviewDraftResult] = []
+        for index, request_id in enumerate(request_ids):
+            draft = await gate.record_draft(
+                case_id=request.case_id,
+                request_id=request_id,
+                # Derived, so a retry that got as far as the second request does
+                # not mint a fresh id for the first -- `create_review` would
+                # absorb it anyway, and an id that changed per attempt would make
+                # the fact log's `record_scope` unreadable.
+                review_id=f"{request.fact_id_seed}:{index}",
+                fact_id_seed=f"{request.fact_id_seed}:{index}",
+                facts=facts,
+                records=records,
+            )
+            if not draft.template_available:
+                return TemplateReviewDraftSet(template_available=False)
+            drafts.append(
+                _draft_result(
+                    TemplateReviewDraftInput(
+                        case_id=request.case_id,
+                        request_id=request_id,
+                        review_id=draft.review_id or "",
+                        configuration_release_id=request.configuration_release_id,
+                        work_item_id=request.work_item_id,
+                        fact_id_seed=request.fact_id_seed,
+                    ),
+                    draft,
+                )
+            )
+        return TemplateReviewDraftSet(drafts=tuple(drafts))
+
+    @activity.defn(name="rerender_template_draft")
+    async def rerender_template_draft(
+        self, request: TemplateReviewDraftInput
+    ) -> TemplateReviewDraftResult:
+        """Produce the draft again after a reviewer asked for a revision."""
+        facts, records = await self._render_inputs(request)
+        draft = await self._gate().rerender_draft(
+            case_id=request.case_id,
+            request_id=request.request_id,
+            review_id=request.review_id,
+            fact_id_seed=request.fact_id_seed,
+            facts=facts,
+            records=records,
+        )
+        return _draft_result(request, draft)
+
+    @activity.defn(name="record_template_revision")
+    async def record_template_revision(self, request: TemplateReviewRevisionInput) -> None:
+        """Log the revision request before the re-render, not after.
+
+        A revision asked for against a render that then failed is still a thing
+        that happened, and an operator reading the case needs to see it.
+        """
+        await self._gate().record_revision(
+            case_id=request.case_id,
+            review_id=request.review_id,
+            actor_id=request.actor_id,
+            note=request.note,
+            fact_id_seed=request.fact_id_seed,
+        )
+
+    @activity.defn(name="hold_unsettled_reviews")
+    async def hold_unsettled_reviews(
+        self, request: HoldUnsettledReviewsInput
+    ) -> HoldUnsettledReviewsResult:
+        """Park every review the gate was still holding when it closed.
+
+        AMENDMENT-5, rule 2, and the half that makes the guarantee rather than
+        the refusal: rule 1 stops a retry stranding a review, but on its own it
+        leaves an operator with only a 409. This leaves them a legal action, and
+        it is what makes "no review is ever in a state with no legal exit" true
+        rather than merely intended.
+
+        Idempotent by the aggregate's own state guard -- an already-held or
+        terminal review is skipped, not re-held, so a first hold reason survives
+        a second close.
+        """
+        held = await self._gate().hold_unsettled(case_id=request.case_id)
+        if held:
+            logger.info(
+                "template_reviews_held_on_gate_close",
+                extra={"case_id": request.case_id, "review_ids": list(held)},
+            )
+        return HoldUnsettledReviewsResult(held_review_ids=held)
+
+    @activity.defn(name="snapshot_sent_template")
+    async def snapshot_sent_template(
+        self, request: SnapshotSentTemplateInput
+    ) -> TemplateDeliveryResult:
+        """Send the frozen payload and settle the review.
+
+        `approve_as_system` is `auto_send`. **The gap rule is enforced here as
+        well as in the workflow**, and that duplication is deliberate: it is the
+        one rule in the gate whose failure mode is a message asserting something
+        the case does not know, and the workflow's copy is a decision while this
+        one is a refusal. Contracts.md sect. 6: *an unresolved required gap
+        forces hold/escalate regardless of `on_timeout: auto_send`.*
+        """
+        gate = self._gate()
+        if request.approve_as_system:
+            blocked = await self._auto_send_or_reason(gate, request)
+            if blocked is not None:
+                return blocked
+        try:
+            outcome = await gate.deliver_approved(
+                case_id=request.case_id,
+                review_id=request.review_id,
+                tenant_id=request.tenant_id,
+                principal_id=request.principal_id,
+                fact_id_seed=request.fact_id_seed,
+                queue=request.queue,
+            )
+        except ReviewStateError as refusal:
+            # The review is not `APPROVING`. A signal arrived for a review
+            # somebody cancelled or redrafted in between, or one whose approval
+            # never committed. **Reported, not raised**: raising would fail the
+            # workflow task and retry the same activity forever against a state
+            # that will never change on its own, and the case would sit in
+            # `AWAITING_TEMPLATE_REVIEW` with nothing on the panel to say why.
+            # Returning the state is what lets the wait loop stop waiting.
+            logger.warning(
+                "template_delivery_refused_by_state",
+                extra={
+                    "case_id": request.case_id,
+                    "review_id": request.review_id,
+                    "state": refusal.state.value,
+                },
+            )
+            return TemplateDeliveryResult(review_id=request.review_id, state=refusal.state.value)
+        return TemplateDeliveryResult(
+            review_id=outcome.review_id,
+            state=outcome.state,
+            work_item_id=outcome.work_item_id,
+            delivery_id=outcome.delivery_id,
+            absorbed=outcome.absorbed,
+            error_code=outcome.error_code,
+        )
+
+    async def _auto_send_or_reason(
+        self, gate: SupportTemplateGateService, request: SnapshotSentTemplateInput
+    ) -> TemplateDeliveryResult | None:
+        """Approve as `SYSTEM`, or say what refused. `None` means "go on".
+
+        Every refusal below is a *guard block*, and they are one answer because
+        an operator's next action is the same for all of them: look at the
+        review. The distinction that matters -- what refused -- is on the review
+        and on the fact log, not in this return value.
+        """
+        review = await gate.review(case_id=request.case_id, review_id=request.review_id)
+        state = str(review.get("state"))
+        if state == ReviewState.APPROVING.value:
+            # A retry of this activity after its approval committed. Go on and
+            # deliver; the send is deduped on the stored delivery identity.
+            return None
+        if state != ReviewState.OPEN.value:
+            # Somebody answered between the deadline firing and this activity
+            # running -- approved, cancelled, redrafted. Their decision wins;
+            # the system does not overwrite a person's, and reporting the state
+            # is how the workflow learns it no longer has to.
+            return TemplateDeliveryResult(review_id=request.review_id, state=state)
+        gaps = _gap_field_ids(review)
+        if gaps:
+            logger.warning(
+                "auto_send_refused_unresolved_gap",
+                extra={
+                    "case_id": request.case_id,
+                    "review_id": request.review_id,
+                    "gap_field_ids": list(gaps),
+                },
+            )
+            return TemplateDeliveryResult(
+                review_id=request.review_id,
+                state=state,
+                guard_blocked_reason=(TemplateReviewParkReason.TEMPLATE_REVIEW_GUARD_BLOCKED.value),
+            )
+        try:
+            await gate.approve(
+                case_id=request.case_id,
+                review_id=request.review_id,
+                actor_id=SYSTEM_ACTOR,
+                expected_draft_version=int(review["draftVersion"]),
+                expected_canonical_edit_version=int(review["canonicalEditVersion"]),
+                canonical_approved_payload_hash=canonical_payload_digest(
+                    canonical_review_payload(review)
+                ),
+                workflow_id=request.workflow_id,
+                signal_id=request.signal_id,
+                allow_system=True,
+            )
+        except (
+            ReviewConflictError,
+            PendingRevisionError,
+            ReviewVersionMismatchError,
+            ReviewStateError,
+        ) as refusal:
+            logger.warning(
+                "auto_send_refused",
+                extra={
+                    "case_id": request.case_id,
+                    "review_id": request.review_id,
+                    "refusal": type(refusal).__name__,
+                },
+            )
+            fresh = await gate.review(case_id=request.case_id, review_id=request.review_id)
+            return TemplateDeliveryResult(
+                review_id=request.review_id,
+                state=str(fresh.get("state")),
+                guard_blocked_reason=(TemplateReviewParkReason.TEMPLATE_REVIEW_GUARD_BLOCKED.value),
+            )
+        return None
 
     @activity.defn(name="open_support_work_item")
     async def open_support_work_item(self, request: OpenSupportWorkItemInput) -> str:
@@ -1836,7 +2197,6 @@ class ReturnCaseActivities:
             revision=completion[3],
         )
 
-
     async def _seed_return_shipments(
         self, request: RecordSupportOutcomeInput, plans: list[Any]
     ) -> None:
@@ -1869,8 +2229,7 @@ class ReturnCaseActivities:
             # A parcel with no tracking number is awaiting Support; a freight
             # movement has no PRO yet by nature and seeds on its BOL. Neither
             # identity is ever invented.
-            if (mode == "parcel" and not tracking) or (
-                    mode == "freight" and not (tracking or bol)):
+            if (mode == "parcel" and not tracking) or (mode == "freight" and not (tracking or bol)):
                 logger.info(
                     "return_shipment_awaiting_tracking",
                     extra={
@@ -1881,32 +2240,34 @@ class ReturnCaseActivities:
                 )
                 continue
             try:
-                await self._shipment_tracking.seed(ShipmentSeed(
-                    case_id=request.case_id,
-                    return_record_id=plan.record_id,
-                    # The RMA is the record's identity -- the upsert key -- so
-                    # it lives on the incoming notice, not in the merged field
-                    # set.
-                    rma_reference=(
-                        _text_of(merged.get("returnReference"))
-                        or getattr(plan.incoming, "return_reference", None)
-                        or ""
-                    ),
-                    tracking_reference=tracking or "",
-                    return_method=method,
-                    carrier=_text_of(merged.get("carrier")),
-                    label_reference=_text_of(merged.get("labelReference")),
-                    bol_reference=bol,
-                    destination_warehouse=destination_warehouse,
-                    destination_bay=destination_bay,
-                    provenance={
-                        "agent": "return-support",
-                        "channel": "CHANNEL_B",
-                        "source": "SUPPORT_REPLY",
-                        "method": "PARSED",
-                        "supportEventId": getattr(request, "support_event_id", None),
-                    },
-                ))
+                await self._shipment_tracking.seed(
+                    ShipmentSeed(
+                        case_id=request.case_id,
+                        return_record_id=plan.record_id,
+                        # The RMA is the record's identity -- the upsert key -- so
+                        # it lives on the incoming notice, not in the merged field
+                        # set.
+                        rma_reference=(
+                            _text_of(merged.get("returnReference"))
+                            or getattr(plan.incoming, "return_reference", None)
+                            or ""
+                        ),
+                        tracking_reference=tracking or "",
+                        return_method=method,
+                        carrier=_text_of(merged.get("carrier")),
+                        label_reference=_text_of(merged.get("labelReference")),
+                        bol_reference=bol,
+                        destination_warehouse=destination_warehouse,
+                        destination_bay=destination_bay,
+                        provenance={
+                            "agent": "return-support",
+                            "channel": "CHANNEL_B",
+                            "source": "SUPPORT_REPLY",
+                            "method": "PARSED",
+                            "supportEventId": getattr(request, "support_event_id", None),
+                        },
+                    )
+                )
             except Exception:  # noqa: BLE001 - see the docstring
                 logger.warning(
                     "return_shipment_seed_failed",
@@ -2549,3 +2910,39 @@ class ReturnCaseActivities:
             },
         )
         return outcome.graph_generation_id
+
+
+def _gap_field_ids(review: Mapping[str, Any]) -> tuple[str, ...]:
+    """The gaps on a review's *current* draft payload.
+
+    Read off the payload rather than off the fact log, because the fact log
+    accumulates a gap per draft version and a re-render that filled one leaves
+    the old fact standing. The payload is what the reviewer is looking at, and
+    it is what the message would be built from.
+    """
+    payload = review.get("draftPayload") or {}
+    if not isinstance(payload, Mapping):
+        return ()
+    gaps = payload.get(PAYLOAD_GAPS) or ()
+    if not isinstance(gaps, Sequence):
+        return ()
+    return tuple(str(gap.get("field_id", "")) for gap in gaps if isinstance(gap, Mapping))
+
+
+def _draft_result(request: TemplateReviewDraftInput, draft: Any) -> TemplateReviewDraftResult:
+    """A `GateDraft` as the workflow's dataclass.
+
+    The two are separate types on purpose: the workflow's is in the *history*,
+    so it may only ever gain defaulted fields, while the gate's is free to
+    change with the panel. Collapsing them would put the panel's shape into
+    every recorded execution.
+    """
+    return TemplateReviewDraftResult(
+        request_id=request.request_id,
+        review_id=draft.review_id or request.review_id,
+        state=draft.state,
+        draft_version=draft.draft_version,
+        canonical_edit_version=draft.canonical_edit_version,
+        gap_field_ids=draft.gap_field_ids,
+        template_available=draft.template_available,
+    )

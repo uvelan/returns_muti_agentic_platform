@@ -61,6 +61,7 @@ __all__ = [
     "CancelCaseCommand",
     "CaseEligibilityOutcome",
     "CaseTerminalCommand",
+    "ClarificationAnsweredNotice",
     "DraftSupportRequestInput",
     "EvaluateCaseEligibilityInput",
     "OpenSupportWorkItemInput",
@@ -80,10 +81,17 @@ __all__ = [
     "ReturnCaseWorkflow",
     "ReturnCaseWorkflowInput",
     "SendSupportReminderInput",
+    "SnapshotSentTemplateInput",
     "SupportOutcomeReceipt",
     "SupportResponseNotice",
     "SupportReturnRecord",
     "SynchronizeReturnRecordsInput",
+    "TemplateDeliveryResult",
+    "TemplateReviewDraftInput",
+    "TemplateReviewDraftResult",
+    "TemplateReviewDraftSet",
+    "TemplateReviewNotice",
+    "TemplateReviewRevisionInput",
     "TerminalCommandName",
     "return_case_workflow_id",
 ]
@@ -147,6 +155,39 @@ _BEST_EFFORT_RETRY: Final = RetryPolicy(maximum_attempts=2)
 #: retention window.** Removing it early reintroduces the wedge for exactly the
 #: executions that are least able to report it.
 _PATCH_STRUCTURED_SUPPORT_DRAFT: Final = "support-draft-returns-structured-payload"
+
+#: Guards the template review gate (contracts.md sect. 6).
+#:
+#: An execution recorded before this marker existed composed the handoff and
+#: sent it in the next statement. There is no reviewer, no review id and no
+#: deadline anywhere in its history, so a replay that took the gated path would
+#: reach `record_template_draft` where the history holds `open_support_work_item`
+#: and fail non-determinism on every workflow task -- the same wedge
+#: `_PATCH_STRUCTURED_SUPPORT_DRAFT` documents, on a much wider population.
+#:
+#: So the un-patched branch is byte-identically what `_open_support` did before
+#: this gate existed: `compose_support_handoff`'s draft, straight into
+#: `open_support_work_item`. `test_return_case_workflow_replay_compatibility.py`
+#: replays a recorded history through both branches.
+#:
+#: **Do not remove this until every pre-gate history has aged out.**
+_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE: Final = "support-template-review-gate"
+
+#: V3's activity name for answering a clarification (contracts.md sect. 10).
+#: **Declared, never implemented here.** The gate accepts the signal so V3's
+#: first delivery does not meet an unknown handler; writing the answer is V3's,
+#: and a second implementation would be a second record of one answer.
+_V3_CLARIFICATION_ACTIVITY: Final = "record_clarification_answer"
+
+#: Review states the wait loop stops waiting on. `DELIVERY_FAILED` and
+#: `HELD_FOR_OPERATIONS` are **settled for the gate** and unsettled for
+#: everyone else: both are visible on the panel and both have an operator
+#: recovery action, and a workflow that kept waiting on one would hold the case
+#: open until its lifetime cap on a question no reviewer can answer.
+_RESOLVED_REVIEW_STATES: Final[frozenset[str]] = frozenset(
+    {"SENT", "CANCELLED", "ABANDONED", "DELIVERY_FAILED", "HELD_FOR_OPERATIONS"}
+)
+
 
 def _coerce_support_draft(value: Any) -> SupportRequestDraft:
     """One `SupportRequestDraft` from whatever the history actually recorded.
@@ -232,6 +273,15 @@ class ReturnCaseStatus(StrEnum):
     #: an absent rule set must never look like the evaluator working. Non-terminal,
     #: because publishing the policy is what fixes it and the case then resumes.
     RECOVERY_REQUIRED = "RECOVERY_REQUIRED"
+    #: Contracts.md sect. 6. The draft is rendered and a person has not
+    #: answered yet. A **legitimate wait**: the time-based recovery sweep never
+    #: relaunches it, because elapsed time is not evidence about a case whose
+    #: whole design is to sit until a reviewer answers.
+    #:
+    #: It projects onto `AWAITING_SUPPORT` in the frozen public vocabulary --
+    #: waiting on the approval of a message *to* Support reads, from outside, as
+    #: waiting on Support.
+    AWAITING_TEMPLATE_REVIEW = "AWAITING_TEMPLATE_REVIEW"
     AWAITING_SUPPORT = "AWAITING_SUPPORT"
     RMA_RECEIVED = "RMA_RECEIVED"
     IN_TRANSIT = "IN_TRANSIT"
@@ -360,6 +410,30 @@ class ReturnCaseTimings:
     return_details_required: bool = False
     absolute_lifetime_seconds: int = _DEFAULT_LIFETIME_SECONDS
 
+    # --- the template review gate (contracts.md sect. 6) ---------------------
+    #
+    # Flattened onto this frozen dataclass rather than nested, and every field
+    # defaulted, because this type is *in the workflow history*: a history
+    # recorded before the gate existed is replayed by decoding an input that
+    # does not carry these keys, and a required field or a nested type would
+    # make that decode fail. The defaults are `SupportGateConfiguration`'s, so
+    # an input that predates the block decodes to the same values a release
+    # without the block loads with.
+    #
+    # Pinned at start like every other timing here: a release that moves the
+    # review wait applies to cases started after it, never to a countdown an
+    # associate is already watching.
+    template_review_enabled: bool = True
+    template_review_wait_seconds: int = 28_800
+    template_review_reminder_interval_seconds: int = 7_200
+    #: A **case** total, not a per-review one (DR-7).
+    template_review_max_reminders: int = 3
+    #: `TemplateReviewTimeoutPolicy`'s value. A string rather than the enum for
+    #: the same reason the fields are flat: history decoding.
+    template_review_on_timeout: str = "hold"
+    #: `RequestGrouping`'s value.
+    support_request_grouping: str = "one_per_case"
+
 
 @dataclass(frozen=True, slots=True)
 class ReturnCaseWorkflowInput:
@@ -410,6 +484,18 @@ class ReturnCaseWorkflowInput:
     #: Whether the case had already reported itself business-complete. A history
     #: reset must not walk a finished case back into the drain loop.
     resumed_business_complete: bool = False
+    #: The review gate's deadline, once resolved -- carried for exactly the
+    #: reason `resumed_support_deadline_iso` is: recomputing it on the far side
+    #: of a history reset would grant a fresh full wait every time, and a
+    #: reviewer's clock would restart without anybody touching it.
+    resumed_template_review_deadline_iso: str | None = None
+    #: The gate's `{request_id -> review_id}` map, as pairs. A tuple of pairs
+    #: rather than a dict because the input is a dataclass in the history and
+    #: pairs decode identically on a worker of any age; ordered, so a replay
+    #: rebuilds the map the same way.
+    resumed_template_reviews: tuple[tuple[str, str], ...] = ()
+    #: A case total (DR-7), carried so a reset does not buy three more.
+    template_review_reminders_sent: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -533,6 +619,195 @@ class PolicyOverrideNotice:
     #: The endpoint's own idempotency key, echoed so a redelivered signal is
     #: recognisable as the same override rather than a second one.
     idempotency_key: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TemplateReviewNotice:
+    """One reviewer's decision on one request's draft (contracts.md sect. 7).
+
+    Applied from a durable command record and **deduped on `signal_id`**, never
+    on "have we had one for this review yet": the transport is at-least-once by
+    design, so the second delivery *will* happen, and a handler keyed on the
+    review would refuse a genuine second decision after a redraft.
+
+    `actor` is the authenticated principal the endpoint resolved. No client
+    supplies it and no client supplies a timestamp -- the same rule
+    `PolicyOverrideNotice` states, for the same reason.
+
+    **Every field but `review_id` is defaulted, and that is not laxity.** This
+    dataclass is decoded from the *signal payload of a durable command record*,
+    and those payloads are built by several producers -- the review aggregate's
+    own `approve` (contracts.md sect. 6, whose payload carries `review_id` and
+    `scope_id` because sect. 7 fixes those two and no others) and this slice's
+    revise/cancel/redraft endpoints. A required field that one producer does not
+    send is not a validation error a human ever sees: the signal fails to decode
+    at the worker, the command sits in the outbox, and the case waits to its
+    deadline for a decision somebody already made. Defaulted fields make a
+    producer's omission a *degraded* notice rather than a lost one.
+
+    `request_id` is consequently **advisory**. The workflow routes on
+    `review_id` through its own `template_reviews` map, which is the same
+    question asked of the state the workflow actually holds rather than of the
+    sender -- see `_request_for_review`.
+    """
+
+    review_id: str
+    request_id: str = ""
+    actor: str = ""
+    signal_id: str = ""
+    scope_id: str | None = None
+    #: Free text from a person, relayed to nothing: the gate logs it through
+    #: the activity, which neutralises it on the way onto the fact log.
+    note: str | None = None
+    #: Approval's compare-and-set pair, echoed so the workflow can tell a
+    #: notice about the draft it is holding from one about a superseded render.
+    draft_version: int = 0
+    canonical_edit_version: int = 0
+    #: Set only by `redraft`: the attempt this one replaces. A redraft mints a
+    #: new `review_id` under the same `(case_id, request_id)` scope, so without
+    #: this the workflow would hold the *cancelled* attempt's id forever and
+    #: discard every later decision about the request as "not this case's".
+    #: Named rather than inferred, because "replace what you are holding" is a
+    #: privilege and a notice that merely disagrees with the map must not have
+    #: it.
+    supersedes: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ClarificationAnsweredNotice:
+    """V3's signal, declared here and **not implemented** (brief item 3).
+
+    The gate has to accept it to be a complete signal surface -- a workflow
+    that rejected an unknown signal name would fail V3's first delivery -- but
+    answering a clarification is V3's activity (`record_clarification_answer`,
+    contracts.md sect. 10) and V1 must not write a second one. The handler
+    records the id and does nothing else; the activity name is declared in
+    `_V3_CLARIFICATION_ACTIVITY` so V3 finds the seam rather than inventing a
+    parallel path.
+    """
+
+    clarification_id: str
+    actor: str
+    signal_id: str
+    answer: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TemplateReviewDraftInput:
+    """What `record_template_draft` and `rerender_template_draft` are given."""
+
+    case_id: str
+    request_id: str
+    review_id: str
+    configuration_release_id: str
+    work_item_id: str
+    fact_id_seed: str
+    #: Only `rerender` uses it; the initial draft has no version to hold.
+    expected_draft_version: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class TemplateReviewDraftResult:
+    """One review as the wait loop sees it.
+
+    `template_available` is `False` for a release that has published no
+    template. The gate then takes the composed path -- exactly what an
+    un-patched history does -- so a deployment without a template is not one
+    whose cases park.
+    """
+
+    request_id: str
+    review_id: str
+    state: str
+    draft_version: int = 0
+    canonical_edit_version: int = 0
+    gap_field_ids: tuple[str, ...] = ()
+    template_available: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class TemplateReviewDraftSet:
+    """Every review one case opened, from **one** activity call.
+
+    The grouping (`support_gate.request_grouping`) decides how many support
+    requests a case produces, and it is resolved activity-side because it reads
+    the case's return records -- which a workflow may not touch. Returning the
+    whole set in one result rather than asking the workflow to derive the ids
+    and loop is what makes the map replay-stable: the ids are *in the history*,
+    exactly as recorded, instead of being re-derived from a release that may
+    have moved since.
+
+    `template_available` is `False` for a release that has published no
+    template; `drafts` is then empty and the caller takes the composed path.
+    """
+
+    drafts: tuple[TemplateReviewDraftResult, ...] = ()
+    template_available: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class TemplateReviewRevisionInput:
+    case_id: str
+    review_id: str
+    actor_id: str
+    fact_id_seed: str
+    note: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class HoldUnsettledReviewsInput:
+    """What `hold_unsettled_reviews` is given (AMENDMENT-5, rule 2)."""
+
+    case_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class HoldUnsettledReviewsResult:
+    """Which reviews the close actually parked.
+
+    Returned rather than voided so the workflow can record what it did. An
+    activity that answered nothing would make "the gate parks what it was
+    holding" a claim with no observation behind it.
+    """
+
+    held_review_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class SnapshotSentTemplateInput:
+    """Send one approved review, and settle it.
+
+    `approve_as_system` is `auto_send` (contracts.md sect. 6): the same
+    transition, with the reserved actor, refused by the same rejections. It is
+    a flag on this input rather than a fifth activity because the send that
+    follows is byte-identically the same send -- two activities would be two
+    places the delivery identity is read.
+    """
+
+    case_id: str
+    review_id: str
+    tenant_id: str
+    principal_id: str
+    fact_id_seed: str
+    signal_id: str
+    workflow_id: str
+    queue: str | None = None
+    approve_as_system: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class TemplateDeliveryResult:
+    """What one send came to. `absorbed` is a success (contracts.md sect. 7)."""
+
+    review_id: str
+    state: str
+    work_item_id: str | None = None
+    delivery_id: str | None = None
+    absorbed: bool = False
+    error_code: str | None = None
+    #: Set when `auto_send` was refused before it sent anything -- an unresolved
+    #: gap, a conflict, a pending revision. The case parks on this.
+    guard_blocked_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -896,6 +1171,17 @@ class ReturnCaseState:
     business_complete: bool = False
     awaiting: tuple[str, ...] = ()
     terminal_command: str | None = None
+    #: --- the review gate (contracts.md sect. 6, sect. 9) ---
+    #:
+    #: The panel composes from this query plus the review aggregate, and these
+    #: three are the parts only the *execution* knows: which reviews this run is
+    #: waiting on, when the wait ends, and how many reminder legs have passed.
+    #: `deadline_iso` is an **absolute instant** -- the countdown is the
+    #: browser's (contracts.md sect. 9), because a server-computed "2h left" is
+    #: stale the moment it is serialized.
+    template_reviews: tuple[tuple[str, str], ...] = ()
+    template_review_deadline_iso: str | None = None
+    template_review_reminders_sent: int = 0
 
 
 @dataclass
@@ -958,6 +1244,28 @@ class _Mutable:
     policy_reminders_sent: int = 0
     #: The queue a non-standard route hands its verification to.
     support_queue: str | None = None
+    #: --- the template review gate (contracts.md sect. 6) ---
+    #:
+    #: **One map, not a gate per request.** `{request_id -> review_id}` and
+    #: `{request_id -> state}` are the wait loop's whole subject: a held record
+    #: must not block an approved one, which is precisely what a per-request
+    #: `wait_condition` would do.
+    template_reviews: dict[str, str] = field(default_factory=dict)
+    template_review_states: dict[str, str] = field(default_factory=dict)
+    #: Notices the handlers accepted and the loop has not applied. Same shape
+    #: and same reason as `pending_support`: a field that could hold one notice
+    #: is what makes every later one unreachable.
+    pending_template_notices: list[tuple[str, TemplateReviewNotice]] = field(default_factory=list)
+    #: `signal_id`s already accepted, bounded like `support_event_ids`.
+    template_signal_ids: list[str] = field(default_factory=list)
+    template_review_deadline_iso: str | None = None
+    #: A **case** total (DR-7): one cadence, one deadline, and the reminder
+    #: names every review still pending.
+    template_review_reminders_sent: int = 0
+    template_review_open: bool = False
+    #: V3's clarifications, accepted and left alone. See
+    #: `_V3_CLARIFICATION_ACTIVITY`.
+    clarification_answers: list[ClarificationAnsweredNotice] = field(default_factory=list)
 
 
 @workflow.defn(name="return-platform-return-case-v1")
@@ -1119,6 +1427,123 @@ class ReturnCaseWorkflow:
             return
         self._state.terminal_command = command
 
+    # --- the review gate's signals (contracts.md sect. 7) --------------------
+    #
+    # Three decisions and V3's stub, all applied from durable command records
+    # and all deduped on `signal_id`. Deliberately *not* deduped on
+    # `review_id`: a redraft mints a new attempt under the same request, and a
+    # handler keyed on the review would refuse the second attempt's genuine
+    # decision as a redelivery of the first's.
+
+    def _accept_template_signal(self, signal_id: str) -> bool:
+        """Whether this is the first arrival of that signal.
+
+        An unkeyed notice is refused outright rather than falling back to
+        first-wins. `support_response` accepts one because a sender predating
+        the field must keep working; nothing has ever sent one of these, so
+        there is no such sender, and accepting an unkeyed decision about a
+        message to Support would make redelivery indistinguishable from a
+        second reviewer.
+        """
+        if not signal_id:
+            workflow.logger.warning("a template review signal with no signal_id was refused")
+            return False
+        if signal_id in self._state.template_signal_ids:
+            workflow.logger.info("template review signal %s was already applied", signal_id)
+            return False
+        self._state.template_signal_ids.append(signal_id)
+        del self._state.template_signal_ids[:-_TRACKED_SUPPORT_EVENT_IDS]
+        return True
+
+    @workflow.signal(name="template_approved")
+    def template_approved(self, notice: TemplateReviewNotice) -> None:
+        if self._accept_template_signal(notice.signal_id):
+            self._state.pending_template_notices.append(("approved", notice))
+
+    @workflow.signal(name="template_revised")
+    def template_revised(self, notice: TemplateReviewNotice) -> None:
+        if self._accept_template_signal(notice.signal_id):
+            self._state.pending_template_notices.append(("revised", notice))
+
+    @workflow.signal(name="template_cancelled")
+    def template_cancelled(self, notice: TemplateReviewNotice) -> None:
+        if self._accept_template_signal(notice.signal_id):
+            self._state.pending_template_notices.append(("cancelled", notice))
+
+    # The `SUPPORT_REPLY` half of the same three decisions (brief item 3:
+    # "reply signals routed to the same map"). One notice list, one dedupe, one
+    # router -- a reply review is a review, and the difference between the two
+    # kinds is which slice opens them, not what approving one means.
+    #
+    # V1 opens no `SUPPORT_REPLY` review, so until V3 does, one of these routes
+    # to a review this case is not holding and `_routed_request` discards it
+    # with a log. That is the *correct* answer, and it is a different thing from
+    # what would happen without these handlers: an unknown signal name, which
+    # fails V3's first delivery at the worker rather than on the panel.
+    @workflow.signal(name="reply_approved")
+    def reply_approved(self, notice: TemplateReviewNotice) -> None:
+        if self._accept_template_signal(notice.signal_id):
+            self._state.pending_template_notices.append(("approved", notice))
+
+    @workflow.signal(name="reply_revised")
+    def reply_revised(self, notice: TemplateReviewNotice) -> None:
+        if self._accept_template_signal(notice.signal_id):
+            self._state.pending_template_notices.append(("revised", notice))
+
+    @workflow.signal(name="reply_cancelled")
+    def reply_cancelled(self, notice: TemplateReviewNotice) -> None:
+        if self._accept_template_signal(notice.signal_id):
+            self._state.pending_template_notices.append(("cancelled", notice))
+
+    @workflow.signal(name="review_delivery_retry")
+    def review_delivery_retry(self, notice: dict[str, Any]) -> None:
+        """An operator re-driving a delivery that failed (contracts.md sect. 6).
+
+        **Typed as a raw mapping, deliberately.** This payload is built by the
+        review aggregate's `retry_delivery` and carries the stored
+        `logical_operation_id`, `delivery_id` and `content_hash` alongside the
+        review id -- fields no notice dataclass declares. A dataclass parameter
+        would make the whole signal fail to decode at the worker over keys the
+        handler does not need, and a delivery an operator asked for would be
+        lost at exactly the moment somebody was already recovering from a
+        failure.
+
+        Routed as an approval because that is what it is: the same frozen
+        payload, the same delivery identity, re-driven. `_routed_request`
+        answers whether this case is still holding the review -- and when it is
+        not, because the gate already treated `DELIVERY_FAILED` as settled and
+        moved on, the notice is discarded with a log and the review keeps its
+        state on the panel. See the ledger: re-driving a delivery *after* the
+        gate has closed is an open question for the orchestrator, not something
+        this handler can decide.
+        """
+        review_id = str(notice.get("review_id") or "")
+        signal_id = str(notice.get("signal_id") or "")
+        if not review_id or not self._accept_template_signal(signal_id):
+            return
+        self._state.pending_template_notices.append(
+            (
+                "approved",
+                TemplateReviewNotice(
+                    review_id=review_id,
+                    scope_id=(None if notice.get("scope_id") is None else str(notice["scope_id"])),
+                    signal_id=signal_id,
+                ),
+            )
+        )
+
+    @workflow.signal(name="clarification_answered")
+    def clarification_answered(self, notice: ClarificationAnsweredNotice) -> None:
+        """V3's, and **a stub on purpose** -- see `_V3_CLARIFICATION_ACTIVITY`.
+
+        Accepted so V3's first delivery meets a handler rather than an unknown
+        signal name, recorded so the answer is not lost, and acted on nowhere:
+        writing it is `record_clarification_answer`, which is V3's activity.
+        Implementing it here would be a second record of one answer.
+        """
+        if self._accept_template_signal(notice.signal_id):
+            self._state.clarification_answers.append(notice)
+
     @workflow.query(name="execution_state")
     def execution_state(self) -> ReturnCaseState:
         policy = self._state.policy
@@ -1142,6 +1567,9 @@ class ReturnCaseWorkflow:
             business_complete=self._state.business_complete,
             awaiting=self._state.awaiting,
             terminal_command=self._state.applied_terminal_command,
+            template_reviews=tuple(sorted(self._state.template_reviews.items())),
+            template_review_deadline_iso=self._state.template_review_deadline_iso,
+            template_review_reminders_sent=self._state.template_review_reminders_sent,
         )
 
     # --- run ----------------------------------------------------------------
@@ -1157,12 +1585,31 @@ class ReturnCaseWorkflow:
         self._state.lifetime_start_iso = workflow_input.resumed_lifetime_start_iso
         self._state.business_complete = workflow_input.resumed_business_complete
         self._state.completion_known = workflow_input.resumed_business_complete
+        # The review map, restored before anything can signal into it. An empty
+        # tuple is the ordinary case -- a case that has not reached the gate, or
+        # one whose reviews all settled before the reset.
+        self._state.template_reviews = dict(workflow_input.resumed_template_reviews)
+        self._state.template_review_reminders_sent = workflow_input.template_review_reminders_sent
         if workflow_input.resumed_status is not None:
             self._state.status = workflow_input.resumed_status
 
         timings = workflow_input.timings
 
         if self._state.work_item_id is None:
+            if self._resumed_into_the_review_gate(workflow_input):
+                # A history reset **inside the gate**. There is no work item yet
+                # -- the gate is the step before one exists -- so the ordinary
+                # `work_item_id is None` branch would send this case back
+                # through the customer read, the bay request and the policy
+                # evaluator, and would then re-open a review the reviewer is
+                # already looking at. `resumed_policy_state` covers the same
+                # hazard for the supervisor gate; this is its sibling, and both
+                # exist because "no work item" has stopped meaning "has not been
+                # assessed yet".
+                await self._open_support(timings)
+                if self._cancelled():
+                    return await self._finish_cancelled()
+                return await self._serve_case(timings)
             if workflow_input.resumed_policy_state is None:
                 # Before anything that reads the case: the bay recommendation,
                 # the policy gate and the Support handoff all describe a return
@@ -1542,7 +1989,9 @@ class ReturnCaseWorkflow:
         a thread of them.
         """
         deadline = timings.return_details_wait_seconds
-        interval = max(_DETAILS_POLL_MIN_SECONDS, min(deadline // 10 or deadline, _DETAILS_POLL_MAX_SECONDS))
+        interval = max(
+            _DETAILS_POLL_MIN_SECONDS, min(deadline // 10 or deadline, _DETAILS_POLL_MAX_SECONDS)
+        )
         waited = 0
         while waited < deadline:
             step = min(interval, deadline - waited)
@@ -1645,6 +2094,15 @@ class ReturnCaseWorkflow:
             workflow.logger.warning("support draft unavailable; opening with the minimal request")
             draft = SupportRequestDraft()
 
+        # --- the review gate (contracts.md sect. 6) --------------------------
+        #
+        # Here, between the draft and the send, and under a patch marker: the
+        # un-patched branch below is byte-identically what this method did
+        # before the gate existed. See `_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE`.
+        if workflow.patched(_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE):
+            if await self._template_review_gate(timings, intended_work_item_id):
+                return
+
         work_item_id: str = await workflow.execute_activity(
             "open_support_work_item",
             OpenSupportWorkItemInput(
@@ -1670,6 +2128,463 @@ class ReturnCaseWorkflow:
         )
         self._state.work_item_id = work_item_id
         await self._set_status(ReturnCaseStatus.AWAITING_SUPPORT)
+
+    # --- the template review gate (contracts.md sect. 6) ---------------------
+
+    @staticmethod
+    def _resumed_into_the_review_gate(workflow_input: ReturnCaseWorkflowInput) -> bool:
+        """Whether this run is the far side of a reset taken inside the gate.
+
+        Both halves are required. The status alone would be true of a case that
+        reached the gate and whose reviews all settled before the reset -- it
+        should carry on normally. The map alone would be true after the gate
+        finished. Together they say: reviews were opened and the wait had not
+        ended.
+        """
+        return (
+            workflow_input.resumed_status == ReturnCaseStatus.AWAITING_TEMPLATE_REVIEW.value
+            and bool(workflow_input.resumed_template_reviews)
+        )
+
+    async def _template_review_gate(
+        self, timings: ReturnCaseTimings, intended_work_item_id: str
+    ) -> bool:
+        """Draft, wait, send. `True` when the gate owned the outcome.
+
+        `False` means the caller must take the straight-through path, and there
+        are exactly two ways to get it: the release turned the gate off, or the
+        release has published no template at all. Both are "this deployment did
+        not ask for a review", and both must land on the pre-gate behaviour
+        rather than on a parked case.
+
+        **All drafts first, then one wait.** Every request's review is opened
+        before anything waits, and then a single map-based loop watches
+        `{request_id -> state}`. A per-request gate would let a held record
+        block an approved one -- the reviewer answers the second request, and
+        nothing happens until somebody deals with the first.
+        """
+        workflow_input = self._require_input()
+        if not timings.template_review_enabled:
+            return False
+
+        # **All drafts first, in one activity call.** The grouping decides how
+        # many requests this case produces and it is resolved activity-side --
+        # it reads the case's return records, which a workflow may not touch --
+        # so the whole set comes back at once and the map is built from what
+        # the history recorded rather than from ids re-derived here.
+        #
+        # Replay-safe without a replay-stable id, because `create_review` is
+        # idempotent on `(case_id, request_id, kind, scope)` over non-terminal
+        # attempts: a retried activity finds the live review and returns it.
+        drafted: TemplateReviewDraftSet = await workflow.execute_activity(
+            "record_template_draft",
+            TemplateReviewDraftInput(
+                case_id=workflow_input.case_id,
+                request_id="",
+                review_id="",
+                configuration_release_id=workflow_input.configuration_release_id,
+                work_item_id=intended_work_item_id,
+                fact_id_seed=str(workflow.uuid4()),
+            ),
+            result_type=TemplateReviewDraftSet,
+            start_to_close_timeout=_DRAFT_TIMEOUT,
+            retry_policy=_DRAFT_RETRY,
+        )
+        available = drafted.template_available and bool(drafted.drafts)
+        for draft in drafted.drafts:
+            self._state.template_reviews[draft.request_id] = draft.review_id
+            self._state.template_review_states[draft.request_id] = draft.state
+
+        if not available:
+            workflow.logger.info(
+                "no support template is published; case %s takes the composed path",
+                workflow_input.case_id,
+            )
+            return False
+
+        await self._set_status(ReturnCaseStatus.AWAITING_TEMPLATE_REVIEW)
+        await self._await_template_reviews(timings, intended_work_item_id)
+        if self._cancelled():
+            return True
+
+        # Whatever the loop settled on, the case's work item is whichever one
+        # the sends opened. A gate that ended with nothing sent leaves it None,
+        # and the park reason already on the case says why.
+        return True
+
+    async def _await_template_reviews(
+        self, timings: ReturnCaseTimings, intended_work_item_id: str
+    ) -> None:
+        """One map-based wait over every open review on this case.
+
+        Cloned from `_await_policy_override`'s durable-timer cycle -- resumed
+        deadline, business-time reminder legs, `continue_as_new` on the
+        history-size hint -- and it is a *clone* by ruling (contracts.md sect. 1
+        ruling 12, sect. 10 follow-up): the two differ in what they wait for and
+        what a reminder does, and a shared helper would make this gate part of
+        the Support drain's later rewrite. The extraction is registered.
+
+        What is genuinely new is the shape of the condition. `_await_policy_override`
+        waits for *one* answer; this waits for **all** reviews to settle, and
+        applies each decision as it arrives. That is why the loop body drains a
+        notice list rather than returning on the first wake: a case with two
+        requests must be able to send the approved one while the other is still
+        being read.
+        """
+        workflow_input = self._require_input()
+        resumed = workflow_input.resumed_template_review_deadline_iso
+        deadline = (
+            datetime.fromisoformat(resumed)
+            if resumed is not None
+            else await self._business_deadline(timings, timings.template_review_wait_seconds)
+        )
+        self._state.template_review_deadline_iso = deadline.isoformat()
+        self._state.template_review_open = True
+        # **A `continue_as_new` is not a close.** The next run re-enters this
+        # method and goes on holding the same reviews, so parking them here
+        # would settle the gate against itself -- `HELD_FOR_OPERATIONS` is a
+        # resolved state, so the resumed run would find every review settled and
+        # send nothing, for a case nobody had answered. Every *other* exit,
+        # including an exception, is a real close.
+        continuing = False
+        try:
+            while not self._reviews_settled() and self._state.cancellation is None:
+                await self._apply_template_notices(intended_work_item_id, timings)
+                if self._reviews_settled() or self._cancelled():
+                    return
+
+                remaining = deadline - workflow.now()
+                if remaining <= timedelta(0):
+                    await self._template_review_deadline(timings, intended_work_item_id)
+                    return
+                next_tick = await self._business_deadline(
+                    timings, timings.template_review_reminder_interval_seconds
+                )
+                interval = max(next_tick - workflow.now(), timedelta(0))
+                try:
+                    await workflow.wait_condition(
+                        lambda: (
+                            bool(self._state.pending_template_notices)
+                            or self._state.cancellation is not None
+                        ),
+                        timeout=min(interval, remaining),
+                        timeout_summary="template-review-wait",
+                    )
+                    continue
+                except TimeoutError:
+                    pass
+
+                if (
+                    self._state.template_review_reminders_sent
+                    >= timings.template_review_max_reminders
+                ):
+                    # The reminder cap is reached and the deadline has **not**
+                    # been. Keep waiting silently rather than returning: the
+                    # draft is still perfectly answerable, and ending the wait
+                    # here would park a case whose deadline had not passed --
+                    # which is the reminder cap deciding the deadline. The next
+                    # pass round the loop finds `remaining <= 0` and takes the
+                    # deadline branch, so the exit stays in one place.
+                    continue
+
+                self._state.template_review_reminders_sent += 1
+                self._remind_reviewers()
+
+                if workflow.info().is_continue_as_new_suggested():
+                    await workflow.wait_condition(lambda: workflow.all_handlers_finished())
+                    continuing = True
+                    workflow.continue_as_new(self._continued_input())
+        finally:
+            self._state.template_review_open = False
+            if not continuing:
+                await self._hold_unsettled_reviews()
+
+    async def _hold_unsettled_reviews(self) -> None:
+        """The gate is closing. Nothing it was holding may be left unreachable.
+
+        AMENDMENT-5, rule 2. Called from every real exit -- settled, deadline,
+        cancellation, or an exception -- and **not** from `continue_as_new`,
+        which is not a close.
+
+        Best-effort by design, and the reasoning is worth stating: this runs in
+        a `finally`, so a failure here would otherwise replace whatever was
+        already unwinding -- including a cancellation -- with an activity error,
+        and the case would lose the reason it was ending. A review left
+        unparked is visible on the panel and recoverable by a later close; an
+        exception swallowed by this one is not. The activity's own retry policy
+        is the first line, and this is the second.
+        """
+        workflow_input = self._require_input()
+        try:
+            result: HoldUnsettledReviewsResult = await workflow.execute_activity(
+                "hold_unsettled_reviews",
+                HoldUnsettledReviewsInput(case_id=workflow_input.case_id),
+                result_type=HoldUnsettledReviewsResult,
+                start_to_close_timeout=_PERSIST_TIMEOUT,
+                retry_policy=_PERSIST_RETRY,
+            )
+        except Exception:  # noqa: BLE001 - see the docstring
+            workflow.logger.warning("the review gate could not park its unsettled reviews on close")
+            return
+        for review_id in result.held_review_ids:
+            request_id = self._request_for_review(review_id)
+            if request_id is not None:
+                # The literal, matching this file's convention: the workflow
+                # module imports nothing from `review_aggregate`, which keeps
+                # S2's module out of the Temporal sandbox. The name is pinned
+                # against the enum by
+                # `test_the_workflows_state_words_are_the_aggregates`.
+                self._state.template_review_states[request_id] = "HELD_FOR_OPERATIONS"
+
+    def _reviews_settled(self) -> bool:
+        """Every review this case opened has reached a state nobody waits on.
+
+        Reads the *map*, not a counter. A counter is the shape that lets a
+        second approval of one request settle a case whose other request nobody
+        has touched.
+        """
+        return all(
+            state in _RESOLVED_REVIEW_STATES
+            for state in self._state.template_review_states.values()
+        )
+
+    def _request_for_review(self, review_id: str) -> str | None:
+        """Which request this case is currently holding that review for.
+
+        The reverse of `template_reviews`, and the *only* routing question.
+        Asked of the workflow's own map rather than of `notice.request_id`,
+        because the map is the state that decides what gets sent and a sender
+        that named a request it is not this case's attempt for would otherwise
+        route a decision by assertion.
+        """
+        if not review_id:
+            return None
+        for request_id, current in self._state.template_reviews.items():
+            if current == review_id:
+                return request_id
+        return None
+
+    def _routed_request(self, action: str, notice: TemplateReviewNotice) -> str | None:
+        """The request a notice acts on, or `None` to discard it.
+
+        Two ways in, and the second is narrow on purpose:
+
+        1. The notice names a review this case is holding. Ordinary.
+        2. The notice is a **revision that supersedes** the review this case is
+           holding for some request -- a redraft, which cancels one attempt and
+           mints another under the same `(case_id, request_id)` scope. The map
+           is re-pointed at the new attempt and the request goes back to `OPEN`.
+
+        Anything else is recorded and discarded: a superseded attempt's late
+        decision, or a notice for another case's review that reached this
+        workflow id. Acting on one would send a message on the strength of an
+        approval of something else, which is the multi-RMA failure in its
+        single-record clothes.
+        """
+        request_id = self._request_for_review(notice.review_id)
+        if request_id is not None:
+            return request_id
+        if action == "revised" and notice.supersedes:
+            superseded = self._request_for_review(notice.supersedes)
+            if superseded is not None:
+                workflow.logger.info(
+                    "review %s supersedes %s for request %s",
+                    notice.review_id,
+                    notice.supersedes,
+                    superseded,
+                )
+                self._state.template_reviews[superseded] = notice.review_id
+                self._state.template_review_states[superseded] = "OPEN"
+                return superseded
+        workflow.logger.warning(
+            "template notice names review %s, which is not this case's open attempt; ignoring",
+            notice.review_id,
+        )
+        return None
+
+    async def _apply_template_notices(
+        self, intended_work_item_id: str, timings: ReturnCaseTimings
+    ) -> None:
+        """Drain every decision that has arrived, in arrival order.
+
+        Draining rather than handling one is what keeps a held record from
+        blocking an approved one: two notices that land in the same wait are
+        both applied before the loop waits again.
+        """
+        workflow_input = self._require_input()
+        while self._state.pending_template_notices:
+            action, notice = self._state.pending_template_notices.pop(0)
+            request_id = self._routed_request(action, notice)
+            if request_id is None:
+                continue
+
+            if action == "cancelled":
+                self._state.template_review_states[request_id] = "CANCELLED"
+                self._state.parked_reason = "TEMPLATE_REVIEW_CANCELLED"
+                continue
+
+            if action == "revised":
+                await workflow.execute_activity(
+                    "record_template_revision",
+                    TemplateReviewRevisionInput(
+                        case_id=workflow_input.case_id,
+                        review_id=notice.review_id,
+                        actor_id=notice.actor,
+                        fact_id_seed=str(workflow.uuid4()),
+                        note=notice.note,
+                    ),
+                    start_to_close_timeout=_PERSIST_TIMEOUT,
+                    retry_policy=_PERSIST_RETRY,
+                )
+                revised: TemplateReviewDraftResult = await workflow.execute_activity(
+                    "rerender_template_draft",
+                    TemplateReviewDraftInput(
+                        case_id=workflow_input.case_id,
+                        request_id=request_id,
+                        review_id=notice.review_id,
+                        configuration_release_id=workflow_input.configuration_release_id,
+                        work_item_id=intended_work_item_id,
+                        fact_id_seed=str(workflow.uuid4()),
+                        expected_draft_version=notice.draft_version,
+                    ),
+                    result_type=TemplateReviewDraftResult,
+                    start_to_close_timeout=_DRAFT_TIMEOUT,
+                    retry_policy=_DRAFT_RETRY,
+                )
+                self._state.template_review_states[request_id] = revised.state
+                continue
+
+            await self._send_reviewed_template(
+                request_id, notice.review_id, notice.signal_id, timings
+            )
+
+    async def _send_reviewed_template(
+        self,
+        request_id: str,
+        review_id: str,
+        signal_id: str,
+        timings: ReturnCaseTimings,
+        *,
+        approve_as_system: bool = False,
+    ) -> None:
+        del timings
+        workflow_input = self._require_input()
+        result: TemplateDeliveryResult = await workflow.execute_activity(
+            "snapshot_sent_template",
+            SnapshotSentTemplateInput(
+                case_id=workflow_input.case_id,
+                review_id=review_id,
+                tenant_id=workflow_input.tenant_id,
+                principal_id=workflow_input.principal_id,
+                fact_id_seed=str(workflow.uuid4()),
+                signal_id=signal_id,
+                workflow_id=return_case_workflow_id(workflow_input.case_id),
+                queue=self._state.support_queue,
+                approve_as_system=approve_as_system,
+            ),
+            result_type=TemplateDeliveryResult,
+            start_to_close_timeout=_PERSIST_TIMEOUT,
+            retry_policy=_PERSIST_RETRY,
+        )
+        self._state.template_review_states[request_id] = result.state
+        if result.work_item_id is not None:
+            self._state.work_item_id = result.work_item_id
+        if result.guard_blocked_reason is not None:
+            self._state.parked_reason = result.guard_blocked_reason
+
+    def _remind_reviewers(self) -> None:
+        """One reminder leg for the case, naming every pending review (DR-7).
+
+        **It sends nothing on Channel B, and that is the whole point of the
+        gate.** `send_support_reminder` posts on the case's Support thread, and
+        during this wait there is no such thread -- refusing to open one until a
+        person has read the draft is what the gate exists for, so nudging
+        Support that our reviewer has not looked yet would be the review gate
+        opening the conversation the review gate is holding back.
+        `_await_policy_override` states the same rule for the same reason: *the
+        cadence bounds the wait and escalates by parking rather than by posting
+        to a queue that does not exist.*
+
+        So the cadence is durable in the two places an associate and an
+        operator actually read: the count rides `continue_as_new` and reaches
+        the panel through `execution_state`, and the deadline is an absolute
+        instant the panel counts down from.
+        """
+        pending = sorted(
+            request_id
+            for request_id, state in self._state.template_review_states.items()
+            if state not in _RESOLVED_REVIEW_STATES
+        )
+        workflow.logger.info(
+            "template review reminder %d/%s for case %s: %s",
+            self._state.template_review_reminders_sent,
+            self._require_input().timings.template_review_max_reminders,
+            self._require_input().case_id,
+            ", ".join(pending),
+        )
+
+    async def _template_review_deadline(
+        self, timings: ReturnCaseTimings, intended_work_item_id: str
+    ) -> None:
+        """Nobody answered inside the window. `on_timeout` decides.
+
+        `hold` and `escalate` both park the case; the difference is the park
+        reason, which is what an operations alert keys on.
+
+        **They no longer leave reviews `OPEN`** (AMENDMENT-5, rule 2). They used
+        to, on the reasoning that a deadline passing does not make a draft
+        un-reviewable -- which is true, and which built a trap: with the gate
+        closed, approving an `OPEN` review CASes it to `APPROVING`, the workflow
+        discards the notice, and `APPROVING`'s three exits are all
+        workflow-driven. The late reviewer's path is now the reopen from
+        `HELD_FOR_OPERATIONS`, which is a legal action rather than a dead end.
+        The parking itself is `_hold_unsettled_reviews`, on the way out.
+
+        `auto_send` approves as the reserved `SYSTEM` actor -- the same
+        transition, refused by the same rejections -- and is refused outright
+        for any review reporting a gap. Contracts.md sect. 6: *an unresolved
+        required gap forces hold/escalate regardless of `on_timeout:
+        auto_send`*. Checked here **and** in the activity, because this is the
+        one rule in the gate whose failure mode is a message that states
+        something the case does not know.
+        """
+        policy = timings.template_review_on_timeout
+        pending = sorted(
+            request_id
+            for request_id, state in self._state.template_review_states.items()
+            if state not in _RESOLVED_REVIEW_STATES
+        )
+        if policy == "auto_send":
+            for request_id in pending:
+                review_id = self._state.template_reviews[request_id]
+                await self._send_reviewed_template(
+                    request_id,
+                    review_id,
+                    f"auto-send:{review_id}",
+                    timings,
+                    approve_as_system=True,
+                )
+            if self._reviews_settled():
+                return
+            # Something refused the system's approval -- a gap, a conflict, a
+            # revision nobody re-rendered. The park reason is already set from
+            # the activity's answer; the status below makes it visible.
+            reason = self._state.parked_reason or "TEMPLATE_REVIEW_GUARD_BLOCKED"
+        else:
+            reason = (
+                "TEMPLATE_REVIEW_GUARD_BLOCKED"
+                if policy == "escalate"
+                else "TEMPLATE_REVIEW_UNANSWERED"
+            )
+            if policy == "escalate":
+                workflow.logger.error(
+                    "template review escalated for case %s: %s",
+                    self._require_input().case_id,
+                    ", ".join(pending),
+                )
+        del intended_work_item_id
+        self._state.parked_reason = reason
+        await self._set_status(ReturnCaseStatus.AWAITING_TEMPLATE_REVIEW, fact_value=reason)
 
     async def _business_deadline(
         self, timings: ReturnCaseTimings, working_seconds: int
@@ -2167,6 +3082,18 @@ class ReturnCaseWorkflow:
             resumed_unkeyed_support_applied=self._state.unkeyed_support_applied,
             resumed_lifetime_start_iso=self._state.lifetime_start_iso,
             resumed_business_complete=self._state.business_complete,
+            # The review gate. Carried for exactly the reason the support
+            # deadline is: a history reset must not restart a reviewer's clock,
+            # buy three more reminders, or lose the map the wait is keyed on --
+            # the far side would re-draft, and the reviewer's open draft would
+            # be superseded by an identical one they have to read again.
+            resumed_template_review_deadline_iso=(
+                self._state.template_review_deadline_iso
+                if self._state.template_review_open
+                else None
+            ),
+            resumed_template_reviews=tuple(sorted(self._state.template_reviews.items())),
+            template_review_reminders_sent=self._state.template_review_reminders_sent,
         )
 
     def _outcome(self) -> ReturnCaseOutcome:

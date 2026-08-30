@@ -54,6 +54,7 @@ from temporalio.converter import default as default_converter
 from return_platform.workflows import return_case_workflow as workflow_module
 from return_platform.workflows.return_case_workflow import (  # noqa: E501
     _PATCH_STRUCTURED_SUPPORT_DRAFT,
+    _PATCH_SUPPORT_TEMPLATE_REVIEW_GATE,
     ReturnCaseTimings,
     ReturnCaseWorkflow,
     ReturnCaseWorkflowInput,
@@ -98,6 +99,26 @@ ACTIVITY_RESULT_TYPES: dict[str, set[str]] = {
     # `workflow.patched` instead of relying on the pin.
     "case_has_return_details": {"bool"},
     "request_bay_assignment": {"BayResultNotice"},
+    # The template review gate (contracts.md sect. 6). Three new activity calls
+    # in `_open_support`, and a new call is the replay hazard a new *activity*
+    # is not: a history that never recorded them replays against code that
+    # makes them, and the sequences disagree.
+    #
+    # Guarded by `workflow.patched(_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE)` rather
+    # than by a configuration pin, and deliberately so. The return-details poll
+    # above rests on `timings` being pinned at start, and its own comment names
+    # the window where that is not enough -- a case started after the release
+    # and before the deploy. The gate has exactly that window and it is wide
+    # (`support_gate.template_review.enabled` defaults to true), so the pin
+    # would not have been safe and the marker is what makes it so.
+    "record_template_draft": {"TemplateReviewDraftSet"},
+    "rerender_template_draft": {"TemplateReviewDraftResult"},
+    "snapshot_sent_template": {"TemplateDeliveryResult"},
+    # AMENDMENT-5 rule 2. Called from the gate's `finally`, so it appears on
+    # every history where the gate ran and closed -- including one recorded
+    # before this activity existed, which is why the result type is pinned here
+    # like the rest: a replay must decode it the same way for ever.
+    "hold_unsettled_reviews": {"HoldUnsettledReviewsResult"},
     "evaluate_case_eligibility": {"CaseEligibilityOutcome"},
     # `SupportRequestDraft` only. The un-patched branch no longer pins a result
     # type at all: it decodes whatever the history holds and coerces it through
@@ -305,11 +326,26 @@ class _LegacyRuntime:
         self._legacy_text = legacy_text
         self._uuid = 0
         self.calls: list[str] = []
+        self.patch_ids: list[str] = []
         self.opened_with: dict[str, object] = {}
         self.logger = logging.getLogger("tests.replay.legacy")
 
     def patched(self, patch_id: str) -> bool:
-        assert patch_id == _PATCH_STRUCTURED_SUPPORT_DRAFT
+        """False for **every** marker, which is what a pre-gate history is.
+
+        Asserting a single id here was right while there was one; with two, an
+        equality assertion would fail the moment `_open_support` grew its
+        second `workflow.patched` call and would have said nothing about
+        whether the legacy path still worked. The membership check keeps the
+        real guarantee -- an unmarked history takes the old branch of both --
+        and `self.patch_ids` lets the test below assert *which* markers were
+        consulted, which is the part that must not drift silently.
+        """
+        assert patch_id in (
+            _PATCH_STRUCTURED_SUPPORT_DRAFT,
+            _PATCH_SUPPORT_TEMPLATE_REVIEW_GATE,
+        )
+        self.patch_ids.append(patch_id)
         return False
 
     def uuid4(self) -> uuid.UUID:
@@ -379,6 +415,24 @@ async def test_a_legacy_history_opens_support_instead_of_wedging(
     assert runtime.opened_with["support_draft"] == LEGACY_DRAFT_TEXT
     assert runtime.opened_with["business_payload"] == {}
     assert runtime.opened_with["subject"] == ""
+    # **The review gate asked, and was told no.** This is the assertion that
+    # keeps the gate honest for every history recorded before it existed: the
+    # marker is consulted -- so the gate is genuinely in this code path and not
+    # merely absent -- and the activity sequence above is byte-identically the
+    # pre-gate one. A gate that had skipped the `patched` call entirely would
+    # pass the sequence assertion and would still wedge the first replay that
+    # *did* record the marker.
+    assert runtime.patch_ids == [
+        _PATCH_STRUCTURED_SUPPORT_DRAFT,
+        _PATCH_SUPPORT_TEMPLATE_REVIEW_GATE,
+    ]
+    # And the gate's *close* is inside the marker too (AMENDMENT-5 rule 2).
+    # `hold_unsettled_reviews` is called from `_await_template_reviews`'
+    # `finally`, so it only exists on histories that entered the gate. The
+    # sequence assertion above already forbids it here; naming it is what stops
+    # a later edit relaxing that list without noticing it has also introduced a
+    # command a pre-gate history cannot replay.
+    assert "hold_unsettled_reviews" not in runtime.calls
 
 
 # ---------------------------------------------------------------------------

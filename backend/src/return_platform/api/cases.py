@@ -709,6 +709,7 @@ def _recovery_service(request: Request) -> ReturnCaseRecoveryService:
         repository=resolve_operational_repository(request),
         database=None if mongo is None else mongo[settings.mongo_database],
         timings=loaded.configuration.return_case,
+        gate=loaded.configuration.support_gate,
         task_queue=settings.return_workflow_task_queue,
     )
 

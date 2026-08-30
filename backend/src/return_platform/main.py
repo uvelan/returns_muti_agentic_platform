@@ -29,6 +29,8 @@ from return_platform.api.canonical_ai import router as canonical_ai_router
 from return_platform.api.canonical_principal import router as canonical_principal_router
 from return_platform.api.canonical_returns import router as canonical_returns_router
 from return_platform.api.canonical_session import router as canonical_session_router
+from return_platform.api.case_panel import router as case_panel_router
+from return_platform.api.case_reviews import router as case_reviews_router
 from return_platform.api.cases import router as cases_router
 from return_platform.api.dependencies import router as dependencies_router
 from return_platform.api.dependency_probes import (
@@ -53,12 +55,12 @@ from return_platform.api.return_agents import router as return_agents_router
 from return_platform.api.return_artifacts import router as return_artifacts_router
 from return_platform.api.return_history import router as return_history_router
 from return_platform.api.return_shipments import router as return_shipments_router
-from return_platform.api.shipment_console import router as shipment_console_router
 from return_platform.api.return_support import router as return_support_router
 from return_platform.api.returns import router as returns_router
 from return_platform.api.rma_tickets import router as rma_tickets_router
 from return_platform.api.schema_releases import router as schema_releases_router
 from return_platform.api.seed import router as seed_router
+from return_platform.api.shipment_console import router as shipment_console_router
 from return_platform.api.source_bindings import router as source_bindings_router
 from return_platform.api.support import router as support_router
 from return_platform.api.support_ingress import router as support_ingress_router
@@ -1407,6 +1409,13 @@ def create_app(
     # The support-template preview (V1): renders a draft against the built-in
     # sample case for the Configuration editor; no case data is reachable.
     fastapi_app.include_router(template_preview_router)
+    # The case panel and the review endpoints (V1, contracts.md sect. 9). The
+    # panel is the read; the reviews are every mutation on it. Two routers over
+    # one prefix rather than one, because the read is hashed and cacheable and
+    # the mutations are neither, and a single module would have made that
+    # difference a comment.
+    fastapi_app.include_router(case_panel_router)
+    fastapi_app.include_router(case_reviews_router)
     # `/api/agents`, not `/api/config/agents` -- see that module's own docstring
     # for why the two surfaces stay separate. It was written, tested against
     # mocks and called by the console, and never mounted here: the lifespan sets

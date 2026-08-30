@@ -64,6 +64,18 @@ def create_return_workflow_worker(
             case_activities.send_support_reminder,
             case_activities.record_support_outcome,
             case_activities.synchronize_return_records,
+            # The template review gate (contracts.md sect. 6). Registered
+            # unconditionally beside the rest rather than behind a flag on the
+            # gate's configuration: whether a *case* runs the gate is decided
+            # by its pinned release and its history patch marker, and a worker
+            # that had not registered these would leave a case that legitimately
+            # entered the gate stalled on an unknown activity -- exactly the
+            # failure this list's own comment above describes.
+            case_activities.record_template_draft,
+            case_activities.record_template_revision,
+            case_activities.rerender_template_draft,
+            case_activities.hold_unsettled_reviews,
+            case_activities.snapshot_sent_template,
         )
     return Worker(
         client,
