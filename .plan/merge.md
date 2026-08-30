@@ -10,10 +10,11 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 |---|---|---|---|---|
 | T0 | (trunk) | DONE | — | 2cafe2a |
 | S1 | feat/s1-model-identity | **MERGED** | 1 · PASS (6bdb5bd) | 5d58b90 |
-| S2 | feat/s2-delivery-spine | CHANGES_REQUIRED → fixing · was 4359bf9 | 1 · CR (db7bfb9) | — |
+| S2 | feat/s2-delivery-spine | UNDER_RV_REVIEW round 2 · candidate c884e8e | 2 · CR (db7bfb9) → open | — |
 | V1 phase 1 | feat/v1-template-review | CHANGES_REQUIRED → fixing · was d452e97 | 1 · CR (f8ce598) | — |
 | V1 phase 2 | (same branch, later) | BLOCKED on S2 merge | — | — |
-| V2 | feat/v2-ingress-relay | NOT_STARTED | — | — |
+| V2 phase 1 (backend) | feat/v2-ingress-relay | IN_PROGRESS · pipelined off S2 c884e8e | — | — |
+| V2 phase 2 (frontend) | (same branch, later) | BLOCKED on V1 panel seam | — | — |
 | V3 | feat/v3-resolver-clarification | NOT_STARTED | — | — |
 | ACC-1 (harness) | feat/acc-harness | **MERGED** | 2 · CR (ba19fd8) → PASS (9cb3508) | c1c2b0f |
 | ACC-2 (scenarios) | not yet cut | BLOCKED on V3 | — | — |
