@@ -13,4 +13,4 @@ Each slice branches from the latest RV-approved integration commit recorded here
 | V2 | feat/v2-ingress-relay | NOT_STARTED | — | — | |
 | V3 | feat/v3-resolver-clarification | NOT_STARTED | — | — | |
 | ACC | feat/acc-acceptance | NOT_STARTED | — | — | |
-| RV calibration | rv-calibration/seeded-hardcoding | NOT_STARTED | — | never merges | isolated bait branch |
+| RV calibration | rv-calibration/seeded-hardcoding | CAUGHT (CHANGES_REQUIRED, F1 blocking rule-1) | 1 | never merges | review at .plan/reviews/calibration-1.md (commit d59e017); RV cleared to gate real branches |
