@@ -79,3 +79,24 @@ SUPPORT_MESSAGE_INTENT: Final[str] = "support_message_intent"
 #: the value, the evidence span, the candidate records and the map-or-reject
 #: choice. V3 owns the answer flow; V2 only writes the question.
 SUPPORT_CLARIFICATION_REQUESTED: Final[str] = "support_clarification_requested"
+
+#: One case's resolution spend has reached `support_resolver.per_case_llm_budget`
+#: (contracts.md sect. 9). Written by the ladder's escalation node at the moment
+#: the budget stops it, so the case carries the reason it stopped answering --
+#: exhaustion is visible work, never a silent halt.
+SUPPORT_RESOLVER_BUDGET_EXHAUSTED: Final[str] = "support_resolver_budget_exhausted"
+
+#: An answer the resolver composed for a support question (contracts.md
+#: sect. 9). Written on **both** gate paths -- the reviewed one and the
+#: `auto_reply` one -- because the fact records that the platform composed an
+#: answer, which is equally true whichever way it left. Case-level: a reply
+#: answers the message, and the records it concerns are scoped facts beside it.
+SUPPORT_REPLY_DRAFT: Final[str] = "support_reply_draft"
+
+#: The branch associate's answer to a clarification the platform asked
+#: (contracts.md sect. 9). `STATED` on `CHANNEL_A`, because a person on the
+#: branch side typed it -- the question it answers is a Channel B fact, and
+#: collapsing the two would lose which side of the bridge each sentence came
+#: from. Record-scoped where the clarification named a record; case-scoped
+#: where it did not, which is the ordinary case for an unmatched artifact.
+SUPPORT_CLARIFICATION_ANSWERED: Final[str] = "support_clarification_answered"

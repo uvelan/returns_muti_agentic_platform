@@ -154,7 +154,21 @@ def test_router_mounting_is_the_bulk_of_create_app_and_that_is_allowed() -> None
     # its own router rather than routes on `return_support` because the ticket
     # is a different resource from the work item that asks for it, and the two
     # are gated on different roles.
-    assert len(mounts) == 33, (
-        f"{len(mounts)} routers are mounted, expected 33; if Wave F deleted one, "
+    # 33 -> 35 with no entry here, and that is the drift this reading exists to
+    # catch: two routers were mounted without the number moving, so the
+    # assertion had been failing on trunk. Named now rather than absorbed
+    # silently, so nobody re-derives them a third time:
+    #   * `shipment_console_router` (`api/shipment_console.py`, commit 7585b38)
+    #     -- the operator-facing shipment console surface, mounted beside
+    #     `return_shipments_router` rather than inside it.
+    #   * `template_preview_router` (`api/template_preview.py`, V1 step:04,
+    #     commit 176f1d5) -- the support-template preview for the Configuration
+    #     editor, which renders against a built-in sample case.
+    # 35 -> 36 for `api/support_ingress.py` (V2): inbound NL messages from
+    # Support at `.../work-items/{id}/inbound-messages`. A separate router from
+    # `return_support` because `.../messages` on that prefix is the associate's
+    # own surface -- see AMENDMENT-3 in `.plan/contracts.md`.
+    assert len(mounts) == 36, (
+        f"{len(mounts)} routers are mounted, expected 36; if Wave F deleted one, "
         "update this number in the same commit"
     )
