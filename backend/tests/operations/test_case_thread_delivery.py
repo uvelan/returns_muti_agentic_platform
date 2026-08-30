@@ -168,9 +168,16 @@ async def test_the_race_between_two_creators_leaves_one_thread(
     blinded = {"count": 0}
 
     async def blind_once(query: Any, **kwargs: Any) -> Any:
-        # Blind the two pre-checks (`ensure_case_support_thread`'s and
-        # `open_case_thread`'s) so the insert below reaches the index.
-        if blinded["count"] < 2 and "caseId" in str(query):
+        # Blind the idempotency pre-check exactly once, so the insert below
+        # reaches the index. Exactly once and no more: the *next* `caseId` read
+        # is the loser re-reading the winner's thread, and blinding that one
+        # too would make the code re-raise rather than converge -- so the
+        # counter is load-bearing in both directions.
+        #
+        # There is one pre-check to blind, not two: `created` is now taken from
+        # the insert, so `ensure_case_support_thread` no longer performs a
+        # read of its own before delegating.
+        if blinded["count"] < 1 and "caseId" in str(query):
             blinded["count"] += 1
             return None
         return await original_find_one(query, **kwargs)
@@ -184,6 +191,13 @@ async def test_the_race_between_two_creators_leaves_one_thread(
     assert loser.workItemId == winner.workItemId
     assert loser.threadId == winner.threadId
     assert len(work_items.documents) == 1
+    # The field the race can actually corrupt, and the one this test used to
+    # leave unasserted. `created` decides between composing an opening request
+    # and composing a reply: a loser reporting `True` would put a second
+    # opening message on Support, through the one field the delivery identity
+    # does not cover.
+    assert winner.created is True
+    assert loser.created is False
 
 
 # --------------------------------------------------------------------------- #

@@ -665,6 +665,12 @@ class ReturnSupportService:
     ) -> str:
         """Open Channel B for a case, once, and return the work-item id.
 
+        The whole of the behaviour lives in `_open_case_thread`, which returns
+        *who won* alongside the id. This signature is unchanged for the callers
+        that only need the id; `ensure_case_support_thread` takes the other
+        half, because "did I open this conversation" is knowable only here and
+        reconstructing it from a later read is what F2 was.
+
         `business_payload` is the structured half of the handoff -- the same
         facts the message text states, as data. It is persisted on the opening
         message beside the prose so a screen reads business fields from it and
@@ -740,6 +746,48 @@ class ReturnSupportService:
         aborts and surfaces here, where it means the race the unique index
         exists to catch, and the winner's thread is read back.
         """
+        opened, _created = await self._open_case_thread(
+            case_id=case_id,
+            tenant_id=tenant_id,
+            principal_id=principal_id,
+            support_draft=support_draft,
+            idempotency_key=idempotency_key,
+            business_payload=business_payload,
+            subject=subject,
+            work_item_id=work_item_id,
+            queue=queue,
+            sla_due_at=sla_due_at,
+        )
+        return opened
+
+    async def _open_case_thread(
+        self,
+        *,
+        case_id: str,
+        tenant_id: str,
+        principal_id: str,
+        support_draft: str,
+        idempotency_key: str,
+        business_payload: Mapping[str, Any] | None = None,
+        subject: str | None = None,
+        work_item_id: str | None = None,
+        queue: str | None = None,
+        sla_due_at: datetime | None = None,
+    ) -> tuple[str, bool]:
+        """`open_case_thread`, plus whether *this* call opened the thread.
+
+        The second element is decided by the write and by nothing else. Every
+        path that does not commit the insert -- the idempotency pre-read, and
+        the `DuplicateKeyError` loser -- returns `False`, because in both the
+        thread was somebody else's to open. Only the return after a committed
+        transaction says `True`.
+
+        Deriving it from a *read* instead is unsound however carefully the read
+        is placed: two workers replaying one send both find nothing, both
+        report having opened the conversation, and both compose an opening
+        request. That is a duplicate opening message to Support, arriving
+        through the one field the delivery identity does not cover.
+        """
         if sla_due_at is not None and sla_due_at.utcoffset() is None:
             raise ValueError(
                 "a supplied slaDueAt must be timezone-aware: stored naive beside the aware "
@@ -750,7 +798,8 @@ class ReturnSupportService:
             {"$or": [{"idempotencyKey": idempotency_key}, {"caseId": case_id}]}
         )
         if existing is not None:
-            return str(existing["_id"])
+            # Somebody else's thread, read before we tried. Not ours to claim.
+            return str(existing["_id"]), False
 
         now = _now()
         item_id = work_item_id or str(uuid.uuid4())
@@ -800,8 +849,11 @@ class ReturnSupportService:
             )
             if winner is None:  # pragma: no cover - duplicate on neither key
                 raise
-            return str(winner["_id"])
-        return item_id
+            # The index caught the race the pre-read could not see. Their
+            # insert committed and ours did not: they opened the conversation.
+            return str(winner["_id"]), False
+        # The one path that committed the insert.
+        return item_id, True
 
     async def ensure_case_support_thread(
         self,
@@ -831,10 +883,14 @@ class ReturnSupportService:
         `created` is not a formality. It is how a caller distinguishes "I
         started this conversation" from "I joined one already in progress",
         which is the difference between an opening request and a reply, and it
-        can only be known by whoever won the insert.
+        can only be known by whoever won the insert -- so it is taken from the
+        insert, through `_open_case_thread`. It was previously derived from a
+        pre-read, which meant two workers racing the same send both reported
+        having opened the conversation and would both have composed an opening
+        request: a duplicate message to Support through the one field the
+        delivery identity does not cover.
         """
-        already = await self._work_items.find_one({"caseId": case_id})
-        item_id = await self.open_case_thread(
+        item_id, created = await self._open_case_thread(
             case_id=case_id,
             tenant_id=tenant_id,
             principal_id=principal_id,
@@ -852,7 +908,7 @@ class ReturnSupportService:
         return CaseSupportThread(
             workItemId=item_id,
             threadId=str(item["threadId"]),
-            created=already is None,
+            created=created,
         )
 
     async def post_support_message(
