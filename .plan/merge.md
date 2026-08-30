@@ -20,7 +20,7 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | V2 phase 1 | feat/v2-ingress-relay | **MERGED** | 2 · CR → PASS (02da231) | 97bca1e |
 | V2 phase 1b | feat/v2-ingress-relay | **MERGED** | 1 · PASS (a51c9b4) | 95b5672 |
 | V2 phase 2 (frontend) | (same branch, later) | BLOCKED on V1 panel seam | — | — |
-| V3 backend | feat/v3-resolver-clarification | awaiting RV round 2 · candidate aa6056c | 1 · CR (3d8715f) | — |
+| V3 backend | feat/v3-resolver-clarification | PASS · adopting `actorId` before merge | 2 · CR (3d8715f) → PASS (c463872) | — |
 | V3 frontend | (same branch, later) | BLOCKED on V1 panel seam | — | — |
 | ACC-1 (harness) | feat/acc-harness | **MERGED** | 2 · CR → PASS (9cb3508) | c1c2b0f |
 | ACC-2 (scenarios) | not yet cut | BLOCKED on V3 | — | — |
