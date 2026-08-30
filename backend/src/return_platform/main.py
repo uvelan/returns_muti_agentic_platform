@@ -23,7 +23,6 @@ from return_platform.ai.routing.tasks import (
     build_loaded_ai_gateway_configuration,
     load_ai_gateway_configuration,
 )
-from return_platform.api import support_ingress
 from return_platform.api.ai_gateway import router as ai_gateway_router
 from return_platform.api.associate_returns import router as associate_returns_router
 from return_platform.api.canonical_ai import router as canonical_ai_router
@@ -1389,7 +1388,6 @@ def create_app(
     fastapi_app.include_router(returns_router)
     fastapi_app.include_router(return_agents_router)
     fastapi_app.include_router(return_support_router)
-    fastapi_app.include_router(support_ingress.router)
     fastapi_app.include_router(production_workflow_router)
     fastapi_app.include_router(physical_operations_router)
     fastapi_app.include_router(return_artifacts_router)

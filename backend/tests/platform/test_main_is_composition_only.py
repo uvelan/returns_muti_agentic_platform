@@ -154,21 +154,7 @@ def test_router_mounting_is_the_bulk_of_create_app_and_that_is_allowed() -> None
     # its own router rather than routes on `return_support` because the ticket
     # is a different resource from the work item that asks for it, and the two
     # are gated on different roles.
-    # 33 -> 35 is drift, not a change: two routers were mounted without this
-    # reading being updated, and the assertion has been failing ever since.
-    # Named here rather than folded into one number, because the point of the
-    # reading is that every mount is accounted for:
-    #   - `api/shipment_console.py` (commit 7585b38), the operator console over
-    #     the shipment the Support seed creates. A real router on a real prefix;
-    #     only the count was left behind.
-    #   - `api/template_preview.py` (V1 step:04), the support-template draft
-    #     rendered against a sample case. Same story.
-    # 35 -> 36 for `api/support_ingress.py`, the inbound support-message surface
-    # (V2 phase 1). Mounted beside `return_support` on the same
-    # `/api/v1/return-support` prefix rather than inside it: a message arriving
-    # from Support is a different resource from the work item it arrives on, and
-    # the ingress path is gated and rate-limited on its own terms.
-    assert len(mounts) == 36, (
-        f"{len(mounts)} routers are mounted, expected 36; if Wave F deleted one, "
+    assert len(mounts) == 33, (
+        f"{len(mounts)} routers are mounted, expected 33; if Wave F deleted one, "
         "update this number in the same commit"
     )
