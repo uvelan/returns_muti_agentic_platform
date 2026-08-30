@@ -384,3 +384,52 @@ Two observations for the orchestrator, neither a defect:
   Promoting it to a shared function on `operations/business_calendar.py` would
   let ACC drop its duplicate. **Not requested and not done** — it is a
   production edit, and it belongs to whichever slice owns that module.
+
+---
+
+## RV round 1 — `CHANGES_REQUIRED` (`.plan/reviews/ACC1-1.md`, `ba19fd8`)
+
+Two findings, both rule 10 (test integrity), both the same species: a guard
+whose prose claims a protection its assertions do not provide. Both accepted
+without dispute — RV proved each by fault injection, and each reproduced here
+before being fixed. Items 1, 2 and 7 were otherwise verified sound; the
+fact-name guard was independently re-proved end-to-end and judged to exceed the
+brief.
+
+## step:05 — F1: the calendar pin now declares a holiday
+
+**File:** `backend/tests/harness/test_business_hours_calendar_fixture.py`
+(one line: `nine_to_five_configuration()` →
+`nine_to_five_configuration(holidays=(MONDAY,))`, plus the docstring paragraph
+that explains why).
+
+**The finding, reproduced before fixing.** The pin is the whole justification
+for `as_business_calendar` duplicating the private
+`ReturnCaseActivities._business_calendar`, and its docstring claimed to catch
+"a dropped holiday set". It did not. It ran against a calendar whose `holidays`
+default is `()`, and an empty set maps to an empty set whether the mapping
+copies it or drops it on the floor.
+
+**Fault-injection evidence** (production edited in the working tree, run,
+reverted with `git checkout` — never committed; `git status` confirmed clean
+after each):
+
+| injected drift in `return_case_activities.py::_business_calendar` | before fix | after fix |
+| --- | --- | --- |
+| `holidays=frozenset(declared.holidays)` → `frozenset()` | **10 passed** (miss) | **1 failed, 9 passed** |
+| `timezone=declared.timezone or fallback_timezone` → `fallback_timezone or declared.timezone` | 1 failed (already caught) | **1 failed, 9 passed** |
+| none (clean tree) | 10 passed | **10 passed** |
+
+The failure now reads as a whole day of disagreement — production
+`2026-08-17T20:30Z`, fixture `2026-08-18T20:30Z` — because the Friday-16:30
+probe crosses `MONDAY`, which is the declared holiday. Chosen deliberately over
+a subtler value: a pin whose failure is one day wide cannot be misread as a
+rounding artefact.
+
+**The general lesson, written into the docstring:** every field the mapping
+carries has to be non-default in this pin, or it is not being compared at all.
+
+**Commands:** `python -m pytest tests/harness/test_business_hours_calendar_fixture.py -q`
+→ **10 passed** on the clean tree.
+
+**Next step:** step:06 — F2.

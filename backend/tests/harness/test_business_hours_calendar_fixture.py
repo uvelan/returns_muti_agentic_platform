@@ -173,8 +173,17 @@ async def test_the_fixture_maps_to_the_calendar_production_would_build() -> None
     mapping -- a different timezone precedence, a dropped holiday set -- fails
     here as a disagreement about one instant, instead of leaving every
     acceptance scenario asserting against a desk the platform does not have.
+
+    **The calendar declares a holiday, and it has to.** This pin ran against a
+    calendar with none, so the holiday half of the claim above was decoration:
+    an empty set maps to an empty set whether the mapping copies it or drops it
+    on the floor, and replacing `frozenset(declared.holidays)` with
+    `frozenset()` in production left this file green. Every field the mapping
+    carries has to be non-default here or it is not being compared at all --
+    which is why the probe below starts on Friday and crosses `MONDAY`, so a
+    dropped holiday moves the answer by a whole day.
     """
-    declared = nine_to_five_configuration()
+    declared = nine_to_five_configuration(holidays=(MONDAY,))
     configuration = with_business_calendar(
         load_return_configuration(Path("config/returns/production.yaml")).configuration,
         declared,
