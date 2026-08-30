@@ -380,6 +380,65 @@ class CaseRepository:
         await self._in_transaction(_write)
         return document
 
+    async def append_scoped_case_fact(
+        self,
+        *,
+        fact_id: str,
+        case_id: str,
+        fact_name: str,
+        value: Any,
+        agent_id: str,
+        channel: FactChannel,
+        acquisition_method: FactAcquisition,
+        record_scope: str | None,
+        identity_version: int,
+        turn_id: str | None = None,
+        source_system: str | None = None,
+        source_path: str | None = None,
+        observed_at: datetime | None = None,
+        supersedes_fact_id: str | None = None,
+        correlation_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Record one observation about one return record -- or, scope `None`,
+        about the case.
+
+        The scoped sibling of `append_case_fact`, and a sibling deliberately
+        rather than two new parameters on it: the legacy write path and every
+        document it has ever produced stay byte-identical, so a pre-deploy
+        fact replayed through pre-deploy code cannot change shape. This path
+        additionally stores `record_scope` (which record the fact is about)
+        and `identity_version` (which fact-identity derivation produced
+        `fact_id`), and everything else -- insert-only against the unique
+        `factId`, the plan sect. 6.5 revision bump in the same transaction --
+        is the same contract `append_case_fact` documents.
+        """
+        now = utc_now()
+        document = {
+            "factId": fact_id,
+            "caseId": case_id,
+            "factName": fact_name,
+            "value": value,
+            "agentId": agent_id,
+            "channel": channel.value,
+            "turnId": turn_id,
+            "sourceSystem": source_system,
+            "sourcePath": source_path,
+            "acquisitionMethod": acquisition_method.value,
+            "observedAt": observed_at or now,
+            "recordedAt": now,
+            "supersedesFactId": supersedes_fact_id,
+            "correlationId": correlation_id,
+            "record_scope": record_scope,
+            "identity_version": identity_version,
+        }
+
+        async def _write(session: AsyncClientSession) -> None:
+            await self.case_facts.insert_one(dict(document), session=session)
+            await self.bump_case_revision(case_id, session=session, when=now)
+
+        await self._in_transaction(_write)
+        return document
+
     async def list_case_facts(self, case_id: str) -> list[dict[str, Any]]:
         """The whole log, oldest first. The audit read."""
         cursor = self.case_facts.find({"caseId": case_id}).sort("recordedAt", ASCENDING)
@@ -405,6 +464,40 @@ class CaseRepository:
                 str(current["factId"]),
             ):
                 latest[name] = document
+        return latest
+
+    async def latest_case_facts_scoped(
+        self, case_id: str
+    ) -> dict[tuple[str | None, str], dict[str, Any]]:
+        """Current state per `(record_scope, factName)`: newest record each.
+
+        `latest_case_facts` collapses the log per fact name, which is right
+        for case-level state and wrong the moment two RMAs each carry a fact
+        of the same name -- one record's tracking number would shadow the
+        other's. This projection partitions by scope first, so each record
+        has its own latest value and the `None` partition is exactly the
+        case-level view. A legacy fact stores no `record_scope` key at all;
+        `.get` reads that as `None`, which is the case-level partition it has
+        always belonged to. Same tie-break as `latest_case_facts`:
+        `(recordedAt, factId)`, deterministic if arbitrary.
+
+        A separate method rather than a change to `latest_case_facts`
+        deliberately -- its consumers read a per-name mapping and are
+        converged onto this one as a registered follow-up, not here.
+        """
+        latest: dict[tuple[str | None, str], dict[str, Any]] = {}
+        for document in await self.list_case_facts(case_id):
+            scope = document.get("record_scope")
+            key = (str(scope) if scope is not None else None, str(document["factName"]))
+            current = latest.get(key)
+            if current is None:
+                latest[key] = document
+                continue
+            if (document["recordedAt"], str(document["factId"])) >= (
+                current["recordedAt"],
+                str(current["factId"]),
+            ):
+                latest[key] = document
         return latest
 
     async def create_return_record(
