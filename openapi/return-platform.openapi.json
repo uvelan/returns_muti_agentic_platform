@@ -3304,6 +3304,39 @@
         "title": "APIResponse[SupportCaseView]",
         "type": "object"
       },
+      "APIResponse_SupportMessageAcceptedView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SupportMessageAcceptedView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[SupportMessageAcceptedView]",
+        "type": "object"
+      },
       "APIResponse_SupportTemplatePreviewResponse_": {
         "additionalProperties": false,
         "properties": {
@@ -18780,6 +18813,97 @@
         "title": "SupportCaseView",
         "type": "object"
       },
+      "SupportInboundMessage": {
+        "additionalProperties": false,
+        "description": "One natural-language message, as a transport hands it over.\n\n`extra=\"forbid\"`: a transport that starts sending a field this platform has\nnever agreed to read should be a failed request rather than a field\nsilently dropped on the way to a model.",
+        "properties": {
+          "body_text": {
+            "minLength": 1,
+            "title": "Body Text",
+            "type": "string"
+          },
+          "channel_hint": {
+            "default": "unspecified",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Channel Hint",
+            "type": "string"
+          },
+          "external_message_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "External Message Id",
+            "type": "string"
+          },
+          "sender": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Sender",
+            "type": "string"
+          },
+          "sender_display_name": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Display Name"
+          }
+        },
+        "required": [
+          "external_message_id",
+          "body_text",
+          "sender"
+        ],
+        "title": "SupportInboundMessage",
+        "type": "object"
+      },
+      "SupportMessageAcceptedView": {
+        "additionalProperties": false,
+        "description": "The receipt for a durably recorded inbound message.\n\nSays what committed and nothing about what has been made of it. There is no\n`intent` here and there will not be one: the classification is a model's\nanswer, it is pinned and accepted asynchronously under S2's analysis record,\nand a field here carrying it would be this handler claiming an analysis it\ndid not wait for.",
+        "properties": {
+          "caseId": {
+            "title": "Caseid",
+            "type": "string"
+          },
+          "disposition": {
+            "title": "Disposition",
+            "type": "string"
+          },
+          "outboxCommandId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outboxcommandid"
+          },
+          "parkedCount": {
+            "title": "Parkedcount",
+            "type": "integer"
+          },
+          "supportEventId": {
+            "title": "Supporteventid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "caseId",
+          "supportEventId",
+          "disposition",
+          "outboxCommandId",
+          "parkedCount"
+        ],
+        "title": "SupportMessageAcceptedView",
+        "type": "object"
+      },
       "SupportMessageType": {
         "enum": [
           "REQUEST",
@@ -28438,6 +28562,59 @@
           }
         },
         "summary": "Run Support Response Agent",
+        "tags": [
+          "Returns Support"
+        ]
+      }
+    },
+    "/api/v1/return-support/work-items/{work_item_id}/inbound-messages": {
+      "post": {
+        "description": "Accept one natural-language message from Support, or park it.\n\n`202`, never `201`: nothing about this message has been acted on when the\nresponse is written. The analysis is queued, the relay to Channel A happens\nafter the analysis commits, and a `201 Created` would be a claim about a\nresource whose meaning does not exist yet.\n\nThree refusals, and each is a different fact:\n\n    413  the body is larger than the released limit\n    429  this case has taken more messages than the released window allows\n    409  this exact identity already carries different words\n\nand one non-refusal that is easy to get wrong: a message arriving while\n`nl_enabled` is false comes back `202 PARKED`. It is on file, it is counted,\nand it will be analysed in stream order when the switch flips.",
+        "operationId": "receive_support_message_api_v1_return_support_work_items__work_item_id__inbound_messages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "work_item_id",
+            "required": true,
+            "schema": {
+              "title": "Work Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportInboundMessage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_SupportMessageAcceptedView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Receive Support Message",
         "tags": [
           "Returns Support"
         ]

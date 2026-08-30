@@ -1,8 +1,18 @@
 """The natural-language door (contracts.md sect. 5, sect. 9's endpoint list).
 
-`POST /api/v1/return-support/work-items/{id}/messages`. One route, and almost
-all of it is refusals -- which is the right proportion for an endpoint whose job
-is to accept untrusted text from outside the platform and commit it.
+`POST /api/v1/return-support/work-items/{id}/inbound-messages` (AMENDMENT-3).
+One route, and almost all of it is refusals -- which is the right proportion for
+an endpoint whose job is to accept untrusted text from outside the platform and
+commit it.
+
+**Why `inbound-messages` and not `messages`.** T0 froze `.../messages`, which was
+already `return_support.add_message` -- the associate's outbound composer. Two
+handlers on one path is not a merge: mounted second this one is unreachable,
+mounted first it retires a live endpoint, and either way the OpenAPI document
+(keyed by path) advertises one surface while the other answers. The name is also
+the better one: this is inbound *from* Support, transport-agnostic, as against an
+associate composing outbound. `test_no_two_routers_in_this_application_declare_the
+_same_endpoint` is the check that T0 did not run.
 
 The order of the checks is the design. Capability, then case access, then size,
 then rate, then the commit. Everything that can be refused without touching the
@@ -201,7 +211,9 @@ def enforce_limits(
 
 
 @router.post(
-    "/work-items/{work_item_id}/messages",
+    # AMENDMENT-3. `/messages` on this prefix belongs to
+    # `return_support.add_message` and has since before this slice existed.
+    "/work-items/{work_item_id}/inbound-messages",
     response_model=APIResponse[SupportMessageAcceptedView],
     status_code=status.HTTP_202_ACCEPTED,
 )

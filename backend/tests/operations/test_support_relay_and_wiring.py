@@ -282,6 +282,35 @@ class _FakeTask:
     promptVersion = "support-message-classify-v1"
     allowedProviders = ("GOOGLE", "NVIDIA", "ANTHROPIC")
 
+    def model_dump(self, mode: str = "python") -> dict[str, Any]:
+        del mode
+        return {
+            "tier": "STANDARD",
+            "promptVersion": self.promptVersion,
+            "allowedProviders": list(self.allowedProviders),
+            "allowTierEscalation": False,
+            "fallbackStrategy": "SEQUENTIAL",
+            "fallbackTemplate": "support-unavailable",
+            "maximumInputTokens": 4000,
+        }
+
+
+class _FakeGatewayConfiguration:
+    def model_dump(self, mode: str = "python") -> dict[str, Any]:
+        del mode
+        return {
+            "schemaVersion": "1.0",
+            "circuitBreaker": {},
+            "retry": {},
+            "rateLimits": {},
+            "providerLimits": {},
+            "modelContexts": [],
+        }
+
+
+class _FakeDispatcher:
+    configuration = _FakeGatewayConfiguration()
+
 
 class _FakeInvocation:
     def __init__(self, value: SupportAnalysisEnvelope, provider: str) -> None:
@@ -291,6 +320,7 @@ class _FakeInvocation:
 
 class _FakeStructuredInvoker:
     task = _FakeTask()
+    dispatcher = _FakeDispatcher()
 
     def __init__(self, *, unavailable: bool = False) -> None:
         self.calls: list[dict[str, Any]] = []
@@ -316,18 +346,17 @@ class _FakeStructuredInvoker:
 
 def test_the_pinned_candidates_are_the_releases_providers_in_declaration_order() -> None:
     """Declaration order is the operator's ranking; sorting would replace it."""
-    adapter = StructuredStageInvoker(
-        _FakeStructuredInvoker(), routing_policy_version="policy-1"
-    )
+    adapter = StructuredStageInvoker(_FakeStructuredInvoker())
     assert adapter.ordered_candidate_routes == ("GOOGLE", "NVIDIA", "ANTHROPIC")
     assert adapter.release_id == "support-message-classify-v1"
-    assert adapter.routing_policy_version == "policy-1"
+    # Derived from the released document, not supplied by whoever built this.
+    assert adapter.routing_policy_version.startswith("1.0:")
 
 
 @pytest.mark.asyncio
 async def test_the_adapter_records_who_answered_beside_the_pinned_candidate() -> None:
     invoker = _FakeStructuredInvoker()
-    adapter = StructuredStageInvoker(invoker, routing_policy_version="policy-1")
+    adapter = StructuredStageInvoker(invoker)
     result = await adapter.invoke(route_id="GOOGLE", payload={"bodyText": "hello"})
 
     assert result["intent"] == "rma_issued"
@@ -341,9 +370,7 @@ async def test_the_adapter_records_who_answered_beside_the_pinned_candidate() ->
 
 @pytest.mark.asyncio
 async def test_an_unavailable_invocation_becomes_the_records_route_failure() -> None:
-    adapter = StructuredStageInvoker(
-        _FakeStructuredInvoker(unavailable=True), routing_policy_version="policy-1"
-    )
+    adapter = StructuredStageInvoker(_FakeStructuredInvoker(unavailable=True))
     with pytest.raises(RouteUnavailableError):
         await adapter.invoke(route_id="GOOGLE", payload={"bodyText": "hello"})
 

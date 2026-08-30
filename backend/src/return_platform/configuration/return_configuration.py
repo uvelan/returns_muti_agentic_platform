@@ -19,6 +19,9 @@ from return_platform.configuration.support_gate_configuration import SupportGate
 from return_platform.configuration.support_ingress_configuration import (
     SupportIngressConfiguration,
 )
+from return_platform.configuration.support_resolver_configuration import (
+    SupportResolverConfiguration,
+)
 from return_platform.configuration.support_template_configuration import (
     SupportTemplateConfiguration,
 )
@@ -1728,6 +1731,12 @@ class ReturnPlatformConfiguration(StrictConfigModel):
     #: still loads; the default has the natural-language door shut.
     support_ingress: SupportIngressConfiguration = Field(
         default_factory=SupportIngressConfiguration
+    )
+    #: How the platform answers a question Support asked (contracts.md sect. 9).
+    #: Defaulted so a release cut before this block still loads; the default has
+    #: no tool eligible for any intent and review required on every reply.
+    support_resolver: SupportResolverConfiguration = Field(
+        default_factory=SupportResolverConfiguration
     )
 
     @model_validator(mode="after")

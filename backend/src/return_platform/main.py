@@ -63,6 +63,7 @@ from return_platform.api.seed import router as seed_router
 from return_platform.api.shipment_console import router as shipment_console_router
 from return_platform.api.source_bindings import router as source_bindings_router
 from return_platform.api.support import router as support_router
+from return_platform.api.support_ingress import router as support_ingress_router
 from return_platform.api.template_preview import router as template_preview_router
 from return_platform.api.warehouse_placement import router as warehouse_placement_router
 from return_platform.bootstrap.adapters.analyzer_agent_adapter import (
@@ -1443,6 +1444,12 @@ def create_app(
     fastapi_app.include_router(canonical_session_router)
     fastapi_app.include_router(canonical_principal_router)
     fastapi_app.include_router(support_router)
+    # Inbound NL ingress from Support (V2). Its own router on the
+    # `/api/v1/return-support` prefix rather than routes on `return_support`:
+    # `.../work-items/{id}/messages` is already the associate's own surface
+    # (`add_message` POST, `list_messages` GET), so the ingress route lives at
+    # `.../inbound-messages` per AMENDMENT-3 and stays in the slice that owns it.
+    fastapi_app.include_router(support_ingress_router)
     fastapi_app.include_router(ai_gateway_router)
     fastapi_app.include_router(seed_router)
     fastapi_app.include_router(dependencies_router)
