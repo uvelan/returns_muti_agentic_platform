@@ -135,6 +135,12 @@ class CaseStatus(StrEnum):
     #: published eligibility policy. Non-terminal: publishing one fixes it.
     RECOVERY_REQUIRED = "RECOVERY_REQUIRED"
     AWAITING_SUPPORT = "AWAITING_SUPPORT"
+    #: The outbound support request has been drafted and is waiting on a human
+    #: to approve it (contracts.md sect. 6). **A legitimate wait, not a stall:**
+    #: a case can sit here for as long as the review deadline allows, and the
+    #: time-based recovery sweep must not read that patience as a fault. Only a
+    #: confirmed-absent or unexpectedly-closed execution is evidence of one.
+    AWAITING_TEMPLATE_REVIEW = "AWAITING_TEMPLATE_REVIEW"
     RMA_RECEIVED = "RMA_RECEIVED"
     IN_TRANSIT = "IN_TRANSIT"
     CLOSED = "CLOSED"

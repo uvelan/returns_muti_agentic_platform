@@ -85,16 +85,22 @@ from enum import StrEnum
 from typing import Any, Final, Protocol, cast
 
 from pymongo.asynchronous.database import AsyncDatabase
+from pymongo.errors import DuplicateKeyError
 from temporalio.client import Client, WorkflowExecutionStatus
 from temporalio.service import RPCError, RPCStatusCode
 
 from return_platform.configuration.return_configuration import ReturnCaseTimingConfiguration
+from return_platform.operations.case_projection.status_mapping import UnmappedCaseStatusError
+from return_platform.operations.fact_names import SUPPORT_STREAM_SKIP
 from return_platform.operations.integrations.outbox import (
     DEAD_LETTER_STATUS,
+    DELIVERED_STATUS,
     INTEGRATION_OUTBOX_COLLECTION,
+    PARKED_STREAM_STATUS,
     REQUIRES_RECONCILIATION,
+    CaseStream,
 )
-from return_platform.operations.models import CaseStatus
+from return_platform.operations.models import CaseStatus, FactAcquisition, FactChannel
 from return_platform.operations.support_events import SUPPORT_EVENT_AGGREGATE_TYPE
 from return_platform.workflows.case_divergence import (
     CaseDivergence,
@@ -111,10 +117,14 @@ from return_platform.workflows.return_case_launcher import (
 from return_platform.workflows.return_case_workflow import return_case_workflow_id
 
 __all__ = [
+    "DEFAULT_COMMAND_HORIZON_SECONDS",
+    "LEGITIMATE_WAIT_STATUSES",
     "PERMANENTLY_REJECTED",
     "RECONCILED",
     "CaseExecutionProbePort",
     "CaseRecoveryOutcome",
+    "CaseStreamRecovery",
+    "CommittedCommandHorizonPort",
     "MongoReconciliationOutbox",
     "ReconciliationOutboxPort",
     "RecoverableCaseRepositoryPort",
@@ -122,6 +132,7 @@ __all__ = [
     "RecoveryCaseRepositoryPort",
     "ReturnCaseRecoveryService",
     "ReturnCaseWorkflowRecovery",
+    "ScopedCaseFactRepositoryPort",
     "TemporalCaseExecutionProbe",
     "build_case_recovery_service",
 ]
@@ -138,11 +149,33 @@ RECONCILED: Final = "RECONCILED"
 #: `case_support_events`: this is a decision recorded, not a record removed.
 PERMANENTLY_REJECTED: Final = "PERMANENTLY_REJECTED"
 
+#: Persisted statuses in which sitting still is the design, not a symptom
+#: (contracts.md sect. 6). The **time-based** sweep skips these: it has only
+#: elapsed time to go on, and elapsed time is not evidence about a case whose
+#: whole purpose is to wait for a person. The probe-based reconciler below is
+#: unaffected -- a confirmed-absent or unexpectedly-closed execution is real
+#: evidence whatever the case was waiting for, and that path still repairs it.
+LEGITIMATE_WAIT_STATUSES: Final[frozenset[CaseStatus]] = frozenset(
+    {
+        CaseStatus.AWAITING_TEMPLATE_REVIEW,
+        CaseStatus.AWAITING_POLICY_REVIEW,
+        CaseStatus.AWAITING_SUPPORT,
+    }
+)
+
+#: How long a committed command may sit undelivered before the case stops being
+#: a recovery candidate and becomes an operations question. Past this, the
+#: outbox has had every retry it was going to get, and a relaunch would be
+#: guessing at a cause nobody has diagnosed.
+DEFAULT_COMMAND_HORIZON_SECONDS: Final = 3_600.0
+
 
 class RecoverableCaseRepositoryPort(Protocol):
     async def list_cases_without_workflow(
         self, *, created_before: datetime, limit: int
     ) -> list[dict[str, Any]]: ...
+
+    async def bind_case_workflow(self, case_id: str, *, workflow_id: str) -> bool: ...
 
 
 class CaseWorkflowLauncherPort(Protocol):
@@ -176,6 +209,22 @@ class ReturnCaseWorkflowRecovery:
             raise ValueError("batch_size must be at least 1")
         if interval_seconds <= 0:
             raise ValueError("interval_seconds must be positive")
+        # Checked here, loudly, rather than discovered per-case at runtime.
+        # `_repair_workflow_link` swallows its failures on purpose -- one case's
+        # link must not stop the sweep reaching the cases behind it -- and that
+        # is right for an operational failure, which is transient and affects
+        # one case. A *missing method* is neither: it fails identically for
+        # every case on every pass, for ever, and the sweep degrades silently
+        # back to the starvation this repair exists to prevent, visible only as
+        # a warning nobody is watching. A wiring error should be loud at wiring
+        # time, so the one failure mode the broad catch could hide is removed
+        # before it can happen rather than caught after.
+        if not callable(getattr(repository, "bind_case_workflow", None)):
+            raise TypeError(
+                f"{type(repository).__name__} does not implement bind_case_workflow: "
+                "the sweep repairs the workflow link for cases it refuses to relaunch, "
+                "and without it those cases never leave the recovery queue"
+            )
         self._launcher = launcher
         self._repository = repository
         self._grace_seconds = grace_seconds
@@ -197,6 +246,30 @@ class ReturnCaseWorkflowRecovery:
         recovered = 0
         for case in pending:
             case_id = str(case.get("caseId") or "")
+            if case_id and _is_legitimate_wait(case.get("status")):
+                # Waiting on a person is not a fault, and this sweep has only
+                # elapsed time to reason from. Relaunching here would restart a
+                # case whose reviewer simply has not answered yet -- and the
+                # relaunch would be visible to them as their draft vanishing.
+                #
+                # **But relaunching was never the only thing this pass did.**
+                # The link write is the other half, and this queue selects on
+                # `workflowId: None` oldest-first under a limit: a case that is
+                # skipped outright never gets its link, so it never leaves the
+                # queue, and being old it sits at the head of every later batch
+                # until the batch is nothing but skipped cases and genuinely
+                # unlaunched ones are never reached. The refusal has to be
+                # narrower than "do nothing" or the sweep disables itself.
+                #
+                # Binding directly rather than through `ensure_case_workflow`:
+                # only `ReturnCaseWorkflow` writes these statuses, so the
+                # execution exists -- but `ensure_case_workflow` would *start*
+                # one if it did not, which is the relaunch being refused.
+                # `bind_case_workflow` cannot start anything, and is idempotent
+                # on `workflowId: None`. The id is derived from the case id,
+                # never read back from the link this is repairing.
+                await self._repair_workflow_link(case_id, str(case.get("status")))
+                continue
             conversation_id = case.get("channelAConversationId")
             if not case_id or not isinstance(conversation_id, str) or not conversation_id:
                 # Not a confirmed Channel A case. `ReturnCaseWorkflow` is the
@@ -229,6 +302,48 @@ class ReturnCaseWorkflowRecovery:
                 },
             )
         return recovered
+
+    async def _repair_workflow_link(self, case_id: str, status: str) -> None:
+        """Write the link a legitimate-wait case is owed, and start nothing.
+
+        The repair `return_case_launcher`'s docstring promises: the launcher
+        swallows a failed link write because "the recovery sweep re-writes the
+        link on its next pass". This is that pass, for the statuses it no
+        longer relaunches.
+
+        An *operational* failure here is logged, not raised, for the same
+        reason the launcher logs its own: the link is provenance, and one
+        case's link must not stop the sweep from reaching the genuinely
+        unlaunched cases behind it. The case stays in the queue and the next
+        pass tries again -- a retry rather than the permanent residue the bare
+        skip created, because the write is attempted every pass instead of
+        never.
+
+        `AttributeError` is deliberately **not** caught. It is the one failure
+        here that is not operational: it means the port has no such method, so
+        it would fail identically for every case on every pass and degrade the
+        sweep silently back to the starvation this repair exists to prevent.
+        The constructor already refuses such a repository, so reaching this at
+        all is a programming error -- and swallowing a programming error into a
+        warning is how the invisible mode gets built.
+        """
+        try:
+            await self._repository.bind_case_workflow(
+                case_id, workflow_id=return_case_workflow_id(case_id)
+            )
+        except AttributeError:
+            raise
+        except Exception:  # noqa: BLE001 - provenance, and the next pass retries
+            logger.warning(
+                "case_workflow_link_repair_failed",
+                extra={"case_id": case_id, "status": status},
+                exc_info=True,
+            )
+            return
+        logger.debug(
+            "case_workflow_link_repaired_without_relaunch",
+            extra={"case_id": case_id, "status": status},
+        )
 
     async def run_forever(self) -> None:
         while True:
@@ -370,6 +485,25 @@ class MongoReconciliationOutbox:
         ).limit(limit)
         return [cast(dict[str, Any], document) async for document in cursor]
 
+    async def list_unapplied_commands_past_horizon(
+        self, *, older_than: datetime, limit: int
+    ) -> list[dict[str, Any]]:
+        """Commands that committed and never reached the workflow.
+
+        Deliberately *not* filtered to `DEAD_LETTER`. A command still politely
+        retrying an hour after it was written is the case this rule exists for:
+        the dead-letter sweep never sees it, and it is exactly as unapplied as
+        one that gave up. What makes it an operations question is the age, not
+        the status it wears while ageing.
+        """
+        cursor = self._collection.find(
+            {
+                "status": {"$ne": DELIVERED_STATUS},
+                "createdAt": {"$lt": older_than},
+            }
+        ).limit(limit)
+        return [cast(dict[str, Any], document) async for document in cursor]
+
     async def requeue_command(self, command_id: str) -> bool:
         """Put a permanently-failed command back on the queue against a live case.
 
@@ -421,6 +555,203 @@ class MongoReconciliationOutbox:
         return result.modified_count == 1
 
 
+def _is_legitimate_wait(status: object) -> bool:
+    """Whether this persisted status is a case waiting rather than stuck.
+
+    Unreadable statuses answer `False`. This gate is a *refusal to act*, and a
+    refusal that fired on a value nobody recognised would silently stop
+    recovering a whole class of cases -- the opposite failure from the one it
+    prevents, and a much quieter one.
+    """
+    try:
+        return read_persisted_status(status) in LEGITIMATE_WAIT_STATUSES
+    except UnmappedCaseStatusError:
+        return False
+
+
+class CommittedCommandHorizonPort(Protocol):
+    """Commands that committed and were never applied, past the retry horizon.
+
+    A separate optional port rather than another method on
+    `ReconciliationOutboxPort`: that protocol has existing implementations, and
+    widening it would make every one of them wrong at once for a check a
+    deployment can legitimately not wire.
+    """
+
+    async def list_unapplied_commands_past_horizon(
+        self, *, older_than: datetime, limit: int
+    ) -> list[dict[str, Any]]: ...
+
+
+class ScopedCaseFactRepositoryPort(Protocol):
+    """The one case-store write the stream skip audit needs."""
+
+    async def append_scoped_case_fact(self, **fact: Any) -> dict[str, Any]: ...
+
+
+class CaseStreamRecovery:
+    """The audited operator decisions over a parked case stream.
+
+    Contracts.md sect. 7: a dead-lettered predecessor parks its stream and
+    dependents, and only an operator resumes it -- by *skipping* the dead
+    letter (the platform gives up on delivering it, records who decided so and
+    why as the `support_stream_skip` fact, and lets the stream move) or by
+    *retrying* it (back to the queue with its delivery identity intact).
+
+    Both writes are compare-and-set on `orderingResolved`, the same shape
+    `MongoReconciliationOutbox` uses on `reconciliationState` and for the same
+    reason: a second operator clicking the same button matches nothing.
+    The two fields are deliberately separate planes -- `reconciliationState`
+    is whether the *payload* is still owed anywhere, `orderingResolved` is
+    whether the *stream* may pass the command -- so skipping for ordering
+    never erases the record that a reconciler may still owe an answer.
+    """
+
+    def __init__(
+        self,
+        database: AsyncDatabase[dict[str, object]],
+        *,
+        fact_repository: ScopedCaseFactRepositoryPort,
+    ) -> None:
+        self._collection = database[INTEGRATION_OUTBOX_COLLECTION]
+        self._fact_repository = fact_repository
+
+    async def skip_dead_lettered_command(
+        self,
+        *,
+        case_id: str,
+        stream: CaseStream,
+        event_id: str,
+        actor_id: str,
+        reason: str,
+    ) -> bool:
+        """Give up on one dead letter, audit it, and let its stream resume.
+
+        The fact write is idempotent on its derived id: a repeated skip of the
+        same event re-records nothing, exactly as `append_scoped_fact_once`
+        behaves on the workflow paths -- and the CAS above it means the repeat
+        never gets that far anyway.
+        """
+        now = datetime.now(UTC)
+        result = await self._collection.update_one(
+            {
+                "aggregateId": case_id,
+                "stream": stream.value,
+                "eventId": event_id,
+                "status": DEAD_LETTER_STATUS,
+                "orderingResolved": {"$ne": True},
+            },
+            {
+                "$set": {
+                    "orderingResolved": True,
+                    "orderingResolution": {
+                        "action": "SKIPPED",
+                        "actorId": actor_id,
+                        "reason": reason[:2_000],
+                        "at": now,
+                    },
+                    "updatedAt": now,
+                }
+            },
+        )
+        if result.modified_count != 1:
+            return False
+        await self._unpark(case_id, stream)
+        try:
+            await self._fact_repository.append_scoped_case_fact(
+                fact_id=f"support-stream-skip:{case_id}:{stream.value}:{event_id}",
+                case_id=case_id,
+                fact_name=SUPPORT_STREAM_SKIP,
+                value={
+                    "stream": stream.value,
+                    "event_id": event_id,
+                    "actor_id": actor_id,
+                    "reason": reason[:2_000],
+                },
+                agent_id=actor_id,
+                channel=FactChannel.SYSTEM,
+                acquisition_method=FactAcquisition.STATED,
+                record_scope=None,
+                identity_version=_scoped_fact_identity_version(),
+            )
+        except DuplicateKeyError:
+            # The audit already exists -- a crash after the CAS and before the
+            # fact on a previous attempt. The decision stands recorded once.
+            logger.debug(
+                "stream_skip_fact_already_recorded",
+                extra={"case_id": case_id, "event_id": event_id},
+            )
+        return True
+
+    async def retry_dead_lettered_command(
+        self, *, case_id: str, stream: CaseStream, event_id: str
+    ) -> bool:
+        """Put one dead letter back on the queue and let its stream resume.
+
+        `attemptCount` is not reset and the payload is not touched, exactly as
+        `MongoReconciliationOutbox.requeue_command` argues: the history of how
+        hard the platform tried is audit, and the delivery identity travelling
+        in the payload is what keeps the retry a redelivery.
+        """
+        now = datetime.now(UTC)
+        result = await self._collection.update_one(
+            {
+                "aggregateId": case_id,
+                "stream": stream.value,
+                "eventId": event_id,
+                "status": DEAD_LETTER_STATUS,
+                "orderingResolved": {"$ne": True},
+            },
+            {
+                "$set": {
+                    "status": "PENDING",
+                    "orderingResolved": True,
+                    "orderingResolution": {"action": "RETRIED", "at": now},
+                    "nextAttemptAt": now,
+                    "updatedAt": now,
+                    "leaseOwner": None,
+                    "leaseUntil": None,
+                }
+            },
+        )
+        if result.modified_count != 1:
+            return False
+        await self._unpark(case_id, stream)
+        return True
+
+    async def _unpark(self, case_id: str, stream: CaseStream) -> int:
+        now = datetime.now(UTC)
+        result = await self._collection.update_many(
+            {
+                "aggregateId": case_id,
+                "stream": stream.value,
+                "status": PARKED_STREAM_STATUS,
+            },
+            {
+                "$set": {
+                    "status": "PENDING",
+                    "parkedReason": None,
+                    "nextAttemptAt": now,
+                    "updatedAt": now,
+                }
+            },
+        )
+        return int(result.modified_count)
+
+
+def _scoped_fact_identity_version() -> int:
+    """S1's stamped fact-identity version, resolved at call time.
+
+    A function rather than a module-level import because
+    `workflows.return_case_activities` transitively imports this module's
+    neighbours; deferring keeps the import graph exactly as it was before this
+    class existed.
+    """
+    from return_platform.workflows.return_case_activities import SCOPED_FACT_IDENTITY_VERSION
+
+    return SCOPED_FACT_IDENTITY_VERSION
+
+
 class RecoveryAction(StrEnum):
     """What reconciliation actually did to one case. One member per outcome.
 
@@ -442,6 +773,12 @@ class RecoveryAction(StrEnum):
     RELAUNCH_FAILED = "RELAUNCH_FAILED"
     #: No case with this id.
     CASE_NOT_FOUND = "CASE_NOT_FOUND"
+    #: A command committed and was never applied, and the outbox has had every
+    #: retry it was going to get. Surfaced to operations and **never
+    #: auto-relaunched**: past the horizon the cause is undiagnosed, and
+    #: starting a fresh execution would replace one unexplained state with
+    #: another while destroying the evidence for the first.
+    OPERATIONS_REQUIRED = "OPERATIONS_REQUIRED"
 
 
 @dataclass(frozen=True, slots=True)
@@ -457,6 +794,10 @@ class CaseRecoveryOutcome:
     requeued_commands: int = 0
     #: Dead-lettered Support commands recorded as never-to-be-applied.
     rejected_commands: int = 0
+    #: Command ids that committed, were never applied, and are past the retry
+    #: horizon. Non-empty only with `OPERATIONS_REQUIRED`, and the reason it is
+    #: ids rather than a count: the operator's next action is to look at one.
+    stale_command_ids: tuple[str, ...] = ()
 
     @property
     def changed_anything(self) -> bool:
@@ -490,6 +831,8 @@ class ReturnCaseRecoveryService:
         repository: RecoveryCaseRepositoryPort,
         probe: CaseExecutionProbePort,
         outbox: ReconciliationOutboxPort | None = None,
+        command_horizon: CommittedCommandHorizonPort | None = None,
+        command_horizon_seconds: float = DEFAULT_COMMAND_HORIZON_SECONDS,
         batch_size: int = 100,
         interval_seconds: float = 60.0,
     ) -> None:
@@ -497,10 +840,14 @@ class ReturnCaseRecoveryService:
             raise ValueError("batch_size must be at least 1")
         if interval_seconds <= 0:
             raise ValueError("interval_seconds must be positive")
+        if command_horizon_seconds <= 0:
+            raise ValueError("command_horizon_seconds must be positive")
         self._launcher = launcher
         self._repository = repository
         self._probe = probe
         self._outbox = outbox
+        self._command_horizon = command_horizon
+        self._command_horizon_seconds = command_horizon_seconds
         self._batch_size = batch_size
         self._interval_seconds = interval_seconds
 
@@ -580,7 +927,48 @@ class ReturnCaseRecoveryService:
                 requeued_commands=requeued,
             )
 
+        # `RECOVERY_REQUIRED` from here on. One question stands between it and a
+        # relaunch: has a command already committed and gone unapplied for
+        # longer than the outbox was ever going to keep trying?
+        stale = await self._stale_commands(case_id)
+        if stale:
+            logger.error(
+                "case_recovery_operations_required",
+                extra={
+                    "case_id": case_id,
+                    "reason": assessment.reason.value,
+                    "stale_command_ids": stale,
+                    "horizon_seconds": self._command_horizon_seconds,
+                },
+            )
+            return CaseRecoveryOutcome(
+                case_id=case_id,
+                action=RecoveryAction.OPERATIONS_REQUIRED,
+                assessment=assessment,
+                stale_command_ids=stale,
+            )
+
         return await self._relaunch(case, assessment, commands)
+
+    async def _stale_commands(self, case_id: str) -> tuple[str, ...]:
+        """This case's committed-but-unapplied commands past the horizon.
+
+        Empty when no horizon port is wired, which is not a silent pass: a
+        deployment without one simply has no way to ask the question, and the
+        honest answer to a question that cannot be asked is not "no".  The
+        difference is visible in the outcome -- `RELAUNCHED` rather than
+        `OPERATIONS_REQUIRED` -- rather than hidden behind a default.
+        """
+        horizon = self._command_horizon
+        if horizon is None:
+            return ()
+        cutoff = datetime.now(UTC) - timedelta(seconds=self._command_horizon_seconds)
+        commands = await horizon.list_unapplied_commands_past_horizon(
+            older_than=cutoff, limit=self._batch_size
+        )
+        return tuple(
+            sorted(str(command["_id"]) for command in commands if _case_id_of(command) == case_id)
+        )
 
     async def _relaunch(
         self,

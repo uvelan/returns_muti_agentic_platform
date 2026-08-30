@@ -513,6 +513,11 @@ EXPECTED_STATUS_PROJECTION: dict[CaseStatus, ReturnCaseStatus] = {
     CaseStatus.POLICY_REJECTED: ReturnCaseStatus.POLICY_REJECTED,
     CaseStatus.RECOVERY_REQUIRED: ReturnCaseStatus.RECOVERY_REQUIRED,
     CaseStatus.AWAITING_SUPPORT: ReturnCaseStatus.AWAITING_SUPPORT,
+    # Waiting on an approval of the message *to* Support reads, from outside, as
+    # waiting on Support. `ReturnCaseStatus` is the frozen contract vocabulary,
+    # so the review maps onto the wait the caller already sees rather than
+    # adding a member to it.
+    CaseStatus.AWAITING_TEMPLATE_REVIEW: ReturnCaseStatus.AWAITING_SUPPORT,
     CaseStatus.RMA_RECEIVED: ReturnCaseStatus.PROCESSING_RETURN,
     CaseStatus.IN_TRANSIT: ReturnCaseStatus.PROCESSING_RETURN,
     CaseStatus.CLOSED: ReturnCaseStatus.COMPLETED_EXTERNAL_SETTLEMENT,

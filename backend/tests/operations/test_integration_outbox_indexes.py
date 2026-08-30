@@ -85,6 +85,23 @@ EXPECTED_UNION: dict[tuple[tuple[str, int], ...], dict[str, Any]] = {
     (("createdAt", DESCENDING),): {},
     # `_dead_letter` writes both fields together; Phase 10 sweeps on both.
     (("status", ASCENDING), ("reconciliationState", ASCENDING)): {},
+    # S2 ordering (contracts.md sect. 7): unique `(case, stream, sequence)`
+    # identity for ordered commands, partial so the commands written before
+    # streams existed cost nothing. Named because no deployed default-named
+    # copy exists to conflict with.
+    (("aggregateId", ASCENDING), ("stream", ASCENDING), ("streamSequence", ASCENDING)): {
+        "unique": True,
+        "partialFilterExpression": {"stream": {"$type": "string"}},
+        "name": "case_stream_sequence_unique",
+    },
+    # The predecessor lookup: `_ordering_hold` resolves
+    # `requiredPredecessorIds` by `eventId`, and enqueue validation depends on
+    # an event id naming at most one command.
+    (("eventId", ASCENDING),): {
+        "unique": True,
+        "partialFilterExpression": {"eventId": {"$type": "string"}},
+        "name": "case_stream_event_id_unique",
+    },
 }
 
 #: `leaseOwner` is in `claim()`'s `$or` and is deliberately *not* indexed (D26).
