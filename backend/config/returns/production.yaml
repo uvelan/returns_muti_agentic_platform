@@ -1869,6 +1869,43 @@ shipment_tracking:
 # constant text (contracts.md AMENDMENT-1). Every `case_fact:` name is declared
 # in `support_template_draft.TEMPLATE_CASE_FACT_KEYS`, and a test compares this
 # block against it in both directions.
+# The review gate over the outbound support request (contracts.md sect. 6,
+# DR-4). Enabled: a message this platform composes about somebody's return, to
+# a human queue, gets looked at by a person first.
+#
+# Every duration is in *working* seconds -- resolved through
+# `resolve_business_deadline` against `return_case.business_calendar_id`, so a
+# draft raised at 16:00 on Friday is not overdue by Saturday lunchtime.
+#
+# `on_timeout: hold` is the one value that cannot send a message nobody read.
+# `auto_send` is expressible and is not what this deployment chose; note that
+# even under `auto_send` an unresolved required gap forces the hold anyway
+# (contracts.md sect. 6), so the setting can only ever make the gate *stricter*
+# than it reads, never looser.
+support_gate:
+  # One case, one request, one review. The other two groupings are declared in
+  # the enum because the contract declares them; selecting one this deployment
+  # has not exercised would be a decision, not a default.
+  request_grouping: one_per_case
+  template_review:
+    enabled: true
+    # One working day.
+    #
+    # Deliberately NOT copied from `return_case.support_response_wait_seconds`,
+    # which this file has set to 1800 as an explicitly-marked DEV SETTING
+    # ("BEFORE LIVE: restore 28800") to close an overselling window. That is a
+    # dev shortcut on Support's SLA; inheriting it here would give a branch
+    # associate thirty minutes to review a draft and would carry a temporary
+    # workaround into a block that has nothing to do with item holds. A
+    # reviewer's clock and Support's clock are two promises, and this one is the
+    # real value.
+    review_wait_seconds: 28800
+    reminder_interval_seconds: 7200
+    # A case total, not a per-review one (DR-7): one cadence, one deadline, and
+    # the reminder names every review still pending.
+    max_reminders: 3
+    on_timeout: hold
+
 support_template:
   template_id: support-handoff
   default_variant_id: default
