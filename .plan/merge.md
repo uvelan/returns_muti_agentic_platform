@@ -16,17 +16,19 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | S1 phase 1b (`actorId`) | feat/s1-actor-id | **MERGED** | 1 · PASS (98a180e) | 132b031 |
 | S2 | feat/s2-delivery-spine | **MERGED** | 3 · CR → CR → PASS (b7a78ad) | dfd3036 |
 | V1 phase 1 | feat/v1-template-review | **MERGED** | 2 · CR → PASS (18f671f) | b2590ef |
-| V1 phase 2 | feat/v1-phase2 | CHANGES_REQUIRED → fixing · was 3437187 | 1 · CR (85db125) | — |
+| V1 phase 2 | feat/v1-phase2 | UNDER_RV_REVIEW round 2 · candidate 594bb05 | 2 · CR (85db125) → open | — |
 | V2 phase 1 | feat/v2-ingress-relay | **MERGED** | 2 · CR → PASS (02da231) | 97bca1e |
 | V2 phase 1b | feat/v2-ingress-relay | **MERGED** | 1 · PASS (a51c9b4) | 95b5672 |
 | V2 phase 2 (frontend) | (same branch, later) | BLOCKED on V1 panel seam | — | — |
-| V3 backend | feat/v3-resolver-clarification | PASS · adopting `actorId` before merge | 2 · CR (3d8715f) → PASS (c463872) | — |
+| V3 backend | feat/v3-resolver-clarification | **MERGED** | 2 · CR (3d8715f) → PASS (c463872) | 270c223 |
 | V3 frontend | (same branch, later) | BLOCKED on V1 panel seam | — | — |
 | ACC-1 (harness) | feat/acc-harness | **MERGED** | 2 · CR → PASS (9cb3508) | c1c2b0f |
 | ACC-2 (scenarios) | not yet cut | BLOCKED on V3 | — | — |
 | RV calibration | rv-calibration/seeded-hardcoding | bait CAUGHT as blocking | 1 (d59e017) | never merges |
 
-**Seven merges on trunk:** S1, S1b, ACC-1, V1 phase 1, S2, V2 phase 1, V2 phase 1b. Remaining: V1 phase 2 (fixing), V3 (in review), then the two frontend phases and ACC-2.
+**Eight merges on trunk:** S1, S1b, ACC-1, V1 phase 1, S2, V2 phase 1, V2 phase 1b, V3. Trunk suite: **4985 passed, 1 failed** — down to the single known pre-existing `test_a_rejected_return_still_opens_no_work_item`, since the V2 router mount legitimately fixed `test_main_is_composition_only`.
+
+Remaining: V1 phase 2 (in review — the last major backend slice), then one batched integration pass (V3's router mount + port wiring + `CaseFactProjection` + regeneration), the two frontend phases, and ACC-2.
 
 **V2 phase 1b review notes (PASS, zero findings).** RV verified the three historically fragile items by injection rather than reading: the route walker catches a real collision with a *different* parameter name (3 failed) and passes with the normalisation reduced to identity, so the normalisation is genuinely load-bearing and errs safe (it over-normalises the `:path` converter — false positive possible, missed collision not); removing the idempotency key's length prefixes fails 4, and **the separator test fails on its own merit** rather than via the pinned literal, varying two *adjacent* parts where one carries `|` — both conditions the three earlier attempts kept missing. RV recomputed the pinned uuid5 by hand so the test cannot pass by comparing the function with itself, and checked **AMENDMENT-4's four clauses one at a time against source** rather than trusting my wording: no such transaction exists, the order is as claimed, all three steps are genuine no-ops on repeat, and `ConcurrencyConflictError` is a `RuntimeError` so the outbox retries rather than dead-letters. It also verified the wider property I had not asked for: **170 endpoints across all mounted routers, zero collisions.**
 *Four observations, none findings:* the walker covers only `return_platform.api` (widening costs ~4 lines); `relay` still defaults to `None` — the same optional-port shape the omc gap was raised to close, live risk closed by the factory and its test; a pre-existing S1 stale-value re-merge on out-of-order redelivery, not amplified here; and an uncaught `DuplicateKeyError` on a concurrent upsert race that converges correctly but reports an error where a no-op would be truthful.
