@@ -7,7 +7,7 @@ Each slice branches from the latest RV-approved integration commit recorded here
 | Slice | Branch | Status | RV rounds | Merged at | Notes |
 |---|---|---|---|---|---|
 | T0 | (trunk) | IN_PROGRESS | — | — | investigations complete (contracts.md §2); DR-11 ruled; calibration fixture pending |
-| S1 | feat/s1-model-identity | UNDER_RV_REVIEW (candidate 7438e07) | 1 open | — | +1105/−0 additive; 2 failures verified pre-existing at base |
+| S1 | feat/s1-model-identity | MERGED | 1 (PASS, zero findings) | 5d58b90 | review 6bdb5bd; S2/V1 pipelined bases confirmed valid (7438e07 = approved head); advisories A1 (legacy-name shadowing) + A2 (:: separator) watchlist for S2/V2 |
 | S2 | feat/s2-delivery-spine | IN_PROGRESS | — | — | PIPELINED off S1 candidate 7438e07 (user-directed ≤3 parallel agents); rebases if S1-1 ≠ PASS |
 | V1 | feat/v1-template-review | IN_PROGRESS (phase 1: brief items 1,2,5) | — | — | PIPELINED off S1 candidate 7438e07; phase 2 (gate/API/panel UI) after S2 merges |
 | V2 | feat/v2-ingress-relay | NOT_STARTED | — | — | |
