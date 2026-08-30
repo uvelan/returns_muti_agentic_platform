@@ -261,11 +261,10 @@ case-level and participates in the panel hash; the edit contents do not.
 
 ## 8. What is registered for later
 
-1. **A retry after the gate has closed.** `DELIVERY_FAILED` is a resolved state,
-   so the workflow leaves its wait; a retry recorded afterwards is signalled into
-   an execution that is no longer waiting and is discarded with a log. Whether
-   recovery delivery is the workflow's or the operator endpoint's is a §6/§7
-   reading — the orchestrator's, not a slice's.
+1. ~~A retry after the gate has closed.~~ **Settled by AMENDMENT-5** and
+   implemented — see §9 below. It was worse than registered: the retry endpoint
+   had no liveness guard at all, so it always succeeded and stranded the review
+   in `APPROVING`, whose three exits are all workflow-driven.
 2. **`editing_actors(review_id)` on S2's store.** V1's condition-8 recompute
    reads S2's draft-edit rows directly because S2 exposes no such read. The clean
    shape is one method there.
@@ -275,3 +274,53 @@ case-level and participates in the panel hash; the edit contents do not.
 4. **`_stale_commands` pages platform-wide** (100) and filters to the case, so a
    busy estate can hide a case's stale command. Closing it needs a `case_id` term
    on S2's port.
+
+---
+
+## 9. Recovery: what AMENDMENT-5 settled, and what you must not undo
+
+**Delivery belongs to the workflow.** §7 puts every send on one
+receiver-deduped path with one `delivery_id` per approved review; a recovery
+endpoint with its own send would be the second sender that design exists to
+prevent. The endpoint's job is to record the command and **refuse when it cannot
+be honoured**.
+
+Two rules, and the second is not optional — rule 1 alone leaves an operator with
+nothing but a refusal:
+
+1. **`DELIVERY_FAILED → APPROVING` requires the execution to still hold the
+   review.** `POST .../recovery/retry` asks `execution_state` (whose
+   `template_reviews` already carries the held pairs, because the panel composes
+   from it) **before** calling S2 — `retry_delivery` moves the state and records
+   the command in one transaction, so a check after it would be a refusal
+   reporting a change it had already made.
+
+   | answer | status | code |
+   | --- | --- | --- |
+   | definitively not held | **409** | `ExecutionNoLongerHoldingReview`, carrying `state: HELD_FOR_OPERATIONS` and naming the legal action |
+   | cannot reach the host | **503** | `EXECUTION_LIVENESS_UNKNOWN`, `retryable: true` |
+
+   Both fail closed. They are two answers because "the gate has closed" and "we
+   cannot tell whether it has" are different, and telling an operator the first
+   when the truth is the second sends them to abandon a deliverable message.
+
+2. **The gate parks every non-terminal review on close.** Not only `APPROVING`:
+   an `OPEN` review left behind by a closed gate is the same trap through the
+   **approve** endpoint. `HELD_FOR_OPERATIONS` is where they go, because §6
+   already makes it the operator-decides state with `OPEN` and `ABANDONED` both
+   legal from it.
+
+   **A `continue_as_new` is not a close.** The next run re-enters the gate
+   holding the same reviews, and `HELD_FOR_OPERATIONS` is a *resolved* state —
+   parking there would make the resumed run find everything settled and send
+   nothing, for a case nobody had answered.
+
+**For the console (V2/V3):** a `409 ExecutionNoLongerHoldingReview` is not a
+generic conflict. The correct affordances are *reopen* and *stop trying*, and
+the refusal names them. A `503 EXECUTION_LIVENESS_UNKNOWN` should be offered as
+"try again", never as a failure.
+
+**S2's transition table was widened** (`OPEN → HELD_FOR_OPERATIONS`,
+`DELIVERY_FAILED → HELD_FOR_OPERATIONS`) under this amendment.
+`HELD_FOR_OPERATIONS → HELD_FOR_OPERATIONS` was deliberately **not** added:
+re-holding would overwrite the first hold reason with a later one.
