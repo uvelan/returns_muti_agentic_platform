@@ -1891,6 +1891,39 @@
         "title": "APIResponse[CaseRecoveryView]",
         "type": "object"
       },
+      "APIResponse_ClarificationAnswerAcceptedView_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClarificationAnswerAcceptedView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[ClarificationAnswerAcceptedView]",
+        "type": "object"
+      },
       "APIResponse_ConfigurationReleaseDetailView_": {
         "additionalProperties": false,
         "properties": {
@@ -6764,7 +6797,7 @@
       },
       "CaseFactProjection": {
         "additionalProperties": false,
-        "description": "One fact at its latest value, with the provenance that decides trust.\n\nServes the existing `latest_case_facts` projection. The backend already\ncomputes it and the console duplicates it client-side in `latestFacts`;\nserving it here is what deletes the duplicate.\n\n`value` is deliberately untyped -- the fact log is heterogeneous by design --\nbut every provenance field beside it is not, because provenance is what makes\na fact admissible to policy evaluation (plan sect. 7.3).",
+        "description": "One fact at its latest value, with the provenance that decides trust.\n\nServes the existing `latest_case_facts` projection. The backend already\ncomputes it and the console duplicates it client-side in `latestFacts`;\nserving it here is what deletes the duplicate.\n\n`value` is deliberately untyped -- the fact log is heterogeneous by design --\nbut every provenance field beside it is not, because provenance is what makes\na fact admissible to policy evaluation (plan sect. 7.3).\n\n**`actorId` is not `agentId`.** The agent is what produced the observation;\nthe actor is the principal on whose authority a *command* caused it\n(contracts.md sect. 4, server-stamped). Without it a UI asking \"who\nauthorised this\" got \"nobody\" for every case-level command fact, which is\nthe one provenance question an audit actually asks. `None` is the honest\nanswer for an observation, which has no actor at all.\n\nStill omitted, deliberately: `record_scope` and `identity_version`, because\nthis projection is keyed by fact *name* over the unscoped\n`latest_case_facts` -- per-record facts collapse before they reach here, so a\n`recordScope` field would name whichever scope won the collapse and imply a\nper-record view that does not exist. It belongs with the\n`latest_case_facts_scoped` convergence (contracts.md sect. 10's registered\nfollow-up), not ahead of it. `turnId` and `correlationId` are request-tracing\nlinks rather than provenance, and are not what the audit question needs.",
         "properties": {
           "acquisitionMethod": {
             "anyOf": [
@@ -6778,6 +6811,19 @@
               }
             ],
             "title": "Acquisitionmethod"
+          },
+          "actorId": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actorid"
           },
           "agentId": {
             "anyOf": [
@@ -7636,6 +7682,86 @@
         ],
         "title": "CircuitState",
         "type": "string"
+      },
+      "ClarificationAnswerAcceptedView": {
+        "additionalProperties": false,
+        "description": "The receipt for a durably recorded answer.\n\nSays what committed. There is no `relayed` field and there will not be one:\nthe relay happens in an activity after the signal lands, and a field here\nclaiming it would be this handler reporting work it did not wait for.",
+        "properties": {
+          "caseId": {
+            "title": "Caseid",
+            "type": "string"
+          },
+          "clarificationId": {
+            "title": "Clarificationid",
+            "type": "string"
+          },
+          "commandId": {
+            "title": "Commandid",
+            "type": "string"
+          },
+          "duplicate": {
+            "title": "Duplicate",
+            "type": "boolean"
+          },
+          "outboxCommandId": {
+            "title": "Outboxcommandid",
+            "type": "string"
+          },
+          "signalId": {
+            "title": "Signalid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "caseId",
+          "clarificationId",
+          "commandId",
+          "signalId",
+          "outboxCommandId",
+          "duplicate"
+        ],
+        "title": "ClarificationAnswerAcceptedView",
+        "type": "object"
+      },
+      "ClarificationAnswerRequest": {
+        "additionalProperties": false,
+        "description": "What the associate submits. Deliberately small.\n\n`extra=\"forbid\"`: a field this endpoint does not know about is a client\nbelieving in behaviour that does not exist, and accepting it silently is how\nthat belief survives to a release where it matters.\n\nThere is no `actorId` and no `caseId` here. The actor comes from the\ncapability check and the case from the path -- a body that could name either\nwould be a body that could answer somebody else's clarification.",
+        "properties": {
+          "answerText": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Answertext",
+            "type": "string"
+          },
+          "resolutionChoice": {
+            "anyOf": [
+              {
+                "pattern": "^(map|reject)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolutionchoice"
+          },
+          "returnRecordId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Returnrecordid"
+          }
+        },
+        "required": [
+          "answerText"
+        ],
+        "title": "ClarificationAnswerRequest",
+        "type": "object"
       },
       "ClarificationOption": {
         "additionalProperties": false,
@@ -26714,6 +26840,68 @@
         "summary": "Continue Conversation",
         "tags": [
           "Associate Returns"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/clarifications/{clarification_id}/answer": {
+      "post": {
+        "description": "Record one answer to one clarification.\n\n`202`, never `200`: when this returns, a command is on file and a delivery\nrow is queued. The fact, the relay to Support and the deadline reset all\nhappen after the signal reaches the workflow.\n\nA `map` choice must name the record it maps to. Refused here rather than\nresolved later, because \"map this artifact to nothing\" is not a decision the\nassociate can have meant, and a later step inventing a record for it is\nexactly the create-a-record-from-a-loose-artifact behaviour sect. 4 forbids.",
+        "operationId": "answer_clarification_api_v1_cases__case_id__clarifications__clarification_id__answer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "clarification_id",
+            "required": true,
+            "schema": {
+              "title": "Clarification Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClarificationAnswerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ClarificationAnswerAcceptedView_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Answer Clarification",
+        "tags": [
+          "Returns Support"
         ]
       }
     },

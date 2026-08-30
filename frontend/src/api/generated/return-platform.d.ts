@@ -2983,6 +2983,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/clarifications/{clarification_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer Clarification
+         * @description Record one answer to one clarification.
+         *
+         *     `202`, never `200`: when this returns, a command is on file and a delivery
+         *     row is queued. The fact, the relay to Support and the deadline reset all
+         *     happen after the signal reaches the workflow.
+         *
+         *     A `map` choice must name the record it maps to. Refused here rather than
+         *     resolved later, because "map this artifact to nothing" is not a decision the
+         *     associate can have meant, and a later step inventing a record for it is
+         *     exactly the create-a-record-from-a-loose-artifact behaviour sect. 4 forbids.
+         */
+        post: operations["answer_clarification_api_v1_cases__case_id__clarifications__clarification_id__answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/panel": {
         parameters: {
             query?: never;
@@ -4794,6 +4823,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[ClarificationAnswerAcceptedView] */
+        APIResponse_ClarificationAnswerAcceptedView_: {
+            data?: components["schemas"]["ClarificationAnswerAcceptedView"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[ConfigurationReleaseDetailView] */
         APIResponse_ConfigurationReleaseDetailView_: {
             data?: components["schemas"]["ConfigurationReleaseDetailView"] | null;
@@ -6230,10 +6265,28 @@ export interface components {
          *     `value` is deliberately untyped -- the fact log is heterogeneous by design --
          *     but every provenance field beside it is not, because provenance is what makes
          *     a fact admissible to policy evaluation (plan sect. 7.3).
+         *
+         *     **`actorId` is not `agentId`.** The agent is what produced the observation;
+         *     the actor is the principal on whose authority a *command* caused it
+         *     (contracts.md sect. 4, server-stamped). Without it a UI asking "who
+         *     authorised this" got "nobody" for every case-level command fact, which is
+         *     the one provenance question an audit actually asks. `None` is the honest
+         *     answer for an observation, which has no actor at all.
+         *
+         *     Still omitted, deliberately: `record_scope` and `identity_version`, because
+         *     this projection is keyed by fact *name* over the unscoped
+         *     `latest_case_facts` -- per-record facts collapse before they reach here, so a
+         *     `recordScope` field would name whichever scope won the collapse and imply a
+         *     per-record view that does not exist. It belongs with the
+         *     `latest_case_facts_scoped` convergence (contracts.md sect. 10's registered
+         *     follow-up), not ahead of it. `turnId` and `correlationId` are request-tracing
+         *     links rather than provenance, and are not what the audit question needs.
          */
         CaseFactProjection: {
             /** Acquisitionmethod */
             acquisitionMethod?: string | null;
+            /** Actorid */
+            actorId?: string | null;
             /** Agentid */
             agentId?: string | null;
             /** Channel */
@@ -6582,6 +6635,48 @@ export interface components {
          * @enum {string}
          */
         CircuitState: "CLOSED" | "OPEN" | "HALF_OPEN";
+        /**
+         * ClarificationAnswerAcceptedView
+         * @description The receipt for a durably recorded answer.
+         *
+         *     Says what committed. There is no `relayed` field and there will not be one:
+         *     the relay happens in an activity after the signal lands, and a field here
+         *     claiming it would be this handler reporting work it did not wait for.
+         */
+        ClarificationAnswerAcceptedView: {
+            /** Caseid */
+            caseId: string;
+            /** Clarificationid */
+            clarificationId: string;
+            /** Commandid */
+            commandId: string;
+            /** Duplicate */
+            duplicate: boolean;
+            /** Outboxcommandid */
+            outboxCommandId: string;
+            /** Signalid */
+            signalId: string;
+        };
+        /**
+         * ClarificationAnswerRequest
+         * @description What the associate submits. Deliberately small.
+         *
+         *     `extra="forbid"`: a field this endpoint does not know about is a client
+         *     believing in behaviour that does not exist, and accepting it silently is how
+         *     that belief survives to a release where it matters.
+         *
+         *     There is no `actorId` and no `caseId` here. The actor comes from the
+         *     capability check and the case from the path -- a body that could name either
+         *     would be a body that could answer somebody else's clarification.
+         */
+        ClarificationAnswerRequest: {
+            /** Answertext */
+            answerText: string;
+            /** Resolutionchoice */
+            resolutionChoice?: string | null;
+            /** Returnrecordid */
+            returnRecordId?: string | null;
+        };
         /** ClarificationOption */
         ClarificationOption: {
             /** Candidatecount */
@@ -15772,6 +15867,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_AssociateConversationView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    answer_clarification_api_v1_cases__case_id__clarifications__clarification_id__answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                clarification_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClarificationAnswerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ClarificationAnswerAcceptedView_"];
                 };
             };
             /** @description Validation Error */
