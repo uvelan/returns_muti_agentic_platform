@@ -117,7 +117,7 @@ def test_the_vocabulary_is_discovered_rather_than_copied() -> None:
         "no fact-name constants were discovered in "
         f"{FACT_NAMES_MODULE.name} -- either the module moved and this guard is "
         "now scanning for nothing, or the declaration shape changed from "
-        "`NAME: Final[str] = \"name\"`"
+        '`NAME: Final[str] = "name"`'
     )
     assert all(declared.values()), f"a fact-name constant is empty: {declared}"
 

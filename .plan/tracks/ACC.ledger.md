@@ -83,3 +83,71 @@ a ratchet against the next slice, not a finding against this one.
 failure message names the sanctioned replacement).
 
 **Next step:** step:02 — Mon–Fri business-calendar fixture (brief item 2).
+
+---
+
+## step:02 — Mon–Fri 09:00–17:00 business-calendar fixture (brief item 2)
+
+**Files (all new):** `backend/tests/harness/__init__.py`,
+`backend/tests/harness/business_calendars.py`,
+`backend/tests/harness/conftest.py`,
+`backend/tests/harness/test_business_hours_calendar_fixture.py`.
+
+**Premise, verified.** `production.yaml`'s `business_calendars.default` declares
+every day `0..1440` — `BusinessCalendar.is_continuous` is true, and
+`advance_business_time` short-circuits a continuous calendar to
+`start + timedelta(seconds=…)`. So against the shipped configuration every
+overnight and weekend gap is zero seconds wide and items 13/19 would be
+asserting plain addition. Confirmed by reading the file, not assumed.
+
+**Shape.** `nine_to_five_configuration()` returns a
+`BusinessCalendarConfiguration` — the configuration model, not the arithmetic's
+model, because the real path is workflow → activity →
+`ReturnPlatformConfiguration.business_calendars`, and a fixture handing out a
+`BusinessCalendar` directly would skip the half of the seam most likely to
+break. `as_business_calendar()` converts; `with_business_calendar()` installs a
+calendar into a configuration *and* points `return_case.business_calendar_id` at
+it (either half alone is a silent no-op — an unnamed calendar is never
+consulted, and an id naming nothing falls back to wall clock and logs
+`business_calendar_not_configured`, which is legitimate production behaviour and
+therefore an invisible way to test nothing). Same-id entries are replaced, not
+appended, because `_business_calendar` returns the first match.
+
+Calendar id is `acceptance-business-hours`, deliberately not `default`: a
+scenario that meant to install it and did not would otherwise silently get the
+24/7 one and pass. Zone is `America/New_York` — the desk's real zone, so the
+`fold` / local-wall-clock-day construction stays exercised.
+
+No Mon–Fri constant is imported from anywhere; the pattern is built here,
+because `business_calendar.py` deliberately has none.
+
+**Recorded duplication.** `as_business_calendar` re-derives the config→domain
+mapping that lives, private, in `ReturnCaseActivities._business_calendar`. Held
+to account by `test_the_fixture_maps_to_the_calendar_production_would_build`,
+which runs the real activity over a configuration carrying this calendar and
+asserts the same instant — so a change to the production mapping fails here
+rather than leaving acceptance asserting against a desk the platform does not
+have. No production edit made.
+
+**Coverage** (over the pure `operations/business_calendar.py`): overnight gap
+(Mon 16:00 + 2h → Tue 10:00); weekend gap (Fri 16:00 + 2h → Mon 10:00);
+deadline landing after a weekend with its remainder intact (Fri 16:30 + 8h →
+Mon 16:30, the audit scenario); weekend start waits for the opening rather than
+bursting (item 19); `is_working_time` at both edges of 09:00/17:00 plus
+overnight and weekend; declared holiday; the weekday identity of the dates
+themselves, since every expectation is "…because that day is a Saturday".
+
+**Commands:**
+- `python -m pytest tests/harness -q` → **10 passed**
+- `python -m pytest tests/harness tests/test_fact_name_literals_… -m unit --collect-only` → **13 collected**, i.e. every new test lands in the `unit` suite (none live, none browser)
+- `ruff check` / `ruff format` → clean
+
+**Anchors verified:** `BusinessCalendarConfiguration`,
+`BusinessWorkingPeriodConfiguration` (weekday 0–6, `end_minute` ≤ 1440),
+`ReturnPlatformConfiguration.business_calendars`, `ReturnCaseTimingConfiguration
+.business_calendar_id`, `advance_business_time` / `is_working_time` /
+`BusinessCalendar.is_continuous`, `ReturnCaseActivities(repository, support_service,
+configuration)` + `ResolveBusinessDeadlineInput(from_iso, working_seconds,
+business_calendar_id, timezone)` — all as declared, none adapted.
+
+**Next step:** step:03 — kill/restart harness scaffolding (brief item 1).
