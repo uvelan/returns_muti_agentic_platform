@@ -13,9 +13,10 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | S2 | feat/s2-delivery-spine | **MERGED** | 3 · CR (db7bfb9) → CR (faefa84) → PASS (b7a78ad) | dfd3036 |
 | V1 phase 1 | feat/v1-template-review | **MERGED** | 2 · CR (f8ce598) → PASS (18f671f) | b2590ef |
 | V1 phase 2 | feat/v1-phase2 | IN_PROGRESS · base f4c6f7f = trunk + S2 candidate | — | — |
-| V2 phase 1 (backend) | feat/v2-ingress-relay | IN_PROGRESS · pipelined off S2 c884e8e | — | — |
+| V2 phase 1 (backend) | feat/v2-ingress-relay | UNDER_RV_REVIEW · candidate e37b494 | 1 open | — |
 | V2 phase 2 (frontend) | (same branch, later) | BLOCKED on V1 panel seam | — | — |
-| V3 | feat/v3-resolver-clarification | NOT_STARTED | — | — |
+| V3 backend | feat/v3-resolver-clarification | IN_PROGRESS · base 3715cbe = trunk + V2 candidate | — | — |
+| V3 frontend | (same branch, later) | BLOCKED on V1 panel seam | — | — |
 | ACC-1 (harness) | feat/acc-harness | **MERGED** | 2 · CR (ba19fd8) → PASS (9cb3508) | c1c2b0f |
 | ACC-2 (scenarios) | not yet cut | BLOCKED on V3 | — | — |
 | RV calibration | rv-calibration/seeded-hardcoding | bait CAUGHT as blocking | 1 (d59e017) | never merges |
@@ -38,6 +39,15 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 *Advisory for the retirement wave:* `return_details.additional` and `bay_handling_instructions` are `_clean`-only in **both** paths — no regression today (and `additional` has no producer in `backend/src` at all), but once composition is retired, a release populating `additional` from associate-typed text would carry framing through.
 
 **ACC-1 — merged.** Fact-name AST guard (vocabulary read from `fact_names.py` at runtime, AST-based so docstrings stay legal, proved against a planted violation), Mon–Fri calendar fixture, chaos-restart primitives. Test-only, zero production files touched. Round 1 found two rule-10 holes by fault injection — green but blind; round 2 fixed both with before/after evidence, and RV withdrew them only after re-injecting the faults itself plus a third probe of its own.
+
+**V2 phase 1 — under review.** 19 files, +6112/−0, 105 new tests, 4609 passed / 2 failed (known pre-existing pair). **Self-injected 62 faults across six specs and found five of its own tests blind on a first pass, then fixed the tests rather than the table** — the reviewer's standard internalised rather than merely met. The five blind shapes are now the run's checklist: negative "does not contain" assertions; comparing two things equal by construction; prefix rather than exact-value assertions; unasserted provenance; collision tests varying non-adjacent parts. Both dispatch conditions discharged: writes **no scoped fact at all** (every write `record_scope=None` with a name from `fact_names.py`), and the causation chain is populated from the outbox tail rather than the message store (a parked message has no stream event), proved through S2's real dispatcher with the queue deliberately loaded against the answer. *Deviation:* `ordered_candidate_routes[]` is the released task's `allowedProviders` in declaration order because `StructuredOutputInvoker` routes internally and exposes no per-route constraint; constraining it would mean editing shared AI-gateway code outside V2's ownership — registered as a follow-up, RV to adjudicate.
+*Integration work owed at merge (deliberately not done by the slice, per contracts §3):* mount the ingress router, register the classification dispatcher, call `ensure_support_ingress_indexes`, regenerate OpenAPI. Exact lines in the slice's delta report.
+
+## Integration debt (orchestrator applies at merge)
+
+- **V2:** router mount, dispatcher registration, `ensure_support_ingress_indexes`, OpenAPI regen.
+- **Merging any two slices that both touched OpenAPI requires a `.d.ts` regen** — this bit once already at the S2 merge (`fc574c7`). The JSON snapshots merged cleanly; only the generated TypeScript needed rebuilding.
+- **`return_configuration.py` conflicts on every slice merge** — each slice appends its own config field and import. Resolution is always "keep both", verified by loading the model. Seen at V1p2 base, the S2 merge, and the V3 base.
 
 ## Carry-forward conditions (orchestrator-owned; must be written into the named future brief)
 
