@@ -1821,3 +1821,209 @@ shipment_tracking:
       exception_state: true
       color_token: error
       allowed_next: [pending_pickup, picked_up, at_origin_terminal, in_transit, at_destination_terminal, out_for_delivery, on_hand]
+
+# The support-handoff template (contracts.md sect. 8). The default variant
+# reproduces the output `compose_support_handoff` composes today, field for
+# field and line for line; the parcel and LTL variants differ only in the
+# shipping-class action line their selectors earn. Formatters are ids from
+# the code-side allowlist; `literal:` bindings are constant text; everything
+# case-bound names the facts `draft_support_request` already reads.
+support_template:
+  template_id: support-handoff
+  default_variant_id: default
+  variants:
+    - variant_id: default
+      # Deliberately clause-less: a rule with no clauses matches nothing, and
+      # this variant renders because it is named default, not because it was
+      # listed first.
+      selector: {}
+      subject_template: "Return {order_number} · {customer_name}"
+      sections:
+        - &tpl_sec_banner
+          section_id: banner
+          title: RETURN SUPPORT REQUEST
+        - &tpl_sec_case
+          section_id: case
+          title: "Case:"
+          fields:
+            - field_id: case_id
+              label: Case ID
+              source_binding: "case_fact:case_id"
+              required: true
+            - field_id: work_item_id
+              label: Work Item ID
+              source_binding: "case_fact:work_item_id"
+              fallback: Not available
+            - field_id: created_at
+              label: Created Date/Time
+              source_binding: "case_fact:created_at"
+              formatter: date
+              fallback: Not available
+            - field_id: workflow_status
+              label: Workflow Status at Handoff
+              source_binding: "case_fact:workflow_status_at_handoff"
+              fallback: Not available
+        - &tpl_sec_customer
+          section_id: customer
+          title: "Customer:"
+          fields:
+            - field_id: customer_name
+              label: Customer Name
+              source_binding: "case_fact:customer_name"
+              fallback: Not available
+            - field_id: customer_reference
+              label: Customer Reference
+              source_binding: "case_fact:customer_id"
+              fallback: Not available
+            - field_id: customer_account
+              label: Account
+              source_binding: "case_fact:customer_account"
+              fallback: Not available
+            - field_id: branch_associate
+              label: Branch Associate
+              source_binding: "case_fact:branch_associate_name"
+              fallback: Not available
+            - field_id: branch_associate_email
+              label: Branch Associate Email
+              source_binding: "case_fact:branch_associate_email"
+              fallback: Not available
+            - field_id: branch_associate_phone
+              label: Branch Associate Phone
+              source_binding: "case_fact:branch_associate_phone"
+              fallback: Not available
+        - &tpl_sec_order
+          section_id: order
+          title: "Order:"
+          fields:
+            - field_id: order_number
+              label: Order Number
+              source_binding: "case_fact:confirmed_order_reference"
+              fallback: Not available
+            - field_id: selected_items
+              source_binding: "case_fact:selected_items"
+              formatter: item_list
+              fallback: "- Selected lines: Not available"
+        - &tpl_sec_return_details
+          section_id: return_details
+          title: "Return Details:"
+          fields:
+            - field_id: return_method
+              label: Return Method
+              source_binding: "case_fact:return_method"
+              fallback: Not available
+            - field_id: requested_resolution
+              label: Requested Resolution
+              source_binding: "case_fact:requested_resolution"
+              fallback: Not available
+            - field_id: product_presence
+              label: Product Presence
+              source_binding: "case_fact:product_presence"
+              fallback: Not available
+            - field_id: associate_notes
+              label: Associate Notes
+              source_binding: "case_fact:associate_notes"
+              fallback: Not available
+        - &tpl_sec_bay
+          section_id: bay_assignment
+          title: "Bay Assignment:"
+          fields:
+            - field_id: bay_status
+              label: Assignment Status
+              source_binding: "case_fact:bay_assignment_status"
+              fallback: UNRESOLVED
+            - field_id: bay_reference
+              label: Recommended Bay
+              source_binding: "case_fact:bay_reference"
+              fallback: Not available
+            - field_id: bay_warehouse
+              label: Warehouse/Branch
+              source_binding: "case_fact:bay_warehouse_reference"
+              fallback: Not available
+            - field_id: bay_return_location
+              label: Return Location
+              source_binding: "case_fact:bay_return_location"
+              fallback: Not available
+            - field_id: bay_handling
+              label: Handling/Staging Instructions
+              source_binding: "case_fact:bay_handling_instructions"
+              fallback: Not available
+        - &tpl_sec_verification
+          section_id: verification
+          title: "Verification:"
+          fields:
+            - field_id: order_confirmation
+              label: Order Confirmation
+              source_binding: "case_fact:order_confirmation"
+              fallback: Not confirmed
+            - field_id: required_return_information
+              label: Required Return Information
+              source_binding: "case_fact:required_return_information"
+              fallback: Incomplete
+            - field_id: policy_evaluation
+              label: Policy Evaluation
+              source_binding: "case_fact:policy_evaluation_rendered"
+              fallback: Not evaluated
+            - field_id: bay_source
+              label: Bay Assignment Source
+              source_binding: "literal:Bay Assignment Agent"
+        - section_id: requested_action
+          title: "Requested Support Action:"
+          fields:
+            - field_id: action_review
+              source_binding: "literal:- Review the complete return request."
+            - field_id: action_bay
+              source_binding: "literal:- Review or confirm the bay recommendation."
+            - field_id: action_verify
+              source_binding: "literal:- Verify all Support-owned conditions, including warranty when applicable."
+            - field_id: action_rma
+              source_binding: "literal:- Create or decline the RMA through the authoritative Support workflow."
+    - variant_id: parcel
+      selector:
+        shipping_modes: [PREPAID_PARCEL, OFFSITE_PARCEL]
+      subject_template: "Return {order_number} · {customer_name}"
+      sections:
+        - *tpl_sec_banner
+        - *tpl_sec_case
+        - *tpl_sec_customer
+        - *tpl_sec_order
+        - *tpl_sec_return_details
+        - *tpl_sec_bay
+        - *tpl_sec_verification
+        - section_id: requested_action
+          title: "Requested Support Action:"
+          fields:
+            - field_id: action_review
+              source_binding: "literal:- Review the complete return request."
+            - field_id: action_bay
+              source_binding: "literal:- Review or confirm the bay recommendation."
+            - field_id: action_label
+              source_binding: "literal:- Issue the prepaid parcel return label."
+            - field_id: action_verify
+              source_binding: "literal:- Verify all Support-owned conditions, including warranty when applicable."
+            - field_id: action_rma
+              source_binding: "literal:- Create or decline the RMA through the authoritative Support workflow."
+    - variant_id: ltl
+      selector:
+        shipping_modes: [BRANCH_LTL, OFFSITE_LTL]
+      subject_template: "Return {order_number} · {customer_name}"
+      sections:
+        - *tpl_sec_banner
+        - *tpl_sec_case
+        - *tpl_sec_customer
+        - *tpl_sec_order
+        - *tpl_sec_return_details
+        - *tpl_sec_bay
+        - *tpl_sec_verification
+        - section_id: requested_action
+          title: "Requested Support Action:"
+          fields:
+            - field_id: action_review
+              source_binding: "literal:- Review the complete return request."
+            - field_id: action_bay
+              source_binding: "literal:- Review or confirm the bay recommendation."
+            - field_id: action_freight
+              source_binding: "literal:- Arrange LTL freight pickup and issue the Bill of Lading."
+            - field_id: action_verify
+              source_binding: "literal:- Verify all Support-owned conditions, including warranty when applicable."
+            - field_id: action_rma
+              source_binding: "literal:- Create or decline the RMA through the authoritative Support workflow."
