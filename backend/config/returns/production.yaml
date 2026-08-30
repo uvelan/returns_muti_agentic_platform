@@ -1453,6 +1453,29 @@ policy_evaluation:
     through the MANUAL provider. Re-enable before any case that is not a
     walkthrough.
 
+context_assembly:
+  # How a case's facts become the context a model reasons over (contracts.md
+  # sect. 10). Every value here is the code default, restated: the block is
+  # written out so a deployment changing one is editing configuration rather
+  # than discovering that the knob exists.
+  #
+  # Names that are always in the assembled context, whatever the budget says.
+  # Empty by default: a name pinned here that no case writes would be a
+  # reservation against a fact that never arrives, and the pins that matter are
+  # the ones a consumer adds when it knows what it is reasoning about.
+  pinned_fact_names: []
+  # The ceiling, measured by `tokenizer_version` below.
+  token_budget: 8000
+  # Pinned with promptVersion. `assemble_case_context` refuses a version it
+  # cannot measure rather than falling back to another estimator -- a silent
+  # fallback is the one outcome a pin exists to rule out.
+  tokenizer_version: wordpiece-approx.v1
+  compaction:
+    # Ask for a summary at four fifths of the budget, leaving the last fifth as
+    # headroom for the next few facts before anything has to be left out.
+    trigger_fraction_millionths: 800000
+    summary_task_id: support.context.summarize.v1
+
 copilot:
   # The agent policy every Copilot conversation turn is routed to. It must name
   # a key under `agent_policies` in the active schema release
