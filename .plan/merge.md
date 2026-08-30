@@ -16,7 +16,7 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | V2 phase 1 (backend) | feat/v2-ingress-relay | **MERGED** | 2 · CR (fa7e5f1) → PASS (02da231) | 97bca1e |
 | V2 phase 1b | feat/v2-ingress-relay | awaiting RV · candidate 04caf5d | — | — |
 | V2 phase 2 (frontend) | (same branch, later) | BLOCKED on V1 panel seam | — | — |
-| V3 backend | feat/v3-resolver-clarification | CHANGES_REQUIRED (F1 only) → to fix · was 8d2e43a | 1 · CR (3d8715f) | — |
+| V3 backend | feat/v3-resolver-clarification | awaiting RV round 2 · candidate aa6056c | 1 · CR (3d8715f) | — |
 | S1 phase 1b | feat/s1-actor-id | UNDER_RV_REVIEW · candidate 5fb1d41 | 1 open | — |
 | V3 frontend | (same branch, later) | BLOCKED on V1 panel seam | — | — |
 | ACC-1 (harness) | feat/acc-harness | **MERGED** | 2 · CR (ba19fd8) → PASS (9cb3508) | c1c2b0f |
@@ -80,6 +80,12 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 - **OpenAPI regen is six files, not one** — `npm run contracts:generate` covers `frontend/openapi/…json` + the `.d.ts`; repo-root `scripts/check_openapi_drift.py --write` then covers `openapi/`, `backend/openapi/`, root `openapi.json` and `docs/evidence/stage4_contract_closure/openapi_drift_receipt.json`. Run the drift writer, not just the npm script.
 - **Merging any two slices that both touched OpenAPI requires a `.d.ts` regen** — this bit once already at the S2 merge (`fc574c7`). The JSON snapshots merged cleanly; only the generated TypeScript needed rebuilding.
 - **`return_configuration.py` conflicts on every slice merge** — each slice appends its own config field and import. Resolution is always "keep both", verified by loading the model. Seen at V1p2 base, the S2 merge, and the V3 base.
+
+## Orchestrator errors (recorded, since the run's discipline applies to me too)
+
+1. **Two frozen mechanisms did not survive contact with implementation**, both mine, both caught by someone trying to build the thing: AMENDMENT-3 (the ingress path was already taken — by *two* live handlers, a GET as well as a POST) and AMENDMENT-4 (the omc mirror's "artifact-persistence transaction" does not exist). Also the V1 brief's governance-proposal write path, which that endpoint refuses for a non-agent module.
+2. **A stale trunk sha in the S1 phase-1b dispatch** (`24e01b1`, four commits behind). The slice verified it was an ancestor and followed the words over the number.
+3. **I passed V3 an interface note describing branch state as trunk state** — that V2 phase 1b had removed `routing_policy_version` from `StructuredStageInvoker`. It has not: 04caf5d is only on `feat/v2-ingress-relay`, and on trunk the keyword is still required (`analysis_wiring.py:115`). V3 checked rather than trusted, and was right. **Rule for me: state which branch an interface claim comes from, and never describe an unmerged branch as though it were trunk.**
 
 ## Queued follow-up dispatches (small, dependent on a merge landing)
 
