@@ -13,7 +13,7 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | S2 | feat/s2-delivery-spine | **MERGED** | 3 · CR (db7bfb9) → CR (faefa84) → PASS (b7a78ad) | dfd3036 |
 | V1 phase 1 | feat/v1-template-review | **MERGED** | 2 · CR (f8ce598) → PASS (18f671f) | b2590ef |
 | V1 phase 2 | feat/v1-phase2 | IN_PROGRESS · base f4c6f7f = trunk + S2 candidate | — | — |
-| V2 phase 1 (backend) | feat/v2-ingress-relay | UNDER_RV_REVIEW · candidate e37b494 | 1 open | — |
+| V2 phase 1 (backend) | feat/v2-ingress-relay | CHANGES_REQUIRED → fixing · was e37b494 | 1 · CR (fa7e5f1) | — |
 | V2 phase 2 (frontend) | (same branch, later) | BLOCKED on V1 panel seam | — | — |
 | V3 backend | feat/v3-resolver-clarification | IN_PROGRESS · base 3715cbe = trunk + V2 candidate | — | — |
 | V3 frontend | (same branch, later) | BLOCKED on V1 panel seam | — | — |
@@ -67,7 +67,10 @@ Raised in review and assigned to the orchestrator, not to a slice. A slice canno
 8. **Do not treat `conflictPresent` as sole authority at the approval endpoint; prefer a cheap recompute.** RV upheld S2 leaving edit rows outside the marker transaction because `_after_edit_written` runs inline and `submit_edit` recomputes the actor set live from the rows — so auto-promote is guarded by the rows, not the flag. Exactly one path survives that reasoning: process death in the insert→flag window, no later autosave, then a direct `approve()`. RV: "one line, costs nothing now, and cannot be retrofitted cheaply once the approval endpoint ships."
 9. **A partially-implemented `RecoverableCaseRepositoryPort` is accepted and swallowed.** S2 now refuses a *missing* `bind_case_workflow` at construction, but RV built a port whose method is present, callable, and raises `NotImplementedError`: accepted at construction, swallowed at runtime, case silently stays in the queue — `callable(getattr(...))` checks presence, not that it works. Advisory on S2 (one-line fix, its own `AttributeError` argument describes `NotImplementedError` word for word); matters to V1/V2 as the first outside implementers, because a stub is a normal intermediate state.
 
-### Into every brief that composes outbound Channel B text (V2, V3) — from V1 phase 1
+### Into the V1 phase-2 / V2 phase-2 / V3 frontend briefs (from V2 review round 1)
+10. **Render support-derived values as data, never markup.** `artifact.value` reaches associate-facing text with only `.strip()`. Not exploitable while the renderers don't exist, but the panel and transcript surfaces are where it becomes live. V2 is adding a code-side length bound; the rendering side must escape rather than interpret.
+
+### Into every brief that composes outbound Channel B text (V3 — V2 phase 1 composes none) — from V1 phase 1
 7. **Neutralise associate- and support-authored text before it enters an agent-authored message.** V1 found that binding a raw `associate_notes` fact silently dropped `compose_support_handoff`'s neutralisation, letting a note containing `BAY ASSIGNMENT:` reach the rendered handoff intact and restructure the message for whoever read it next. `support_handoff.py` neutralises via `_FRAMING` (a regex over section-heading-shaped lines → `[removed]`). Any new path rendering human-authored text into a Channel B message — relay text, clarification quotes carrying the *verbatim* support question, reply drafts — must neutralise the same way or state why it cannot be abused. This is §9's tool-safety principle applied to message *structure* rather than tool selection. **Composition `_safe`s exactly four values (`associate_notes` + three `contact_*`); match that parity.**
 
 ### Into the V2 brief (from S1 review) — DISPATCHED, written into the prompt
