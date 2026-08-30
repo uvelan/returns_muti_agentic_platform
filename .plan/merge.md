@@ -11,7 +11,7 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | T0 | (trunk) | DONE | — | 2cafe2a |
 | S1 | feat/s1-model-identity | **MERGED** | 1 · PASS (6bdb5bd) | 5d58b90 |
 | S2 | feat/s2-delivery-spine | UNDER_RV_REVIEW round 2 · candidate c884e8e | 2 · CR (db7bfb9) → open | — |
-| V1 phase 1 | feat/v1-template-review | CHANGES_REQUIRED → fixing · was d452e97 | 1 · CR (f8ce598) | — |
+| V1 phase 1 | feat/v1-template-review | UNDER_RV_REVIEW round 2 · candidate ef8d082 | 2 · CR (f8ce598) → open | — |
 | V1 phase 2 | (same branch, later) | BLOCKED on S2 merge | — | — |
 | V2 phase 1 (backend) | feat/v2-ingress-relay | IN_PROGRESS · pipelined off S2 c884e8e | — | — |
 | V2 phase 2 (frontend) | (same branch, later) | BLOCKED on V1 panel seam | — | — |
@@ -54,6 +54,9 @@ Raised in review and assigned to the orchestrator, not to a slice. A slice canno
 
 ### Into the ACC phase-2 brief (from S2 review round 1)
 6. **Acceptance 18's ordered drain rests on V2 populating the causation chain.** The ordering machinery is S2's, but the guarantee is only real if V2 actually fills `causation_id` / `required_predecessor_ids[]`. Assert the chain, not just the drain.
+
+### Into every brief that composes outbound Channel B text (V2, V3) — raised by V1 phase 1, round 2
+7. **Neutralise associate- and support-authored text before it enters an agent-authored message.** V1 found that binding a raw `associate_notes` fact silently dropped `compose_support_handoff`'s neutralisation, letting a note containing `BAY ASSIGNMENT:` reach the rendered handoff intact and restructure the message for whoever read it next. `support_handoff.py` neutralises via `_FRAMING` (a regex over section-heading-shaped lines → `[removed]`). Any new path that renders human-authored text into a Channel B message — relay text, clarification quotes carrying the *verbatim* support question, reply drafts — must neutralise the same way or state why it cannot be abused. This is contract §9's tool-safety principle applied to message *structure* rather than tool selection.
 
 ### Into the V2 brief (from S1 review)
 4. **Watch advisory A1.** A scoped fact write using a *legacy* fact name would surface in `latest_case_facts` and could shadow a case-level value. Nothing in S1 or S2 does this; V2 writes the most new scoped facts and is where it would first appear.
