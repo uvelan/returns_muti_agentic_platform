@@ -548,10 +548,17 @@ class SupportMessageAnalyser:
 
         Carries what sect. 9 requires an unmatched-artifact clarification to
         carry: the value, the evidence span, the candidate records, and the
-        choice. The question text is *composed from the decision*, never from
-        the message body -- support text can never become a question the
-        platform puts to an associate in support's own words, because that is
-        an injection surface with a human at the end of it.
+        choice.
+
+        **The frame is platform-composed; the interpolated value is not.** Every
+        word of the question except the artifact's own value and type comes from
+        this function -- the message body never reaches it, so support cannot
+        author the sentence a person is asked. What *is* support-derived is the
+        value itself, necessarily: a clarification that would not say which
+        tracking number it is about would be unanswerable. That value is
+        length-bounded in code by `extracted_artifacts` rather than by the
+        prompt, and phase 2 must render it as **data, never as markup or
+        preformatted text** where a newline could restructure the view.
         """
         clarification_id = str(
             uuid.uuid5(

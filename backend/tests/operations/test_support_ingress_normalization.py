@@ -16,6 +16,8 @@ from return_platform.configuration.support_ingress_configuration import (
 )
 from return_platform.operations.artifact_binding import ArtifactType, ExtractedArtifact
 from return_platform.operations.return_support.ingress import (
+    MAX_ARTIFACT_BINDING_CHARS,
+    MAX_ARTIFACT_VALUE_CHARS,
     STRUCTURED_ISSUED_INTENT,
     STRUCTURED_REJECTION_INTENT,
     STRUCTURED_TRANSPORT_ID,
@@ -328,3 +330,84 @@ def test_a_group_without_a_return_reference_is_not_a_group() -> None:
 def test_an_extraction_with_no_lists_at_all_yields_nothing() -> None:
     assert extracted_artifacts({}) == ()
     assert record_bindings_from_extraction({}) == ()
+
+
+# --------------------------------------------------------------------------- #
+# Support-derived values are bounded in code, not by the prompt
+# --------------------------------------------------------------------------- #
+
+
+def test_an_artifact_value_longer_than_any_stored_column_is_dropped() -> None:
+    """The bound is a parser's, not a prompt's.
+
+    An artifact value is a model's reading of support-authored text and it is
+    interpolated into a clarification an associate reads. Before this bound the
+    only limits on it were the prompt's instructions and the task's output-token
+    ceiling -- and a prompt is advice to a model, not a guarantee about what
+    reaches a person.
+    """
+    ok = "1Z" + "A" * (MAX_ARTIFACT_VALUE_CHARS - 2)
+    too_long = "1Z" + "A" * (MAX_ARTIFACT_VALUE_CHARS - 1)
+    assert len(ok) == MAX_ARTIFACT_VALUE_CHARS
+    assert len(too_long) == MAX_ARTIFACT_VALUE_CHARS + 1
+
+    artifacts = extracted_artifacts(
+        {
+            "artifacts": [
+                {"artifactType": "TRACKING", "value": ok},
+                {"artifactType": "TRACKING", "value": too_long},
+            ]
+        }
+    )
+    assert [artifact.value for artifact in artifacts] == [ok]
+
+
+def test_an_oversize_value_is_dropped_and_never_truncated() -> None:
+    """A truncated tracking number is a different tracking number.
+
+    Binding it would attach the wrong parcel to a real return, so the artifact
+    is dropped whole. The message itself stays on file with its raw body, which
+    is where a person can still read what Support actually wrote.
+    """
+    artifacts = extracted_artifacts(
+        {"artifacts": [{"artifactType": "LABEL", "value": "L" * 5_000}]}
+    )
+    assert artifacts == ()
+
+
+def test_an_oversize_binding_becomes_a_clarification_not_a_dropped_artifact() -> None:
+    """The claim is dropped; the artifact survives without it.
+
+    A `binding` longer than any return reference the store can hold cannot
+    match one. Dropping it to `None` sends the artifact into S1's
+    no-reference rules -- bound if the case holds exactly one record, a
+    clarification otherwise -- which is the honest outcome. Dropping the whole
+    artifact would discard a tracking number Support really did send.
+    """
+    (artifact,) = extracted_artifacts(
+        {
+            "artifacts": [
+                {
+                    "artifactType": "TRACKING",
+                    "value": "1Z-AAA",
+                    "binding": "R" * (MAX_ARTIFACT_BINDING_CHARS + 1),
+                }
+            ]
+        }
+    )
+    assert artifact.value == "1Z-AAA"
+    assert artifact.binding is None
+    assert artifact.named_reference() is None
+
+
+def test_a_binding_at_the_ceiling_is_still_carried() -> None:
+    """The boundary itself, so the comparison cannot quietly become `>=`."""
+    reference = "R" * MAX_ARTIFACT_BINDING_CHARS
+    (artifact,) = extracted_artifacts(
+        {
+            "artifacts": [
+                {"artifactType": "TRACKING", "value": "1Z-AAA", "binding": reference}
+            ]
+        }
+    )
+    assert artifact.binding == reference
