@@ -1203,7 +1203,25 @@ def build_case_recovery_service(
     ask "why is this case stuck" needs no dead-letter queue, and passing `None`
     yields a service whose reads work and whose command requeue is a no-op
     rather than a crash.
+
+    **The command horizon is armed here, and it is the same object as the
+    outbox.** `MongoReconciliationOutbox` implements both ports over one
+    collection -- `list_commands_requiring_reconciliation` for the dead letters
+    and `list_unapplied_commands_past_horizon` for the ones still politely
+    retrying -- so building two would be two readers of one queue disagreeing
+    about what is in it. Until this argument was passed, `_stale_commands`
+    answered `()` for every case and the horizon rule was inert: a case whose
+    approval command had committed and never reached the workflow was relaunched
+    rather than surfaced. That degradation was honest (the outcome said
+    `RELAUNCHED`, never a fabricated `OPERATIONS_REQUIRED`) and it is now over.
+
+    Arming it is V1's, not S2's: this is the *only* place the ports are chosen,
+    and the alternative -- a second factory at each call site that assembles the
+    same service with one more port -- is exactly the duplication the paragraph
+    above refuses. Nothing in S2's persistence contract, signatures or
+    transitions changes.
     """
+    reconciliation = None if database is None else MongoReconciliationOutbox(database)
     return ReturnCaseRecoveryService(
         launcher=TemporalCaseWorkflowLauncher(
             client=temporal,
@@ -1213,5 +1231,6 @@ def build_case_recovery_service(
         ),
         repository=repository,
         probe=TemporalCaseExecutionProbe(client=temporal),
-        outbox=None if database is None else MongoReconciliationOutbox(database),
+        outbox=reconciliation,
+        command_horizon=reconciliation,
     )
