@@ -29,8 +29,10 @@ import type { PanelSectionView } from "../../../../../api/casePanel";
  *    That is React's default and the test pins it anyway, because the way this
  *    breaks in future is somebody adding a renderer "just for the digest".
  *
- * 2. **`displayText` collapses whitespace runs to a single space.** This is the
- *    one that is not free. Escaping stops a value becoming *markup*; it does
+ * 2. **`readString` collapses whitespace runs to a single space** -- every
+ *    string this module reads, without exception and with no raw-string reader
+ *    beside it. This is the one that is not free. Escaping stops a value
+ *    becoming *markup*; it does
  *    nothing to stop a value becoming *layout*. A tracking number submitted as
  *
  *        1Z999 \n RETURN LOCATION: dock four
@@ -91,13 +93,47 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** A string field, or `null` for anything that is not a non-empty string. */
+/**
+ * A string field, whitespace-collapsed, or `null` for anything that is not a
+ * non-empty string.
+ *
+ * **The collapse is here rather than at the call sites, and that is the whole
+ * point.** An earlier draft of this module read strings raw and then applied
+ * `displayText` at four chosen call sites -- `value`, `evidence_span`, `sender`,
+ * `preview`. Every other string it read reached the DOM uncollapsed: the
+ * artifact *type* (drawn under its own raw name when it is one this bundle does
+ * not recognise, which is deliberate and is exactly the unrecognised, therefore
+ * unvalidated, case), the binding `status`, the `intent`. Those are chips and
+ * labels beside the values, and a newline in one of them restructures the card
+ * just as surely as a newline in a tracking number does.
+ *
+ * Choosing which fields are dangerous is a judgement that has to be re-made
+ * correctly every time somebody adds a field. Collapsing in the one reader is a
+ * judgement made once. There is no `readRawString`, deliberately: a second door
+ * is how the first one stops being load-bearing.
+ *
+ * Ids and ISO instants go through it too and are unharmed -- neither has
+ * meaningful internal whitespace, and one that arrives carrying some is not a
+ * value this console should be drawing unchanged either.
+ */
 export function readString(source: unknown, key: string): string | null {
   if (!isRecord(source)) return null;
   const value = source[key];
   if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.length === 0 ? null : trimmed;
+  return displayText(value);
+}
+
+/** An object field, or `null`. Accepts a one-element array of one, see below. */
+export function readObject(source: unknown, key: string): Record<string, unknown> | null {
+  if (!isRecord(source)) return null;
+  const value = source[key];
+  if (isRecord(value)) return value;
+  // A contributor that serialises a single-valued group as a one-element list
+  // is a shape this reader can honour without ambiguity, and the alternative --
+  // dropping it -- is the silent failure this function was written to fix. See
+  // `readRecordsPayload`'s placement note.
+  if (Array.isArray(value) && value.length === 1 && isRecord(value[0])) return value[0];
+  return null;
 }
 
 /** A finite non-negative integer field, or `null`. Never `NaN`, never a coerced string. */
@@ -224,9 +260,9 @@ function readArtifact(source: Record<string, unknown>): SupportArtifact | null {
   return {
     artifactType,
     label: ARTIFACT_LABELS[artifactType] ?? artifactType,
-    value: displayText(readString(source, "value")),
+    value: readString(source, "value"),
     status: readString(source, "status"),
-    evidenceSpan: displayText(readString(source, "evidence_span")),
+    evidenceSpan: readString(source, "evidence_span"),
     supportEventId: readString(source, "support_event_id"),
   };
 }
@@ -279,7 +315,7 @@ export function readRecordsPayload(
     const fromSection = contributed.get(id);
     cards.push({
       returnRecordId: id,
-      returnReference: displayText(readString(record, "return_reference")),
+      returnReference: readString(record, "return_reference"),
       status: readString(record, "status"),
       returnMethod: readString(record, "return_method"),
       artifacts: orderArtifacts(
@@ -295,7 +331,7 @@ export function readRecordsPayload(
     if (seen.has(id)) continue;
     cards.push({
       returnRecordId: id,
-      returnReference: displayText(readString(entry, "return_reference")),
+      returnReference: readString(entry, "return_reference"),
       status: readString(entry, "status"),
       returnMethod: readString(entry, "return_method"),
       artifacts: orderArtifacts(
@@ -307,14 +343,23 @@ export function readRecordsPayload(
     });
   }
 
-  const placementSource = readObjects(payload, "placement")[0] ?? null;
+  // **Read as an object, not as a list.** The abandoned draft of this module
+  // documented placement as case-level and singular -- one `facilityId` /
+  // `bayId` / reason per case, projected from the bay facts -- and then read it
+  // with `readObjects(payload, "placement")[0]`, which only ever sees an
+  // *array*. A contributor emitting the object the docstring describes would
+  // have had the bay silently dropped, and the panel would have drawn a case
+  // with no placement exactly like a case whose goods have not been put
+  // anywhere. `readObject` takes the object and still honours a one-element
+  // list, so neither serialisation loses the bay.
+  const placementSource = readObject(payload, "placement");
   const placement =
     placementSource === null
       ? null
       : {
-          facilityId: displayText(readString(placementSource, "facility_id")),
-          bayId: displayText(readString(placementSource, "bay_id")),
-          reason: displayText(readString(placementSource, "reason")),
+          facilityId: readString(placementSource, "facility_id"),
+          bayId: readString(placementSource, "bay_id"),
+          reason: readString(placementSource, "reason"),
         };
 
   return {
@@ -324,10 +369,16 @@ export function readRecordsPayload(
       (placement.facilityId !== null || placement.bayId !== null || placement.reason !== null)
         ? placement
         : null,
-    unbound: readObjects(payload, "unbound").flatMap((raw) => {
-      const artifact = readArtifact(raw);
-      return artifact === null ? [] : [artifact];
-    }),
+    // Ordered by the same rank as the cards'. The abandoned draft left these in
+    // payload order, so the one list an associate reads *against* the cards --
+    // "Support sent these and we could not file them" -- was sorted differently
+    // from the cards beside it, and comparing the two meant re-finding each row.
+    unbound: orderArtifacts(
+      readObjects(payload, "unbound").flatMap((raw) => {
+        const artifact = readArtifact(raw);
+        return artifact === null ? [] : [artifact];
+      }),
+    ),
     framingPromptKey: readString(payload, "framing_prompt_key"),
   };
 }
@@ -379,11 +430,11 @@ export function readDigestPayload(
         {
           supportEventId,
           sender:
-            displayText(readString(entry, "sender_display_name")) ??
-            displayText(readString(entry, "sender")),
+            readString(entry, "sender_display_name") ??
+            readString(entry, "sender"),
           status: readString(entry, "status"),
           intent: readString(entry, "intent"),
-          preview: displayText(readString(entry, "preview")),
+          preview: readString(entry, "preview"),
           recordedAtIso: readString(entry, "recorded_at_iso"),
         },
       ];
