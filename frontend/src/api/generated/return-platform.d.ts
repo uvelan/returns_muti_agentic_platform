@@ -3660,6 +3660,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/return-support/work-items/{work_item_id}/inbound-messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive Support Message
+         * @description Accept one natural-language message from Support, or park it.
+         *
+         *     `202`, never `201`: nothing about this message has been acted on when the
+         *     response is written. The analysis is queued, the relay to Channel A happens
+         *     after the analysis commits, and a `201 Created` would be a claim about a
+         *     resource whose meaning does not exist yet.
+         *
+         *     Three refusals, and each is a different fact:
+         *
+         *         413  the body is larger than the released limit
+         *         429  this case has taken more messages than the released window allows
+         *         409  this exact identity already carries different words
+         *
+         *     and one non-refusal that is easy to get wrong: a message arriving while
+         *     `nl_enabled` is false comes back `202 PARKED`. It is on file, it is counted,
+         *     and it will be analysed in stream order when the switch flips.
+         */
+        post: operations["receive_support_message_api_v1_return_support_work_items__work_item_id__inbound_messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/return-support/work-items/{work_item_id}/messages": {
         parameters: {
             query?: never;
@@ -5015,6 +5050,12 @@ export interface components {
         /** APIResponse[SupportCaseView] */
         APIResponse_SupportCaseView_: {
             data?: components["schemas"]["SupportCaseView"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
+        /** APIResponse[SupportMessageAcceptedView] */
+        APIResponse_SupportMessageAcceptedView_: {
+            data?: components["schemas"]["SupportMessageAcceptedView"] | null;
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
@@ -10901,6 +10942,51 @@ export interface components {
             updatedAt: string;
             /** Version */
             version: number;
+        };
+        /**
+         * SupportInboundMessage
+         * @description One natural-language message, as a transport hands it over.
+         *
+         *     `extra="forbid"`: a transport that starts sending a field this platform has
+         *     never agreed to read should be a failed request rather than a field
+         *     silently dropped on the way to a model.
+         */
+        SupportInboundMessage: {
+            /** Body Text */
+            body_text: string;
+            /**
+             * Channel Hint
+             * @default unspecified
+             */
+            channel_hint: string;
+            /** External Message Id */
+            external_message_id: string;
+            /** Sender */
+            sender: string;
+            /** Sender Display Name */
+            sender_display_name?: string | null;
+        };
+        /**
+         * SupportMessageAcceptedView
+         * @description The receipt for a durably recorded inbound message.
+         *
+         *     Says what committed and nothing about what has been made of it. There is no
+         *     `intent` here and there will not be one: the classification is a model's
+         *     answer, it is pinned and accepted asynchronously under S2's analysis record,
+         *     and a field here carrying it would be this handler claiming an analysis it
+         *     did not wait for.
+         */
+        SupportMessageAcceptedView: {
+            /** Caseid */
+            caseId: string;
+            /** Disposition */
+            disposition: string;
+            /** Outboxcommandid */
+            outboxCommandId: string | null;
+            /** Parkedcount */
+            parkedCount: number;
+            /** Supporteventid */
+            supportEventId: string;
         };
         /**
          * SupportMessageType
@@ -16979,6 +17065,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_SupportAgentRunView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    receive_support_message_api_v1_return_support_work_items__work_item_id__inbound_messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                work_item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportInboundMessage"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_SupportMessageAcceptedView_"];
                 };
             };
             /** @description Validation Error */

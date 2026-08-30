@@ -29,8 +29,10 @@ What the accepted extraction is then split into follows DR-11 exactly:
 * **loose artifacts** -- a tracking number with no RMA attached -- go to S1's
   binding module, whose rules are code. `AMBIGUOUS` and `UNMATCHED` produce a
   clarification rather than a guess and *never* a new record.
-* the **omc mirror row** is enqueued in the same transaction as the artifact
-  persistence, keyed by delivery identity.
+* the **omc mirror row** is enqueued per bound artifact, keyed by delivery
+  identity. sect. 5 says "in the artifact-persistence transaction"; there is no
+  such transaction to be in, and `omc_mirror.DurableOmcMirror` states exactly
+  what holds instead and why it is weaker than the contract's wording.
 
 The relay to Channel A (DR-3) happens after all of that commits, and is a port
 here rather than an import: the transcript belongs to `dynamic_knowledge`, and
@@ -50,6 +52,7 @@ from return_platform.configuration.support_ingress_configuration import (
     SupportIngressConfiguration,
 )
 from return_platform.operations.artifact_binding import (
+    ARTIFACT_STORED_FIELDS,
     ArtifactBindingDecision,
     BindingStatus,
     ExtractedArtifact,
@@ -74,6 +77,7 @@ from return_platform.operations.return_support.ingress import (
     extracted_artifacts,
     record_bindings_from_extraction,
 )
+from return_platform.operations.return_support.omc_mirror import derive_omc_delivery_id
 
 logger = logging.getLogger("return_platform.support_classification")
 
@@ -111,9 +115,21 @@ class StageInvokerPort(Protocol):
     `StructuredOutputInvoker`-backed and lives at the wiring site.
     """
 
-    release_id: str
-    routing_policy_version: str
-    ordered_candidate_routes: tuple[str, ...]
+    # Read-only, and declared as properties rather than as attributes for a
+    # reason that only appeared once a real adapter existed: the production
+    # implementation derives all three from the *currently released*
+    # configuration on every access, so they are properties, and a Protocol
+    # declaring them as settable variables refuses that -- it would be satisfied
+    # only by an object that had captured them at construction, which is the
+    # thing this slice is trying not to do.
+    @property
+    def release_id(self) -> str: ...
+
+    @property
+    def routing_policy_version(self) -> str: ...
+
+    @property
+    def ordered_candidate_routes(self) -> tuple[str, ...]: ...
 
     async def invoke(self, *, route_id: str, payload: Mapping[str, Any]) -> dict[str, Any]: ...
 
@@ -196,7 +212,12 @@ class SupportMessageAnalyser:
         record_store: ReturnRecordStorePort,
         append_scoped_fact_once: ScopedFactAppendPort,
         support_events: SupportEventSignalPort,
-        omc: OmcMirrorPort | None = None,
+        # Required, and it used to default to `None`. That default was the whole
+        # of the omc gap: a wiring site that simply did not mention `omc` got an
+        # analyser that silently dropped sect. 5's mirror, and every test passed
+        # because every test passed a stub. An absent port must be a wiring
+        # error, not a runtime shrug.
+        omc: OmcMirrorPort,
         relay: TranscriptRelayPort | None = None,
     ) -> None:
         self._records = records
@@ -487,14 +508,22 @@ class SupportMessageAnalyser:
             if decision.status is BindingStatus.BOUND:
                 if wrote:
                     bound += 1
-                    row = await self._mirror_to_omc(
-                        case_id=case_id,
-                        support_event_id=support_event_id,
-                        dedupe_key=dedupe_key,
-                        decision=decision,
-                    )
-                    if row is not None:
-                        omc_rows.append(row)
+                # Gated on the *decision*, not on `wrote`. `wrote` is false on
+                # every redelivery -- the merge finds the value already on the
+                # record -- so a mirror gated on it is a mirror that is lost for
+                # good the moment a crash lands between the merge and the
+                # enqueue. That is the exact window sect. 5's "in the
+                # artifact-persistence transaction" was meant to close, and the
+                # transaction does not exist (see `omc_mirror.DurableOmcMirror`).
+                # The decision is a pure function of the accepted extraction, so
+                # it is identical on every attempt and the rerun completes.
+                row = await self._mirror_to_omc(
+                    case_id=case_id,
+                    support_event_id=support_event_id,
+                    decision=decision,
+                )
+                if row is not None:
+                    omc_rows.append(row)
                 continue
             clarification_id = await self._request_clarification(
                 case_id=case_id,
@@ -510,7 +539,6 @@ class SupportMessageAnalyser:
         *,
         case_id: str,
         support_event_id: str,
-        dedupe_key: str,
         decision: ArtifactBindingDecision,
     ) -> str | None:
         """One `omc.return.update` row per bound artifact, keyed by delivery id.
@@ -518,11 +546,30 @@ class SupportMessageAnalyser:
         Derived rather than random, for the reason every identity in this
         programme is derived: a random delivery id on a retried dispatch is a
         second mirror row for one business change, and the receiver has nothing
-        to dedupe on.
+        to dedupe on. The derivation and its two design decisions live in
+        `omc_mirror.derive_omc_delivery_id`.
+
+        Two bound decisions carry nothing to mirror and are skipped here rather
+        than sent as empty updates. Both conditions are properties of the
+        decision, so they hold identically on a redelivery:
+
+        * an artifact type with no stored field -- a bound **RMA** confirms which
+          record this is and adds no data to it;
+        * a blank value, which `_merge_bound_artifact` reads as the absence of a
+          statement and this reads the same way.
         """
-        if self._omc is None:
+        if ARTIFACT_STORED_FIELDS[decision.artifact.artifact_type] is None:
             return None
-        delivery_id = f"omc-return-update:{case_id}:{dedupe_key}"
+        if not decision.artifact.value.strip():
+            return None
+        record_id = str(decision.return_record_id or "")
+        delivery_id = derive_omc_delivery_id(
+            case_id=case_id,
+            support_event_id=support_event_id,
+            return_record_id=record_id,
+            artifact_type=decision.artifact.artifact_type.value,
+            value=decision.artifact.value,
+        )
         return await self._omc.enqueue_omc_update(
             case_id=case_id,
             support_event_id=support_event_id,

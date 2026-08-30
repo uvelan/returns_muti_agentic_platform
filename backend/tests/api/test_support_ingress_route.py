@@ -150,7 +150,8 @@ def _body(**overrides: Any) -> dict[str, Any]:
 
 def _post(client: TestClient, **overrides: Any) -> Any:
     return client.post(
-        f"/api/v1/return-support/work-items/{WORK_ITEM}/messages", json=_body(**overrides)
+        f"/api/v1/return-support/work-items/{WORK_ITEM}/inbound-messages",
+        json=_body(**overrides),
     )
 
 
