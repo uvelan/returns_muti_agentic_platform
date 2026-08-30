@@ -13,7 +13,7 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | S2 | feat/s2-delivery-spine | **MERGED** | 3 · CR (db7bfb9) → CR (faefa84) → PASS (b7a78ad) | dfd3036 |
 | V1 phase 1 | feat/v1-template-review | **MERGED** | 2 · CR (f8ce598) → PASS (18f671f) | b2590ef |
 | V1 phase 2 | feat/v1-phase2 | IN_PROGRESS · base f4c6f7f = trunk + S2 candidate | — | — |
-| V2 phase 1 (backend) | feat/v2-ingress-relay | UNDER_RV_REVIEW round 2 · candidate 0a5164f | 2 · CR (fa7e5f1) → open | — |
+| V2 phase 1 (backend) | feat/v2-ingress-relay | **MERGED** (integration in flight) | 2 · CR (fa7e5f1) → PASS (02da231) | 97bca1e |
 | V2 phase 2 (frontend) | (same branch, later) | BLOCKED on V1 panel seam | — | — |
 | V3 backend | feat/v3-resolver-clarification | IN_PROGRESS · base 3715cbe = trunk + V2 candidate | — | — |
 | V3 frontend | (same branch, later) | BLOCKED on V1 panel seam | — | — |
@@ -48,7 +48,7 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 
 ## Integration debt (orchestrator applies at merge)
 
-- **V2:** router mount, dispatcher registration, `ensure_support_ingress_indexes`, OpenAPI regen.
+- **V2:** router mount, dispatcher registration, `ensure_support_ingress_indexes`, OpenAPI regen — **dispatched to an integration agent after the V2 merge (97bca1e)**. Note `test_main_is_composition_only` already failed at 34 mounts vs an expected 33 *before* V2, so the agent was told to identify the 34th mount rather than increment the constant to make the test pass.
 - **Merging any two slices that both touched OpenAPI requires a `.d.ts` regen** — this bit once already at the S2 merge (`fc574c7`). The JSON snapshots merged cleanly; only the generated TypeScript needed rebuilding.
 - **`return_configuration.py` conflicts on every slice merge** — each slice appends its own config field and import. Resolution is always "keep both", verified by loading the model. Seen at V1p2 base, the S2 merge, and the V3 base.
 
