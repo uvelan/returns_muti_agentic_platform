@@ -1,5 +1,7 @@
 import { HttpResponse, delay, http } from "msw";
 
+import { supportPanelSections } from "./supportHandlers";
+
 /**
  * The case panel and its review endpoints, for `npm run dev:mock` and tests.
  *
@@ -197,7 +199,11 @@ function panelBody() {
     },
     parked_messages: 0,
     accepted_commands: store.acceptedCommands,
-    sections: [],
+    // Composed from both slices, exactly as the backend registry composes it.
+    // A second `GET .../panel` handler is not an option: MSW takes the first
+    // match, so V2's would shadow this one and silently take the reviews off
+    // the screen. V3 appends its own spread here on the same line.
+    sections: [...supportPanelSections()],
   };
 }
 

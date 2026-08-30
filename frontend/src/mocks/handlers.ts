@@ -1,6 +1,7 @@
 import { analyzerHandlers } from "./handlers/analyzerHandlers";
 import { canonicalHandlers } from "./handlers/canonicalHandlers";
 import { casePanelHandlers } from "./handlers/casePanelHandlers";
+import { supportHandlers } from "./handlers/supportHandlers";
 
 /**
  * Mock handlers for `npm run dev:mock` and the fixture server.
@@ -15,4 +16,9 @@ import { casePanelHandlers } from "./handlers/casePanelHandlers";
  * fixtures would make both harder to reason about. Each has its own contract
  * test.
  */
-export const handlers = [...canonicalHandlers, ...casePanelHandlers, ...analyzerHandlers];
+export const handlers = [
+  ...canonicalHandlers,
+  ...casePanelHandlers,
+  ...supportHandlers,
+  ...analyzerHandlers,
+];
