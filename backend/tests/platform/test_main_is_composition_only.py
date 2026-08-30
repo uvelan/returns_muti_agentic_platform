@@ -173,12 +173,17 @@ def test_router_mounting_is_the_bulk_of_create_app_and_that_is_allowed() -> None
     # mutation on it). Two routers over one `/api/v1/cases` prefix rather than
     # one, because the read is hashed and cacheable and the mutations are
     # neither -- a single module would have made that difference a comment.
+    # 38 -> 39 for V3's `case_clarifications_router`
+    # (`api/case_clarifications.py`): the clarification answer endpoint, a third
+    # router on the same `/api/v1/cases` prefix. Separate for the same reason
+    # the other two are -- the resource is the clarification the resolver
+    # raised, not the panel or the review it may become.
     #
     # Taken from the walk, not from the failure: `ast.walk` over `main.py`
-    # measures 38, and trunk measured 36 before this branch added exactly these
-    # two. Fitting the number to the test is how this reading came to be 33
-    # while `main.py` mounted 35.
-    assert len(mounts) == 38, (
-        f"{len(mounts)} routers are mounted, expected 38; if Wave F deleted one, "
+    # measures 39, and trunk measured 38 before this integration pass added
+    # exactly one. Fitting the number to the test is how this reading came to be
+    # 33 while `main.py` mounted 35.
+    assert len(mounts) == 39, (
+        f"{len(mounts)} routers are mounted, expected 39; if Wave F deleted one, "
         "update this number in the same commit"
     )
