@@ -21,7 +21,8 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | V2 phase 1b | feat/v2-ingress-relay | **MERGED** | 1 · PASS (a51c9b4) | 95b5672 |
 | V2 phase 2 (frontend) | feat/v2-frontend | IN_PROGRESS · off V1p2 candidate 594bb05 | — | — |
 | V3 backend | feat/v3-resolver-clarification | **MERGED** | 2 · CR (3d8715f) → PASS (c463872) | 270c223 |
-| V3 frontend | feat/v3-frontend | IN_PROGRESS · off V1p2 candidate 594bb05 | — | — |
+| V3 frontend | feat/v3-frontend | **MERGED** | 1 · PASS (cfcbe44) | 9952f2b |
+| V3 backend phase 2 (trigger) | feat/v3-resolver-trigger | IN_PROGRESS · the resolver has no production invocation site | — | — |
 | ACC-1 (harness) | feat/acc-harness | **MERGED** | 2 · CR → PASS (9cb3508) | c1c2b0f |
 | ACC-2 (scenarios) | not yet cut | BLOCKED on V3 | — | — |
 | RV calibration | rv-calibration/seeded-hardcoding | bait CAUGHT as blocking | 1 (d59e017) | never merges |
@@ -79,6 +80,12 @@ Every slice has shipped at least one green-but-blind test. The shapes found so f
 - **OpenAPI regen is six files, not one:** `npm run contracts:generate` covers `frontend/openapi/…json` + the `.d.ts`; repo-root `scripts/check_openapi_drift.py --write` then covers `openapi/`, `backend/openapi/`, root `openapi.json` and the evidence receipt.
 - **`return_configuration.py` conflicts on every slice merge** — each slice appends one config field and import. Resolution is always "keep both", verified by loading the model.
 - **`test_main_is_composition_only` — RESOLVED at `bceffae`** (expectation now 36, both undocumented routers named in the comment). V1 phase 2 adds two more mounts and V3 adds one, so it will need updating again at each of those merges — with the same discipline: count via the test's own AST walk, never fit the number to the test.
+
+## MERGE HAZARD — read before merging V2 phase 2
+
+**Both V2's and V3's frontend branches replace the same line** — `sections: []` in `frontend/src/mocks/handlers/casePanelHandlers.ts` — and **neither composes with the other**. RV's warning: a careless merge silently drops one slice's section from `dev:mock` **while both suites stay green**. V3 merged first (`9952f2b`); the integration agent running the tripwire runbook is also touching that file and has been told to leave it composable. **When V2 phase 2 merges: compose the arrays, never take a side**, and verify both sections render in `dev:mock` before committing.
+
+Related, already handled: V3's clarifications contract test was a **deliberate tripwire** that fires the moment its route reaches the committed OpenAPI — which the integration mount + regeneration made true. Its failure message is a three-step runbook ending "delete this test". Being executed in the same merge window so the red is not misattributed to V3's merge. The *other* tests in that file guard something a permissive mock cannot — that the client sends exactly the three keys `extra="forbid"` declares — and must survive the deletion.
 
 ## Queued follow-up dispatches
 
