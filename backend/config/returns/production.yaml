@@ -1539,6 +1539,50 @@ support_ingress:
     rate_window_seconds: 60
     max_identifier_characters: 256
 
+support_resolver:
+  # How the platform answers a question Support asked (contracts.md sect. 9).
+  # Every value here is the code default restated, so a deployment changing one
+  # is editing configuration rather than discovering that the knob exists.
+  #
+  # Both thresholds are millionths, matching the gateway's
+  # `confidenceMillionths` envelope so the released number and the measured
+  # number are the same unit with no conversion between them. They are high on
+  # purpose: the failure this slice must not have is a confident-sounding wrong
+  # answer sent to Support under the platform's own name. Below the threshold
+  # the ladder does not try harder with the same evidence -- it descends a rung,
+  # and escalates to an associate when the rungs run out.
+  fact_confidence_millionths: 900000
+  graph_confidence_millionths: 900000
+  # Which capabilities a validated intent makes eligible. Empty means **no tool
+  # is eligible for any intent** and the ladder's tool rung refuses every time.
+  # That is the closed default the tool boundary implies: a tool a deployment
+  # has not bound is a tool that cannot run, and binding one is precisely what
+  # sect. 9 calls a config-only tool addition. A binding names a `tool_id`, the
+  # `intents` it serves, a `capability` and `contract` published in the
+  # CapabilityRegistry, an `input_schema_ref` from the code-side allowlist in
+  # platform/capabilities/tool_schemas.py, and a `credential_binding_id` naming
+  # a CredentialBindingConfiguration profile key. Every field is a reference;
+  # none is a value, an expression or a template.
+  tool_bindings: []
+  reply_gate:
+    # Review required for every intent, including ones a later release adds to
+    # the taxonomy: `default` is the floor and `per_intent` is the exception
+    # list, stated that way round because the safe value is the one that applies
+    # to intents nobody thought about. `auto_reply` is a per-intent opt-in and
+    # is never a global.
+    default: review_required
+    per_intent: {}
+  # An answered clarification pushes the review deadline out again. True,
+  # because the associate answered promptly and the clock they were racing was
+  # started by a question the platform asked *them*. The reset never moves a
+  # deadline inwards.
+  clarification_resets_deadline: true
+  # Model invocations one case may spend on resolution, across all its support
+  # questions. Exhaustion is not a silent stop: it writes
+  # `support_resolver_budget_exhausted` and escalates, so a case that outruns
+  # its budget becomes visible work rather than an unanswered message.
+  per_case_llm_budget: 12
+
 copilot:
   # The agent policy every Copilot conversation turn is routed to. It must name
   # a key under `agent_policies` in the active schema release
