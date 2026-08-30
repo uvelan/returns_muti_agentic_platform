@@ -19,9 +19,9 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | V1 phase 2 | feat/v1-phase2 | UNDER_RV_REVIEW round 2 · candidate 594bb05 | 2 · CR (85db125) → open | — |
 | V2 phase 1 | feat/v2-ingress-relay | **MERGED** | 2 · CR → PASS (02da231) | 97bca1e |
 | V2 phase 1b | feat/v2-ingress-relay | **MERGED** | 1 · PASS (a51c9b4) | 95b5672 |
-| V2 phase 2 (frontend) | (same branch, later) | BLOCKED on V1 panel seam | — | — |
+| V2 phase 2 (frontend) | feat/v2-frontend | IN_PROGRESS · off V1p2 candidate 594bb05 | — | — |
 | V3 backend | feat/v3-resolver-clarification | **MERGED** | 2 · CR (3d8715f) → PASS (c463872) | 270c223 |
-| V3 frontend | (same branch, later) | BLOCKED on V1 panel seam | — | — |
+| V3 frontend | feat/v3-frontend | IN_PROGRESS · off V1p2 candidate 594bb05 | — | — |
 | ACC-1 (harness) | feat/acc-harness | **MERGED** | 2 · CR → PASS (9cb3508) | c1c2b0f |
 | ACC-2 (scenarios) | not yet cut | BLOCKED on V3 | — | — |
 | RV calibration | rv-calibration/seeded-hardcoding | bait CAUGHT as blocking | 1 (d59e017) | never merges |
