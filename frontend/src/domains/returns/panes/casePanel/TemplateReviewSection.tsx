@@ -17,6 +17,8 @@ import {
   type ReviewPanelView,
 } from "../../../../api/casePanel";
 import { COPILOT_TOKENS } from "../../copilotTokens";
+import { SupportReplyBody } from "./sections/SupportReplyBody";
+import { readSupportReplyDraft } from "./sections/supportReplyDraft";
 import { applyEdits, fieldKey, useDraftEditor, type DraftSection } from "./useDraftEditor";
 
 /**
@@ -126,6 +128,15 @@ export function TemplateReviewSection({ caseId, review, onChanged }: Props) {
   const headingId = useId();
   const statusId = useId();
 
+  /**
+   * A reply draft, or `null` for the template kind this file was built for.
+   *
+   * Read from `review.draft` rather than from `editor.payload` deliberately:
+   * `editor.payload` is the draft with this actor's unsaved field edits applied,
+   * and a reply has no fields to apply -- its one editable value is the body
+   * override, which `SupportReplyBody` reads from the editor itself.
+   */
+  const replyDraft = readSupportReplyDraft(review);
   const sections: readonly DraftSection[] = editor.payload.sections ?? [];
   const gaps = editor.payload.gaps ?? [];
   const editable = review.state === "OPEN";
@@ -185,7 +196,14 @@ export function TemplateReviewSection({ caseId, review, onChanged }: Props) {
     <section aria-labelledby={headingId} className="space-y-3">
       <header className="flex flex-wrap items-center justify-between gap-2">
         <h3 id={headingId} className={COPILOT_TOKENS.typography.subheading}>
-          Message to Support
+          {/*
+            Two kinds, two headings, and the difference is not cosmetic: one is a
+            request this platform is making of Support, the other is an answer to
+            a question Support asked. An associate skimming a case with both open
+            has to be able to tell which direction each one goes before reading a
+            word of the body.
+          */}
+          {replyDraft === null ? "Message to Support" : "Reply to Support"}
         </h3>
         <ReviewStateBadge state={review.state} />
       </header>
@@ -290,6 +308,25 @@ export function TemplateReviewSection({ caseId, review, onChanged }: Props) {
         to heading navigation, which is how somebody using a screen reader skims
         a long draft.
       */}
+      {replyDraft !== null ? (
+        /*
+          A `SUPPORT_REPLY` review's payload has no `subject` and no
+          `sections[]` -- it carries `messageText` (V3, `reply_gating.py`). Drawn
+          through the fields below it showed a subject of "Pending", no body, and
+          a Send button; the associate was asked to approve a message to a
+          supplier that this screen did not contain. Everything else on this
+          section -- badge, live region, banners, actions, confirmations, the
+          approval hash and its CAS -- is shared, which is what item 6 means by
+          rendering reply reviews *through* V1's review components.
+        */
+        <SupportReplyBody
+          draft={replyDraft}
+          editor={editor}
+          editable={editable}
+          fieldId={statusId}
+        />
+      ) : (
+        <>
       <dl className="divide-y divide-outline-variant/20">
         <div className={COPILOT_TOKENS.review.field.row}>
           <dt className={COPILOT_TOKENS.review.field.label}>Subject</dt>
@@ -393,6 +430,8 @@ export function TemplateReviewSection({ caseId, review, onChanged }: Props) {
           ) : null}
         </div>
       ) : null}
+        </>
+      )}
 
       {refusal !== null ? (
         <p role="alert" className={COPILOT_TOKENS.review.gap}>

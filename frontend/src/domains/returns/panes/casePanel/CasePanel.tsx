@@ -8,6 +8,7 @@ import {
   type CasePanelView,
 } from "../../../../api/casePanel";
 import { COPILOT_TOKENS } from "../../copilotTokens";
+import { readSupportReplyDraft } from "./sections/supportReplyDraft";
 import { StatusTimersSection } from "./StatusTimersSection";
 import { TemplateReviewSection } from "./TemplateReviewSection";
 import { panelSectionRenderers, unrenderedSectionLabel } from "./panelSectionRegistry";
@@ -171,15 +172,32 @@ export function CasePanelBody({
  */
 function ReadOnlyReview({ review }: { readonly review: CasePanelView["reviews"][number] }) {
   const sections = (review.draft as { sections?: readonly Record<string, unknown>[] }).sections ?? [];
+  /*
+   * A `SUPPORT_REPLY` review has no `sections[]` (V3, `reply_gating.py`), so the
+   * list below is empty for one and the audit view showed a heading and nothing
+   * else. Somebody auditing a case needs to read the reply that went out at
+   * least as much as they need to read the request that went out.
+   *
+   * `whitespace-pre-wrap`: the paragraph breaks are the sender's own, and this
+   * is a record of what was sent rather than a question being quoted.
+   */
+  const reply = readSupportReplyDraft(review);
   return (
     <section className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className={COPILOT_TOKENS.typography.subheading}>Message to Support</h3>
+        <h3 className={COPILOT_TOKENS.typography.subheading}>
+          {reply === null ? "Message to Support" : "Reply to Support"}
+        </h3>
         <span className={COPILOT_TOKENS.typography.badge}>{review.state}</span>
       </div>
       {review.approved_by !== null ? (
         <p className={COPILOT_TOKENS.typography.caption}>Approved by {review.approved_by}.</p>
       ) : null}
+      {reply === null ? null : (
+        <p className={`${COPILOT_TOKENS.review.field.value} whitespace-pre-wrap`}>
+          {reply.messageText === "" ? "This reply was empty." : reply.messageText}
+        </p>
+      )}
       <ul className="space-y-0.5">
         {sections.map((section) => {
           const held = section as { section_id: string; title: string };
