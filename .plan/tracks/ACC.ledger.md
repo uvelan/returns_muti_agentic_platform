@@ -433,3 +433,82 @@ carries has to be non-default in this pin, or it is not being compared at all.
 → **10 passed** on the clean tree.
 
 **Next step:** step:06 — F2.
+
+---
+
+## step:06 — F2: the stop/kill distinction is now observed, not named
+
+**File:** `backend/tests/harness/test_chaos_restart.py`.
+
+**The finding, reproduced before fixing.** RV deleted the graceful block from
+`WorkerProcess.stop()` outright — making it identical to `kill()` on every
+platform — and the file stayed green at **22 passed**. Reproduced here exactly:
+the old `test_stop_is_the_graceful_one_and_kill_is_not` asserted only
+`not worker.is_running`, which an alias satisfies just as well.
+
+**Three tests where there was one.**
+
+1. `test_stop_leaves_nothing_running` — the old body, renamed to what it
+   actually checks, with the false claim removed from its docstring and the
+   history of that claim left in it.
+2. `test_stop_lets_the_worker_handle_its_signal_and_kill_does_not` — the
+   behavioural pin RV suggested. A worker installs a `SIGTERM` handler that
+   writes a file; `stop()` must produce that evidence and `kill()` must not.
+   **Skipped on Windows**, with the reason spelled out in the `skipif`: there is
+   no polite step there to observe, by design.
+3. `test_stop_and_kill_do_not_collapse_into_one_path` — a source-level pin, in
+   the same spirit as `test_the_harness_opens_no_connection_of_its_own`, which
+   RV recorded as the right construction for a consequence that lands out of
+   sight. `stop()`'s source must contain `force=False` and `force=True`;
+   `kill()`'s must contain only `force=True`.
+
+The third one exists because the second is skipped here. RV's own words name the
+risk — collapsing the distinction is "an obvious tidy-up, since the Windows
+branch already skips the polite step" — so on this dev platform the behavioural
+test could never object. A pin that only runs on a platform CI may not be on is
+not a pin.
+
+**Fault-injection evidence** (`chaos_restart.py` edited in the working tree,
+run, reverted with `git checkout`; `git status` confirmed clean after):
+
+| state | before fix | after fix |
+| --- | --- | --- |
+| `stop()`'s graceful block deleted (`stop()` == `kill()`) | **22 passed** (miss) | **1 failed, 22 passed, 1 skipped** — `test_stop_and_kill_do_not_collapse_into_one_path`, message: "it is now kill() under another name, and every POSIX teardown just became a SIGKILL" |
+| clean tree | 22 passed | **23 passed, 1 skipped** |
+
+**Honest limitation, stated rather than papered over.** The behavioural test has
+**never executed** — Windows is the dev platform and it is skipped there. Its
+script was verified to compile and to install `signal.SIGTERM` in a live
+subprocess without error, which is the most this platform can say. Its first
+real run is on POSIX CI or during the acceptance run. The structural pin is what
+actually guards the invariant here, and it is the one that caught RV's
+injection.
+
+**Commands:** `python -m pytest tests/harness -q` → **33 passed, 1 skipped,
+1 deselected**. `ruff check` / `ruff format` clean.
+
+---
+
+## Advisory recorded for phase 2 (RV round 1, not a finding)
+
+**A forgotten calendar fixture is still silent.** Choosing the id
+`acceptance-business-hours` over `default` prevents a scenario from *shadowing*
+or *being shadowed by* the shipped entry — but it does nothing about a scenario
+that simply never calls `with_business_calendar`. That scenario inherits
+`business_calendars.default`, which is the 24/7 dev calendar, and runs on wall
+clock silently: every gap zero seconds wide, every weekend assertion reduced to
+addition, green throughout.
+
+What makes it loud is an assertion, not an id. **Every phase-2 scenario that
+depends on business time must assert one of:**
+
+- `resolved.calendar_applied is True` (as
+  `test_the_fixture_maps_to_the_calendar_production_would_build` does), or
+- `not calendar.is_continuous` (as
+  `test_the_fixture_declares_a_desk_that_closes` does).
+
+RV suggests a harness-level assertion so it cannot be forgotten. Deferred to
+phase 2 deliberately: the right shape of that guard depends on how the scenarios
+obtain their configuration, which is V1–V3 surface that does not exist yet.
+Building it now would be guessing at an interface. **Carry this entry into the
+phase-2 brief.**

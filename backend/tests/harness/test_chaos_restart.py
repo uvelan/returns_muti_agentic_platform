@@ -14,6 +14,7 @@ real worker is smoke-tested separately in
 
 from __future__ import annotations
 
+import inspect
 import os
 import sys
 import time
@@ -185,19 +186,109 @@ class TestWorkerProcess:
             inner = worker
         assert not inner.is_running
 
-    def test_stop_is_the_graceful_one_and_kill_is_not(self) -> None:
-        """The two are separate names because confusing them passes silently.
+    def test_stop_leaves_nothing_running(self) -> None:
+        """The end state, which is all this one claims.
 
-        A scenario that reached for `stop()` would be exercising the drain path
-        while claiming to test crash recovery. Nothing in a result would say so.
-        `terminate` is catchable; the kill is not, and this pins that they are
-        implemented differently rather than aliased.
+        Named for what it checks. It used to be called
+        `test_stop_is_the_graceful_one_and_kill_is_not` and to say in its
+        docstring that it pinned the two as "implemented differently rather
+        than aliased" -- which it did not: deleting the graceful block from
+        `stop()` outright, making it identical to `kill()` on every platform,
+        left this file green at 22 passed. The aliasing claim now lives in the
+        two tests below, which can each fail on it.
         """
         worker = WorkerProcess(_idle_worker())
         worker.start()
         worker.stop()
 
         assert not worker.is_running
+
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason=(
+            "there is no polite step on Windows to observe: taskkill without /F posts "
+            "WM_CLOSE, which a console process has no message loop to receive, and "
+            "Popen.terminate() is already TerminateProcess. `stop()` skips it there by "
+            "design, so a SIGTERM handler could never run. The structural pin below is "
+            "what covers this distinction on this platform."
+        ),
+    )
+    def test_stop_lets_the_worker_handle_its_signal_and_kill_does_not(self, tmp_path: Path) -> None:
+        """The distinction itself, observed rather than asserted by name.
+
+        A worker that installs a `SIGTERM` handler leaves evidence when it is
+        asked to stop and none when it is taken away, which is the whole
+        difference between the drain path and crash recovery. A scenario that
+        reached for `stop()` believing it had killed something would be
+        exercising the former while claiming the latter, and would pass.
+        """
+        handled = tmp_path / "handled-sigterm"
+        script = tmp_path / "graceful.py"
+        script.write_text(
+            "import signal, sys, time\n"
+            "def _drain(*_):\n"
+            f"    open({str(handled)!r}, 'w').write('drained')\n"
+            "    sys.exit(0)\n"
+            "signal.signal(signal.SIGTERM, _drain)\n"
+            "time.sleep(300)\n",
+            encoding="utf-8",
+        )
+        spec = WorkerSpec(name="graceful", argv=(sys.executable, str(script)))
+
+        polite = WorkerProcess(spec)
+        try:
+            polite.start()
+            time.sleep(1.0)  # let the handler be installed before signalling
+            polite.stop()
+        finally:
+            polite.kill()
+        assert handled.exists(), "stop() did not give the worker a chance to drain"
+
+        handled.unlink()
+        violent = WorkerProcess(spec)
+        try:
+            violent.start()
+            time.sleep(1.0)
+            violent.kill()
+        finally:
+            violent.kill()
+        time.sleep(0.5)
+        assert not handled.exists(), (
+            "kill() ran the worker's SIGTERM handler -- it is supposed to be the "
+            "signal a process cannot catch, and a scenario built on it would be "
+            "testing the drain path while claiming to test crash recovery"
+        )
+
+    def test_stop_and_kill_do_not_collapse_into_one_path(self) -> None:
+        """The same distinction, structurally, on every platform including this one.
+
+        The behavioural test above is skipped on Windows, where there is no
+        polite step to observe -- so on the dev platform nothing would object to
+        the obvious tidy-up of deleting `stop()`'s graceful block, which is
+        exactly the edit that turns every POSIX teardown into a `SIGKILL`. This
+        reads the two methods back and fails on it.
+
+        A source-level pin in the same spirit as
+        `test_the_harness_opens_no_connection_of_its_own`: the property is a
+        design invariant that only shows up on a platform this suite may not be
+        running on, so the check has to be one that runs anyway.
+        """
+        stop_source = inspect.getsource(WorkerProcess.stop)
+        kill_source = inspect.getsource(WorkerProcess.kill)
+
+        assert "force=False" in stop_source, (
+            "stop() no longer asks politely before forcing -- it is now kill() under "
+            "another name, and every POSIX teardown just became a SIGKILL"
+        )
+        assert "force=True" in stop_source, (
+            "stop() no longer forces after its grace period, so a worker that ignores "
+            "SIGTERM would outlive teardown and poison the next scenario"
+        )
+        assert "force=False" not in kill_source, (
+            "kill() now asks politely first, so it is no longer the unplanned loss the "
+            "durability scenarios are written against"
+        )
+        assert "force=True" in kill_source
 
     def test_the_environment_is_overlaid_rather_than_replaced(self, tmp_path: Path) -> None:
         """A worker launched with a bare env cannot reach any datastore.
