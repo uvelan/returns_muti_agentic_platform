@@ -33,12 +33,17 @@ from return_platform.operations.return_support.resolution_ladder import (
     AGENT_ID,
     EscalationReason,
     LadderDependencies,
+    LadderRungUnserviceable,
     build_resolution_ladder,
+    compiled_rungs,
     make_finalize_node,
     make_sync_graph_node,
     parse_resolution_attempt,
 )
 from return_platform.operations.return_support.resolution_state import (
+    RUNG_FACTS,
+    RUNG_GRAPH,
+    RUNG_TOOL,
     SUPPORT_RESOLVER_CHECKPOINT_ALLOWLIST,
     SupportResolverState,
     support_resolver_thread_id,
@@ -226,13 +231,19 @@ def build_deps(
     tools: StubTools | None = None,
     writer: StubFactWriter | None = None,
 ) -> LadderDependencies:
+    resolved_facts = facts or StubFacts(log=[_fact("fact-1", "support_message_received", {"a": 1})])
     return LadderDependencies(
         configuration=configuration or SupportResolverConfiguration(),
         context_policy=StubContextPolicy(),
-        facts=facts or StubFacts(log=[_fact("fact-1", "support_message_received", {"a": 1})]),
+        facts=resolved_facts,
         resolver=resolver or StubResolver(),
         graph_sync=graph_sync or StubGraphSync(),
         graph_read=graph_read or StubGraphRead(),
+        # The same stub object satisfies both ports here, which is fine for a
+        # *fully supplied* deployment -- the split exists so a deployment that
+        # supplies only one cannot pretend to have both, and that is asserted in
+        # `TestRungAvailabilityIsStructural` rather than here.
+        trusted_facts=resolved_facts,
         tools=tools or StubTools(),
         append_scoped_fact_once=writer or StubFactWriter(),
         intent_taxonomy=TAXONOMY,
@@ -765,3 +776,171 @@ def test_an_unreadable_confidence_reads_as_zero(raw: Mapping[str, Any]) -> None:
     read is an answer no threshold has cleared, and `True` is excluded from the
     integer branch so a boolean cannot become the confidence 1."""
     assert parse_resolution_attempt(raw).confidence_millionths == 0
+
+
+# ------------------------------------------- rung availability, structurally
+
+
+def _facts_only_deps(
+    *, resolver: StubResolver | None = None, writer: StubFactWriter | None = None
+) -> LadderDependencies:
+    """A deployment that can serve rung one and nothing else.
+
+    Which is the production shape on this base: there is no `GraphReadPort`, no
+    `TrustedEntityPort` and no `ToolExecutor` contract allowlist anywhere in
+    `src/`, and `tool_bindings` is empty by released default.
+    """
+    return LadderDependencies(
+        configuration=SupportResolverConfiguration(),
+        context_policy=StubContextPolicy(),
+        facts=StubFacts(log=[_fact("fact-1", "support_message_received", {"a": 1})]),
+        resolver=resolver or StubResolver(),
+        append_scoped_fact_once=writer or StubFactWriter(),
+        intent_taxonomy=TAXONOMY,
+    )
+
+
+class TestRungAvailabilityIsStructural:
+    """An unserviceable rung is **absent from the compiled graph**.
+
+    The alternative shapes were each considered and are each worse. A
+    `GraphReadPort` returning `{}` hands the model an empty context it can still
+    answer confidently from, under the platform's own name. A port whose method
+    raises is accepted at construction and swallowed at the first real question.
+    Both look finished; neither is.
+    """
+
+    def test_a_facts_only_deployment_compiles_a_graph_with_no_graph_or_tool_nodes(
+        self,
+    ) -> None:
+        compiled = build_resolution_ladder(_facts_only_deps())
+        nodes = set(compiled.nodes)
+        assert "sync_graph" not in nodes
+        assert "resolve_from_graph" not in nodes
+        assert "route_tool" not in nodes
+        assert {"resolve_from_facts", "finalize", "escalate"} <= nodes
+
+    def test_the_reported_inventory_is_the_topology_and_cannot_drift_from_it(self) -> None:
+        """`compiled_rungs` is checked against the nodes actually compiled.
+
+        Asserted for all four combinations rather than for the one this base
+        ships, because the failure being prevented is a later edit that adds a
+        rung to the topology and forgets the inventory (or the reverse) -- an
+        operator would then read "the tool rung is unreachable" from a function
+        that had stopped describing the graph.
+        """
+        node_for_rung = {RUNG_GRAPH: "resolve_from_graph", RUNG_TOOL: "route_tool"}
+        for graph_ports in (False, True):
+            for tool_ports in (False, True):
+                deps = LadderDependencies(
+                    configuration=SupportResolverConfiguration(),
+                    context_policy=StubContextPolicy(),
+                    facts=StubFacts(),
+                    resolver=StubResolver(),
+                    append_scoped_fact_once=StubFactWriter(),
+                    intent_taxonomy=TAXONOMY,
+                    graph_sync=StubGraphSync() if graph_ports else None,
+                    graph_read=StubGraphRead() if graph_ports else None,
+                    trusted_facts=StubFacts() if tool_ports else None,
+                    tools=StubTools() if tool_ports else None,
+                    principal_id="platform-support-resolver" if tool_ports else None,
+                )
+                nodes = set(build_resolution_ladder(deps).nodes)
+                inventory = compiled_rungs(deps)
+                assert inventory[0] == RUNG_FACTS
+                for rung, node in node_for_rung.items():
+                    assert (rung in inventory) == (node in nodes), (
+                        f"compiled_rungs says {rung!r} "
+                        f"{'is' if rung in inventory else 'is not'} available, but the "
+                        f"compiled graph {'has' if node in nodes else 'lacks'} {node!r}"
+                    )
+
+    @pytest.mark.asyncio
+    async def test_a_facts_only_ladder_escalates_instead_of_entering_a_rung_it_lacks(
+        self,
+    ) -> None:
+        """Sub-threshold with nowhere to descend to. The honest outcome.
+
+        `rungs_attempted` reports **only** `case_facts`, which is the assertion
+        that matters: an escalation naming a rung the deployment does not have
+        would tell an associate the graph was consulted when no graph was read.
+        """
+        resolver = StubResolver(answers=[dict(UNSURE)])
+        deps = _facts_only_deps(resolver=resolver)
+        final = await run(deps, initial_state())
+
+        assert final.get("resolution") is None
+        assert final["escalation"]["reason"] == EscalationReason.SUB_THRESHOLD.value
+        assert final["escalation"]["resolutionAttempts"] == [RUNG_FACTS]
+        # One invocation, not three: the rungs that were not compiled in did not
+        # quietly spend the budget on an empty context.
+        assert resolver.calls == 1
+        assert final["llm_invocations_used"] == 1
+
+    @pytest.mark.asyncio
+    async def test_a_graph_but_no_tool_deployment_stops_after_the_graph_rung(self) -> None:
+        resolver = StubResolver(answers=[dict(UNSURE), dict(UNSURE)])
+        deps = LadderDependencies(
+            configuration=SupportResolverConfiguration(),
+            context_policy=StubContextPolicy(),
+            facts=StubFacts(log=[_fact("fact-1", "support_message_received", {"a": 1})]),
+            resolver=resolver,
+            append_scoped_fact_once=StubFactWriter(),
+            intent_taxonomy=TAXONOMY,
+            graph_sync=StubGraphSync(),
+            graph_read=StubGraphRead(),
+        )
+        assert compiled_rungs(deps) == (RUNG_FACTS, RUNG_GRAPH)
+
+        final = await run(deps, initial_state())
+        assert final["escalation"]["resolutionAttempts"] == [RUNG_FACTS, RUNG_GRAPH]
+        assert final.get("tool_refusal") is None
+        assert resolver.calls == 2
+
+    @pytest.mark.parametrize(
+        ("kwargs", "expected"),
+        [
+            ({"graph_sync": "sync"}, "graph_sync and graph_read"),
+            ({"graph_read": "read"}, "graph_sync and graph_read"),
+            ({"tools": "tools"}, "trusted_facts, tools and principal_id"),
+            ({"trusted_facts": "trusted"}, "trusted_facts, tools and principal_id"),
+            ({"principal_id": "platform"}, "trusted_facts, tools and principal_id"),
+            (
+                {"tools": "tools", "trusted_facts": "trusted"},
+                "trusted_facts, tools and principal_id",
+            ),
+            ({"tools": "tools", "principal_id": "   "}, "trusted_facts, tools and principal_id"),
+            # The case that **isolates the blank check**, and the reason the
+            # row above does not: with `principal_id` merely `is not None`, that
+            # row still has a missing `trusted_facts` to refuse on, so it passes
+            # either way. Here all three fields are present and only the
+            # identity is empty -- so this row fails, and only fails, when the
+            # emptiness stops being noticed. (Injecting `is not None` in place
+            # of the strip check left the whole suite green until this was
+            # added: 35 passed, blind.)
+            (
+                {"tools": "tools", "trusted_facts": "trusted", "principal_id": "   "},
+                "trusted_facts, tools and principal_id",
+            ),
+        ],
+    )
+    def test_half_a_rung_is_refused_at_construction(
+        self, kwargs: dict[str, Any], expected: str
+    ) -> None:
+        """Every one-and-two-of-three combination, not a representative one.
+
+        A blank `principal_id` is in the table twice on purpose: it is the shape
+        that would otherwise satisfy an `is not None` check and run every tool
+        under an empty identity.
+        """
+        with pytest.raises(LadderRungUnserviceable) as raised:
+            LadderDependencies(
+                configuration=SupportResolverConfiguration(),
+                context_policy=StubContextPolicy(),
+                facts=StubFacts(),
+                resolver=StubResolver(),
+                append_scoped_fact_once=StubFactWriter(),
+                intent_taxonomy=TAXONOMY,
+                **kwargs,
+            )
+        assert expected in str(raised.value)

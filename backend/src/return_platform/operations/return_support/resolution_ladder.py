@@ -99,11 +99,14 @@ __all__ = [
     "GraphReadPort",
     "GraphSyncPort",
     "LadderDependencies",
+    "LadderRungUnserviceable",
     "ResolutionAttempt",
     "ResolutionInvokerPort",
     "ScopedFactWriterPort",
     "ToolExecutorPort",
+    "TrustedEntityPort",
     "build_resolution_ladder",
+    "compiled_rungs",
     "make_finalize_node",
     "make_sync_graph_node",
     "parse_resolution_attempt",
@@ -236,17 +239,42 @@ class ResolutionInvokerPort(Protocol):
 
 
 class CaseFactsPort(Protocol):
-    """The case's own record, in the two shapes the ladder needs.
+    """The case's whole fact log, for the *prompt*.
 
-    Two methods rather than one because they are two different projections with
-    two different trust meanings: `fact_log` is everything, which
-    `assemble_case_context` collapses and budgets for the *prompt*; and
-    `trusted_entities` is the entity-keyed projection the *tool router* may take
-    arguments from. Serving both from one call would invite a caller to pass the
-    prompt's projection to the router.
+    Two **separate ports** rather than one with two methods, which is what this
+    used to be. The docstring then warned that serving both projections from one
+    object "would invite a caller to pass the prompt's projection to the router";
+    phase 2 found that the warning was the only thing enforcing it, and a warning
+    is not a boundary. Now the trust projection is a different type
+    (`TrustedEntityPort`), supplied through a different field, and required only
+    by the rung that is allowed to use it -- so a deployment that has decided
+    nothing about tool-argument trust cannot accidentally hand the router the
+    bag `assemble_case_context` budgets for the prompt.
+
+    `fact_log` is the whole log, not a projection: `assemble_case_context`
+    performs the scoped-latest collapse itself so the ordering rule and the
+    projection rule are applied by one piece of code in one order.
     """
 
     async def fact_log(self, case_id: str) -> Sequence[Mapping[str, Any]]: ...
+
+
+class TrustedEntityPort(Protocol):
+    """The entity-keyed projection the *tool router* may take arguments from.
+
+    Deliberately its own port, and deliberately **not implemented anywhere in
+    `src/` yet**. `trusted_entities_from` documents its input as "a scoped-latest
+    fact projection keyed by **entity name**", and nothing in this build maps
+    fact names onto entity names. Choosing that mapping decides what a released
+    tool binding is allowed to be filled from, which is the trust decision
+    contracts.md sect. 9 puts *behind* the tool boundary rather than at a wiring
+    site -- so it is not invented here.
+
+    The consequence is structural rather than advisory: with no implementation
+    to supply, `LadderDependencies` carries no tool rung, and
+    `build_resolution_ladder` compiles a graph that does not contain one. See
+    `LadderDependencies.tool_rung_available`.
+    """
 
     async def trusted_entities(
         self, case_id: str
@@ -301,26 +329,93 @@ class ScopedFactWriterPort(Protocol):
     ) -> bool: ...
 
 
+class LadderRungUnserviceable(ValueError):
+    """A rung was half-supplied. Neither a full rung nor an absent one.
+
+    Raised at construction rather than tolerated, because the two halves of a
+    rung fail at different moments and the failure of either is invisible: a
+    graph read with no sync reads a stale graph and answers confidently from it;
+    a tool executor with no trusted-entity source refuses every invocation and
+    reports `MISSING_REQUIRED_ENTITY`, which reads exactly like a case that
+    genuinely lacked the entity. Both are wiring mistakes that look like
+    outcomes.
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class LadderDependencies:
-    """Everything the nodes need, supplied once at build time."""
+    """Everything the nodes need, supplied once at build time.
+
+    ## A rung the deployment cannot serve is **absent**, not stubbed
+
+    Three of the ports below have no implementation in `src/` and cannot get one
+    without deciding something this slice does not own -- what the resolver reads
+    from the graph, which facts may fill a tool argument, which contract classes
+    an executor admits, and under whose authority it runs. The tempting shapes
+    are all worse than absence: a `GraphReadPort` that returns `{}` hands a model
+    an empty context it can still answer confidently from; a port whose method
+    raises is accepted at construction and swallowed at runtime.
+
+    So they are `None`-able, and `build_resolution_ladder` compiles a graph
+    **without the nodes they would have fed**. `rungs_attempted` on the finished
+    state then reports what was actually tried, an escalation says the descent
+    ran out of rungs rather than that a rung silently answered nothing, and
+    `tool_rung_available` is a fact about the compiled topology that a test can
+    assert instead of a claim in a docstring.
+
+    Half a rung is refused outright -- see `LadderRungUnserviceable`.
+    """
 
     configuration: SupportResolverConfiguration
     context_policy: ContextPolicy
     facts: CaseFactsPort
     resolver: ResolutionInvokerPort
-    graph_sync: GraphSyncPort
-    graph_read: GraphReadPort
-    tools: ToolExecutorPort
     append_scoped_fact_once: ScopedFactWriterPort
     #: The taxonomy a classification must be a member of before it can select a
     #: tool. Supplied from `support_ingress.normalized_intents`, so the resolver
     #: and the classifier score against the same closed set.
     intent_taxonomy: frozenset[str]
+
+    # -- The graph rung. Both or neither. -------------------------------------
+    graph_sync: GraphSyncPort | None = None
+    graph_read: GraphReadPort | None = None
+
+    # -- The tool rung. All three or none. ------------------------------------
+    trusted_facts: TrustedEntityPort | None = None
+    tools: ToolExecutorPort | None = None
     #: Whose authority a tool runs under. The *platform's* service principal,
     #: never the support sender's: a message from outside the tenancy must not
-    #: be able to borrow an internal principal's reach.
-    principal_id: str
+    #: be able to borrow an internal principal's reach. There is no default and
+    #: no placeholder -- a deployment that has not named one has no tool rung.
+    principal_id: str | None = None
+
+    def __post_init__(self) -> None:
+        graph = (self.graph_sync is not None, self.graph_read is not None)
+        if any(graph) and not all(graph):
+            raise LadderRungUnserviceable(
+                "the graph rung needs both graph_sync and graph_read; a read without a "
+                "sync answers from a graph nobody refreshed, and a sync without a read "
+                "pays for a refresh nothing consumes"
+            )
+        tool = (
+            self.trusted_facts is not None,
+            self.tools is not None,
+            bool(self.principal_id and self.principal_id.strip()),
+        )
+        if any(tool) and not all(tool):
+            raise LadderRungUnserviceable(
+                "the tool rung needs trusted_facts, tools and principal_id together; a "
+                "partially supplied tool rung refuses every invocation for a reason "
+                "indistinguishable from a case that genuinely lacked the entity"
+            )
+
+    @property
+    def graph_rung_available(self) -> bool:
+        return self.graph_read is not None
+
+    @property
+    def tool_rung_available(self) -> bool:
+        return self.tools is not None
 
 
 # ------------------------------------------------------------------- the nodes
@@ -417,6 +512,7 @@ def make_sync_graph_node(deps: LadderDependencies):
         """
         if state.get("graph_synced"):
             return {}
+        assert deps.graph_sync is not None  # the node is not compiled in without it
         receipt_id = await deps.graph_sync.synchronize_for_case(case_id=state["case_id"])
         return {"graph_synced": True, "graph_sync_receipt_id": receipt_id}
 
@@ -428,6 +524,7 @@ def make_resolve_from_graph_node(deps: LadderDependencies):
         """Rung two: answer from the graph, and say whether it agrees with rung one."""
         if _exhausted(state, deps):
             return {"budget_exhausted": True, "rungs_attempted": _rungs(state, RUNG_GRAPH)}
+        assert deps.graph_read is not None  # the node is not compiled in without it
         graph_view = await deps.graph_read.read_case_graph(case_id=state["case_id"])
         raw = await deps.resolver.invoke(
             payload=_resolve_payload(
@@ -469,10 +566,21 @@ def make_route_tool_node(deps: LadderDependencies):
                 },
                 "rungs_attempted": rungs,
             }
-        case_facts, fact_ids = await deps.facts.trusted_entities(state["case_id"])
-        graph_view = await deps.graph_read.read_case_graph(case_id=state["case_id"])
+        assert deps.trusted_facts is not None  # the node is not compiled in without it
+        assert deps.tools is not None
+        assert deps.principal_id is not None
+        case_facts, fact_ids = await deps.trusted_facts.trusted_entities(state["case_id"])
+        # `None` when there is no graph rung. `trusted_entities_from` treats
+        # `None` and `{}` identically today, so this is a statement of intent
+        # rather than a behavioural difference -- said plainly because a comment
+        # claiming a distinction the code does not make is worse than no comment.
+        graph_view = (
+            dict(await deps.graph_read.read_case_graph(case_id=state["case_id"]))
+            if deps.graph_read is not None
+            else None
+        )
         trusted = trusted_entities_from(
-            case_facts=case_facts, fact_ids=fact_ids, graph_results=dict(graph_view)
+            case_facts=case_facts, fact_ids=fact_ids, graph_results=graph_view
         )
         outcome = plan_tool_invocation(
             intent, deps.configuration.bindings_for_intent(intent.value), trusted
@@ -701,13 +809,30 @@ def _cleared(answer: Mapping[str, Any] | None, threshold: int) -> bool:
     return answer is not None and int(answer["confidenceMillionths"]) >= threshold
 
 
+def _next_rung_after_facts(deps: LadderDependencies) -> str:
+    """Where an uncleared fact answer descends to, given what is compiled in.
+
+    The descent order of sect. 9 with the unserviceable rungs removed, rather
+    than a fixed `"sync_graph"` that would name a node the graph does not have.
+    """
+    if deps.graph_rung_available:
+        return "sync_graph"
+    if deps.tool_rung_available:
+        return "route_tool"
+    return "escalate"
+
+
+def _next_rung_after_graph(deps: LadderDependencies) -> str:
+    return "route_tool" if deps.tool_rung_available else "escalate"
+
+
 def make_route_after_facts(deps: LadderDependencies):
     def route_after_facts(state: SupportResolverState) -> str:
         if state.get("budget_exhausted"):
             return "escalate"
         if _cleared(state.get("fact_answer"), deps.configuration.fact_confidence_millionths):
             return "finalize"
-        return "sync_graph"
+        return _next_rung_after_facts(deps)
 
     return route_after_facts
 
@@ -727,7 +852,7 @@ def make_route_after_graph(deps: LadderDependencies):
             return "escalate"
         if _cleared(state.get("graph_answer"), deps.configuration.graph_confidence_millionths):
             return "finalize"
-        return "route_tool"
+        return _next_rung_after_graph(deps)
 
     return route_after_graph
 
@@ -745,23 +870,36 @@ def make_route_after_tool(deps: LadderDependencies):
     return route_after_tool
 
 
-_AFTER_FACTS_TARGETS: dict[Hashable, str] = {
-    "finalize": "finalize",
-    "sync_graph": "sync_graph",
-    "escalate": "escalate",
-}
-_AFTER_GRAPH_TARGETS: dict[Hashable, str] = {
-    "finalize": "finalize",
-    "route_tool": "route_tool",
-    "escalate": "escalate",
-}
 _AFTER_TOOL_TARGETS: dict[Hashable, str] = {"finalize": "finalize", "escalate": "escalate"}
+
+
+def compiled_rungs(deps: LadderDependencies) -> tuple[str, ...]:
+    """Which rungs a ladder built from these dependencies actually has.
+
+    Exported so a composition site, a test and an operator can all read the same
+    answer to "is the tool rung reachable in this deployment?" -- and so that
+    answer comes from the dependencies rather than from a comment.
+    """
+    rungs = [RUNG_FACTS]
+    if deps.graph_rung_available:
+        rungs.append(RUNG_GRAPH)
+    if deps.tool_rung_available:
+        rungs.append(RUNG_TOOL)
+    return tuple(rungs)
 
 
 def build_resolution_ladder(
     deps: LadderDependencies, *, checkpointer: BaseCheckpointSaver[str] | None = None
 ) -> CompiledStateGraph[SupportResolverState, None]:
     """Compile the ladder. Topology only -- behaviour lives in the node factories.
+
+    **The topology is the rung inventory.** A rung whose ports the deployment
+    could not supply is not compiled in, so it cannot be entered, cannot appear
+    in `rungs_attempted`, and cannot answer nothing convincingly. The conditional
+    target maps are built from the same availability the routers read, because a
+    map naming a node that was never added is a compile-time error in LangGraph
+    and a router returning a name absent from the map is a runtime one -- keeping
+    both from one source is what stops the two drifting.
 
     `checkpointer` is a `SystemStoreCheckpointSaver` in every non-unit context
     (contracts.md sect. 9); `InMemorySaver`/`MemorySaver` are forbidden outside
@@ -770,21 +908,30 @@ def build_resolution_ladder(
     graph: StateGraph[SupportResolverState, None] = StateGraph(SupportResolverState)
 
     graph.add_node("resolve_from_facts", make_resolve_from_facts_node(deps))
-    graph.add_node("sync_graph", make_sync_graph_node(deps))
-    graph.add_node("resolve_from_graph", make_resolve_from_graph_node(deps))
-    graph.add_node("route_tool", make_route_tool_node(deps))
     graph.add_node("finalize", make_finalize_node(deps))
     graph.add_node("escalate", make_escalate_node(deps))
 
+    after_facts: dict[Hashable, str] = {"finalize": "finalize", "escalate": "escalate"}
+    after_graph: dict[Hashable, str] = {"finalize": "finalize", "escalate": "escalate"}
+
+    if deps.graph_rung_available:
+        graph.add_node("sync_graph", make_sync_graph_node(deps))
+        graph.add_node("resolve_from_graph", make_resolve_from_graph_node(deps))
+        after_facts["sync_graph"] = "sync_graph"
+    if deps.tool_rung_available:
+        graph.add_node("route_tool", make_route_tool_node(deps))
+        after_facts["route_tool"] = "route_tool"
+        after_graph["route_tool"] = "route_tool"
+
     graph.set_entry_point("resolve_from_facts")
-    graph.add_conditional_edges(
-        "resolve_from_facts", make_route_after_facts(deps), _AFTER_FACTS_TARGETS
-    )
-    graph.add_edge("sync_graph", "resolve_from_graph")
-    graph.add_conditional_edges(
-        "resolve_from_graph", make_route_after_graph(deps), _AFTER_GRAPH_TARGETS
-    )
-    graph.add_conditional_edges("route_tool", make_route_after_tool(deps), _AFTER_TOOL_TARGETS)
+    graph.add_conditional_edges("resolve_from_facts", make_route_after_facts(deps), after_facts)
+    if deps.graph_rung_available:
+        graph.add_edge("sync_graph", "resolve_from_graph")
+        graph.add_conditional_edges(
+            "resolve_from_graph", make_route_after_graph(deps), after_graph
+        )
+    if deps.tool_rung_available:
+        graph.add_conditional_edges("route_tool", make_route_after_tool(deps), _AFTER_TOOL_TARGETS)
     graph.add_edge("finalize", END)
     graph.add_edge("escalate", END)
 
