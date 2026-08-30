@@ -9528,6 +9528,52 @@ export interface components {
             /** State */
             state: string;
         };
+        /**
+         * ReviewRefusal
+         * @description The envelope FastAPI wraps a raised `HTTPException` in.
+         */
+        ReviewRefusal: {
+            detail: components["schemas"]["ReviewRefusalDetail"];
+        };
+        /**
+         * ReviewRefusalDetail
+         * @description The `detail` a refusal from this surface carries.
+         *
+         *     **Declared, because the console branches on it.** FastAPI documents the
+         *     bodies a handler *returns* and knows nothing about the ones it raises, so
+         *     every 409 and 404 here was absent from the OpenAPI document -- and a
+         *     response shape a client reads and the contract does not mention is drift
+         *     with nothing watching it. The console's MSW conformance test found this by
+         *     refusing to validate a mocked 409 against a contract that declared none.
+         *
+         *     `state` is the field contracts.md sect. 6 is really asking for: the UI
+         *     surfaces *the transition*, and "this review is already approving" is
+         *     actionable where "409 Conflict" is not. `code` is the exception's own class
+         *     name so a client can branch on the kind -- an unresolved conflict offers
+         *     Resolve, a stale version offers Reload -- and a new error type shows up as
+         *     an unknown code rather than as silence.
+         */
+        ReviewRefusalDetail: {
+            /** Actual */
+            actual?: number | null;
+            /** Code */
+            code: string;
+            /** Expected */
+            expected?: number | null;
+            /** Field */
+            field?: string | null;
+            /** Message */
+            message: string;
+            /**
+             * Retryable
+             * @default false
+             */
+            retryable: boolean;
+            /** State */
+            state?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** ReviseReviewRequest */
         ReviseReviewRequest: {
             /** Note */
@@ -15671,6 +15717,22 @@ export interface operations {
                     "application/json": components["schemas"]["APIResponse_CasePanelView_"];
                 };
             };
+            /** @description The panel is unchanged since the supplied `If-None-Match`. No body; composition ran anyway (DR-10 trades bandwidth, not work). */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such case, or not the caller's. Absent, never forbidden. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -15705,6 +15767,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_ReviewActionResult_"];
+                };
+            };
+            /** @description No such case, or no such review on it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
+                };
+            };
+            /** @description The store's truth moved under this request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
                 };
             };
             /** @description Validation Error */
@@ -15743,6 +15823,24 @@ export interface operations {
                     "application/json": components["schemas"]["APIResponse_ReviewActionResult_"];
                 };
             };
+            /** @description No such case, or no such review on it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
+                };
+            };
+            /** @description The store's truth moved under this request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -15773,6 +15871,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_EditStateResult_"];
+                };
+            };
+            /** @description No such case, or no such review on it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
+                };
+            };
+            /** @description The store's truth moved under this request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
                 };
             };
             /** @description Validation Error */
@@ -15811,6 +15927,24 @@ export interface operations {
                     "application/json": components["schemas"]["APIResponse_EditStateResult_"];
                 };
             };
+            /** @description No such case, or no such review on it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
+                };
+            };
+            /** @description The store's truth moved under this request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -15845,6 +15979,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_ReviewActionResult_"];
+                };
+            };
+            /** @description No such case, or no such review on it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
+                };
+            };
+            /** @description The store's truth moved under this request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
                 };
             };
             /** @description Validation Error */
@@ -15883,6 +16035,24 @@ export interface operations {
                     "application/json": components["schemas"]["APIResponse_ReviewActionResult_"];
                 };
             };
+            /** @description No such case, or no such review on it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
+                };
+            };
+            /** @description The store's truth moved under this request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -15917,6 +16087,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_ReviewActionResult_"];
+                };
+            };
+            /** @description No such case, or no such review on it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
+                };
+            };
+            /** @description The store's truth moved under this request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
                 };
             };
             /** @description Validation Error */
@@ -15955,6 +16143,24 @@ export interface operations {
                     "application/json": components["schemas"]["APIResponse_ReviewActionResult_"];
                 };
             };
+            /** @description No such case, or no such review on it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
+                };
+            };
+            /** @description The store's truth moved under this request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -15985,6 +16191,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_ReviewActionResult_"];
+                };
+            };
+            /** @description No such case, or no such review on it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
+                };
+            };
+            /** @description The store's truth moved under this request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
                 };
             };
             /** @description Validation Error */

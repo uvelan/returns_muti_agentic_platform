@@ -15442,6 +15442,89 @@
         "title": "ReviewPanelView",
         "type": "object"
       },
+      "ReviewRefusal": {
+        "additionalProperties": false,
+        "description": "The envelope FastAPI wraps a raised `HTTPException` in.",
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/ReviewRefusalDetail"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ReviewRefusal",
+        "type": "object"
+      },
+      "ReviewRefusalDetail": {
+        "additionalProperties": true,
+        "description": "The `detail` a refusal from this surface carries.\n\n**Declared, because the console branches on it.** FastAPI documents the\nbodies a handler *returns* and knows nothing about the ones it raises, so\nevery 409 and 404 here was absent from the OpenAPI document -- and a\nresponse shape a client reads and the contract does not mention is drift\nwith nothing watching it. The console's MSW conformance test found this by\nrefusing to validate a mocked 409 against a contract that declared none.\n\n`state` is the field contracts.md sect. 6 is really asking for: the UI\nsurfaces *the transition*, and \"this review is already approving\" is\nactionable where \"409 Conflict\" is not. `code` is the exception's own class\nname so a client can branch on the kind -- an unresolved conflict offers\nResolve, a stale version offers Reload -- and a new error type shows up as\nan unknown code rather than as silence.",
+        "properties": {
+          "actual": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "expected": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "retryable": {
+            "default": false,
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ReviewRefusalDetail",
+        "type": "object"
+      },
       "ReviseReviewRequest": {
         "additionalProperties": false,
         "properties": {
@@ -26523,6 +26606,19 @@
             },
             "description": "Successful Response"
           },
+          "304": {
+            "description": "The panel is unchanged since the supplied `If-None-Match`. No body; composition ran anyway (DR-10 trades bandwidth, not work)."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "No such case, or not the caller's. Absent, never forbidden."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -26584,6 +26680,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "No such case, or no such review on it."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "The store's truth moved under this request."
           },
           "422": {
             "content": {
@@ -26647,6 +26763,26 @@
             },
             "description": "Successful Response"
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "No such case, or no such review on it."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "The store's truth moved under this request."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -26698,6 +26834,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "No such case, or no such review on it."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "The store's truth moved under this request."
           },
           "422": {
             "content": {
@@ -26758,6 +26914,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "No such case, or no such review on it."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "The store's truth moved under this request."
           },
           "422": {
             "content": {
@@ -26821,6 +26997,26 @@
             },
             "description": "Successful Response"
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "No such case, or no such review on it."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "The store's truth moved under this request."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -26882,6 +27078,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "No such case, or no such review on it."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "The store's truth moved under this request."
           },
           "422": {
             "content": {
@@ -26945,6 +27161,26 @@
             },
             "description": "Successful Response"
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "No such case, or no such review on it."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "The store's truth moved under this request."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -27007,6 +27243,26 @@
             },
             "description": "Successful Response"
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "No such case, or no such review on it."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "The store's truth moved under this request."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -27058,6 +27314,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "No such case, or no such review on it."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "The store's truth moved under this request."
           },
           "422": {
             "content": {

@@ -56,11 +56,20 @@ function withoutComments(source: string): string {
  * even one that renders a draft and writes nothing. So the preview sits with
  * the return-platform routers it renders for, and joins the same consolidation
  * wave as the two above rather than getting a canonical alias of its own.
+ *
+ * The case panel and its review endpoints are the fourth, and they are the one
+ * entry here that is not a gap at all: `contracts.md` sect. 9 **names the
+ * paths** -- `GET /api/v1/cases/{id}/panel` and the review mutations beneath it
+ * -- and that file is frozen and read-only to every track. A console that
+ * called anything else would be calling a route the backend does not serve.
+ * The prefix leaves with the same consolidation wave as the three above, by
+ * amending sect. 9 rather than by a screen deciding on its own.
  */
 const ALLOWED = [
   "/api/v2/order-agent/",
   "/api/v1/return-support/",
   "/api/v1/config/support-template/",
+  "/api/v1/cases/",
 ];
 
 it("never requests a versioned API path, except the agent turn endpoint", () => {

@@ -391,6 +391,62 @@ class _Body(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class ReviewRefusalDetail(BaseModel):
+    """The `detail` a refusal from this surface carries.
+
+    **Declared, because the console branches on it.** FastAPI documents the
+    bodies a handler *returns* and knows nothing about the ones it raises, so
+    every 409 and 404 here was absent from the OpenAPI document -- and a
+    response shape a client reads and the contract does not mention is drift
+    with nothing watching it. The console's MSW conformance test found this by
+    refusing to validate a mocked 409 against a contract that declared none.
+
+    `state` is the field contracts.md sect. 6 is really asking for: the UI
+    surfaces *the transition*, and "this review is already approving" is
+    actionable where "409 Conflict" is not. `code` is the exception's own class
+    name so a client can branch on the kind -- an unresolved conflict offers
+    Resolve, a stale version offers Reload -- and a new error type shows up as
+    an unknown code rather than as silence.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    code: str
+    message: str
+    retryable: bool = False
+    #: Present whenever the store knew it. `None` on a 404, where there is no
+    #: review to have a state.
+    state: str | None = None
+    #: Which version moved, on a compare-and-set refusal.
+    field: str | None = None
+    expected: int | None = None
+    actual: int | None = None
+
+
+class ReviewRefusal(BaseModel):
+    """The envelope FastAPI wraps a raised `HTTPException` in."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    detail: ReviewRefusalDetail
+
+
+#: Attached to every mutation on this surface. Both statuses, because they are
+#: different answers to different questions and the console renders them
+#: differently: a 409 offers the action that would resolve it, a 404 says the
+#: review is gone and reloads the panel.
+_REFUSALS: dict[int | str, dict[str, Any]] = {
+    status.HTTP_409_CONFLICT: {
+        "model": ReviewRefusal,
+        "description": "The store's truth moved under this request.",
+    },
+    status.HTTP_404_NOT_FOUND: {
+        "model": ReviewRefusal,
+        "description": "No such case, or no such review on it.",
+    },
+}
+
+
 class ApproveReviewRequest(_Body):
     """**The exact field names contracts.md sect. 6 fixes.**
 
@@ -485,6 +541,7 @@ class EditStateResult(BaseModel):
 
 @router.get(
     "/{case_id}/reviews/{review_id}/edit-state",
+    responses=_REFUSALS,
     response_model=APIResponse[EditStateResult],
 )
 async def read_edit_state(
@@ -534,6 +591,7 @@ async def read_edit_state(
 
 @router.put(
     "/{case_id}/reviews/{review_id}/edit-state",
+    responses=_REFUSALS,
     response_model=APIResponse[EditStateResult],
 )
 async def write_edit_state(
@@ -588,6 +646,7 @@ async def write_edit_state(
 
 @router.post(
     "/{case_id}/reviews/{review_id}/edit-state/resolve",
+    responses=_REFUSALS,
     response_model=APIResponse[ReviewActionResult],
 )
 async def resolve_edit_state(
@@ -629,6 +688,7 @@ async def resolve_edit_state(
 
 @router.post(
     "/{case_id}/reviews/{review_id}/approve",
+    responses=_REFUSALS,
     response_model=APIResponse[ReviewActionResult],
 )
 async def approve_review(
@@ -678,6 +738,7 @@ async def approve_review(
 
 @router.post(
     "/{case_id}/reviews/{review_id}/revise",
+    responses=_REFUSALS,
     response_model=APIResponse[ReviewActionResult],
 )
 async def revise_review(
@@ -731,6 +792,7 @@ async def revise_review(
 
 @router.post(
     "/{case_id}/reviews/{review_id}/cancel",
+    responses=_REFUSALS,
     response_model=APIResponse[ReviewActionResult],
 )
 async def cancel_review(
@@ -783,6 +845,7 @@ async def cancel_review(
 
 @router.post(
     "/{case_id}/reviews/{review_id}/template-review/redraft",
+    responses=_REFUSALS,
     response_model=APIResponse[ReviewActionResult],
 )
 async def redraft_review(
@@ -844,6 +907,7 @@ async def redraft_review(
 
 @router.post(
     "/{case_id}/reviews/{review_id}/recovery/retry",
+    responses=_REFUSALS,
     response_model=APIResponse[ReviewActionResult],
 )
 async def retry_review_delivery(
@@ -886,6 +950,7 @@ async def retry_review_delivery(
 
 @router.post(
     "/{case_id}/reviews/{review_id}/recovery/abandon",
+    responses=_REFUSALS,
     response_model=APIResponse[ReviewActionResult],
 )
 async def abandon_review(

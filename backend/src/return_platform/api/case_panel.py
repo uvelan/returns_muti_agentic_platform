@@ -28,6 +28,10 @@ from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Request, Response, status
 
+# Module level, and safe: `case_reviews` imports this module's *operations*
+# sibling, never this one. The lazy imports further down are for the request-time
+# helpers, which is a different problem (they reach app state).
+from return_platform.api.case_reviews import ReviewRefusal
 from return_platform.operations.case_panel import (
     AcceptedCommandView,
     CasePanelView,
@@ -302,7 +306,29 @@ def _audit(value: Any) -> dict[str, Any] | None:
     }
 
 
-@router.get("/{case_id}/panel", response_model=APIResponse[CasePanelView])
+@router.get(
+    "/{case_id}/panel",
+    # **Declared, because a client has to be written against them.** FastAPI
+    # documents what a handler returns and knows nothing about what it raises,
+    # so without this the conditional read -- the half of DR-10's mechanism a
+    # poll spends most of its life in -- appears nowhere in the contract, and
+    # the console's ETag branch would be written against an undocumented
+    # response. The 304 declares no model because it has no body; that is the
+    # point of it.
+    responses={
+        status.HTTP_304_NOT_MODIFIED: {
+            "description": (
+                "The panel is unchanged since the supplied `If-None-Match`. No body; "
+                "composition ran anyway (DR-10 trades bandwidth, not work)."
+            ),
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "model": ReviewRefusal,
+            "description": "No such case, or not the caller's. Absent, never forbidden.",
+        },
+    },
+    response_model=APIResponse[CasePanelView],
+)
 async def read_case_panel(
     case_id: str,
     request: Request,
