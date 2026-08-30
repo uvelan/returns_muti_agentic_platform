@@ -17,7 +17,7 @@ refusals, and both of them about the same mistake in different clothes:
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -277,6 +277,84 @@ async def test_the_time_based_sweep_still_relaunches_an_ordinary_stalled_case() 
 
     assert await sweep.recover_once() == 1
     assert launcher.calls == [CASE_ID]
+
+
+def test_a_repository_without_the_link_repair_is_refused_at_construction() -> None:
+    """The one failure the broad catch in `_repair_workflow_link` could hide.
+
+    A missing method is not an operational failure: it fails identically for
+    every case on every pass, so the sweep would degrade silently back to the
+    starvation the repair exists to prevent, visible only as warnings nobody
+    is watching. Loud at wiring time instead.
+    """
+
+    class _WithoutRepair:
+        async def list_cases_without_workflow(
+            self, *, created_before: datetime, limit: int
+        ) -> list[dict[str, Any]]:
+            del created_before, limit
+            return []
+
+    with pytest.raises(TypeError, match="bind_case_workflow"):
+        ReturnCaseWorkflowRecovery(
+            launcher=_RecordingLauncher(),
+            repository=cast(Any, _WithoutRepair()),
+        )
+
+
+@_async
+async def test_an_operational_link_failure_does_not_stop_the_sweep() -> None:
+    """One case's link must not block the cases behind it.
+
+    This is what the broad catch is *for*, and it stays broad for it: a
+    transient write failure is per-case and self-correcting, because the write
+    is retried on every later pass.
+    """
+
+    class _FlakyBind(_PendingCases):
+        async def bind_case_workflow(self, case_id: str, *, workflow_id: str) -> bool:
+            if case_id == "case-waiting-flaky":
+                raise RuntimeError("mongo said no, this once")
+            return await super().bind_case_workflow(case_id, workflow_id=workflow_id)
+
+    queue = _FlakyBind(
+        [
+            _case(case_id="case-waiting-flaky", status=CaseStatus.AWAITING_SUPPORT),
+            _case(
+                case_id="case-never-launched",
+                status=CaseStatus.GATHERING_INFO,
+                created_at=LONG_AGO + timedelta(days=1),
+            ),
+        ]
+    )
+    launcher = _RecordingLauncher(queue)
+    sweep = ReturnCaseWorkflowRecovery(launcher=launcher, repository=queue)
+
+    await sweep.recover_once()
+
+    # The flaky case kept its null link and will be retried; the case behind it
+    # was still reached.
+    assert queue.cases[0]["workflowId"] is None
+    assert launcher.calls == ["case-never-launched"]
+
+
+@_async
+async def test_a_programming_error_in_the_link_repair_is_not_swallowed() -> None:
+    """`AttributeError` is not operational, so it is not caught.
+
+    Swallowing a programming error into a per-case warning is precisely how an
+    invisible permanent degradation gets built.
+    """
+
+    class _BrokenBind(_PendingCases):
+        async def bind_case_workflow(self, case_id: str, *, workflow_id: str) -> bool:
+            raise AttributeError("no such attribute on the underlying store")
+
+    queue = _BrokenBind([_case(status=CaseStatus.AWAITING_SUPPORT)])
+    sweep = ReturnCaseWorkflowRecovery(launcher=_RecordingLauncher(), repository=queue)
+
+    with pytest.raises(AttributeError):
+        await sweep.recover_once()
 
 
 @_async
