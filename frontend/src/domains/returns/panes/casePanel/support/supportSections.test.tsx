@@ -258,12 +258,12 @@ describe("the return-record cards", () => {
 });
 
 describe("the parked-messages entry", () => {
-  function renderParked(payload: Record<string, unknown>, parkedMessages = 0) {
+  function renderParked(payload: Record<string, unknown>) {
     const contributed = section(SUPPORT_SECTION_IDS.parked, payload);
     return render(
       <SupportParkedSection
         section={contributed}
-        panel={panelWith([contributed], { parked_messages: parkedMessages })}
+        panel={panelWith([contributed])}
         caseId="case-1"
       />,
     );
@@ -387,8 +387,12 @@ describe("what arrives while somebody is typing", () => {
   });
 
   it("announces a message being parked as its own event", async () => {
-    const before = panelWith([], { parked_messages: 0 });
-    const after = panelWith([], { parked_messages: 1 });
+    // Through the contributed section, which is the only source there is:
+    // `CasePanelView.parked_messages` is hardcoded `0` and unfillable
+    // (AMENDMENT-6), so a test driving it would be exercising a field that can
+    // never move on a real panel.
+    const before = panelWith([section(SUPPORT_SECTION_IDS.parked, { count: 0 })]);
+    const after = panelWith([section(SUPPORT_SECTION_IDS.parked, { count: 1 })]);
     const { rerender } = render(announcer(before));
     rerender(announcer(after));
     await waitFor(() => {

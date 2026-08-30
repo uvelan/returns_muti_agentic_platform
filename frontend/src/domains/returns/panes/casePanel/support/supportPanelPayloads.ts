@@ -94,6 +94,40 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
+ * The same field, in either casing a contributor might have used.
+ *
+ * **This is not tidiness, it is the failure mode of an opaque payload.**
+ * `PanelSectionView.payload` is opaque by design, so each contributor owns its
+ * own key convention -- and this codebase has two live ones. V1's `_return_records`
+ * deliberately *converts* the store's camelCase to snake_case for the panel DTO;
+ * V2's own backend surface (`SupportMessageAcceptedView`, the relay's system
+ * entries, `list_inbound`) is camelCase throughout; V3's section payload is
+ * camelCase.
+ *
+ * Neither is wrong, and that is the problem: a reader that bet on one would draw
+ * **nothing** against a contributor that chose the other, and it would do it
+ * silently -- an empty section reads exactly like a case Support has said nothing
+ * about, and every test built on a hand-written payload stays green. AMENDMENT-6
+ * is the same class of defect, found the same way, and it cost a whole slice's
+ * section.
+ *
+ * So the reader takes both spellings and the question stops being load-bearing.
+ * The snake_case name is canonical -- it is what this module's shapes are
+ * documented in, and what the MSW handler emits -- and the camelCase twin is
+ * derived rather than listed, so a field added later cannot be added to one list
+ * and forgotten in the other.
+ */
+function camel(key: string): string {
+  return key.replace(/_([a-z0-9])/g, (_, char: string) => char.toUpperCase());
+}
+
+function field(source: Record<string, unknown>, key: string): unknown {
+  if (key in source) return source[key];
+  const twin = camel(key);
+  return twin === key ? undefined : source[twin];
+}
+
+/**
  * A string field, whitespace-collapsed, or `null` for anything that is not a
  * non-empty string.
  *
@@ -118,7 +152,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 export function readString(source: unknown, key: string): string | null {
   if (!isRecord(source)) return null;
-  const value = source[key];
+  const value = field(source, key);
   if (typeof value !== "string") return null;
   return displayText(value);
 }
@@ -126,7 +160,7 @@ export function readString(source: unknown, key: string): string | null {
 /** An object field, or `null`. Accepts a one-element array of one, see below. */
 export function readObject(source: unknown, key: string): Record<string, unknown> | null {
   if (!isRecord(source)) return null;
-  const value = source[key];
+  const value = field(source, key);
   if (isRecord(value)) return value;
   // A contributor that serialises a single-valued group as a one-element list
   // is a shape this reader can honour without ambiguity, and the alternative --
@@ -139,21 +173,21 @@ export function readObject(source: unknown, key: string): Record<string, unknown
 /** A finite non-negative integer field, or `null`. Never `NaN`, never a coerced string. */
 export function readCount(source: unknown, key: string): number | null {
   if (!isRecord(source)) return null;
-  const value = source[key];
+  const value = field(source, key);
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0) return null;
   return value;
 }
 
 export function readBoolean(source: unknown, key: string): boolean | null {
   if (!isRecord(source)) return null;
-  const value = source[key];
+  const value = field(source, key);
   return typeof value === "boolean" ? value : null;
 }
 
 /** An array of objects, skipping anything in it that is not one. */
 export function readObjects(source: unknown, key: string): readonly Record<string, unknown>[] {
   if (!isRecord(source)) return [];
-  const value = source[key];
+  const value = field(source, key);
   if (!Array.isArray(value)) return [];
   return value.filter(isRecord);
 }
@@ -412,26 +446,32 @@ export type SupportDigestPayload = {
   readonly total: number | null;
 };
 
-export function readDigestPayload(
-  section: PanelSectionView | undefined,
-  panelDigest: readonly Record<string, unknown>[],
-): SupportDigestPayload {
-  // The panel's own `support_digest[]` is the fallback source. It is declared
-  // on `CasePanelView` and V1 leaves it empty; whichever of the two a
-  // deployment fills, the console draws the same thing.
-  const fromSection = readObjects(section?.payload, "messages");
-  const source = fromSection.length > 0 ? fromSection : panelDigest;
-
+/**
+ * The digest, **from the contributed section and nowhere else** (AMENDMENT-6).
+ *
+ * This read `CasePanelView.support_digest` as a fallback until the amendment.
+ * That field could never be filled by anybody: a registered contributor returns
+ * a `PanelSectionView | None` into `sections[]`, it cannot write a top-level
+ * field, and `api/case_panel.py` hardcodes `support_digest=()`. So the fallback
+ * was a branch that ran on every real panel and produced nothing, while every
+ * test built on a hand-written `CasePanelView` stayed green -- the same defect
+ * V3 measured on `clarifications`, where restricting the reader to the dead
+ * field failed 3 tests of 14 and left 11 passing.
+ *
+ * It is gone rather than kept "just in case". A fallback to a source that cannot
+ * have a value is not resilience; it is a second path that hides the first one
+ * failing.
+ */
+export function readDigestPayload(section: PanelSectionView | undefined): SupportDigestPayload {
   return {
-    messages: source.flatMap((entry) => {
+    messages: readObjects(section?.payload, "messages").flatMap((entry) => {
       const supportEventId = readString(entry, "support_event_id");
       if (supportEventId === null) return [];
       return [
         {
           supportEventId,
           sender:
-            readString(entry, "sender_display_name") ??
-            readString(entry, "sender"),
+            readString(entry, "sender_display_name") ?? readString(entry, "sender"),
           status: readString(entry, "status"),
           intent: readString(entry, "intent"),
           preview: readString(entry, "preview"),
@@ -463,18 +503,18 @@ export type SupportParkedPayload = {
   readonly quota: number | null;
 };
 
-export function readParkedPayload(
-  section: PanelSectionView | undefined,
-  panelParkedMessages: number,
-): SupportParkedPayload {
-  // `CasePanelView.parked_messages` is the count V1 declared and sect. 9 puts
-  // in the shared body; the section carries the detail around it. Taking the
-  // count from the section when it has one keeps the two from disagreeing on a
-  // screen -- and taking the panel's otherwise means the entry still appears on
-  // a deployment whose contributor has not shipped.
-  const fromSection = readCount(section?.payload, "count");
+/**
+ * The parked count, **from the contributed section and nowhere else**.
+ *
+ * Same reasoning and the same amendment as the digest above:
+ * `CasePanelView.parked_messages` is hardcoded `0` and no contributor can change
+ * it, so a `?? panel.parked_messages` fallback would resolve to zero on every
+ * real panel -- which is to say, the parked entry would never appear, on exactly
+ * the deployments where an operator most needs it.
+ */
+export function readParkedPayload(section: PanelSectionView | undefined): SupportParkedPayload {
   return {
-    count: fromSection ?? panelParkedMessages,
+    count: readCount(section?.payload, "count") ?? 0,
     nlEnabled: readBoolean(section?.payload, "nl_enabled"),
     oldestParkedAtIso: readString(section?.payload, "oldest_parked_at_iso"),
     quota: readCount(section?.payload, "quota"),

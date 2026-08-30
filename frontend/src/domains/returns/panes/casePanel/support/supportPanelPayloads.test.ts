@@ -267,6 +267,45 @@ describe("the return-records section", () => {
     expect(payload).toEqual({ records: [], placement: null, unbound: [], framingPromptKey: null });
   });
 
+  it("reads a record card whichever casing the contributor chose", () => {
+    const camel = readRecordsPayload(
+      section({
+        records: [
+          {
+            returnRecordId: "rec-9",
+            returnReference: "a reference",
+            artifacts: [{ artifactType: "TRACKING", value: "a parcel", status: "BOUND" }],
+          },
+        ],
+        placement: { facilityId: "a site", bayId: "an aisle", reason: null },
+        framingPromptKey: "support-multi-record-do-not-mix",
+      }),
+      [],
+    );
+    // Pinned against the values, not against a snake_case read of the same
+    // payload: two readers returning the same emptiness would agree perfectly.
+    expect(camel.records).toEqual([
+      {
+        returnRecordId: "rec-9",
+        returnReference: "a reference",
+        status: null,
+        returnMethod: null,
+        artifacts: [
+          {
+            artifactType: "TRACKING",
+            label: "Tracking",
+            value: "a parcel",
+            status: "BOUND",
+            evidenceSpan: null,
+            supportEventId: null,
+          },
+        ],
+      },
+    ]);
+    expect(camel.placement).toEqual({ facilityId: "a site", bayId: "an aisle", reason: null });
+    expect(camel.framingPromptKey).toBe("support-multi-record-do-not-mix");
+  });
+
   it("carries the framing key and never a sentence", () => {
     const payload = readRecordsPayload(section({ framing_prompt_key: "support-multi-record" }), []);
     expect(payload.framingPromptKey).toBe("support-multi-record");
@@ -289,7 +328,6 @@ describe("the thread digest", () => {
         ],
         total: 23,
       }),
-      [],
     );
     expect(payload).toEqual({
       messages: [
@@ -309,31 +347,75 @@ describe("the thread digest", () => {
   });
 
   it("says nothing about the total rather than claiming the cap is it", () => {
-    const payload = readDigestPayload(section({ messages: [{ support_event_id: "evt-1" }] }), []);
+    const payload = readDigestPayload(section({ messages: [{ support_event_id: "evt-1" }] }));
     expect(payload.total).toBeNull();
   });
 
-  it("falls back to the panel's own digest when no section carries one", () => {
-    const payload = readDigestPayload(undefined, [
-      { support_event_id: "evt-2", sender: "a transport", preview: "hello" },
+  it("reads the same message whichever casing the contributor chose", () => {
+    // The payload is opaque, so each contributor owns its key convention -- and
+    // this codebase has two live ones (V1 converts to snake_case for the DTO,
+    // V2's own backend surface and V3's section payload are camelCase). A reader
+    // that bet on one would draw **nothing** against a contributor that chose
+    // the other, silently, with every hand-written-payload test still green.
+    // That is AMENDMENT-6's defect exactly, so the question is not answered --
+    // it is removed.
+    const camel = readDigestPayload(
+      section({
+        messages: [
+          {
+            supportEventId: "evt-2",
+            senderDisplayName: "a transport",
+            recordedAtIso: "2026-08-30T10:00:00Z",
+          },
+        ],
+      }),
+    );
+    const snake = readDigestPayload(
+      section({
+        messages: [
+          {
+            support_event_id: "evt-2",
+            sender_display_name: "a transport",
+            recorded_at_iso: "2026-08-30T10:00:00Z",
+          },
+        ],
+      }),
+    );
+    // Equal to each other **and** to the value, so this is not two empty reads
+    // agreeing -- which is what the same test written as `toEqual(snake)` alone
+    // would have been.
+    expect(camel).toEqual(snake);
+    expect(camel.messages).toEqual([
+      {
+        supportEventId: "evt-2",
+        sender: "a transport",
+        status: null,
+        intent: null,
+        preview: null,
+        recordedAtIso: "2026-08-30T10:00:00Z",
+      },
     ]);
-    expect(payload.messages.map((m) => [m.supportEventId, m.sender])).toEqual([
-      ["evt-2", "a transport"],
-    ]);
+  });
+
+  it("reads nothing at all when no section carries a digest", () => {
+    // `CasePanelView.support_digest` is retired (AMENDMENT-6) and was
+    // unfillable before it was: a contributor returns a section, not a
+    // top-level field. There is no second source to fall back to, and a
+    // fallback to one that cannot have a value would only hide this one failing.
+    expect(readDigestPayload(undefined)).toEqual({ messages: [], total: null });
   });
 
   it("drops a message with no event id, and only that one", () => {
     const payload = readDigestPayload(
       section({ messages: [{ preview: "orphan" }, { support_event_id: "evt-3" }] }),
-      [],
     );
     expect(payload.messages.map((m) => m.supportEventId)).toEqual(["evt-3"]);
   });
 });
 
 describe("the parked-messages entry", () => {
-  it("prefers the contributor's count so the two reads cannot disagree on screen", () => {
-    expect(readParkedPayload(section({ count: 4, nl_enabled: false, quota: 50 }), 2)).toEqual({
+  it("takes the count the contributor gave", () => {
+    expect(readParkedPayload(section({ count: 4, nl_enabled: false, quota: 50 }))).toEqual({
       count: 4,
       nlEnabled: false,
       oldestParkedAtIso: null,
@@ -341,14 +423,33 @@ describe("the parked-messages entry", () => {
     });
   });
 
-  it("still shows the panel's count on a deployment whose contributor has not shipped", () => {
-    expect(readParkedPayload(undefined, 7).count).toBe(7);
+  it("counts nothing when no section says so, rather than reading a field nobody can fill", () => {
+    // `CasePanelView.parked_messages` is hardcoded `0` in `api/case_panel.py`
+    // and no contributor can write it (AMENDMENT-6). A `?? panel.parked_messages`
+    // fallback resolved to zero on every real panel, so the entry would never
+    // have appeared -- on exactly the deployments where an operator needs it.
+    expect(readParkedPayload(undefined)).toEqual({
+      count: 0,
+      nlEnabled: null,
+      oldestParkedAtIso: null,
+      quota: null,
+    });
+  });
+
+  it("reads the same entry whichever casing the contributor chose", () => {
+    const camel = readParkedPayload(section({ count: 4, nlEnabled: false, quota: 50 }));
+    expect(camel).toEqual({
+      count: 4,
+      nlEnabled: false,
+      oldestParkedAtIso: null,
+      quota: 50,
+    });
   });
 
   it("asserts no cause when the contributor did not state one", () => {
     // "These are on file" is true either way. "Natural-language intake is off"
     // is a claim about a release this console has not read.
-    expect(readParkedPayload(section({ count: 1 }), 0).nlEnabled).toBeNull();
+    expect(readParkedPayload(section({ count: 1 })).nlEnabled).toBeNull();
   });
 });
 

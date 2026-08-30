@@ -253,10 +253,10 @@ export function SupportRecordsSection({ section, panel }: PanelSectionRendererPr
  * The thread digest
  * ---------------------------------------------------------------------- */
 
-export function SupportDigestSection({ section, panel }: PanelSectionRendererProps) {
+export function SupportDigestSection({ section }: PanelSectionRendererProps) {
   if (isDegraded(section)) return <Degraded what="The messages from Support" />;
 
-  const payload = readDigestPayload(section, panel.support_digest);
+  const payload = readDigestPayload(section);
   if (payload.messages.length === 0) return null;
 
   return (
@@ -304,10 +304,10 @@ export function SupportDigestSection({ section, panel }: PanelSectionRendererPro
  * Parked messages
  * ---------------------------------------------------------------------- */
 
-export function SupportParkedSection({ section, panel }: PanelSectionRendererProps) {
+export function SupportParkedSection({ section }: PanelSectionRendererProps) {
   if (isDegraded(section)) return <Degraded what="Whether Support has messages waiting" />;
 
-  const payload = readParkedPayload(section, panel.parked_messages);
+  const payload = readParkedPayload(section);
   if (payload.count === 0) return null;
 
   const plural = payload.count === 1 ? "message" : "messages";
@@ -377,7 +377,7 @@ function arrivalSignature(props: PanelSectionRendererProps): string {
     find(SUPPORT_SECTION_IDS.records),
     props.panel.return_records,
   );
-  const parked = readParkedPayload(find(SUPPORT_SECTION_IDS.parked), props.panel.parked_messages);
+  const parked = readParkedPayload(find(SUPPORT_SECTION_IDS.parked));
   const artifacts = records.records.reduce((total, card) => total + card.artifacts.length, 0);
   return `${String(artifacts)}|${String(records.unbound.length)}|${String(parked.count)}`;
 }
