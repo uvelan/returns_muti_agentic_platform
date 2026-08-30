@@ -17,7 +17,7 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | V2 phase 1b | feat/v2-ingress-relay | awaiting RV · candidate 04caf5d | — | — |
 | V2 phase 2 (frontend) | (same branch, later) | BLOCKED on V1 panel seam | — | — |
 | V3 backend | feat/v3-resolver-clarification | CHANGES_REQUIRED (F1 only) → to fix · was 8d2e43a | 1 · CR (3d8715f) | — |
-| S1 phase 1b | feat/s1-actor-id | IN_PROGRESS · adds the `actorId` §4 promises | — | — |
+| S1 phase 1b | feat/s1-actor-id | UNDER_RV_REVIEW · candidate 5fb1d41 | 1 open | — |
 | V3 frontend | (same branch, later) | BLOCKED on V1 panel seam | — | — |
 | ACC-1 (harness) | feat/acc-harness | **MERGED** | 2 · CR (ba19fd8) → PASS (9cb3508) | c1c2b0f |
 | ACC-2 (scenarios) | not yet cut | BLOCKED on V3 | — | — |
@@ -80,6 +80,13 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 - **OpenAPI regen is six files, not one** — `npm run contracts:generate` covers `frontend/openapi/…json` + the `.d.ts`; repo-root `scripts/check_openapi_drift.py --write` then covers `openapi/`, `backend/openapi/`, root `openapi.json` and `docs/evidence/stage4_contract_closure/openapi_drift_receipt.json`. Run the drift writer, not just the npm script.
 - **Merging any two slices that both touched OpenAPI requires a `.d.ts` regen** — this bit once already at the S2 merge (`fc574c7`). The JSON snapshots merged cleanly; only the generated TypeScript needed rebuilding.
 - **`return_configuration.py` conflicts on every slice merge** — each slice appends its own config field and import. Resolution is always "keep both", verified by loading the model. Seen at V1p2 base, the S2 merge, and the V3 base.
+
+## Queued follow-up dispatches (small, dependent on a merge landing)
+
+- **V3 adopts `actorId`** — `operations/return_support/clarification.py` (~172): add `actor_id=answer.actor_id`, delete `"answeredBy"` from the value dict, fix the stale docstring paragraph and any test reading `value["answeredBy"]`. *Not* `api/canonical_ai.py`'s `answeredBy` (234/353/397) — unrelated pre-existing interception surface. Dispatch after S1 phase 1b merges and V3's F1 fix clears.
+- **V1 phase 2 adopts `actorId`** — `operations/support_template_gate.py` `record_revision` (~650): add `actor_id=actor_id`, drop the value-level key, delete the stopgap comment that already says to. Its other `actorId` uses are their own documents and correct as-is.
+- **Integration: close `CaseFactProjection`** — `case_projection/contract.py:154` is an explicit allowlist that drops `actorId`, so case-level command facts reach the REST view **without their principal**. Two lines plus regeneration of five published artifacts pinned by `test_openapi_contract_drift.py`; S1 fenced it off because §3 assigns regeneration to integration. `actorId` is readable today via `latest_case_facts_scoped`, `list_case_facts` and `CaseFactView`.
+- **Trap both adopters must handle:** `ScopedFactAppendPort` is `(*, record_scope, **fact)`, so `actor_id` **type-checks through `**fact`** — a double will capture `fact["actor_id"]` while production stores top-level `actorId`. Bind it explicitly in doubles and assert the stored key. This run has already been bitten once by a `**fact` double that hid five dead writes.
 
 ## Carry-forward conditions (orchestrator-owned; must be written into the named future brief)
 
