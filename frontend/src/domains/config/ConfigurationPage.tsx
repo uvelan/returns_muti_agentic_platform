@@ -9,6 +9,7 @@ import {
 } from "../../api/configuration";
 import { useCapabilities } from "../../hooks/capabilityContext";
 import { AgentsSection } from "./AgentsSection";
+import { SupportTemplateSection } from "./SupportTemplateSection";
 import { type CONFIG_SECTIONS, requireDomain } from "../registry";
 import { useDomainSection } from "../useDomainSection";
 import { JsonView } from "./JsonView";
@@ -104,6 +105,8 @@ function TabBody({ tab, canReadReleases }: { tab: Tab; canReadReleases: boolean 
       return <OverviewTab canReadReleases={canReadReleases} />;
     case "Agents":
       return <AgentsSection />;
+    case "Support Template":
+      return <SupportTemplateSection />;
     case "Runtime":
       return <RuntimeTab />;
     case "Releases":

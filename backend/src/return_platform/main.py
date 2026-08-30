@@ -61,6 +61,7 @@ from return_platform.api.schema_releases import router as schema_releases_router
 from return_platform.api.seed import router as seed_router
 from return_platform.api.source_bindings import router as source_bindings_router
 from return_platform.api.support import router as support_router
+from return_platform.api.template_preview import router as template_preview_router
 from return_platform.api.warehouse_placement import router as warehouse_placement_router
 from return_platform.bootstrap.adapters.analyzer_agent_adapter import (
     build_analyzer_agent_adapter,
@@ -1402,6 +1403,9 @@ def create_app(
     # carries, not the surface's owner.
     fastapi_app.include_router(governance_proposals_router)
     fastapi_app.include_router(canonical_configuration_router)
+    # The support-template preview (V1): renders a draft against the built-in
+    # sample case for the Configuration editor; no case data is reachable.
+    fastapi_app.include_router(template_preview_router)
     # `/api/agents`, not `/api/config/agents` -- see that module's own docstring
     # for why the two surfaces stay separate. It was written, tested against
     # mocks and called by the console, and never mounted here: the lifespan sets

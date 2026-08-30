@@ -249,6 +249,28 @@ describe("Configuration tabs D3 backed", () => {
     expect(await screen.findByText(/PROMOTE_RELEASE/)).toBeInTheDocument();
   });
 
+  it("opens the support template on its own deep link", async () => {
+    // Registration end to end: the section is in `CONFIG_SECTIONS`, the slug
+    // `toSlug` derives from its label resolves back to it, and `TabBody` has an
+    // arm for it. A tab that is in the registry and missing from the switch
+    // renders nothing at all, silently.
+    mocks.runtime.mockResolvedValue({
+      release_id: "rel-1",
+      head_revision: 7,
+      configuration: {
+        support_template: {
+          template_id: "support-handoff",
+          default_variant_id: "default",
+          variants: [],
+        },
+      },
+    });
+    goToSection("/config", "support-template");
+    render(<ConfigurationPage />, { wrapper });
+
+    expect(await screen.findByText("Support handoff template")).toBeInTheDocument();
+  });
+
   it("says integrations are already served rather than pending", async () => {
     // The distinction matters: "pending" invites someone to build a duplicate
     // endpoint for data the runtime snapshot already carries.

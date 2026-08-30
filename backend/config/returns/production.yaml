@@ -1821,3 +1821,265 @@ shipment_tracking:
       exception_state: true
       color_token: error
       allowed_next: [pending_pickup, picked_up, at_origin_terminal, in_transit, at_destination_terminal, out_for_delivery, on_hand]
+
+# The support-handoff template (contracts.md sect. 8). The default variant
+# reproduces the text `compose_support_handoff` composes today -- line for
+# line, on every branch its conditionals take, which
+# `TestComposedEquivalenceMatrix` renders and compares case by case. The one
+# thing it does not reproduce is the *subject*: `_subject` joins its parts
+# conditionally and shortens them, and sect. 8's subject grammar is
+# interpolation only, so the subject here is a different (and simpler) line by
+# contract rather than by oversight.
+#
+# Four of today's lines are conditional -- the contact block's two arms, the
+# unresolved-bay reason, the manual-bay action, the outstanding-support list --
+# and the sect. 8 clause grammar describes the shape of a *case*
+# (shipping mode, reason class, order source, item count), never the presence
+# of a value. Those lines are therefore bound to keys that
+# `operations/support_template_draft.py` makes **present or absent**, with no
+# `fallback`: an absent key omits its line, exactly as the composed path omits
+# it. Giving them a fallback is what made the first version of this block
+# silently print "Not available" where the truth was "no bay could be
+# recommended, resolve manually".
+#
+# Formatters are ids from the code-side allowlist; `literal:` bindings are
+# constant text (contracts.md AMENDMENT-1). Every `case_fact:` name is declared
+# in `support_template_draft.TEMPLATE_CASE_FACT_KEYS`, and a test compares this
+# block against it in both directions.
+support_template:
+  template_id: support-handoff
+  default_variant_id: default
+  variants:
+    - variant_id: default
+      # Deliberately clause-less: a rule with no clauses matches nothing, and
+      # this variant renders because it is named default, not because it was
+      # listed first.
+      selector: {}
+      subject_template: "Return {order_number} · {customer_name}"
+      sections:
+        - &tpl_sec_banner
+          section_id: banner
+          title: RETURN SUPPORT REQUEST
+        - &tpl_sec_case
+          section_id: case
+          title: "Case:"
+          fields:
+            - field_id: case_id
+              label: Case ID
+              source_binding: "case_fact:case_id"
+              required: true
+            - field_id: work_item_id
+              label: Work Item ID
+              source_binding: "case_fact:work_item_id"
+              fallback: Not available
+            - field_id: created_at
+              label: Created Date/Time
+              source_binding: "case_fact:created_at"
+              formatter: date
+              fallback: Not available
+            - field_id: workflow_status
+              label: Workflow Status at Handoff
+              source_binding: "case_fact:workflow_status_at_handoff"
+              fallback: Not available
+        - &tpl_sec_customer
+          section_id: customer
+          title: "Customer:"
+          fields:
+            - field_id: customer_name
+              label: Customer Name
+              source_binding: "case_fact:customer_name"
+              fallback: Not available
+            - field_id: customer_reference
+              label: Customer Reference
+              source_binding: "case_fact:customer_id"
+              fallback: Not available
+            - field_id: customer_account
+              label: Account
+              source_binding: "case_fact:customer_account"
+              fallback: Not available
+            # The contact block, two mutually exclusive arms. Exactly one arm's
+            # three keys is ever present, so the other arm's three lines are
+            # omitted -- never rendered as "Not available", which is what lost
+            # the customer's own phone and email on every case with no named
+            # branch associate. No `fallback` on any of the six, on purpose.
+            - field_id: contact_associate_name
+              label: Branch Associate
+              source_binding: "case_fact:contact_associate_name"
+            - field_id: contact_associate_email
+              label: Branch Associate Email
+              source_binding: "case_fact:contact_associate_email"
+            - field_id: contact_associate_phone
+              label: Branch Associate Phone
+              source_binding: "case_fact:contact_associate_phone"
+            - field_id: contact_customer_notice
+              label: Branch Associate
+              source_binding: "case_fact:contact_customer_notice"
+            - field_id: contact_customer_phone
+              label: Customer Phone
+              source_binding: "case_fact:contact_customer_phone"
+            - field_id: contact_customer_email
+              label: Customer Email
+              source_binding: "case_fact:contact_customer_email"
+        - &tpl_sec_order
+          section_id: order
+          title: "Order:"
+          fields:
+            - field_id: order_number
+              label: Order Number
+              source_binding: "case_fact:confirmed_order_reference"
+              fallback: Not available
+            - field_id: selected_items
+              source_binding: "case_fact:selected_items"
+              formatter: item_list
+              fallback: "- Selected lines: Not available"
+        - &tpl_sec_return_details
+          section_id: return_details
+          title: "Return Details:"
+          fields:
+            - field_id: return_method
+              label: Return Method
+              source_binding: "case_fact:return_method"
+              fallback: Not available
+            - field_id: requested_resolution
+              label: Requested Resolution
+              source_binding: "case_fact:requested_resolution"
+              fallback: Not available
+            - field_id: product_presence
+              label: Product Presence
+              source_binding: "case_fact:product_presence"
+              fallback: Not available
+            # Whatever else the release requires, already labelled by the
+            # release rather than by this template -- which is what lets a
+            # release add a required detail without either being edited.
+            # Absent when the case carries none.
+            - field_id: return_details_additional
+              source_binding: "case_fact:return_details_additional"
+            # The rendered notes, not the raw fact: anything in an associate's
+            # words that could impersonate this message's framing is stripped
+            # before it gets here, and binding the raw fact would drop that.
+            - field_id: associate_notes
+              label: Associate Notes
+              source_binding: "case_fact:associate_notes_rendered"
+              fallback: Not available
+        - &tpl_sec_bay
+          section_id: bay_assignment
+          title: "Bay Assignment:"
+          fields:
+            - field_id: bay_status
+              label: Assignment Status
+              source_binding: "case_fact:bay_assignment_status"
+              fallback: UNRESOLVED
+            - field_id: bay_reference
+              label: Recommended Bay
+              source_binding: "case_fact:bay_reference"
+              fallback: Not available
+            - field_id: bay_warehouse
+              label: Warehouse/Branch
+              source_binding: "case_fact:bay_warehouse_reference"
+              fallback: Not available
+            - field_id: bay_return_location
+              label: Return Location
+              source_binding: "case_fact:bay_return_location"
+              fallback: Not available
+            - field_id: bay_handling
+              label: Handling/Staging Instructions
+              source_binding: "case_fact:bay_handling_instructions"
+              fallback: Not available
+            # Present only when no bay was recommended, which is exactly when
+            # Support needs it. No fallback: absence omits the line.
+            - field_id: bay_unresolved_reason
+              label: Unresolved Reason
+              source_binding: "case_fact:bay_unresolved_reason"
+        - &tpl_sec_verification
+          section_id: verification
+          title: "Verification:"
+          fields:
+            - field_id: order_confirmation
+              label: Order Confirmation
+              source_binding: "case_fact:order_confirmation"
+              fallback: Not confirmed
+            - field_id: required_return_information
+              label: Required Return Information
+              source_binding: "case_fact:required_return_information"
+              fallback: Incomplete
+            # Three states, and the third is silence: nothing outstanding omits
+            # the line, an unreadable case state says so in words. "Nothing is
+            # outstanding" and "we could not find out" send Support to opposite
+            # actions, so neither may render as the other.
+            - field_id: awaiting_from_support
+              label: Awaiting From Support
+              source_binding: "case_fact:awaiting_from_support"
+            - field_id: policy_evaluation
+              label: Policy Evaluation
+              source_binding: "case_fact:policy_evaluation_rendered"
+              fallback: Not evaluated
+            - field_id: bay_source
+              label: Bay Assignment Source
+              source_binding: "literal:Bay Assignment Agent"
+        - section_id: requested_action
+          title: "Requested Support Action:"
+          fields:
+            - field_id: action_review
+              source_binding: "literal:- Review the complete return request."
+            - field_id: action_bay
+              source_binding: "literal:- Review or confirm the bay recommendation."
+            - field_id: manual_bay_action
+              source_binding: "case_fact:manual_bay_action_line"
+            - field_id: action_verify
+              source_binding: "literal:- Verify all Support-owned conditions, including warranty when applicable."
+            - field_id: action_rma
+              source_binding: "literal:- Create or decline the RMA through the authoritative Support workflow."
+    - variant_id: parcel
+      selector:
+        shipping_modes: [PREPAID_PARCEL, OFFSITE_PARCEL]
+      subject_template: "Return {order_number} · {customer_name}"
+      sections:
+        - *tpl_sec_banner
+        - *tpl_sec_case
+        - *tpl_sec_customer
+        - *tpl_sec_order
+        - *tpl_sec_return_details
+        - *tpl_sec_bay
+        - *tpl_sec_verification
+        - section_id: requested_action
+          title: "Requested Support Action:"
+          fields:
+            - field_id: action_review
+              source_binding: "literal:- Review the complete return request."
+            - field_id: action_bay
+              source_binding: "literal:- Review or confirm the bay recommendation."
+            - field_id: manual_bay_action
+              source_binding: "case_fact:manual_bay_action_line"
+            - field_id: action_label
+              source_binding: "literal:- Issue the prepaid parcel return label."
+            - field_id: action_verify
+              source_binding: "literal:- Verify all Support-owned conditions, including warranty when applicable."
+            - field_id: action_rma
+              source_binding: "literal:- Create or decline the RMA through the authoritative Support workflow."
+    - variant_id: ltl
+      selector:
+        shipping_modes: [BRANCH_LTL, OFFSITE_LTL]
+      subject_template: "Return {order_number} · {customer_name}"
+      sections:
+        - *tpl_sec_banner
+        - *tpl_sec_case
+        - *tpl_sec_customer
+        - *tpl_sec_order
+        - *tpl_sec_return_details
+        - *tpl_sec_bay
+        - *tpl_sec_verification
+        - section_id: requested_action
+          title: "Requested Support Action:"
+          fields:
+            - field_id: action_review
+              source_binding: "literal:- Review the complete return request."
+            - field_id: action_bay
+              source_binding: "literal:- Review or confirm the bay recommendation."
+            - field_id: manual_bay_action
+              source_binding: "case_fact:manual_bay_action_line"
+            - field_id: action_freight
+              source_binding: "literal:- Arrange LTL freight pickup and issue the Bill of Lading."
+            - field_id: action_verify
+              source_binding: "literal:- Verify all Support-owned conditions, including warranty when applicable."
+            - field_id: action_rma
+              source_binding: "literal:- Create or decline the RMA through the authoritative Support workflow."

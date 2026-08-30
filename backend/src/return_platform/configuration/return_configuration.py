@@ -12,6 +12,9 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from return_platform.configuration.settings import PRODUCTION_ENVIRONMENT
+from return_platform.configuration.support_template_configuration import (
+    SupportTemplateConfiguration,
+)
 from return_platform.policy.eligibility_policy import ReturnEligibilityPolicy
 from return_platform.policy.vocabulary import ReturnReason
 
@@ -1700,6 +1703,9 @@ class ReturnPlatformConfiguration(StrictConfigModel):
     #: Nothing may read `None` as "approve" or even as "review"; an absent policy
     #: is an operational failure, not an eligibility outcome.
     return_eligibility_policy: ReturnEligibilityPolicy | None = None
+    support_template: SupportTemplateConfiguration = Field(
+        default_factory=SupportTemplateConfiguration
+    )
 
     @model_validator(mode="after")
     def validate_required_agents(self) -> ReturnPlatformConfiguration:

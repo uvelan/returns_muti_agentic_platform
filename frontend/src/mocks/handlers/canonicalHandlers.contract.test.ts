@@ -224,6 +224,45 @@ const ROUTES: readonly Route[] = [
     body: {},
     status: 422,
   },
+  {
+    method: "post",
+    handler: "/api/v1/config/support-template/preview",
+    contract: "/api/v1/config/support-template/preview",
+    url: "/api/v1/config/support-template/preview",
+    body: {
+      template: {
+        template_id: "support-handoff",
+        default_variant_id: "default",
+        variants: [
+          {
+            variant_id: "default",
+            selector: {},
+            subject_template: "Return {order_number}",
+            sections: [
+              {
+                section_id: "order",
+                title: "Order:",
+                fields: [
+                  {
+                    field_id: "order_number",
+                    label: "Order Number",
+                    source_binding: "case_fact:confirmed_order_reference",
+                    required: true,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      context: {
+        shipping_modes: [],
+        return_reason_classes: [],
+        order_sources: [],
+        item_count: 1,
+      },
+    },
+  },
   { method: "get", handler: "/api/config/audit", contract: "/api/config/audit", url: "/api/config/audit" },
   { method: "get", handler: "/api/config/sources", contract: "/api/config/sources", url: "/api/config/sources" },
   {

@@ -325,6 +325,59 @@ const SESSION = {
 };
 
 /**
+ * The `support_template` block, as the runtime snapshot carries it.
+ *
+ * Two variants so the preview's variant selection is something to look at
+ * rather than a foregone conclusion: an LTL selector, and the clause-less
+ * default that is reached by being named `default_variant_id` rather than by
+ * matching anything.
+ */
+const MOCK_SUPPORT_TEMPLATE = {
+  template_id: "support-handoff",
+  default_variant_id: "default",
+  variants: [
+    {
+      variant_id: "ltl",
+      selector: { shipping_modes: ["BRANCH_LTL"] },
+      subject_template: "Freight return {order_number}",
+      sections: [
+        {
+          section_id: "order",
+          title: "Order:",
+          fields: [
+            {
+              field_id: "order_number",
+              label: "Order Number",
+              source_binding: "case_fact:confirmed_order_reference",
+              required: true,
+            },
+          ],
+        },
+      ],
+    },
+    {
+      variant_id: "default",
+      selector: {},
+      subject_template: "Return {order_number}",
+      sections: [
+        {
+          section_id: "order",
+          title: "Order:",
+          fields: [
+            {
+              field_id: "order_number",
+              label: "Order Number",
+              source_binding: "case_fact:confirmed_order_reference",
+              required: true,
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+/**
  * `configuration/api/sources.py::_definitions()`, as it is actually served.
  *
  * **No credential appears here, and that is not an omission to be tidied up.**
@@ -1155,7 +1208,15 @@ export const canonicalHandlers = [
           release_id: "rel-mock-1",
           checksum_sha256: "9f2c1a",
           source: "GRAPH",
-          configuration: { integrations: { omc: { enabled: true } } },
+          head_revision: 41,
+          configuration: {
+            integrations: { omc: { enabled: true } },
+            // A template small enough to read and real enough to preview: one
+            // default variant with one bound field. `dev:mock` shows the
+            // Support Template tab with something in it rather than the
+            // pre-template empty state, which is the rarer of the two.
+            support_template: MOCK_SUPPORT_TEMPLATE,
+          },
         },
         "runtime",
       ),
@@ -1179,6 +1240,62 @@ export const canonicalHandlers = [
       ),
     ),
   ),
+  /**
+   * The template preview, answered the way the backend answers it.
+   *
+   * The mock selects the variant from the posted context rather than returning
+   * a fixed one: variant selection is the thing the screen exists to show, and
+   * a mock that always said `default` would make the selector controls look
+   * broken in `dev:mock` while the real backend was fine.
+   */
+  http.post("/api/v1/config/support-template/preview", async ({ request }) => {
+    const body = (await request.json().catch(() => ({}))) as {
+      template?: {
+        template_id?: string;
+        default_variant_id?: string;
+        variants?: { variant_id?: string; selector?: { shipping_modes?: string[] } }[];
+      };
+      context?: { shipping_modes?: string[] };
+    };
+    const variants = body.template?.variants ?? [];
+    const modes = body.context?.shipping_modes ?? [];
+    const matched = variants.find((variant) =>
+      (variant.selector?.shipping_modes ?? []).some((mode) => modes.includes(mode)),
+    );
+    const variantId =
+      matched?.variant_id ?? body.template?.default_variant_id ?? "default";
+    return HttpResponse.json(
+      envelope(
+        {
+          template_id: body.template?.template_id ?? "support-handoff",
+          variant_id: variantId,
+          subject: "Return SAMPLE-ORDER-1",
+          text: "Order:\n- Order Number: SAMPLE-ORDER-1",
+          sections: [
+            {
+              section_id: "order",
+              title: "Order:",
+              return_record_id: null,
+              fields: [
+                {
+                  field_id: "order_number",
+                  label: "Order Number",
+                  value: "SAMPLE-ORDER-1",
+                  source: "case_fact",
+                  source_path: "confirmed_order_reference",
+                  fact_id: null,
+                  applied_fallback: false,
+                },
+              ],
+            },
+          ],
+          gaps: [],
+          review_blocked: false,
+        },
+        "support-template-preview",
+      ),
+    );
+  }),
   http.get("/api/config/releases", async () => {
     await delay(80);
     return HttpResponse.json(

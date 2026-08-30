@@ -5,6 +5,12 @@ import { ChevronDown, Plus, X } from "lucide-react";
 import { APIError } from "../../api/client";
 import { configApi } from "../../api/configuration";
 import {
+  defaultReleaseId,
+  runPublishPipeline,
+  type PublishStep,
+} from "../../api/releasePublish";
+import { PublishProgress } from "../../components/PublishProgress";
+import {
   aiControlCenterApi,
   type AIRouteHealthView,
   type AISafetyTestResult,
@@ -1667,56 +1673,6 @@ function runtimeSummaryOf(snapshot: Readonly<Record<string, unknown>>): RuntimeS
   };
 }
 
-type PublishStep = { name: string; state: "PENDING" | "RUNNING" | "DONE" | "FAILED" };
-
-/**
- * The release lifecycle as one call: draft, patch one domain, validate,
- * release. Shared by the provider editor and the task/prompt editor, because
- * two hand-rolled copies of a four-step mutation is how the two screens would
- * come to publish differently.
- */
-async function runPublishPipeline(options: {
-  releaseId: string;
-  domainKey: string;
-  patch: Readonly<Record<string, unknown>>;
-  headRevision: number | null;
-  onSteps: (steps: readonly PublishStep[]) => void;
-}): Promise<void> {
-  const plan: PublishStep[] = [
-    { name: `Create draft release ${options.releaseId}`, state: "PENDING" },
-    { name: `Patch ${options.domainKey} domain`, state: "PENDING" },
-    { name: "Promote to VALIDATED", state: "PENDING" },
-    { name: "Promote to RELEASED", state: "PENDING" },
-  ];
-  const mark = (index: number, state: PublishStep["state"]) => {
-    plan[index] = { ...plan[index], state };
-    options.onSteps([...plan]);
-  };
-  options.onSteps([...plan]);
-  const step = async (index: number, act: () => Promise<unknown>) => {
-    mark(index, "RUNNING");
-    try {
-      await act();
-    } catch (caught) {
-      mark(index, "FAILED");
-      throw caught;
-    }
-    mark(index, "DONE");
-  };
-  await step(0, () => configApi.createRelease(options.releaseId));
-  await step(1, () => configApi.patchDomain(options.releaseId, options.domainKey, options.patch));
-  await step(2, () => configApi.promote(options.releaseId, "VALIDATED"));
-  await step(3, () =>
-    configApi.promote(options.releaseId, "RELEASED", options.headRevision ?? undefined),
-  );
-}
-
-function defaultReleaseId(prefix: string): string {
-  const now = new Date();
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${prefix}-${String(now.getFullYear())}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-}
-
 /** A premium on/off control; a checkbox is the accessible engine underneath. */
 function Switch({
   checked,
@@ -1744,52 +1700,6 @@ function Switch({
   );
 }
 
-/** How the publish run is going, drawn once for both editors. */
-function PublishProgress({
-  steps,
-  error,
-  published,
-  publishedNote,
-}: {
-  steps: readonly PublishStep[];
-  error: string | null;
-  published: boolean;
-  publishedNote: string;
-}) {
-  return (
-    <>
-      {steps.length > 0 ? (
-        <ol className="flex flex-col gap-1 text-xs">
-          {steps.map((step) => (
-            <li key={step.name} className="flex items-center gap-2">
-              <span
-                aria-hidden="true"
-                className={`size-1.5 rounded-full ${
-                  step.state === "DONE"
-                    ? "bg-primary"
-                    : step.state === "FAILED"
-                      ? "bg-error"
-                      : step.state === "RUNNING"
-                        ? "bg-amber-500"
-                        : "bg-outline-variant"
-                }`}
-              />
-              <span className={step.state === "FAILED" ? "text-error" : "text-on-surface-variant"}>
-                {step.name}
-              </span>
-            </li>
-          ))}
-        </ol>
-      ) : null}
-      {error !== null ? (
-        <p role="alert" className="text-sm text-error">{error}</p>
-      ) : null}
-      {published ? (
-        <p role="status" className="text-sm text-primary">{publishedNote}</p>
-      ) : null}
-    </>
-  );
-}
 
 /**
  * The tasks a model may serve by default: every task whose tier matches the
