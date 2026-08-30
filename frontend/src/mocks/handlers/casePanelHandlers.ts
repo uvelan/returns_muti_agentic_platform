@@ -197,7 +197,41 @@ function panelBody() {
     },
     parked_messages: 0,
     accepted_commands: store.acceptedCommands,
-    sections: [],
+    /*
+     * V3's contributed section, so `dev:mock` can actually be walked: an
+     * unmatched tracking number, its evidence span, and the two RMAs the case
+     * holds as candidates. The payload is opaque to this file by design -- the
+     * seam is a JSON object precisely so V3's shape never enters V1's DTO -- and
+     * its own tests own the shape.
+     *
+     * `clarifications: []` above stays empty and is *not* where this lives: the
+     * top-level field cannot be written by any registered contributor, so a mock
+     * that filled it would be mocking a path production has no way to take.
+     */
+    sections: [
+      {
+        section_id: "clarifications",
+        status: "ok",
+        reason: null,
+        payload: {
+          clarifications: [
+            {
+              clarificationId: "clar-mock-1",
+              verbatimQuestion:
+                "Support gave a tracking number (1Z999AA10123456784) for a return this case does not hold. Map it to one of this case's returns, or reject it.",
+              whyUnresolvable: "the named return reference is not on this case",
+              neededField: "TRACKING_NUMBER",
+              resolutionAttempts: ["UNMATCHED"],
+              supportEventId: "evt-mock-1",
+              artifactValue: "1Z999AA10123456784",
+              evidenceSpan: "RMA-99999",
+              candidateRecordIds: ["rec-mock-1"],
+              choice: "MAP_OR_REJECT",
+            },
+          ],
+        },
+      },
+    ],
   };
 }
 
