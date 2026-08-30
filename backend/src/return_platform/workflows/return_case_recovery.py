@@ -175,6 +175,8 @@ class RecoverableCaseRepositoryPort(Protocol):
         self, *, created_before: datetime, limit: int
     ) -> list[dict[str, Any]]: ...
 
+    async def bind_case_workflow(self, case_id: str, *, workflow_id: str) -> bool: ...
+
 
 class CaseWorkflowLauncherPort(Protocol):
     async def ensure_case_workflow(
@@ -228,15 +230,29 @@ class ReturnCaseWorkflowRecovery:
         recovered = 0
         for case in pending:
             case_id = str(case.get("caseId") or "")
-            if _is_legitimate_wait(case.get("status")):
+            if case_id and _is_legitimate_wait(case.get("status")):
                 # Waiting on a person is not a fault, and this sweep has only
                 # elapsed time to reason from. Relaunching here would restart a
                 # case whose reviewer simply has not answered yet -- and the
                 # relaunch would be visible to them as their draft vanishing.
-                logger.debug(
-                    "case_workflow_recovery_skipped_legitimate_wait",
-                    extra={"case_id": case_id, "status": str(case.get("status"))},
-                )
+                #
+                # **But relaunching was never the only thing this pass did.**
+                # The link write is the other half, and this queue selects on
+                # `workflowId: None` oldest-first under a limit: a case that is
+                # skipped outright never gets its link, so it never leaves the
+                # queue, and being old it sits at the head of every later batch
+                # until the batch is nothing but skipped cases and genuinely
+                # unlaunched ones are never reached. The refusal has to be
+                # narrower than "do nothing" or the sweep disables itself.
+                #
+                # Binding directly rather than through `ensure_case_workflow`:
+                # only `ReturnCaseWorkflow` writes these statuses, so the
+                # execution exists -- but `ensure_case_workflow` would *start*
+                # one if it did not, which is the relaunch being refused.
+                # `bind_case_workflow` cannot start anything, and is idempotent
+                # on `workflowId: None`. The id is derived from the case id,
+                # never read back from the link this is repairing.
+                await self._repair_workflow_link(case_id, str(case.get("status")))
                 continue
             conversation_id = case.get("channelAConversationId")
             if not case_id or not isinstance(conversation_id, str) or not conversation_id:
@@ -270,6 +286,37 @@ class ReturnCaseWorkflowRecovery:
                 },
             )
         return recovered
+
+    async def _repair_workflow_link(self, case_id: str, status: str) -> None:
+        """Write the link a legitimate-wait case is owed, and start nothing.
+
+        The repair `return_case_launcher`'s docstring promises: the launcher
+        swallows a failed link write because "the recovery sweep re-writes the
+        link on its next pass". This is that pass, for the statuses it no
+        longer relaunches.
+
+        A failure here is logged, not raised, for the same reason the launcher
+        logs its own: the link is provenance, and one case's link must not stop
+        the sweep from reaching the genuinely unlaunched cases behind it. The
+        case stays in the queue and the next pass tries again -- which is a
+        retry rather than the permanent residue the skip created, because the
+        write is attempted every pass instead of never.
+        """
+        try:
+            await self._repository.bind_case_workflow(
+                case_id, workflow_id=return_case_workflow_id(case_id)
+            )
+        except Exception:  # noqa: BLE001 - provenance, and the next pass retries
+            logger.warning(
+                "case_workflow_link_repair_failed",
+                extra={"case_id": case_id, "status": status},
+                exc_info=True,
+            )
+            return
+        logger.debug(
+            "case_workflow_link_repaired_without_relaunch",
+            extra={"case_id": case_id, "status": status},
+        )
 
     async def run_forever(self) -> None:
         while True:
