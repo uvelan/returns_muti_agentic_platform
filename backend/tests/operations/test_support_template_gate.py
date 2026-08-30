@@ -918,14 +918,20 @@ async def test_the_revision_fact_carries_the_actor_under_the_agreed_key(
     test_settings: Settings,
     configuration: ReturnPlatformConfiguration,
 ) -> None:
-    """Contracts sect. 4 wants a server-stamped actor. The fact document has no
-    field for one, so it rides in the value under **`actorId`**.
+    """Contracts sect. 4: a command-originated fact carries a **server-stamped
+    `actorId`**, and S1 phase 1b shipped the real top-level field.
 
-    The key is pinned here rather than left to a comment because the whole point
-    of agreeing on it is that three slices spell it the same way: V3 shipped
-    `answeredBy` before this was settled, and a fourth spelling would make the
-    migration a hunt instead of a rename. `agent_id` is asserted beside it, so
-    "which software" and "which person" cannot quietly become one field.
+    Asserted on the **stored** document key, not on the parameter name. Those
+    are different questions, and only one of them is the audit guarantee: a test
+    that checked `actor_id` would pass against a repository that accepted the
+    argument and dropped it on the floor — the endpoint would look fine and the
+    fact log still could not say who decided.
+
+    The three negative assertions are the migration itself. This slice carried
+    the actor inside `value["actorId"]` while the document had nowhere to put
+    it; if that key survived alongside the parameter, both spellings would
+    coexist and the migration would never have happened. `answeredBy` is V3's
+    pre-agreement spelling and is checked for the same reason.
     """
     facts = ScopedFactDouble()
     gate = _service(reviews, mongo, test_settings, configuration, facts=facts)
@@ -944,13 +950,19 @@ async def test_the_revision_fact_carries_the_actor_under_the_agreed_key(
         fact_id_seed="seed-1",
     )
 
-    written = facts.named(fact_names.SUPPORT_TEMPLATE_REVISION)
-    assert len(written) == 1
-    value = written[0]["value"]
-    assert value["actorId"] == "associate-a"
-    assert "actor_id" not in value, "one spelling, and it is the agreed one"
+    stored = facts.stored(fact_names.SUPPORT_TEMPLATE_REVISION)
+    assert len(stored) == 1
+    # The document key, which is what an auditor reads.
+    assert stored[0]["actorId"] == "associate-a"
+
+    value = stored[0]["value"]
+    assert "actorId" not in value, "the stopgap key is gone, not merely joined"
+    assert "actor_id" not in value
     assert "answeredBy" not in value
-    assert written[0]["agent_id"] == "support-template-gate"
+
+    # Which software, beside which person. Collapsing them would make an audit
+    # unable to tell a reviewer's revision from the platform's own.
+    assert stored[0]["agent_id"] == "support-template-gate"
     # Condition 7 still holds on the same value: a note cannot impersonate the
     # message's own framing on its way onto the log.
     assert "BAY ASSIGNMENT:" not in str(value["note"])

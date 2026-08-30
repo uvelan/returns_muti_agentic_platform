@@ -654,19 +654,19 @@ class SupportTemplateGateService:
             case_id=case_id,
             fact_id=f"{fact_id_seed}:{fact_names.SUPPORT_TEMPLATE_REVISION}",
             fact_name=fact_names.SUPPORT_TEMPLATE_REVISION,
-            # **`actorId`, in the value, and this is the agreed spelling.**
-            # Contracts sect. 4 says a command-originated fact carries a
-            # server-stamped `actorId`, and the persisted fact document has no
-            # such field -- `append_scoped_case_fact` takes `agent_id` (which
-            # software this was) and nothing for *which person decided*. The
-            # orchestrator has reopened S1 to add the top-level field; until it
-            # lands, every slice writes the actor under this exact key so the
-            # migration is a mechanical rename rather than a hunt across three
-            # vocabularies (V3 shipped `answeredBy` before this was settled).
+            value={"review_id": review_id, "note": _safe(note)},
+            # **The real field, now that S1 phase 1b has shipped it.** Contracts
+            # sect. 4: a command-originated fact carries a *server-stamped*
+            # `actorId`. This slice carried it inside `value` as a recorded
+            # stopgap while the fact document had nowhere to put it; that key is
+            # deleted in the same change that adds the parameter, because two
+            # spellings coexisting is the migration never having happened.
             #
-            # **Move this to the real parameter when S1 ships it**, and delete
-            # the key from the value in the same change.
-            value={"review_id": review_id, "actorId": actor_id, "note": _safe(note)},
+            # `agent_id` beside it answers a different question and always did:
+            # this is *which software* wrote the fact, `actor_id` is *which
+            # person decided*. Collapsing them would make an audit unable to
+            # tell a reviewer's revision from the platform's own.
+            actor_id=actor_id,
             agent_id=_GATE_AGENT_ID,
             acquisition_method=FactAcquisition.ASSOCIATE_EDIT,
             channel=FactChannel.SYSTEM,

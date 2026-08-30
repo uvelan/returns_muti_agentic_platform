@@ -485,6 +485,21 @@ _REFUSALS: dict[int | str, dict[str, Any]] = {
     },
 }
 
+#: The recovery retry's extra answer (AMENDMENT-5, rule 1). Declared for the
+#: reason every refusal on this surface is: FastAPI documents what a handler
+#: returns and nothing about what it raises, and a client that must tell
+#: "final" from "ask again shortly" is written against this shape.
+_RETRY_REFUSALS: dict[int | str, dict[str, Any]] = {
+    **_REFUSALS,
+    status.HTTP_503_SERVICE_UNAVAILABLE: {
+        "model": ReviewRefusal,
+        "description": (
+            "This process cannot reach the workflow host, so it cannot tell whether a "
+            "redelivery would be applied. Nothing was changed; retryable."
+        ),
+    },
+}
+
 
 class ApproveReviewRequest(_Body):
     """**The exact field names contracts.md sect. 6 fixes.**
@@ -953,7 +968,7 @@ async def redraft_review(
 
 @router.post(
     "/{case_id}/reviews/{review_id}/recovery/retry",
-    responses=_REFUSALS,
+    responses=_RETRY_REFUSALS,
     response_model=APIResponse[ReviewActionResult],
 )
 async def retry_review_delivery(

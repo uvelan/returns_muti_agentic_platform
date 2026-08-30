@@ -16118,6 +16118,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
+            /** @description This process cannot reach the workflow host, so it cannot tell whether a redelivery would be applied. Nothing was changed; retryable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
+                };
+            };
         };
     };
     revise_review_api_v1_cases__case_id__reviews__review_id__revise_post: {

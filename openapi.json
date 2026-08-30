@@ -27203,6 +27203,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "This process cannot reach the workflow host, so it cannot tell whether a redelivery would be applied. Nothing was changed; retryable."
           }
         },
         "summary": "Retry Review Delivery",

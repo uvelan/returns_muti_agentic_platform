@@ -114,6 +114,11 @@ ACTIVITY_RESULT_TYPES: dict[str, set[str]] = {
     "record_template_draft": {"TemplateReviewDraftSet"},
     "rerender_template_draft": {"TemplateReviewDraftResult"},
     "snapshot_sent_template": {"TemplateDeliveryResult"},
+    # AMENDMENT-5 rule 2. Called from the gate's `finally`, so it appears on
+    # every history where the gate ran and closed -- including one recorded
+    # before this activity existed, which is why the result type is pinned here
+    # like the rest: a replay must decode it the same way for ever.
+    "hold_unsettled_reviews": {"HoldUnsettledReviewsResult"},
     "evaluate_case_eligibility": {"CaseEligibilityOutcome"},
     # `SupportRequestDraft` only. The un-patched branch no longer pins a result
     # type at all: it decodes whatever the history holds and coerces it through
@@ -421,6 +426,13 @@ async def test_a_legacy_history_opens_support_instead_of_wedging(
         _PATCH_STRUCTURED_SUPPORT_DRAFT,
         _PATCH_SUPPORT_TEMPLATE_REVIEW_GATE,
     ]
+    # And the gate's *close* is inside the marker too (AMENDMENT-5 rule 2).
+    # `hold_unsettled_reviews` is called from `_await_template_reviews`'
+    # `finally`, so it only exists on histories that entered the gate. The
+    # sequence assertion above already forbids it here; naming it is what stops
+    # a later edit relaxing that list without noticing it has also introduced a
+    # command a pre-gate history cannot replay.
+    assert "hold_unsettled_reviews" not in runtime.calls
 
 
 # ---------------------------------------------------------------------------
