@@ -12,7 +12,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import type { CasePanelView, PanelSectionView } from "../../../../../api/casePanel";
+import type { CasePanelView } from "../../../../../api/casePanel";
 import {
   attemptWords,
   candidateRecords,
@@ -104,7 +104,7 @@ describe("reading one entry", () => {
 
 describe("the candidates an associate picks between", () => {
   it("joins the ids to the records, in the order the clarification named them", () => {
-    expect(candidateRecords(readClarification(raw())!, panel([]))).toEqual([
+    expect(candidateRecords(mustRead(raw()), panel([]))).toEqual([
       {
         returnRecordId: "rec-1",
         returnReference: "RMA-88120",
@@ -124,7 +124,7 @@ describe("the candidates an associate picks between", () => {
     // Dropping it would silently shorten the list of things the artifact could
     // belong to, and a shorter list is one an associate answers confidently and
     // wrongly.
-    const clarification = readClarification(raw({ candidateRecordIds: ["rec-1", "rec-ghost"] }))!;
+    const clarification = mustRead(raw({ candidateRecordIds: ["rec-1", "rec-ghost"] }));
     expect(candidateRecords(clarification, panel([])).map((c) => c.returnRecordId)).toEqual([
       "rec-1",
       "rec-ghost",
@@ -177,7 +177,17 @@ function raw(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   };
 }
 
-function section(clarifications: unknown[]): PanelSectionView {
+/**
+ * `readClarification` returning `null` here would be a fixture bug, not a
+ * finding -- but a bare `!` hides which of the two it was when it happens.
+ */
+function mustRead(entry: Record<string, unknown>) {
+  const clarification = readClarification(entry);
+  if (clarification === null) throw new Error("fixture is not a readable clarification");
+  return clarification;
+}
+
+function section(clarifications: unknown[]) {
   return {
     section_id: "clarifications",
     status: "ok",

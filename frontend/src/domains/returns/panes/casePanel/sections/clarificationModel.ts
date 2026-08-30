@@ -122,7 +122,8 @@ export function readClarifications(
   section: PanelSectionView | undefined,
 ): readonly CaseClarification[] {
   const payload = section?.payload as { clarifications?: unknown } | undefined;
-  const fromSection = Array.isArray(payload?.clarifications) ? payload.clarifications : [];
+  const held: unknown = payload?.clarifications;
+  const fromSection: readonly unknown[] = Array.isArray(held) ? (held as readonly unknown[]) : [];
   const seen = new Set<string>();
   const found: CaseClarification[] = [];
   for (const raw of [...fromSection, ...panel.clarifications]) {
