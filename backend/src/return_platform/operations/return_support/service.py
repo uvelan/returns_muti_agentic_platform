@@ -32,6 +32,10 @@ def _digest(value: object) -> str:
     ).hexdigest()
 
 
+#: The receiver-dedupe index, asserted by name (contracts.md sect. 7).
+SUPPORT_MESSAGE_DELIVERY_INDEX: Final = "support_message_delivery_unique"
+
+
 class SupportModel(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -116,6 +120,31 @@ class SupportMessageView(SupportModel):
     attachmentIds: tuple[str, ...] = ()
     businessPayload: dict[str, Any] = Field(default_factory=dict)
     createdAt: datetime
+
+
+class CaseSupportThread(SupportModel):
+    """The one Channel B thread a case gets, and whether this call opened it."""
+
+    workItemId: str
+    threadId: str
+    created: bool
+
+
+class SupportMessagePost(SupportModel):
+    """What one delivery to the case thread came to.
+
+    `absorbed` is the interesting field: it means the receiver already held a
+    message under this `deliveryId`, so this send was a redelivery of one that
+    already arrived. A caller treats it as success -- absorption *is* delivery
+    (contracts.md sect. 7) -- and the review it belongs to still reaches `SENT`.
+    """
+
+    workItemId: str
+    threadId: str
+    messageId: str
+    sequence: int
+    deliveryId: str | None
+    absorbed: bool
 
 
 class CreateSupportWorkItemRequest(SupportModel):
@@ -451,6 +480,23 @@ class ReturnSupportService:
             [("threadId", ASCENDING), ("sequence", ASCENDING)], unique=True
         )
         await self._messages.create_index([("threadId", ASCENDING), ("createdAt", ASCENDING)])
+        # Receiver dedupe (contracts.md sect. 7). The sender's delivery identity
+        # is carried on the message and made unique *here*, on B, because that
+        # is the only place the guarantee can actually be kept: the sender can
+        # retry a send it never learned the outcome of, and no amount of care on
+        # the sending side turns "I did not hear back" into "it did not arrive".
+        # Effectively-once on the wire becomes exactly-once on the desk, and the
+        # observable form of the acceptance is this index: one message on B.
+        #
+        # Partial on the field's presence, for the reason the `sessionId` index
+        # above gives -- every message without a delivery id would otherwise
+        # index as `null` and the second one would collide with the first.
+        await self._messages.create_index(
+            "businessPayload.deliveryId",
+            unique=True,
+            partialFilterExpression={"businessPayload.deliveryId": {"$type": "string"}},
+            name=SUPPORT_MESSAGE_DELIVERY_INDEX,
+        )
         # The integration outbox is deliberately absent. This service writes
         # commands to it but owns none of the fields it was indexing, and its
         # copy of the definition had drifted from the other two: it alone built
@@ -756,6 +802,158 @@ class ReturnSupportService:
                 raise
             return str(winner["_id"])
         return item_id
+
+    async def ensure_case_support_thread(
+        self,
+        *,
+        case_id: str,
+        tenant_id: str,
+        principal_id: str,
+        support_draft: str,
+        idempotency_key: str,
+        business_payload: Mapping[str, Any] | None = None,
+        subject: str | None = None,
+        work_item_id: str | None = None,
+        queue: str | None = None,
+        sla_due_at: datetime | None = None,
+    ) -> CaseSupportThread:
+        """The case's one support thread, opened if it is not there yet.
+
+        Contracts.md sect. 7 names this as an operation in its own right, and
+        it is deliberately not a second implementation: `open_case_thread`
+        already has exactly the shape the contract asks for -- idempotent on
+        the unique `caseId` constraint, loser re-reads the winner's thread --
+        and a parallel opener would be a second answer to "which thread is this
+        case's". This adds what the callers of the delivery path need and the
+        original signature does not give them: the `thread_id` to post onto,
+        and whether the thread was opened here or was already standing.
+
+        `created` is not a formality. It is how a caller distinguishes "I
+        started this conversation" from "I joined one already in progress",
+        which is the difference between an opening request and a reply, and it
+        can only be known by whoever won the insert.
+        """
+        already = await self._work_items.find_one({"caseId": case_id})
+        item_id = await self.open_case_thread(
+            case_id=case_id,
+            tenant_id=tenant_id,
+            principal_id=principal_id,
+            support_draft=support_draft,
+            idempotency_key=idempotency_key,
+            business_payload=business_payload,
+            subject=subject,
+            work_item_id=work_item_id,
+            queue=queue,
+            sla_due_at=sla_due_at,
+        )
+        item = await self._work_items.find_one({"_id": item_id})
+        if item is None:  # pragma: no cover - the insert above just committed it
+            raise KeyError(item_id)
+        return CaseSupportThread(
+            workItemId=item_id,
+            threadId=str(item["threadId"]),
+            created=already is None,
+        )
+
+    async def post_support_message(
+        self,
+        *,
+        work_item_id: str,
+        message_text: str,
+        delivery_id: str | None = None,
+        message_type: SupportMessageType = SupportMessageType.COMMENT,
+        business_payload: Mapping[str, Any] | None = None,
+        attachment_ids: Collection[str] = (),
+        actor_id: str = "return-workflow-agent",
+        actor_role: str = "AGENT",
+    ) -> SupportMessagePost:
+        """Post one message to a thread, deduped on its delivery identity.
+
+        Kind-agnostic on purpose (contracts.md sect. 7): an approved template,
+        an approved reply and a relayed clarification are the same act as far
+        as the receiver is concerned -- a message arriving on the case thread
+        with a delivery id -- and giving each its own posting path would give
+        each its own chance to get the dedupe wrong. One path, deduped once.
+
+        `delivery_id` is checked twice, and both checks are load-bearing. The
+        read first, because a redelivery is the *expected* case on a retry and
+        an absorbed send should cost one query rather than a rolled-back write.
+        The unique index second, because the read cannot see a concurrent
+        writer -- and two workflow workers replaying the same send at the same
+        instant is precisely the race the identity exists for.
+
+        Called without a `delivery_id` this is an ordinary undeduped post; the
+        contract's guarantee is a property of the identity, not of the method,
+        and pretending otherwise would let a caller believe in a protection it
+        never asked for.
+        """
+        if delivery_id is not None:
+            absorbed = await self._messages.find_one({"businessPayload.deliveryId": delivery_id})
+            if absorbed is not None:
+                return self._absorbed_post(work_item_id, absorbed, delivery_id)
+
+        payload: dict[str, Any] = dict(business_payload or {})
+        if delivery_id is not None:
+            # Written last so a caller cannot displace it, the same rule
+            # `open_case_thread` applies to `caseId`: this is the field the
+            # uniqueness is enforced on, and a payload that overwrote it would
+            # quietly opt out of the guarantee.
+            payload["deliveryId"] = delivery_id
+
+        item = await self._work_items.find_one({"_id": work_item_id})
+        if item is None:
+            raise KeyError(work_item_id)
+        version_raw = item["version"]
+        if not isinstance(version_raw, (int, float)):
+            raise TypeError(f"Expected numeric version, got {type(version_raw).__name__}")
+
+        try:
+            _, message = await self.add_message(
+                work_item_id,
+                CreateSupportMessageRequest(
+                    messageType=message_type,
+                    messageText=message_text,
+                    attachmentIds=tuple(attachment_ids),
+                    businessPayload=payload,
+                    expectedVersion=int(version_raw),
+                ),
+                actor_id=actor_id,
+                actor_role=actor_role,
+            )
+        except DuplicateKeyError:
+            # The concurrent writer won on `businessPayload.deliveryId`. Their
+            # message is the delivery; this one never existed. (The work item's
+            # version moved before the insert failed, so a sequence number is
+            # spent -- a gap in a display counter, against a duplicate message
+            # in a person's queue. The trade is not close.)
+            if delivery_id is None:  # pragma: no cover - no other unique key applies
+                raise
+            winner = await self._messages.find_one({"businessPayload.deliveryId": delivery_id})
+            if winner is None:  # pragma: no cover - duplicate on no known key
+                raise
+            return self._absorbed_post(work_item_id, winner, delivery_id)
+
+        return SupportMessagePost(
+            workItemId=work_item_id,
+            threadId=message.threadId,
+            messageId=message.id,
+            sequence=message.sequence,
+            deliveryId=delivery_id,
+            absorbed=False,
+        )
+
+    @staticmethod
+    def _absorbed_post(
+        work_item_id: str, message: Mapping[str, Any], delivery_id: str
+    ) -> SupportMessagePost:
+        return SupportMessagePost(
+            workItemId=work_item_id,
+            threadId=str(message["threadId"]),
+            messageId=str(message["_id"]),
+            sequence=int(cast(int, message["sequence"])),
+            deliveryId=delivery_id,
+            absorbed=True,
+        )
 
     async def post_reminder(
         self,
