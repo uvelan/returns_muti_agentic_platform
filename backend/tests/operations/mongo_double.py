@@ -80,8 +80,14 @@ def matches(document: dict[str, Any], query: dict[str, Any]) -> bool:
                     if actual is None or not actual >= operand:
                         return False
                 elif operator == "$type":
-                    if operand != "string" or not isinstance(actual, str):
-                        return False
+                    if operand == "string":
+                        if not isinstance(actual, str):
+                            return False
+                    elif operand == "number":
+                        if isinstance(actual, bool) or not isinstance(actual, (int, float)):
+                            return False
+                    else:  # pragma: no cover - a $type the double has not met
+                        raise NotImplementedError(operand)
                 else:  # pragma: no cover - an operator the double has not met
                     raise NotImplementedError(operator)
         elif actual != condition:

@@ -23,6 +23,7 @@ from return_platform.dynamic_knowledge.source_bindings import (
     SourceBindingCatalogue,
     catalogue_from,
 )
+from return_platform.operations.case_commands import ensure_case_command_indexes
 from return_platform.operations.case_repository import CaseRepository
 
 # Re-exported deliberately, under the redundant-alias form `no_implicit_reexport`
@@ -469,6 +470,11 @@ class OperationalRepository(CaseRepository):
         # second RMA. Defined next to the store that depends on it and called
         # from here so index creation stays in one place.
         await ensure_support_event_indexes(self._db)
+        # `(caseId, signalId)` unique plus the frozen approval CAS. The review
+        # plane's command identity (contracts.md sect. 6-7), defined beside
+        # `DurableCaseCommandStore` and called from here for the same one-place
+        # reason as the line above.
+        await ensure_case_command_indexes(self._db)
         # One `ACTIVE` hold per (case, line), plus the availability read and the
         # expiry sweep's predicates. The unique partial index is what makes "a
         # case editing its own reservation" a well-defined operation rather than
