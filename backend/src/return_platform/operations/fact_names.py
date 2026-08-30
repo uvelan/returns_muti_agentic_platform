@@ -57,3 +57,10 @@ SUPPORT_CLARIFICATION_REQUESTED: Final[str] = "support_clarification_requested"
 #: the budget stops it, so the case carries the reason it stopped answering --
 #: exhaustion is visible work, never a silent halt.
 SUPPORT_RESOLVER_BUDGET_EXHAUSTED: Final[str] = "support_resolver_budget_exhausted"
+
+#: An answer the resolver composed for a support question (contracts.md
+#: sect. 9). Written on **both** gate paths -- the reviewed one and the
+#: `auto_reply` one -- because the fact records that the platform composed an
+#: answer, which is equally true whichever way it left. Case-level: a reply
+#: answers the message, and the records it concerns are scoped facts beside it.
+SUPPORT_REPLY_DRAFT: Final[str] = "support_reply_draft"

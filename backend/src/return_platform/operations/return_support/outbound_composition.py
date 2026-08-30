@@ -67,6 +67,7 @@ from typing import Any, Final
 from return_platform.operations.support_handoff import UNAVAILABLE, _safe
 
 __all__ = [
+    "VALUE_CHARACTER_BOUND",
     "ComposedMessage",
     "DisclosureLike",
     "compose_clarification_prompt",
@@ -87,6 +88,25 @@ _NEEDED_HEADING: Final = "WHAT IS NEEDED:"
 _CANDIDATES_HEADING: Final = "RECORDS THIS COULD BELONG TO:"
 
 
+#: Longest a single interpolated value may be, in characters.
+#:
+#: The carry-forward condition V2's review raised: a support-derived value
+#: reaching associate-facing text with only `.strip()` behind it is unbounded,
+#: and an unbounded value in a composed message is a rendering hazard whoever
+#: displays it has to solve again. Bounding it here means every surface --
+#: panel, transcript entry, outbound message -- gets the same ceiling from the
+#: one place that composes them.
+#:
+#: Four thousand characters, which is far longer than any support question or
+#: associate answer and far shorter than a payload sent to break a renderer.
+#: The **fact** keeps the value in full -- that is the audit record, and
+#: `verbatim_question` means what it says there. Only the *rendering* is
+#: bounded, and a bounded rendering says so rather than trailing off, so a
+#: reader can tell a truncation from a message that merely ended.
+VALUE_CHARACTER_BOUND: Final = 4_000
+_TRUNCATION_NOTICE: Final = "[truncated]"
+
+
 def neutralized(value: Any) -> str:
     """One value, safe to place in a composed message.
 
@@ -94,9 +114,18 @@ def neutralized(value: Any) -> str:
     a value into a message in this module, and that way neutralises. A caller
     reaching for `str(value)` instead is a visible deviation rather than an
     easy default.
+
+    Neutralisation runs **before** the bound, not after. The other order would
+    let a value push a framing-shaped line past the cut and out of the
+    neutraliser's reach -- a truncation that re-opened the hole the
+    neutralisation closed.
     """
     safe = _safe(value)
-    return safe if safe is not None else UNAVAILABLE
+    if safe is None:
+        return UNAVAILABLE
+    if len(safe) <= VALUE_CHARACTER_BOUND:
+        return safe
+    return f"{safe[:VALUE_CHARACTER_BOUND]} {_TRUNCATION_NOTICE}"
 
 
 def render_section(heading: str, *values: Any) -> str:
