@@ -16,7 +16,7 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | S1 phase 1b (`actorId`) | feat/s1-actor-id | **MERGED** | 1 · PASS (98a180e) | 132b031 |
 | S2 | feat/s2-delivery-spine | **MERGED** | 3 · CR → CR → PASS (b7a78ad) | dfd3036 |
 | V1 phase 1 | feat/v1-template-review | **MERGED** | 2 · CR → PASS (18f671f) | b2590ef |
-| V1 phase 2 | feat/v1-phase2 | UNDER_RV_REVIEW round 3 · candidate cadd6d0 | 3 · CR → CR (3d90aa4) → open | — |
+| V1 phase 2 | feat/v1-phase2 | **MERGED** | 3 · CR → CR → PASS (8bcce23) | b542524 |
 | V2 phase 1 | feat/v2-ingress-relay | **MERGED** | 2 · CR → PASS (02da231) | 97bca1e |
 | V2 phase 1b | feat/v2-ingress-relay | **MERGED** | 1 · PASS (a51c9b4) | 95b5672 |
 | V2 phase 2 (frontend) | feat/v2-frontend | IN_PROGRESS · off V1p2 candidate 594bb05 | — | — |
@@ -26,9 +26,12 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | ACC-2 (scenarios) | not yet cut | BLOCKED on V3 | — | — |
 | RV calibration | rv-calibration/seeded-hardcoding | bait CAUGHT as blocking | 1 (d59e017) | never merges |
 
-**Eight merges on trunk:** S1, S1b, ACC-1, V1 phase 1, S2, V2 phase 1, V2 phase 1b, V3. Trunk suite: **4985 passed, 1 failed** — down to the single known pre-existing `test_a_rejected_return_still_opens_no_work_item`, since the V2 router mount legitimately fixed `test_main_is_composition_only`.
+**All nine backend slices merged:** S1, S1b, ACC-1, V1 phase 1, S2, V2 phase 1, V2 phase 1b, V3, V1 phase 2. Trunk suite: **5121 passed, 1 failed** — the single known pre-existing `test_a_rejected_return_still_opens_no_work_item`.
 
-Remaining: V1 phase 2 (in review — the last major backend slice), then one batched integration pass (V3's router mount + port wiring + `CaseFactProjection` + regeneration), the two frontend phases, and ACC-2.
+Remaining: the batched integration pass (in flight), the two frontend phases (in flight), then ACC-2 and the acceptance gate.
+
+**V1 phase 2 review notes.** Round 3 closed AMENDMENT-5's implementation. Two things worth keeping: the shared execution-liveness classifier is asserted **by identity** across both surfaces (`case_panel.classify_execution_failure is case_reviews.classify_execution_failure`) rather than by comparing outcomes, which makes divergence *unrepresentable* rather than merely detected on whichever statuses someone enumerated — RV noted the boundary is that identity catches a second *copy*, not a *wrapper*, so a future third surface must be held to "finer, never different". And the `signal_id` asymmetry the slice defended — deterministic where a repeat means *again*, random where it means *somebody else*, since a deterministic approval id would collide with the frozen CAS and hand a second actor a receipt saying they succeeded when someone else's approval went out — was judged better than RV's own advisory, which it withdrew.
+*One item carried to the acceptance gate, blocking nothing:* permissive `**fact` doubles still exist in other slices' suites; worth one sweep onto `scoped_fact_double.py` now that it exists.
 
 **V2 phase 1b review notes (PASS, zero findings).** RV verified the three historically fragile items by injection rather than reading: the route walker catches a real collision with a *different* parameter name (3 failed) and passes with the normalisation reduced to identity, so the normalisation is genuinely load-bearing and errs safe (it over-normalises the `:path` converter — false positive possible, missed collision not); removing the idempotency key's length prefixes fails 4, and **the separator test fails on its own merit** rather than via the pinned literal, varying two *adjacent* parts where one carries `|` — both conditions the three earlier attempts kept missing. RV recomputed the pinned uuid5 by hand so the test cannot pass by comparing the function with itself, and checked **AMENDMENT-4's four clauses one at a time against source** rather than trusting my wording: no such transaction exists, the order is as claimed, all three steps are genuine no-ops on repeat, and `ConcurrencyConflictError` is a `RuntimeError` so the outbox retries rather than dead-letters. It also verified the wider property I had not asked for: **170 endpoints across all mounted routers, zero collisions.**
 *Four observations, none findings:* the walker covers only `return_platform.api` (widening costs ~4 lines); `relay` still defaults to `None` — the same optional-port shape the omc gap was raised to close, live risk closed by the factory and its test; a pre-existing S1 stale-value re-merge on out-of-order redelivery, not amplified here; and an uncaught `DuplicateKeyError` on a concurrent upsert race that converges correctly but reports an error where a no-op would be truthful.
