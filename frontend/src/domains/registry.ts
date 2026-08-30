@@ -13,6 +13,7 @@ import {
   Layers,
   LayoutDashboard,
   Lock,
+  Mail,
   MessagesSquare,
   Network,
   Package,
@@ -162,6 +163,10 @@ export const GRAPH_SCHEMA_SECTIONS = [
 export const CONFIG_SECTIONS = [
   "Overview",
   "Agents",
+  // Next to Agents rather than under Business: like an agent's module, the
+  // support template is a document an operator edits and publishes, and the
+  // Business tab is a read of the runtime snapshot.
+  "Support Template",
   "Runtime",
   "Releases",
   "Integrations",
@@ -235,6 +240,7 @@ export const DOMAINS: readonly DomainDefinition[] = [
     sections: sections(CONFIG_SECTIONS, {
       Overview: LayoutDashboard,
       Agents: Bot,
+      "Support Template": Mail,
       Runtime: Cpu,
       Releases: Rocket,
       Integrations: Plug,

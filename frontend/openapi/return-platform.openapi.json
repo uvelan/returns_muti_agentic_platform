@@ -3205,6 +3205,39 @@
         "title": "APIResponse[SupportCaseView]",
         "type": "object"
       },
+      "APIResponse_SupportTemplatePreviewResponse_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SupportTemplatePreviewResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[SupportTemplatePreviewResponse]",
+        "type": "object"
+      },
       "APIResponse_SupportWorkItemView_": {
         "additionalProperties": false,
         "properties": {
@@ -25736,7 +25769,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SupportTemplatePreviewResponse"
+                  "$ref": "#/components/schemas/APIResponse_SupportTemplatePreviewResponse_"
                 }
               }
             },

@@ -26,7 +26,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from return_platform.configuration.support_template_configuration import (
@@ -41,8 +41,14 @@ from return_platform.operations.support_template_renderer import (
 )
 from return_platform.security.authorization import require_capability
 from return_platform.security.capabilities import RETURNS_SESSION_READ
+from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 router = APIRouter(prefix="/api/v1/config/support-template", tags=["Support Template"])
+
+
+def _meta(request: Request) -> ResponseMeta:
+    request_id = getattr(request.state, "correlation_id", "unknown")
+    return ResponseMeta(request_id=request_id if isinstance(request_id, str) else "unknown")
 
 
 #: The sample case a preview renders against. Fabricated by construction --
@@ -182,13 +188,14 @@ def _response(rendered: RenderedTemplate) -> SupportTemplatePreviewResponse:
 
 @router.post(
     "/preview",
-    response_model=SupportTemplatePreviewResponse,
+    response_model=APIResponse[SupportTemplatePreviewResponse],
     summary="Render a support-template draft against the built-in sample case",
 )
 async def preview_support_template(
     body: SupportTemplatePreviewRequest,
+    request: Request,
     _actor: str = Depends(require_capability(RETURNS_SESSION_READ)),
-) -> SupportTemplatePreviewResponse:
+) -> APIResponse[SupportTemplatePreviewResponse]:
     draft = TemplateDraftInput(
         case_id="sample-case",
         context=TemplateRenderContext(
@@ -207,4 +214,7 @@ async def preview_support_template(
         # An empty draft is a draft state, not a server fault: answered as a
         # 422-shaped refusal the editor can show inline.
         raise HTTPException(status_code=422, detail=str(empty)) from empty
-    return _response(rendered)
+    # Enveloped like every other route this console reads: `apiClient` refuses a
+    # bare body, so a preview that answered outside the envelope would be
+    # unreachable from the one screen it exists for.
+    return APIResponse(data=_response(rendered), meta=_meta(request))

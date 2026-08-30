@@ -90,7 +90,7 @@ def test_a_valid_draft_previews_against_the_sample_case() -> None:
             "/api/v1/config/support-template/preview", json={"template": _template()}
         )
     assert response.status_code == 200, response.text
-    body = response.json()
+    body = response.json()["data"]
     assert body["variant_id"] == "default"
     assert body["subject"] == "Return SAMPLE-ORDER-1"
     assert "- Order Number: SAMPLE-ORDER-1" in body["text"]
@@ -100,6 +100,20 @@ def test_a_valid_draft_previews_against_the_sample_case() -> None:
     (field,) = section["fields"]
     assert field["source"] == "case_fact"
     assert field["source_path"] == "confirmed_order_reference"
+
+
+def test_the_preview_answers_inside_the_platform_envelope() -> None:
+    # The console's `apiClient` refuses a bare body outright, so an unenveloped
+    # preview would be unreachable from the only screen that calls it.
+    for client in _client():
+        response = client.post(
+            "/api/v1/config/support-template/preview", json={"template": _template()}
+        )
+    assert response.status_code == 200, response.text
+    envelope = response.json()
+    assert set(envelope) >= {"data", "meta"}
+    assert envelope["meta"]["request_id"]
+    assert envelope["data"]["template_id"] == "support-handoff"
 
 
 def test_the_context_selects_the_variant() -> None:
@@ -112,7 +126,7 @@ def test_the_context_selects_the_variant() -> None:
             },
         )
     assert response.status_code == 200, response.text
-    assert response.json()["variant_id"] == "ltl"
+    assert response.json()["data"]["variant_id"] == "ltl"
 
 
 def test_an_invalid_draft_is_a_422_not_a_render() -> None:
@@ -146,7 +160,7 @@ def test_a_gapping_required_field_previews_as_a_gap() -> None:
             "/api/v1/config/support-template/preview", json={"template": template}
         )
     assert response.status_code == 200, response.text
-    body = response.json()
+    body = response.json()["data"]
     assert body["review_blocked"] is True
     (gap,) = body["gaps"]
     assert gap["field_id"] == "order_number"

@@ -48,8 +48,20 @@ function withoutComments(source: string): string {
  * second HTTP surface for one backend, which is the fragmentation this
  * programme is removing. The rename belongs with the consolidation wave that
  * retires the versioned prefixes, not with the screen that first needed one.
+ *
+ * The support-template preview is the third, and it is a gap of the same kind.
+ * The versionless `/api/config` surface holds one invariant worth keeping --
+ * promotion is its only mutation, because configuration changes by a release
+ * moving along its lifecycle -- and a `POST` mounted there would blur that,
+ * even one that renders a draft and writes nothing. So the preview sits with
+ * the return-platform routers it renders for, and joins the same consolidation
+ * wave as the two above rather than getting a canonical alias of its own.
  */
-const ALLOWED = ["/api/v2/order-agent/", "/api/v1/return-support/"];
+const ALLOWED = [
+  "/api/v2/order-agent/",
+  "/api/v1/return-support/",
+  "/api/v1/config/support-template/",
+];
 
 it("never requests a versioned API path, except the agent turn endpoint", () => {
   const offenders = Object.entries(sources).flatMap(([path, source]) =>

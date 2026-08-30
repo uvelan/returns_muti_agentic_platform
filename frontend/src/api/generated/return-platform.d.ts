@@ -4728,6 +4728,12 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[SupportTemplatePreviewResponse] */
+        APIResponse_SupportTemplatePreviewResponse_: {
+            data?: components["schemas"]["SupportTemplatePreviewResponse"] | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[SupportWorkItemView] */
         APIResponse_SupportWorkItemView_: {
             data?: components["schemas"]["SupportWorkItemView"] | null;
@@ -15052,7 +15058,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SupportTemplatePreviewResponse"];
+                    "application/json": components["schemas"]["APIResponse_SupportTemplatePreviewResponse_"];
                 };
             };
             /** @description Validation Error */
