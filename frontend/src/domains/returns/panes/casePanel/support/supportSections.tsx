@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { COPILOT_TOKENS, PENDING_LABEL } from "../../../copilotTokens";
 import type { PanelSectionRendererProps } from "../panelSectionRegistry";
+import { framingFor } from "./supportCopy";
 import {
   SUPPORT_SECTION_IDS,
   isDegraded,
@@ -101,31 +102,6 @@ function Degraded({ what }: { readonly what: string }) {
       refresh.
     </p>
   );
-}
-
-/**
- * The do-not-mix sentence, chosen by the key the release names.
- *
- * `support_ingress.multi_record_framing_prompt_key` carries the **key**, never
- * the wording -- the config comment is explicit that it "names which of it
- * applies". So the release decides *which* framing an operator gets and the
- * console owns the sentence, which is the right split: the wording is
- * associate-facing copy with a reading level and a tone, and a release that
- * could set it directly would be a way to put arbitrary text on this screen.
- *
- * An unrecognised key falls to the default rather than drawing nothing. A
- * console that silently omitted the warning because a release named a framing it
- * had not shipped would be the one failure this section exists to prevent.
- */
-const MULTI_RECORD_FRAMING: Readonly<Record<string, string>> = {
-  "support-multi-record-do-not-mix":
-    "Support answered about more than one return in a single message. Each card below is a separate return -- check the reference on the card before you use anything on it.",
-};
-
-const DEFAULT_FRAMING = MULTI_RECORD_FRAMING["support-multi-record-do-not-mix"];
-
-function framingFor(key: string | null): string {
-  return (key === null ? undefined : MULTI_RECORD_FRAMING[key]) ?? DEFAULT_FRAMING;
 }
 
 /* -------------------------------------------------------------------------
@@ -374,8 +350,12 @@ export function SupportParkedSection({ section, panel }: PanelSectionRendererPro
  * repeating them would be the same fact twice for a sighted associate, and its
  * absence would be the fact once for everybody else.
  *
- * `polite`, never `assertive` (contracts sect. 9's own rule for this panel, and
- * V1's for `review.liveRegion`): an associate composing a message to a supplier
+ * `aria-live="polite"` and **no `role="status"`** -- the role is only a
+ * shorthand for the same implicit live region, and it is already how the
+ * copilot's in-flight spinner identifies itself; a second `status` in the tree
+ * would make "is a search running?" unanswerable by role. `polite`, never
+ * `assertive` (contracts sect. 9's own rule for this panel, and V1's for
+ * `review.liveRegion`): an associate composing a message to a supplier
  * is not interrupted by a tracking number arriving. And the region **never takes
  * focus** -- the caret stays in whatever field it was in. That is the mid-edit
  * rule from `.plan/handoffs/V1-phase2.md` sect. 6, applied to arriving content
@@ -427,7 +407,11 @@ export function SupportAnnouncerSection(props: PanelSectionRendererProps) {
   }, [signature]);
 
   return (
-    <p role="status" aria-live="polite" className={COPILOT_TOKENS.support.announcer}>
+    <p
+      aria-live="polite"
+      data-testid="support-panel-announcer"
+      className={COPILOT_TOKENS.support.announcer}
+    >
       {message}
     </p>
   );

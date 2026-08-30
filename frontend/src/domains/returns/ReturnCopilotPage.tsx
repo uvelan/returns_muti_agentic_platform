@@ -56,6 +56,10 @@ import { CarrierTransitMode } from "./modes/CarrierTransitMode";
 import { WarehouseReceivingMode } from "./modes/WarehouseReceivingMode";
 import { ReturnSettlementMode } from "./modes/ReturnSettlementMode";
 import { useElapsedSeconds } from "../../hooks/useElapsedSeconds";
+import {
+  SUPPORT_UPDATE_KICKER,
+  readSupportSystemEntries,
+} from "./panes/casePanel/support/supportSystemEntries";
 // V2's panel sections register at import time. One side-effect import per screen
 // that mounts `CasePanel`; a renderer nobody imports never draws, and the panel
 // shows the contributed section as a placeholder that reads like a deployment skew.
@@ -497,12 +501,28 @@ const CASE_PARAM = "caseId";
  * no longer carries.
  */
 function restoredHistory(transcript: ConversationTranscript): ChatHistoryEntry[] {
-  return transcript.messages.map((message, index) => ({
+  const spoken: ChatHistoryEntry[] = transcript.messages.map((message, index) => ({
     role: "restored" as const,
     id: `${transcript.conversationId}-${String(index)}`,
     author: message.role,
     text: message.text,
   }));
+  // The platform's own updates about what Support said (DR-3), appended after
+  // the last turn rather than interleaved. The transcript replays role and text
+  // and carries **no instants**, so there is nothing to interleave against, and
+  // guessing a position would be inventing when something was said. The entries
+  // keep their own recorded order among themselves.
+  //
+  // Read defensively out of the response body: no endpoint serves
+  // `systemEntries` today, so this is an empty list against everything the
+  // platform currently sends. See `supportSystemEntries.ts`.
+  const updates: ChatHistoryEntry[] = readSupportSystemEntries(transcript).map((entry) => ({
+    role: "system" as const,
+    id: entry.entryId,
+    kicker: SUPPORT_UPDATE_KICKER,
+    text: entry.text,
+  }));
+  return [...spoken, ...updates];
 }
 
 export function ReturnCopilotPage() {

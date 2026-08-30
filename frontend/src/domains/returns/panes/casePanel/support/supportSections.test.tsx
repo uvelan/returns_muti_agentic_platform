@@ -347,7 +347,7 @@ describe("what arrives while somebody is typing", () => {
 
   it("says nothing about what was already on the case when the screen opened", async () => {
     render(announcer(arrived));
-    const region = screen.getByRole("status");
+    const region = screen.getByTestId("support-panel-announcer");
     // A reader landing on a case must not be told that everything already on it
     // has "just arrived".
     await waitFor(() => {
@@ -365,7 +365,7 @@ describe("what arrives while somebody is typing", () => {
     const { rerender } = render(announcer(quiet));
     rerender(announcer(arrived));
 
-    const region = await screen.findByRole("status");
+    const region = await screen.findByTestId("support-panel-announcer");
     await waitFor(() => {
       expect(region.textContent).toBe("Support has sent something new about this return.");
     });
@@ -382,7 +382,7 @@ describe("what arrives while somebody is typing", () => {
     // announcement is reachable" it would go on passing. The region must not be
     // focusable in the first place.
     expect(region.hasAttribute("tabindex")).toBe(false);
-    expect(document.querySelectorAll("[role=status][tabindex]")).toHaveLength(0);
+    expect(document.querySelectorAll("[aria-live][tabindex]")).toHaveLength(0);
     typing.remove();
   });
 
@@ -392,7 +392,7 @@ describe("what arrives while somebody is typing", () => {
     const { rerender } = render(announcer(before));
     rerender(announcer(after));
     await waitFor(() => {
-      expect(screen.getByRole("status").textContent).toBe(
+      expect(screen.getByTestId("support-panel-announcer").textContent).toBe(
         "A message from Support is on file and not yet read.",
       );
     });
@@ -403,7 +403,7 @@ describe("what arrives while somebody is typing", () => {
     const { rerender } = render(announcer(arrived));
     rerender(announcer(quiet));
     await waitFor(() => {
-      expect(screen.getByRole("status").textContent).toBe("");
+      expect(screen.getByTestId("support-panel-announcer").textContent).toBe("");
     });
   });
 });

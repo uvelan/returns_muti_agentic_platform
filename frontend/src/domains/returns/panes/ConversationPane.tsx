@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Bot, History, Loader2, MapPin, Package, Plus, Send, Tag, User } from "lucide-react";
 import type { ConversationSummary, ResponseStatement } from "../../../api/orderAgent";
 import type { CaseSummary } from "../../../api/cases";
@@ -11,7 +12,25 @@ export type ChatHistoryEntry =
       statements: readonly ResponseStatement[];
       status: string;
     }
-  | { role: "restored"; id: string; author: string; text: string };
+  | { role: "restored"; id: string; author: string; text: string }
+  /**
+   * A typed system entry (DR-3) -- the platform reporting what Support said.
+   *
+   * **Not a turn, and the type says so.** It carries no `author` and no
+   * `statements`: it is neither party speaking. V2's relay keeps these in
+   * `state["systemEntries"]` rather than the transcript for the same reason the
+   * backend's `_transcript_of` zips positionally against `turns`, and the
+   * console honours the same distinction -- an entry drawn as an associate
+   * bubble or an agent bubble would put the platform's words in somebody's
+   * mouth on a screen somebody screenshots.
+   *
+   * `kicker` and `text` are both **platform-composed**. No support-authored
+   * value is interpolated into either; the composition is in
+   * `panes/casePanel/support/supportSystemEntries.ts`, which is also where the
+   * one identifier that does appear -- the return reference -- is
+   * whitespace-collapsed before it gets here.
+   */
+  | { role: "system"; id: string; kicker: string; text: string };
 
 export type ConversationPaneProps = {
   history: readonly ChatHistoryEntry[];
@@ -106,6 +125,46 @@ export function ConversationPane({
   showHistory,
   onToggleHistory,
 }: ConversationPaneProps) {
+  /**
+   * The newest system entry, announced once, to whoever is not reading the
+   * stream.
+   *
+   * **One live region for the pane, not one per entry.** `role="status"` on each
+   * entry would make the whole list announce itself as React reconciles it, and
+   * would say "exists" where the useful thing to say is "has just arrived".
+   *
+   * `polite`, never `assertive`: the associate may be mid-sentence in the
+   * composer below, and a tracking number is not worth cutting them off for. The
+   * region **never takes focus** and carries no `tabindex` -- an arriving
+   * artifact must not move the caret (`.plan/handoffs/V1-phase2.md` sect. 6).
+   *
+   * **Silent on the first sight of any entries**, which is what a restored
+   * conversation is: replaying a past return would otherwise announce everything
+   * that ever happened on it as though it had just happened. The cost is that
+   * the *first* entry in a live conversation is drawn but not announced -- the
+   * same arrival is announced by the panel's own region, and the alternative
+   * (announcing a whole restored transcript) is worse for the same person.
+   */
+  const newestSystemEntry = history.filter((entry) => entry.role === "system").at(-1);
+  // The parts are separate values rather than one joined key, so the effect
+  // reads nothing that is not in its dependency list -- and so no separator has
+  // to be chosen that the copy can never contain. Depending on the entry object
+  // instead would re-run this on every keystroke in the composer, because
+  // `history` is a new array on every render.
+  const newestSystemId = newestSystemEntry?.id ?? null;
+  const newestSystemKicker = newestSystemEntry?.kicker ?? "";
+  const newestSystemText = newestSystemEntry?.text ?? "";
+  const observedSystemEntry = useRef<string | null>(null);
+  const [systemAnnouncement, setSystemAnnouncement] = useState("");
+
+  useEffect(() => {
+    if (newestSystemId === null) return;
+    const before = observedSystemEntry.current;
+    observedSystemEntry.current = newestSystemId;
+    if (before === null || before === newestSystemId) return;
+    setSystemAnnouncement(`${newestSystemKicker}. ${newestSystemText}`);
+  }, [newestSystemId, newestSystemKicker, newestSystemText]);
+
   const quickPrompts = [
     { icon: Tag, label: "Sales Order #", query: "Sales Order " },
     { icon: User, label: "Customer / Account", query: "Customer " },
@@ -298,6 +357,34 @@ export function ConversationPane({
                     );
                   }
 
+                  if (message.role === "system") {
+                    return (
+                      <li key={message.id} className="flex justify-center">
+                        {/*
+                          Full width and centred: neither a left bubble nor a
+                          right one, because neither party said it. The dashed
+                          border carries the same distinction without relying on
+                          colour, so it survives a monochrome screen.
+
+                          No `role="status"` on the entry itself. The whole list
+                          would then announce on every re-render as React
+                          reconciles it; the single live region below the stream
+                          announces the newest entry once instead, which is the
+                          "centralise your live regions" rule and also the only
+                          way to say "just arrived" rather than "exists".
+                        */}
+                        <div
+                          className={`w-full max-w-[92%] ${COPILOT_TOKENS.support.systemEntry}`}
+                        >
+                          <span className={COPILOT_TOKENS.support.systemEntryKicker}>
+                            {message.kicker}
+                          </span>
+                          <p className="text-sm leading-relaxed text-on-surface">{message.text}</p>
+                        </div>
+                      </li>
+                    );
+                  }
+
                   if (message.role === "restored") {
                     const isMe = message.author === "associate";
                     return (
@@ -403,6 +490,30 @@ export function ConversationPane({
                   </li>
                 ) : null}
               </ol>
+
+              {/*
+                The pane's one live region. Reserves no space and shows nothing:
+                every entry it can announce is already drawn in the stream above,
+                so a visible line would be the same fact twice for a sighted
+                associate and the fact once for everybody else.
+
+                `aria-live="polite"` and deliberately **no `role="status"`**.
+
+                `role="status"` is only a shorthand for an implicit
+                `aria-live="polite"` region, so the announcement behaviour is
+                identical -- but the role is already how this screen's *spinner*
+                identifies itself, and a second `status` in the tree would make
+                "is a search running?" unanswerable by role for anybody reading
+                the page programmatically, tests included. The mechanism is the
+                live region; the role is not load-bearing here.
+              */}
+              <p
+                aria-live="polite"
+                data-testid="support-update-announcer"
+                className={COPILOT_TOKENS.support.announcer}
+              >
+                {systemAnnouncement}
+              </p>
 
               {error ? (
                 <div role="alert" className="mt-2 rounded-xl border border-error/20 bg-error-container p-3 text-xs text-error">
