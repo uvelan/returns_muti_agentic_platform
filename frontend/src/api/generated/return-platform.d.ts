@@ -8030,7 +8030,7 @@ export interface components {
          *     cannot act on any of them.
          * @enum {string}
          */
-        RecoveryAction: "RELAUNCHED" | "ALREADY_RUNNING" | "REFUSED_TERMINAL" | "DEFERRED_UNKNOWN" | "RELAUNCH_FAILED" | "CASE_NOT_FOUND";
+        RecoveryAction: "RELAUNCHED" | "ALREADY_RUNNING" | "REFUSED_TERMINAL" | "DEFERRED_UNKNOWN" | "RELAUNCH_FAILED" | "CASE_NOT_FOUND" | "OPERATIONS_REQUIRED";
         /** RelationshipShapeView */
         RelationshipShapeView: {
             /** Cardinality */
