@@ -2983,6 +2983,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/config/support-template/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Render a support-template draft against the built-in sample case */
+        post: operations["preview_support_template_api_v1_config_support_template_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dependency-simulator/ai-metrics": {
         parameters: {
             query?: never;
@@ -7624,6 +7641,41 @@ export interface components {
             /** Total */
             total?: number | null;
         };
+        /** PreviewedField */
+        PreviewedField: {
+            /** Applied Fallback */
+            applied_fallback: boolean;
+            /** Fact Id */
+            fact_id: string | null;
+            /** Field Id */
+            field_id: string;
+            /** Label */
+            label: string | null;
+            /** Source */
+            source: string;
+            /** Source Path */
+            source_path: string;
+            /** Value */
+            value: string;
+        };
+        /** PreviewedGap */
+        PreviewedGap: {
+            /** Field Id */
+            field_id: string;
+            /** Reason */
+            reason: string;
+        };
+        /** PreviewedSection */
+        PreviewedSection: {
+            /** Fields */
+            fields: components["schemas"]["PreviewedField"][];
+            /** Return Record Id */
+            return_record_id: string | null;
+            /** Section Id */
+            section_id: string;
+            /** Title */
+            title: string | null;
+        };
         /**
          * PrincipalView
          * @description Typed so it lands in the OpenAPI snapshot the frontend generates from.
@@ -10262,6 +10314,49 @@ export interface components {
             workItemId: string;
         };
         /**
+         * SupportTemplateConfiguration
+         * @description The released template: variants, and which one renders when none match.
+         */
+        SupportTemplateConfiguration: {
+            /**
+             * Default Variant Id
+             * @default default
+             */
+            default_variant_id: string;
+            /**
+             * Template Id
+             * @default support-handoff
+             */
+            template_id: string;
+            /**
+             * Variants
+             * @default []
+             */
+            variants: components["schemas"]["TemplateVariantConfiguration"][];
+        };
+        /** SupportTemplatePreviewRequest */
+        SupportTemplatePreviewRequest: {
+            context?: components["schemas"]["TemplatePreviewContext"];
+            template: components["schemas"]["SupportTemplateConfiguration"];
+        };
+        /** SupportTemplatePreviewResponse */
+        SupportTemplatePreviewResponse: {
+            /** Gaps */
+            gaps: components["schemas"]["PreviewedGap"][];
+            /** Review Blocked */
+            review_blocked: boolean;
+            /** Sections */
+            sections: components["schemas"]["PreviewedSection"][];
+            /** Subject */
+            subject: string;
+            /** Template Id */
+            template_id: string;
+            /** Text */
+            text: string;
+            /** Variant Id */
+            variant_id: string;
+        };
+        /**
          * SupportWorkItemStatus
          * @enum {string}
          */
@@ -10406,6 +10501,128 @@ export interface components {
             entityId: string;
             /** Stronganchorid */
             strongAnchorId: string;
+        };
+        /**
+         * TemplateFieldConfiguration
+         * @description One rendered line: a binding, how it formats, and what failure means.
+         *
+         *     `label` present renders `- <label>: <value>`; absent renders the formatted
+         *     value verbatim (its own lines) -- the shape the item block and the fixed
+         *     action bullets need. `fallback` applies only after the declared binding
+         *     fails; a missing `required` field is a `TemplateGap`, never a blank.
+         */
+        TemplateFieldConfiguration: {
+            /** Fallback */
+            fallback?: string | null;
+            /** Field Id */
+            field_id: string;
+            /**
+             * Formatter
+             * @default text
+             */
+            formatter: string;
+            /** Label */
+            label?: string | null;
+            /**
+             * Required
+             * @default false
+             */
+            required: boolean;
+            /** Source Binding */
+            source_binding: string;
+            visibility_rule?: components["schemas"]["TemplateRuleConfiguration"] | null;
+        };
+        /**
+         * TemplatePreviewContext
+         * @description What the draft's selectors are judged against -- operator-chosen, so a
+         *     variant can be previewed as the case class that would earn it.
+         */
+        TemplatePreviewContext: {
+            /**
+             * Item Count
+             * @default 1
+             */
+            item_count: number;
+            /**
+             * Order Sources
+             * @default []
+             */
+            order_sources: string[];
+            /**
+             * Return Reason Classes
+             * @default []
+             */
+            return_reason_classes: string[];
+            /**
+             * Shipping Modes
+             * @default []
+             */
+            shipping_modes: string[];
+        };
+        /**
+         * TemplateRuleConfiguration
+         * @description One declarative clause struct, used for both selectors and visibility.
+         *
+         *     Every clause present must match. A list clause matches when the context
+         *     offers at least one value and every offered value is in the list -- so a
+         *     mixed parcel-and-LTL render matches neither a parcel-only nor an LTL-only
+         *     variant and falls to the default, rather than one class's instructions
+         *     being sent about the other's freight. A rule with **no** clauses at all
+         *     matches nothing: it declares nothing, and a catch-all belongs to
+         *     `default_variant_id`, not to whichever variant was listed first.
+         */
+        TemplateRuleConfiguration: {
+            /** Max Item Count */
+            max_item_count?: number | null;
+            /** Min Item Count */
+            min_item_count?: number | null;
+            /**
+             * Order Sources
+             * @default []
+             */
+            order_sources: string[];
+            /**
+             * Return Reason Classes
+             * @default []
+             */
+            return_reason_classes: string[];
+            /**
+             * Shipping Modes
+             * @default []
+             */
+            shipping_modes: string[];
+        };
+        /**
+         * TemplateSectionConfiguration
+         * @description One titled block of fields.
+         *
+         *     A section holding any `return_record:` binding is a **per-record**
+         *     section: it renders once per return record, stamped with that record's
+         *     `return_record_id`, and its `case_fact:` bindings read that record's
+         *     scoped facts. The distinction is structural -- derived from the bindings,
+         *     never a separate flag that could disagree with them.
+         */
+        TemplateSectionConfiguration: {
+            /**
+             * Fields
+             * @default []
+             */
+            fields: components["schemas"]["TemplateFieldConfiguration"][];
+            /** Section Id */
+            section_id: string;
+            /** Title */
+            title?: string | null;
+            visibility_rule?: components["schemas"]["TemplateRuleConfiguration"] | null;
+        };
+        /** TemplateVariantConfiguration */
+        TemplateVariantConfiguration: {
+            /** Sections */
+            sections: components["schemas"]["TemplateSectionConfiguration"][];
+            selector?: components["schemas"]["TemplateRuleConfiguration"];
+            /** Subject Template */
+            subject_template: string;
+            /** Variant Id */
+            variant_id: string;
         };
         /** TicketItemView */
         TicketItemView: {
@@ -14803,6 +15020,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_AssociateConversationView_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_support_template_api_v1_config_support_template_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SupportTemplatePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SupportTemplatePreviewResponse"];
                 };
             };
             /** @description Validation Error */

@@ -11270,6 +11270,126 @@
         "title": "PreviewPage",
         "type": "object"
       },
+      "PreviewedField": {
+        "properties": {
+          "applied_fallback": {
+            "title": "Applied Fallback",
+            "type": "boolean"
+          },
+          "fact_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Id"
+          },
+          "field_id": {
+            "title": "Field Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "source_path": {
+            "title": "Source Path",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field_id",
+          "label",
+          "value",
+          "source",
+          "source_path",
+          "fact_id",
+          "applied_fallback"
+        ],
+        "title": "PreviewedField",
+        "type": "object"
+      },
+      "PreviewedGap": {
+        "properties": {
+          "field_id": {
+            "title": "Field Id",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field_id",
+          "reason"
+        ],
+        "title": "PreviewedGap",
+        "type": "object"
+      },
+      "PreviewedSection": {
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewedField"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "return_record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Return Record Id"
+          },
+          "section_id": {
+            "title": "Section Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "section_id",
+          "title",
+          "return_record_id",
+          "fields"
+        ],
+        "title": "PreviewedSection",
+        "type": "object"
+      },
       "PrincipalView": {
         "additionalProperties": false,
         "description": "Typed so it lands in the OpenAPI snapshot the frontend generates from.\n\n`roles` is reported alongside `capabilities` for display and support\n(\"signed in as X with role Y\"), not for the UI to branch on -- the\ncapability list is what decides whether an action is offered.",
@@ -18031,6 +18151,101 @@
         "title": "SupportProjection",
         "type": "object"
       },
+      "SupportTemplateConfiguration": {
+        "additionalProperties": false,
+        "description": "The released template: variants, and which one renders when none match.",
+        "properties": {
+          "default_variant_id": {
+            "default": "default",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Default Variant Id",
+            "type": "string"
+          },
+          "template_id": {
+            "default": "support-handoff",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Template Id",
+            "type": "string"
+          },
+          "variants": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TemplateVariantConfiguration"
+            },
+            "title": "Variants",
+            "type": "array"
+          }
+        },
+        "title": "SupportTemplateConfiguration",
+        "type": "object"
+      },
+      "SupportTemplatePreviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "context": {
+            "$ref": "#/components/schemas/TemplatePreviewContext"
+          },
+          "template": {
+            "$ref": "#/components/schemas/SupportTemplateConfiguration"
+          }
+        },
+        "required": [
+          "template"
+        ],
+        "title": "SupportTemplatePreviewRequest",
+        "type": "object"
+      },
+      "SupportTemplatePreviewResponse": {
+        "properties": {
+          "gaps": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewedGap"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "review_blocked": {
+            "title": "Review Blocked",
+            "type": "boolean"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/PreviewedSection"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "template_id": {
+            "title": "Template Id",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "variant_id": {
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "template_id",
+          "variant_id",
+          "subject",
+          "text",
+          "sections",
+          "gaps",
+          "review_blocked"
+        ],
+        "title": "SupportTemplatePreviewResponse",
+        "type": "object"
+      },
       "SupportWorkItemStatus": {
         "enum": [
           "NEW",
@@ -18498,6 +18713,258 @@
           "anchorFieldIds"
         ],
         "title": "SyncRunRequester",
+        "type": "object"
+      },
+      "TemplateFieldConfiguration": {
+        "additionalProperties": false,
+        "description": "One rendered line: a binding, how it formats, and what failure means.\n\n`label` present renders `- <label>: <value>`; absent renders the formatted\nvalue verbatim (its own lines) -- the shape the item block and the fixed\naction bullets need. `fallback` applies only after the declared binding\nfails; a missing `required` field is a `TemplateGap`, never a blank.",
+        "properties": {
+          "fallback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback"
+          },
+          "field_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Field Id",
+            "type": "string"
+          },
+          "formatter": {
+            "default": "text",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Formatter",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "required": {
+            "default": false,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "source_binding": {
+            "minLength": 1,
+            "title": "Source Binding",
+            "type": "string"
+          },
+          "visibility_rule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TemplateRuleConfiguration"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "field_id",
+          "source_binding"
+        ],
+        "title": "TemplateFieldConfiguration",
+        "type": "object"
+      },
+      "TemplatePreviewContext": {
+        "additionalProperties": false,
+        "description": "What the draft's selectors are judged against -- operator-chosen, so a\nvariant can be previewed as the case class that would earn it.",
+        "properties": {
+          "item_count": {
+            "default": 1,
+            "minimum": 0.0,
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "order_sources": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Order Sources",
+            "type": "array"
+          },
+          "return_reason_classes": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Return Reason Classes",
+            "type": "array"
+          },
+          "shipping_modes": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Shipping Modes",
+            "type": "array"
+          }
+        },
+        "title": "TemplatePreviewContext",
+        "type": "object"
+      },
+      "TemplateRuleConfiguration": {
+        "additionalProperties": false,
+        "description": "One declarative clause struct, used for both selectors and visibility.\n\nEvery clause present must match. A list clause matches when the context\noffers at least one value and every offered value is in the list -- so a\nmixed parcel-and-LTL render matches neither a parcel-only nor an LTL-only\nvariant and falls to the default, rather than one class's instructions\nbeing sent about the other's freight. A rule with **no** clauses at all\nmatches nothing: it declares nothing, and a catch-all belongs to\n`default_variant_id`, not to whichever variant was listed first.",
+        "properties": {
+          "max_item_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Item Count"
+          },
+          "min_item_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Item Count"
+          },
+          "order_sources": {
+            "default": [],
+            "items": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Order Sources",
+            "type": "array"
+          },
+          "return_reason_classes": {
+            "default": [],
+            "items": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Return Reason Classes",
+            "type": "array"
+          },
+          "shipping_modes": {
+            "default": [],
+            "items": {
+              "maxLength": 256,
+              "minLength": 1,
+              "type": "string"
+            },
+            "title": "Shipping Modes",
+            "type": "array"
+          }
+        },
+        "title": "TemplateRuleConfiguration",
+        "type": "object"
+      },
+      "TemplateSectionConfiguration": {
+        "additionalProperties": false,
+        "description": "One titled block of fields.\n\nA section holding any `return_record:` binding is a **per-record**\nsection: it renders once per return record, stamped with that record's\n`return_record_id`, and its `case_fact:` bindings read that record's\nscoped facts. The distinction is structural -- derived from the bindings,\nnever a separate flag that could disagree with them.",
+        "properties": {
+          "fields": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TemplateFieldConfiguration"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "section_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Section Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "visibility_rule": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TemplateRuleConfiguration"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "section_id"
+        ],
+        "title": "TemplateSectionConfiguration",
+        "type": "object"
+      },
+      "TemplateVariantConfiguration": {
+        "additionalProperties": false,
+        "properties": {
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/TemplateSectionConfiguration"
+            },
+            "minItems": 1,
+            "title": "Sections",
+            "type": "array"
+          },
+          "selector": {
+            "$ref": "#/components/schemas/TemplateRuleConfiguration"
+          },
+          "subject_template": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Subject Template",
+            "type": "string"
+          },
+          "variant_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "variant_id",
+          "subject_template",
+          "sections"
+        ],
+        "title": "TemplateVariantConfiguration",
         "type": "object"
       },
       "TicketItemView": {
@@ -25248,6 +25715,47 @@
         "summary": "Continue Conversation",
         "tags": [
           "Associate Returns"
+        ]
+      }
+    },
+    "/api/v1/config/support-template/preview": {
+      "post": {
+        "operationId": "preview_support_template_api_v1_config_support_template_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportTemplatePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupportTemplatePreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Render a support-template draft against the built-in sample case",
+        "tags": [
+          "Support Template"
         ]
       }
     },
