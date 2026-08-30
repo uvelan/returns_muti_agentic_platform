@@ -58,7 +58,8 @@ sync for a path the draft has already chased.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field as dataclass_field
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from typing import Any, Final, Protocol
 
 from return_platform.configuration.support_template_configuration import (

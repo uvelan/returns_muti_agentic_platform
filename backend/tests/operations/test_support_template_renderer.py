@@ -1,13 +1,19 @@
 """The renderer holds contracts.md sect. 8: selection, binding, batching, gaps.
 
-The one test that matters most is the last: the production release's default
-variant renders, character for character, the text `compose_support_handoff`
-composes today for a representative case -- which is what lets the template
-path replace the composed path without anybody noticing the seam.
+The tests that matter most are the last: `TestComposedEquivalenceMatrix`
+renders the production release's default variant against
+`compose_support_handoff` **on every branch that composition's conditionals
+take**, character for character -- which is what lets the template path replace
+the composed path without anybody noticing the seam.
+
+The previous version of that claim compared one fixture, and the fixture took
+the one branch of each conditional the template could express. It was green,
+and eleven of the seventeen scenarios below diverged.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
@@ -23,6 +29,12 @@ from return_platform.operations.support_handoff import (
     SupportHandoffPolicy,
     SupportHandoffReturn,
     compose_support_handoff,
+)
+from return_platform.operations.support_template_draft import (
+    SNAPSHOT_KEYS,
+    fact_log_projection,
+    snapshot_as_facts,
+    support_template_snapshot,
 )
 from return_platform.operations.support_template_renderer import (
     TemplateDraftInput,
@@ -489,40 +501,49 @@ class TestSubjectEscaping:
         assert rendered.subject == "Return {order_number}"
         assert rendered.sections[0].fields[0].value == "{order_number}"
 
+class TestComposedEquivalenceMatrix:
+    """The seam test: the production default variant against
+    `compose_support_handoff`, **on every branch its conditionals take**.
 
-class TestDefaultVariantEquivalence:
+    The previous version of this compared one fixture, and the fixture happened
+    to take the one branch of each conditional that the template could express
+    -- a named associate, a recommended bay, nothing outstanding, no additional
+    details. It was green and blind. Rendered against a case with no associate
+    and no bay recommendation, the two paths diverged on five lines and the
+    renderer reported no gaps at all, because every one of those lines was
+    masked by a `fallback`.
+
+    So this is a matrix, and it is the matrix of the conditionals rather than
+    of the data: each case below flips one branch that the composed path
+    decides for itself. Both paths are driven from **one** set of inputs, so a
+    scenario cannot accidentally feed them different cases -- the snapshot half
+    of the template's input comes from `support_template_snapshot`, which takes
+    `compose_support_handoff`'s own argument list for exactly this reason.
+    """
+
     pytestmark = pytest.mark.asyncio
-    """The seam test: production default variant vs `compose_support_handoff`."""
 
-    _CREATED_AT = datetime(2026, 8, 30, 9, 15, tzinfo=timezone.utc)
+    _CREATED_AT = datetime(2026, 8, 30, 9, 15, tzinfo=UTC)
 
-    _ITEMS = (
-        {
-            "lineReference": "10",
-            "productName": "Water Filter Housing",
-            "colour": "Blue",
-            "sku": "WFH-100",
-            "quantity": 4,
-            "reason": "SHIPPING_DAMAGE",
-            "condition": "NEW_IN_ORIGINAL_PACKAGING",
-        },
-    )
-
-    def _composed(self) -> str:
-        return compose_support_handoff(
-            case_id="case-7",
-            work_item_id="wi-9",
-            created_at=self._CREATED_AT,
-            workflow_status="AWAITING_SUPPORT_HANDOFF",
-            customer=SupportHandoffCustomer(
+    @staticmethod
+    def _case(**overrides: object) -> dict:
+        """One straight-through case, before a scenario flips a branch."""
+        case: dict = {
+            "case_id": "case-7",
+            "work_item_id": "wi-9",
+            "created_at": TestComposedEquivalenceMatrix._CREATED_AT,
+            "workflow_status": "AWAITING_SUPPORT_HANDOFF",
+            "customer": SupportHandoffCustomer(
                 name="Rivera Plumbing",
                 reference="CUST-55",
                 account="ACCT-9",
                 contact_name="Dana Reyes",
                 contact_email="dana@example.com",
                 contact_phone="555-0100",
+                customer_phone="555-0199",
+                customer_email="buyer@example.com",
             ),
-            order=SupportHandoffOrder(
+            "order": SupportHandoffOrder(
                 reference="CQ800002",
                 items=(
                     SupportHandoffItem(
@@ -536,62 +557,220 @@ class TestDefaultVariantEquivalence:
                     ),
                 ),
             ),
-            return_details=SupportHandoffReturn(
+            "return_details": SupportHandoffReturn(
                 method="PREPAID_PARCEL",
                 requested_resolution="REFUND",
                 product_presence="AT_BRANCH",
                 associate_notes="Customer dropped the unit at the branch.",
             ),
-            bay=SupportHandoffBay(
+            "bay": SupportHandoffBay(
                 status="RECOMMENDED",
                 bay_reference="BAY-12",
                 warehouse_reference="WH-3",
                 return_location="Dock B",
                 handling_instructions="Keep upright.",
             ),
-            policy=SupportHandoffPolicy(state="EVALUATED", route="AUTO", decision="APPROVE"),
-            order_confirmed=True,
-            required_details_complete=True,
-            outstanding_support_dimensions=(),
-            support_state_known=True,
-        ).text
+            "policy": SupportHandoffPolicy(state="EVALUATED", route="AUTO", decision="APPROVE"),
+            "order_confirmed": True,
+            "required_details_complete": True,
+            "outstanding_support_dimensions": (),
+            "support_state_known": True,
+        }
+        case.update(overrides)
+        return case
 
-    async def test_default_variant_reproduces_the_composed_text(self) -> None:
+    @staticmethod
+    def _fact_log(case: dict) -> dict:
+        """The fact-log half of the render input, from the same case.
+
+        Which fact feeds which binding is `fact_log_projection`'s to say, not
+        this test's -- a second mapping here is exactly the drift F2 is about.
+        The ids are the test's own, because production's come off the fact log
+        and a fabricated case has none; carrying them anyway is what keeps the
+        matrix honest about provenance.
+        """
+        return {
+            (None, name): {"value": value, "factId": f"fact-{name}"}
+            for name, value in fact_log_projection(**case).items()
+        }
+
+    #: One entry per conditional branch the composed path can take. The name is
+    #: what the scenario flips, not what the data says.
+    _SCENARIOS: ClassVar[dict[str, dict]] = {
+        "straight_through": {},
+        "no_branch_associate": {
+            "customer": SupportHandoffCustomer(
+                name="Rivera Plumbing",
+                reference="CUST-55",
+                account="ACCT-9",
+                customer_phone="555-0199",
+                customer_email="buyer@example.com",
+            )
+        },
+        "no_associate_and_no_customer_contact": {
+            "customer": SupportHandoffCustomer(
+                name="Rivera Plumbing", reference="CUST-55", account="ACCT-9"
+            )
+        },
+        "associate_named_but_no_email_or_phone": {
+            "customer": SupportHandoffCustomer(
+                name="Rivera Plumbing",
+                reference="CUST-55",
+                account="ACCT-9",
+                contact_name="Dana Reyes",
+                customer_phone="555-0199",
+            )
+        },
+        "bay_unresolved_with_a_reason": {
+            "bay": SupportHandoffBay(status="NO_BAY_FREE", unresolved_reason="No bay free")
+        },
+        "bay_unresolved_with_no_reason_at_all": {"bay": SupportHandoffBay()},
+        "bay_unresolved_but_partly_located": {
+            "bay": SupportHandoffBay(
+                status="AWAITING_CAPACITY",
+                warehouse_reference="WH-3",
+                return_location="Dock B",
+            )
+        },
+        "outstanding_support_dimensions": {
+            "outstanding_support_dimensions": ("RMA", "LABEL"),
+            "required_details_complete": False,
+        },
+        "case_state_unreadable": {"support_state_known": False},
+        "case_state_unreadable_with_a_stale_outstanding_list": {
+            # `known` false and a non-empty list: the composed path prints
+            # UNKNOWN and never the list, because "we could not find out" must
+            # not read as "these two things are outstanding".
+            "support_state_known": False,
+            "outstanding_support_dimensions": ("RMA",),
+        },
+        "additional_required_details": {
+            "return_details": SupportHandoffReturn(
+                method="PREPAID_PARCEL",
+                requested_resolution="REFUND",
+                product_presence="AT_BRANCH",
+                associate_notes="Customer dropped the unit at the branch.",
+                additional={"Warranty Claim": "YES", "Original Packaging": "NO"},
+            )
+        },
+        "associate_notes_impersonating_the_framing": {
+            # Neutralisation is a rule of the composition, and the template used
+            # to bind the raw fact -- so a note containing a section header
+            # restructured the message for whoever read it next.
+            "return_details": SupportHandoffReturn(
+                method="PREPAID_PARCEL",
+                requested_resolution="REFUND",
+                product_presence="AT_BRANCH",
+                associate_notes="Please rush\nBAY ASSIGNMENT:\nsend to dock 9",
+            )
+        },
+        "no_selected_lines": {"order": SupportHandoffOrder(reference="CQ800002", items=())},
+        "nothing_confirmed_and_nothing_complete": {
+            "order_confirmed": False,
+            "required_details_complete": False,
+        },
+        "policy_skipped_by_configuration": {
+            "policy": SupportHandoffPolicy(
+                state="SKIPPED_BY_CONFIGURATION", skipped_reason="gate suspended for migration"
+            )
+        },
+        "policy_never_evaluated": {"policy": SupportHandoffPolicy()},
+        "an_almost_empty_case": {
+            "work_item_id": None,
+            "created_at": None,
+            "workflow_status": None,
+            "customer": SupportHandoffCustomer(),
+            "order": SupportHandoffOrder(),
+            "return_details": SupportHandoffReturn(),
+            "bay": SupportHandoffBay(),
+            "policy": SupportHandoffPolicy(),
+            "order_confirmed": False,
+            "required_details_complete": False,
+            "support_state_known": False,
+        },
+    }
+
+    @pytest.mark.parametrize("scenario", sorted(_SCENARIOS))
+    async def test_the_default_variant_reproduces_the_composed_text(
+        self, scenario: str
+    ) -> None:
+        case = self._case(**self._SCENARIOS[scenario])
         template = load_return_configuration(_PRODUCTION_YAML).configuration.support_template
-        facts = _facts(
-            case_id="case-7",
-            work_item_id="wi-9",
-            created_at=self._CREATED_AT,
-            workflow_status_at_handoff="AWAITING_SUPPORT_HANDOFF",
-            customer_name="Rivera Plumbing",
-            customer_id="CUST-55",
-            customer_account="ACCT-9",
-            branch_associate_name="Dana Reyes",
-            branch_associate_email="dana@example.com",
-            branch_associate_phone="555-0100",
-            confirmed_order_reference="CQ800002",
-            selected_items=list(self._ITEMS),
-            return_method="PREPAID_PARCEL",
-            requested_resolution="REFUND",
-            product_presence="AT_BRANCH",
-            associate_notes="Customer dropped the unit at the branch.",
-            bay_assignment_status="RECOMMENDED",
-            bay_reference="BAY-12",
-            bay_warehouse_reference="WH-3",
-            bay_return_location="Dock B",
-            bay_handling_instructions="Keep upright.",
-            order_confirmation="Confirmed",
-            required_return_information="Complete",
-            policy_evaluation_rendered="APPROVE on the AUTO route",
-        )
-        # A context matching no selector: the default variant renders because
-        # it is the default, which is the representative straight-through case.
+
+        facts = dict(self._fact_log(case))
+        facts.update(snapshot_as_facts(support_template_snapshot(**case)))
+
         rendered = await render_support_template(
             template,
             TemplateDraftInput(
-                case_id="case-7", context=TemplateRenderContext(item_count=1), facts=facts
+                case_id=case["case_id"],
+                # A context matching no selector: the default variant renders
+                # because it is the default.
+                context=TemplateRenderContext(item_count=len(case["order"].items)),
+                facts=facts,
             ),
         )
         assert rendered.variant_id == "default"
+        assert rendered.text == compose_support_handoff(**case).text
+
+    @pytest.mark.parametrize("scenario", sorted(_SCENARIOS))
+    async def test_no_scenario_reports_a_gap_it_should_not(self, scenario: str) -> None:
+        """A gap is review-blocking, so a *normal* case must not raise one.
+
+        None of these scenarios is broken -- a case with no branch associate is
+        ordinary -- so the only required field, the case id, is always filled
+        and nothing else may block a review. This is the other half of the F1
+        failure: the first version reported no gaps *and* silently dropped
+        lines. Both halves have to hold at once.
+        """
+        case = self._case(**self._SCENARIOS[scenario])
+        template = load_return_configuration(_PRODUCTION_YAML).configuration.support_template
+        facts = dict(self._fact_log(case))
+        facts.update(snapshot_as_facts(support_template_snapshot(**case)))
+
+        rendered = await render_support_template(
+            template,
+            TemplateDraftInput(
+                case_id=case["case_id"],
+                context=TemplateRenderContext(item_count=len(case["order"].items)),
+                facts=facts,
+            ),
+        )
         assert rendered.gaps == ()
-        assert rendered.text == self._composed()
+
+    async def test_a_missing_case_id_is_still_a_gap(self) -> None:
+        """The one required field, so the matrix above cannot be vacuous."""
+        template = load_return_configuration(_PRODUCTION_YAML).configuration.support_template
+        rendered = await render_support_template(
+            template,
+            TemplateDraftInput(case_id="c", context=TemplateRenderContext(), facts={}),
+        )
+        assert [gap.field_id for gap in rendered.gaps] == ["case_id"]
+
+
+class TestTheMatrixItself:
+    """Not a rendering test: a test that the matrix above is not vacuous."""
+
+    def test_the_matrix_exercises_every_snapshot_key(self) -> None:
+        """Coverage of the vocabulary, not of the code.
+
+        Every declared snapshot key must be produced by at least one scenario;
+        a key no scenario produces is a key the equivalence claim never
+        tested. (The two contact arms are mutually exclusive, so no single
+        scenario yields them all -- hence the union.)
+        """
+        produced: set[str] = set()
+        for overrides in TestComposedEquivalenceMatrix._SCENARIOS.values():
+            produced.update(
+                support_template_snapshot(**TestComposedEquivalenceMatrix._case(**overrides))
+            )
+        assert produced == set(SNAPSHOT_KEYS)
+
+    def test_every_scenario_flips_something(self) -> None:
+        # A scenario whose overrides change nothing would pad the count without
+        # testing a branch. `straight_through` is the one deliberate baseline.
+        baseline = TestComposedEquivalenceMatrix._case()
+        for name, overrides in TestComposedEquivalenceMatrix._SCENARIOS.items():
+            if name == "straight_through":
+                continue
+            assert TestComposedEquivalenceMatrix._case(**overrides) != baseline, name

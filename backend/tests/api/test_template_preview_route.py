@@ -9,14 +9,22 @@ model's own refusal; the operator-chosen context drives variant selection.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from return_platform.api.template_preview import router
+from return_platform.configuration.return_configuration import load_return_configuration
+from return_platform.operations.support_handoff import compose_support_handoff
+from return_platform.operations.support_template_draft import SAMPLE_CASE
 from return_platform.security import roles as r
 from return_platform.security.principal import Principal
+
+_PRODUCTION_YAML = (
+    Path(__file__).resolve().parents[2] / "config" / "returns" / "production.yaml"
+)
 
 
 def _client(
@@ -100,6 +108,33 @@ def test_a_valid_draft_previews_against_the_sample_case() -> None:
     (field,) = section["fields"]
     assert field["source"] == "case_fact"
     assert field["source_path"] == "confirmed_order_reference"
+
+
+def test_the_preview_is_the_composed_text() -> None:
+    """The route's own claim, as a test rather than as prose.
+
+    The preview exists so an operator can trust what a template will produce.
+    Its docstring used to assert that previewing the default variant showed
+    "what `compose_support_handoff` says today", and nothing checked it -- so a
+    rename in `production.yaml` would have made the preview quietly show
+    fallbacks for values a real case fills, which is the single thing this
+    screen must never do.
+
+    Posting the *shipped* default variant and comparing against the composed
+    text for the same sample settles it, and settles it against the release the
+    platform actually ships rather than against a fixture.
+    """
+    template = load_return_configuration(_PRODUCTION_YAML).configuration.support_template
+    for client in _client():
+        response = client.post(
+            "/api/v1/config/support-template/preview",
+            json={"template": template.model_dump(mode="json")},
+        )
+    assert response.status_code == 200, response.text
+    body = response.json()["data"]
+    assert body["variant_id"] == "default"
+    assert body["gaps"] == []
+    assert body["text"] == compose_support_handoff(**SAMPLE_CASE).text
 
 
 def test_the_preview_answers_inside_the_platform_envelope() -> None:

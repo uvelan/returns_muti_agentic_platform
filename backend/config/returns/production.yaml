@@ -1823,11 +1823,29 @@ shipment_tracking:
       allowed_next: [pending_pickup, picked_up, at_origin_terminal, in_transit, at_destination_terminal, out_for_delivery, on_hand]
 
 # The support-handoff template (contracts.md sect. 8). The default variant
-# reproduces the output `compose_support_handoff` composes today, field for
-# field and line for line; the parcel and LTL variants differ only in the
-# shipping-class action line their selectors earn. Formatters are ids from
-# the code-side allowlist; `literal:` bindings are constant text; everything
-# case-bound names the facts `draft_support_request` already reads.
+# reproduces the text `compose_support_handoff` composes today -- line for
+# line, on every branch its conditionals take, which
+# `TestComposedEquivalenceMatrix` renders and compares case by case. The one
+# thing it does not reproduce is the *subject*: `_subject` joins its parts
+# conditionally and shortens them, and sect. 8's subject grammar is
+# interpolation only, so the subject here is a different (and simpler) line by
+# contract rather than by oversight.
+#
+# Four of today's lines are conditional -- the contact block's two arms, the
+# unresolved-bay reason, the manual-bay action, the outstanding-support list --
+# and the sect. 8 clause grammar describes the shape of a *case*
+# (shipping mode, reason class, order source, item count), never the presence
+# of a value. Those lines are therefore bound to keys that
+# `operations/support_template_draft.py` makes **present or absent**, with no
+# `fallback`: an absent key omits its line, exactly as the composed path omits
+# it. Giving them a fallback is what made the first version of this block
+# silently print "Not available" where the truth was "no bay could be
+# recommended, resolve manually".
+#
+# Formatters are ids from the code-side allowlist; `literal:` bindings are
+# constant text (contracts.md AMENDMENT-1). Every `case_fact:` name is declared
+# in `support_template_draft.TEMPLATE_CASE_FACT_KEYS`, and a test compares this
+# block against it in both directions.
 support_template:
   template_id: support-handoff
   default_variant_id: default
@@ -1879,18 +1897,29 @@ support_template:
               label: Account
               source_binding: "case_fact:customer_account"
               fallback: Not available
-            - field_id: branch_associate
+            # The contact block, two mutually exclusive arms. Exactly one arm's
+            # three keys is ever present, so the other arm's three lines are
+            # omitted -- never rendered as "Not available", which is what lost
+            # the customer's own phone and email on every case with no named
+            # branch associate. No `fallback` on any of the six, on purpose.
+            - field_id: contact_associate_name
               label: Branch Associate
-              source_binding: "case_fact:branch_associate_name"
-              fallback: Not available
-            - field_id: branch_associate_email
+              source_binding: "case_fact:contact_associate_name"
+            - field_id: contact_associate_email
               label: Branch Associate Email
-              source_binding: "case_fact:branch_associate_email"
-              fallback: Not available
-            - field_id: branch_associate_phone
+              source_binding: "case_fact:contact_associate_email"
+            - field_id: contact_associate_phone
               label: Branch Associate Phone
-              source_binding: "case_fact:branch_associate_phone"
-              fallback: Not available
+              source_binding: "case_fact:contact_associate_phone"
+            - field_id: contact_customer_notice
+              label: Branch Associate
+              source_binding: "case_fact:contact_customer_notice"
+            - field_id: contact_customer_phone
+              label: Customer Phone
+              source_binding: "case_fact:contact_customer_phone"
+            - field_id: contact_customer_email
+              label: Customer Email
+              source_binding: "case_fact:contact_customer_email"
         - &tpl_sec_order
           section_id: order
           title: "Order:"
@@ -1919,9 +1948,18 @@ support_template:
               label: Product Presence
               source_binding: "case_fact:product_presence"
               fallback: Not available
+            # Whatever else the release requires, already labelled by the
+            # release rather than by this template -- which is what lets a
+            # release add a required detail without either being edited.
+            # Absent when the case carries none.
+            - field_id: return_details_additional
+              source_binding: "case_fact:return_details_additional"
+            # The rendered notes, not the raw fact: anything in an associate's
+            # words that could impersonate this message's framing is stripped
+            # before it gets here, and binding the raw fact would drop that.
             - field_id: associate_notes
               label: Associate Notes
-              source_binding: "case_fact:associate_notes"
+              source_binding: "case_fact:associate_notes_rendered"
               fallback: Not available
         - &tpl_sec_bay
           section_id: bay_assignment
@@ -1947,6 +1985,11 @@ support_template:
               label: Handling/Staging Instructions
               source_binding: "case_fact:bay_handling_instructions"
               fallback: Not available
+            # Present only when no bay was recommended, which is exactly when
+            # Support needs it. No fallback: absence omits the line.
+            - field_id: bay_unresolved_reason
+              label: Unresolved Reason
+              source_binding: "case_fact:bay_unresolved_reason"
         - &tpl_sec_verification
           section_id: verification
           title: "Verification:"
@@ -1959,6 +2002,13 @@ support_template:
               label: Required Return Information
               source_binding: "case_fact:required_return_information"
               fallback: Incomplete
+            # Three states, and the third is silence: nothing outstanding omits
+            # the line, an unreadable case state says so in words. "Nothing is
+            # outstanding" and "we could not find out" send Support to opposite
+            # actions, so neither may render as the other.
+            - field_id: awaiting_from_support
+              label: Awaiting From Support
+              source_binding: "case_fact:awaiting_from_support"
             - field_id: policy_evaluation
               label: Policy Evaluation
               source_binding: "case_fact:policy_evaluation_rendered"
@@ -1973,6 +2023,8 @@ support_template:
               source_binding: "literal:- Review the complete return request."
             - field_id: action_bay
               source_binding: "literal:- Review or confirm the bay recommendation."
+            - field_id: manual_bay_action
+              source_binding: "case_fact:manual_bay_action_line"
             - field_id: action_verify
               source_binding: "literal:- Verify all Support-owned conditions, including warranty when applicable."
             - field_id: action_rma
@@ -1996,6 +2048,8 @@ support_template:
               source_binding: "literal:- Review the complete return request."
             - field_id: action_bay
               source_binding: "literal:- Review or confirm the bay recommendation."
+            - field_id: manual_bay_action
+              source_binding: "case_fact:manual_bay_action_line"
             - field_id: action_label
               source_binding: "literal:- Issue the prepaid parcel return label."
             - field_id: action_verify
@@ -2021,6 +2075,8 @@ support_template:
               source_binding: "literal:- Review the complete return request."
             - field_id: action_bay
               source_binding: "literal:- Review or confirm the bay recommendation."
+            - field_id: manual_bay_action
+              source_binding: "case_fact:manual_bay_action_line"
             - field_id: action_freight
               source_binding: "literal:- Arrange LTL freight pickup and issue the Bill of Lading."
             - field_id: action_verify

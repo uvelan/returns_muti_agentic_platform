@@ -9,11 +9,17 @@ always-gapping required field reaches a real handoff.
 Deliberately narrow:
 
 - **The body carries the draft template, not a case id.** The render runs
-  against a fixed sample case shipped here, so previewing can never read a
+  against `support_template_draft.SAMPLE_CASE`, so previewing can never read a
   real customer's data and needs no case access check -- `RETURNS_SESSION_READ`
-  is the whole gate. The sample mirrors the representative fixture the
-  equivalence test pins, so "preview of the default variant" and "what
-  `compose_support_handoff` says today" are the same text.
+  is the whole gate.
+- **The sample is not defined here.** It used to be: a second, hand-written
+  copy of the whole binding vocabulary, with nothing keeping it in step with
+  `production.yaml`, under a docstring claiming a preview showed "what
+  `compose_support_handoff` says today" that no test checked. A rename in the
+  yaml would have made the preview quietly show fallbacks for values a real
+  case fills, which is the one thing this screen exists to be trusted about.
+  The sample and its facts now come from the same producer the workflow will
+  use, and the claim is a test (`test_the_preview_is_the_composed_text`).
 - **No graph port.** A preview must not spend on-demand syncs; a `graph:`
   binding previews as its fallback or as a gap, labelled, which is itself
   useful information about the draft.
@@ -23,7 +29,6 @@ Deliberately narrow:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -32,6 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from return_platform.configuration.support_template_configuration import (
     SupportTemplateConfiguration,
 )
+from return_platform.operations.support_template_draft import SAMPLE_CASE, draft_facts
 from return_platform.operations.support_template_renderer import (
     RenderedTemplate,
     TemplateDraftInput,
@@ -51,47 +57,10 @@ def _meta(request: Request) -> ResponseMeta:
     return ResponseMeta(request_id=request_id if isinstance(request_id, str) else "unknown")
 
 
-#: The sample case a preview renders against. Fabricated by construction --
-#: every value announces itself as a sample -- and shaped exactly like the
-#: draft input the workflow assembler produces: `{"value": ...}` entries,
-#: case-level partition only.
-_SAMPLE_FACTS: dict[str, Any] = {
-    "case_id": "sample-case",
-    "work_item_id": "sample-work-item",
-    "created_at": datetime(2026, 1, 15, 9, 30, tzinfo=UTC),
-    "workflow_status_at_handoff": "AWAITING_SUPPORT_HANDOFF",
-    "customer_name": "Sample Customer Ltd",
-    "customer_id": "SAMPLE-CUST-1",
-    "customer_account": "SAMPLE-ACCT-1",
-    "branch_associate_name": "Sample Associate",
-    "branch_associate_email": "associate@example.com",
-    "branch_associate_phone": "555-0100",
-    "confirmed_order_reference": "SAMPLE-ORDER-1",
-    "selected_items": [
-        {
-            "lineReference": "10",
-            "productName": "Sample Water Filter Housing",
-            "colour": "Blue",
-            "sku": "SAMPLE-SKU-1",
-            "quantity": 2,
-            "reason": "SHIPPING_DAMAGE",
-            "condition": "NEW_IN_ORIGINAL_PACKAGING",
-        }
-    ],
-    "return_method": "PREPAID_PARCEL",
-    "requested_resolution": "REFUND",
-    "product_presence": "AT_BRANCH",
-    "associate_notes": "Sample note from the branch associate.",
-    "bay_assignment_status": "RECOMMENDED",
-    "bay_reference": "SAMPLE-BAY-1",
-    "bay_warehouse_reference": "SAMPLE-WH-1",
-    "bay_return_location": "Sample Dock",
-    "bay_handling_instructions": "Keep upright.",
-    "order_confirmation": "Confirmed",
-    "required_return_information": "Complete",
-    "policy_evaluation_rendered": "APPROVE on the AUTO route",
-}
-
+#: One return record, so a per-record section group has something to render.
+#: Not part of `SAMPLE_CASE`: `compose_support_handoff` predates return records
+#: and knows nothing about them, so this belongs to the preview rather than to
+#: the equivalence seam.
 _SAMPLE_RECORDS: tuple[dict[str, Any], ...] = (
     {
         "returnRecordId": "sample-record-1",
@@ -197,14 +166,17 @@ async def preview_support_template(
     _actor: str = Depends(require_capability(RETURNS_SESSION_READ)),
 ) -> APIResponse[SupportTemplatePreviewResponse]:
     draft = TemplateDraftInput(
-        case_id="sample-case",
+        case_id=str(SAMPLE_CASE["case_id"]),
         context=TemplateRenderContext(
             shipping_modes=body.context.shipping_modes,
             return_reason_classes=body.context.return_reason_classes,
             order_sources=body.context.order_sources,
+            # The operator's own count, not the sample's: they are describing
+            # the case shape a variant should be judged against, and the sample
+            # is only what fills the fields once one is chosen.
             item_count=body.context.item_count,
         ),
-        facts={(None, name): {"value": value} for name, value in _SAMPLE_FACTS.items()},
+        facts=draft_facts(**SAMPLE_CASE),
         return_records=_SAMPLE_RECORDS,
         graph=None,
     )
