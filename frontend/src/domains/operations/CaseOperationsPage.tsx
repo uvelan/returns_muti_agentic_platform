@@ -19,6 +19,7 @@ import {
 import { supportApi, type SupportMessage } from "../../api/support";
 import { useCapabilities } from "../../hooks/capabilityContext";
 import { DomainRail, RailFact, RailNote, RailSection } from "../DomainRail";
+import { CasePanel } from "../returns/panes/casePanel/CasePanel";
 import { formatCompactTimestamp, formatTimestamp } from "../../format/datetime";
 import { readSlaDue } from "../../format/sla";
 import { readReturnStatus } from "../../format/returnStatus";
@@ -358,6 +359,24 @@ function CaseDetailPane({
       <StatePanel detail={detail} />
       <LifecyclePanel detail={detail} />
       <ReleasePanel adoption={adoption} error={adoptionError} loading={adoptionLoading} />
+      {/*
+        **The same `CasePanelView` the copilot reads** (V1 brief item 8). Not a
+        second derivation of the review state from the projection: two screens
+        computing "is this held" from two payloads is two places for them to
+        start disagreeing, and an operations screen that disagreed with the
+        associate's about whether a message went out is the worst version of
+        that.
+
+        `readOnly`, because the associate holding the box decides what Support
+        is told. An operations screen offering Send would put that decision in
+        front of the wrong person.
+      */}
+      <Panel
+        title="Support review"
+        note="The same payload the branch associate sees. Read-only here."
+      >
+        <CasePanel caseId={detail.caseId} readOnly />
+      </Panel>
       <GraphPanel detail={detail} />
       <RmaPanel detail={detail} />
       <ChannelBPanel detail={detail} />

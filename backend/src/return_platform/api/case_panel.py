@@ -47,6 +47,7 @@ from return_platform.operations.repository import resolve_operational_repository
 from return_platform.operations.review_aggregate import (
     TERMINAL_REVIEW_STATES,
     ReviewState,
+    canonical_review_payload,
 )
 from return_platform.operations.support_events import canonical_payload_digest
 from return_platform.operations.support_template_gate import PAYLOAD_GAPS
@@ -176,6 +177,14 @@ def _review_view(review: dict[str, Any], flagged: set[str]) -> ReviewPanelView:
         conflict_present=str(review["_id"]) in flagged,
         draft=payload,
         gaps=tuple(cast(list[dict[str, Any]], payload.get(PAYLOAD_GAPS) or ())),
+        # Only where an approval is still possible. A `SENT` review's hash would
+        # be a value nothing can use, riding in every panel body and in its
+        # hash for the life of the case.
+        approval_hash=(
+            canonical_payload_digest(canonical_review_payload(review))
+            if state == ReviewState.OPEN.value
+            else None
+        ),
         approved_by=_text(review.get("approvedBy")),
         approved_at_iso=_instant(review.get("approvedAt")),
         recovery_status=state if state in _RECOVERABLE else None,

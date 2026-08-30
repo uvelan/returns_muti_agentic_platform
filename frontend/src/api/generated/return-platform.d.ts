@@ -9490,6 +9490,8 @@ export interface components {
             abandon_audit?: {
                 [key: string]: unknown;
             } | null;
+            /** Approval Hash */
+            approval_hash?: string | null;
             /** Approved At Iso */
             approved_at_iso?: string | null;
             /** Approved By */

@@ -1209,3 +1209,106 @@ def test_one_actor_never_reads_anothers_edit(
 
     assert answer.json()["data"]["payload"] is None
     assert "A's wording" not in answer.text
+
+
+# --------------------------------------------------------------------------- #
+# The approval hash the panel serves
+# --------------------------------------------------------------------------- #
+
+
+def test_the_panel_serves_a_hash_that_actually_approves(
+    store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
+) -> None:
+    """The console cannot derive this, so the panel has to serve it.
+
+    The CAS compares against `canonical_payload_digest(canonical_review_payload(...))`
+    -- the store's canonical serialization, of the canonical edit where there is
+    one and the draft where there is not. A browser computing that would be a
+    second implementation of a compare-and-set in another language, and the two
+    would disagree the first time either side changed how a payload serializes.
+    Every approval from the console would then answer 409 for a reason no
+    associate could act on.
+
+    Asserted end to end and in the strongest available direction: the hash is
+    taken **off the panel** and posted **to the endpoint**, so a serialization
+    change on either side fails here rather than in a branch.
+    """
+    with _client(mongo, test_settings) as client:
+        view = CasePanelView.model_validate(
+            client.get(f"/api/v1/cases/{CASE_ID}/panel").json()["data"]
+        )
+        review = view.reviews[0]
+        assert review.approval_hash is not None
+
+        answer = client.post(
+            f"/api/v1/cases/{CASE_ID}/reviews/{REVIEW_ID}/approve",
+            json={
+                "draft_version": review.draft_version,
+                "canonical_edit_version": review.canonical_edit_version,
+                "canonical_approved_payload_hash": review.approval_hash,
+            },
+        )
+
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["data"]["state"] == ReviewState.APPROVING.value
+
+
+@pytest.mark.asyncio
+async def test_a_hash_from_a_panel_read_before_the_draft_moved_is_refused(
+    store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
+) -> None:
+    """The other half, and the one the CAS exists for.
+
+    Echoing the served hash would be worthless if it made approval unconditional.
+    It does not: a draft that moved between the panel read and the approval
+    produces a different digest, and the store refuses -- which is exactly
+    "an associate approves the bytes they read".
+    """
+    with _client(mongo, test_settings) as client:
+        stale = CasePanelView.model_validate(
+            client.get(f"/api/v1/cases/{CASE_ID}/panel").json()["data"]
+        ).reviews[0]
+
+    # The draft is re-rendered under the reader, as `rerender_template_draft`
+    # does when a revision lands.
+    await store.record_draft_revision(
+        case_id=CASE_ID,
+        review_id=REVIEW_ID,
+        draft_payload={**DRAFT, "subject": "Return 9100 (corrected)"},
+        expected_draft_version=stale.draft_version,
+    )
+
+    with _client(mongo, test_settings) as client:
+        fresh = CasePanelView.model_validate(
+            client.get(f"/api/v1/cases/{CASE_ID}/panel").json()["data"]
+        ).reviews[0]
+        assert fresh.approval_hash != stale.approval_hash, (
+            "a re-rendered draft must hash differently, or the CAS is decorative"
+        )
+
+        answer = client.post(
+            f"/api/v1/cases/{CASE_ID}/reviews/{REVIEW_ID}/approve",
+            json={
+                "draft_version": stale.draft_version,
+                "canonical_edit_version": stale.canonical_edit_version,
+                "canonical_approved_payload_hash": stale.approval_hash,
+            },
+        )
+
+    assert answer.status_code == 409
+    assert answer.json()["detail"]["code"] == "ReviewVersionMismatchError"
+
+
+def test_a_review_past_open_serves_no_approval_hash(
+    store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
+) -> None:
+    """A value nothing can use would ride in every panel body, and in its hash,
+    for the life of the case."""
+    with _client(mongo, test_settings) as client:
+        client.post(f"/api/v1/cases/{CASE_ID}/reviews/{REVIEW_ID}/cancel", json={"reason": "x"})
+        view = CasePanelView.model_validate(
+            client.get(f"/api/v1/cases/{CASE_ID}/panel").json()["data"]
+        )
+
+    assert view.reviews[0].state == ReviewState.CANCELLED.value
+    assert view.reviews[0].approval_hash is None

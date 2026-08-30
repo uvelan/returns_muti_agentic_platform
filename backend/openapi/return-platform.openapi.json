@@ -15327,6 +15327,17 @@
             ],
             "title": "Abandon Audit"
           },
+          "approval_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Hash"
+          },
           "approved_at_iso": {
             "anyOf": [
               {

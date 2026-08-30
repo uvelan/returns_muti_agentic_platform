@@ -134,6 +134,26 @@ class ReviewPanelView(_Panel):
     conflict_present: bool
     draft: dict[str, Any] = Field(default_factory=dict)
     gaps: tuple[dict[str, Any], ...] = ()
+    #: The digest of the payload approval would freeze, as the store holds it
+    #: **right now**.
+    #:
+    #: **Served rather than left for the client to derive, and that is the whole
+    #: point of it.** Approval's compare-and-set requires
+    #: `canonical_approved_payload_hash` to equal
+    #: `canonical_payload_digest(canonical_review_payload(review))` -- over the
+    #: store's canonical serialization, of the canonical edit where one exists
+    #: and the draft where it does not. A browser computing that would be a
+    #: second implementation of the CAS, in another language, and the two would
+    #: disagree the first time either side changed how a payload serializes.
+    #: Every approval from the console would then answer 409 for a reason no
+    #: associate could act on.
+    #:
+    #: Echoing it back loses nothing the CAS is for: the guarantee is that an
+    #: associate approves *the bytes they read*, and a draft that moved between
+    #: this panel read and their approval produces a different digest, so the
+    #: store still refuses. `None` only when the review is past `OPEN` and there
+    #: is nothing left to approve.
+    approval_hash: str | None = None
     #: `None` unless the review has been in `APPROVING` or past it. The panel
     #: shows "approved by X, sending" from this, and it is server-stamped.
     approved_by: str | None = None
