@@ -29,6 +29,10 @@ from return_platform.dependency_simulation.dispatchers import SimulationTopicDis
 from return_platform.dependency_simulation.models import DependencyKind
 from return_platform.dependency_simulation.repository import MongoSimulationRepository
 from return_platform.dependency_simulation.service import DependencySimulationService
+from return_platform.operations.case_commands import (
+    CASE_COMMAND_SIGNAL_TOPIC,
+    CaseCommandSignalDispatcher,
+)
 from return_platform.operations.integrations.outbox import (
     HttpJsonDispatcher,
     HttpTicketDispatcher,
@@ -76,6 +80,13 @@ async def run() -> None:
         # survive, and a `Client.connect` at start-up would turn it into a crash
         # loop of the process that is supposed to be holding the queue.
         dispatchers[SUPPORT_RESPONSE_SIGNAL_TOPIC] = TemporalSignalDispatcher(
+            client_factory=lambda: Client.connect(settings.temporal_target),
+        )
+        # The review plane's commands (contracts.md sect. 7), committed by the
+        # API beside their command records and delivered here as workflow
+        # signals from a closed kind->signal map. Same lazy factory, same
+        # reasoning as above.
+        dispatchers[CASE_COMMAND_SIGNAL_TOPIC] = CaseCommandSignalDispatcher(
             client_factory=lambda: Client.connect(settings.temporal_target),
         )
         if (

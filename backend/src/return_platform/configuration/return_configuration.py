@@ -11,6 +11,9 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
+from return_platform.configuration.context_assembly_configuration import (
+    ContextAssemblyConfiguration,
+)
 from return_platform.configuration.settings import PRODUCTION_ENVIRONMENT
 from return_platform.configuration.support_template_configuration import (
     SupportTemplateConfiguration,
@@ -418,9 +421,7 @@ class SourceResolutionConfiguration(StrictConfigModel):
     #: How delivery is proven on the sales document. Defaulted so a release cut
     #: before the block still parses; an unbound one leaves `delivery_date`
     #: absent rather than guessed.
-    delivery_proof: DeliveryProofConfiguration = Field(
-        default_factory=DeliveryProofConfiguration
-    )
+    delivery_proof: DeliveryProofConfiguration = Field(default_factory=DeliveryProofConfiguration)
     #: Where the order states how the goods left, for
     #: `return_method_derivation.ship_via_methods`. Empty means the deployment
     #: has not bound it and the derivation falls back to the keyword rule.
@@ -1705,6 +1706,12 @@ class ReturnPlatformConfiguration(StrictConfigModel):
     return_eligibility_policy: ReturnEligibilityPolicy | None = None
     support_template: SupportTemplateConfiguration = Field(
         default_factory=SupportTemplateConfiguration
+    )
+
+    #: How a case's facts become the context a model reasons over (contracts.md
+    #: sect. 10). Defaulted so a release cut before the block still loads.
+    context_assembly: ContextAssemblyConfiguration = Field(
+        default_factory=ContextAssemblyConfiguration
     )
 
     @model_validator(mode="after")

@@ -23,6 +23,7 @@ from return_platform.dynamic_knowledge.source_bindings import (
     SourceBindingCatalogue,
     catalogue_from,
 )
+from return_platform.operations.case_commands import ensure_case_command_indexes
 from return_platform.operations.case_repository import CaseRepository
 
 # Re-exported deliberately, under the redundant-alias form `no_implicit_reexport`
@@ -55,6 +56,10 @@ from return_platform.operations.models import (
 from return_platform.operations.order_lines.reservations import (
     ensure_order_line_reservation_indexes,
 )
+from return_platform.operations.return_support.analysis_records import (
+    ensure_support_analysis_indexes,
+)
+from return_platform.operations.review_aggregate import ensure_review_indexes
 from return_platform.operations.seed_manifest import (
     SOURCE_CUSTOMERS_DATASET,
     SOURCE_PRODUCTS_DATASET,
@@ -469,6 +474,19 @@ class OperationalRepository(CaseRepository):
         # second RMA. Defined next to the store that depends on it and called
         # from here so index creation stays in one place.
         await ensure_support_event_indexes(self._db)
+        # `(caseId, signalId)` unique plus the frozen approval CAS. The review
+        # plane's command identity (contracts.md sect. 6-7), defined beside
+        # `DurableCaseCommandStore` and called from here for the same one-place
+        # reason as the line above.
+        await ensure_case_command_indexes(self._db)
+        # One live review per (case, request, kind, scope), and one draft-edit
+        # row per (review, actor). Redraft mints attempt after attempt, but two
+        # open reviews over one request would be two answers to one question.
+        await ensure_review_indexes(self._db)
+        # One analysis record per support event. A fallback attempt that minted
+        # a second would give the event two analyses and no way to say which
+        # one the case believes (contracts.md sect. 5).
+        await ensure_support_analysis_indexes(self._db)
         # One `ACTIVE` hold per (case, line), plus the availability read and the
         # expiry sweep's predicates. The unique partial index is what makes "a
         # case editing its own reservation" a well-defined operation rather than
