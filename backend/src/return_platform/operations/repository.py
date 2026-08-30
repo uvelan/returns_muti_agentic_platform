@@ -56,6 +56,7 @@ from return_platform.operations.models import (
 from return_platform.operations.order_lines.reservations import (
     ensure_order_line_reservation_indexes,
 )
+from return_platform.operations.review_aggregate import ensure_review_indexes
 from return_platform.operations.seed_manifest import (
     SOURCE_CUSTOMERS_DATASET,
     SOURCE_PRODUCTS_DATASET,
@@ -475,6 +476,10 @@ class OperationalRepository(CaseRepository):
         # `DurableCaseCommandStore` and called from here for the same one-place
         # reason as the line above.
         await ensure_case_command_indexes(self._db)
+        # One live review per (case, request, kind, scope), and one draft-edit
+        # row per (review, actor). Redraft mints attempt after attempt, but two
+        # open reviews over one request would be two answers to one question.
+        await ensure_review_indexes(self._db)
         # One `ACTIVE` hold per (case, line), plus the availability read and the
         # expiry sweep's predicates. The unique partial index is what makes "a
         # case editing its own reservation" a well-defined operation rather than

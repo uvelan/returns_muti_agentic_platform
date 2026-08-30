@@ -351,6 +351,22 @@ class DurableCaseCommandStore:
             receipt=receipt,
         )
 
+    async def insert_planned(
+        self, planned: PlannedCaseCommand, *, session: Any = None
+    ) -> CaseCommandReceipt:
+        """Write a planned command's two documents inside the caller's transaction.
+
+        The other half of `plan_command`, for a caller that owns a larger
+        transaction -- the review aggregate's approval, which locks the review
+        between the plan and this write. Keeping the pair here means the
+        collection names stay knowledge of this module alone; a caller that
+        reached for them directly would be one rename away from writing a
+        command nobody dispatches.
+        """
+        await self._commands.insert_one(dict(planned.command_document), session=session)
+        await self._outbox.insert_one(dict(planned.outbox_document), session=session)
+        return planned.receipt
+
     async def record_command(self, **kwargs: Any) -> CaseCommandReceipt:
         """Persist one command and queue its delivery, or recognise a repeat.
 
