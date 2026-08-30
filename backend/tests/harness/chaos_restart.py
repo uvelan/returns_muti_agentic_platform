@@ -13,6 +13,9 @@ the path that loses data. `SIGKILL` on POSIX, `TerminateProcess` (via
 `taskkill /F /T`) on Windows -- and in both cases the whole tree, because a
 worker script that has spawned a child leaves it holding a task queue after the
 parent is gone, and the next scenario then runs against a worker nobody started.
+The tree is walked from the parent, so both paths signal *before* letting the
+parent go -- a constraint a Windows job object would have lifted, had the worker
+not spawned its children faster than the assignment could land (`_signal_tree`).
 
 **Nothing here opens a connection.** Clients and workflow handles arrive as
 arguments; `wait_for_workflow` takes anything with `describe()`. That is partly

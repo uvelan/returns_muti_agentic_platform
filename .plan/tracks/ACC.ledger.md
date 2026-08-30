@@ -284,3 +284,103 @@ to the process group means something.
 - `ruff check` / `ruff format` → clean
 
 **Next step:** step:04 — full-suite verification and delta report.
+
+---
+
+## step:04 — delta report (ACC phase 1 complete)
+
+Branch `feat/acc-harness`, cut from `e0a5f6c`. Four commits, nothing uncommitted.
+
+### Suite
+
+| run | result |
+| --- | --- |
+| base (`e0a5f6c`, before any ACC work) | 4 373 passed, **2 failed**, 9 skipped, 511 deselected |
+| final (`feat/acc-harness` head) | 4 408 passed, **2 failed**, 9 skipped, 512 deselected, 3:20 |
+
+**+35 passing tests, +1 deselected, zero new failures.** The two failures are the
+known pre-existing pair, unchanged and untouched:
+`tests/platform/test_main_is_composition_only.py::test_router_mounting_is_the_bulk_of_create_app_and_that_is_allowed`
+and
+`tests/test_cumulative_support_outcomes.py::test_a_rejected_return_still_opens_no_work_item`.
+
+The +1 deselected is `test_chaos_restart_smoke_real_infra.py`, which is the
+point: it is mandatory and it runs in the suite that has what it needs.
+
+### Delivered (brief items 1, 2, 7)
+
+| item | files | tests |
+| --- | --- | --- |
+| 7 — fabrication guard, backend half | `tests/test_fact_name_literals_live_only_in_fact_names.py` | 3 (unit) |
+| 2 — business-calendar fixture | `tests/harness/{__init__,business_calendars,conftest}.py`, `tests/harness/test_business_hours_calendar_fixture.py` | 10 (unit) |
+| 1 — kill/restart harness | `tests/harness/chaos_restart.py`, `tests/harness/test_chaos_restart.py`, `tests/harness/test_chaos_restart_smoke_real_infra.py` | 22 unit + 1 live_infra |
+
+**What the fact-name guard catches today: nothing, and it must.** The tree is
+clean — `support_artifact_ambiguous` and `support_artifact_unmatched` appear in
+`backend/src` only at lines 19 and 24 of `fact_names.py`, and
+`operations/artifact_binding.py` imports both constants rather than spelling
+them. The guard is a ratchet against the next slice, not a finding against S1.
+It reads the vocabulary from `fact_names.py` at runtime, so every constant a
+later slice appends is guarded by the same commit that adds it.
+
+### Not attempted, by instruction
+
+Brief items 3–6 and 8–10 are acceptance scenarios and sweeps over code that does
+not exist until V3 merges (review aggregate, panel endpoint, resolver, template
+config, the V1–V3 UI). Nothing here asserts anything about them. Item 7's
+frontend half — extending `ReturnCopilotFabrication.test.ts`-style guards — has
+no phase-1 subject either: that guard is complete for the returns Copilot as it
+stands, and the panel and template-config surfaces it would be extended to are
+V1–V3 work.
+
+### Deviations
+
+1. **Branch name and base.** The brief says `feat/acc-acceptance` off the
+   post-V3 RV-approved commit. This is `feat/acc-harness` off the current trunk
+   head `e0a5f6c`, per the orchestrator's phase-1 direction. Recorded at the
+   head of this ledger.
+2. **Worktree started on the wrong commit.** It was on `0448d32` (`feat: refine
+   conversational returns experience`) with no `.plan/` at all. Checked out
+   `e0a5f6c` explicitly before reading anything. No adaptation — the contract
+   and brief were read from the correct tree.
+3. **`as_business_calendar` duplicates a private production mapping**
+   (`ReturnCaseActivities._business_calendar`). Deliberate: no production edits
+   are permitted to ACC, and the duplication is held to account by an
+   equivalence test that runs the real activity. Recorded in step:02.
+4. **The Windows job object was tried and removed** (step:03a) after measuring
+   that it reaps less than `taskkill /T` does. The residual constraint — the
+   tree must be signalled while the parent is alive — is documented at
+   `_signal_tree`.
+
+### Halts
+
+None. Every anchor in the brief and in contracts.md §§3–4 verified as declared.
+
+### Not verified
+
+`test_chaos_restart_smoke_real_infra.py` has **not been executed against live
+infrastructure** — the five datastores are not running in this worktree and
+`run_real_infra_suite.sh` preflights them by design. It is deselected from every
+run this phase makes. Brief item 9 executes the live suite after V3.
+
+### Production-code issues spotted, not fixed
+
+**None.** No production defect was found in the surfaces this phase read
+(`operations/fact_names.py`, `operations/artifact_binding.py`,
+`operations/business_calendar.py`, `configuration/return_configuration.py`
+calendar models, `workflows/return_case_activities.py::resolve_business_deadline`,
+`tests/conftest.py`, `backend/pyproject.toml`,
+`scripts/dev/run_real_infra_suite.sh`).
+
+Two observations for the orchestrator, neither a defect:
+
+- `backend/config/returns/production.yaml` carries an explicit **BEFORE LIVE**
+  obligation on `business_calendars.default` (24/7 dev calendar) and
+  `return_case.support_response_wait_seconds: 1800`. Already tracked in the file
+  and coupled by an existing test
+  (`test_the_shipped_calendar_and_the_support_sla_agree_about_which_clock_they_use`).
+  ACC's fixture does not touch it and does not depend on it.
+- The config→domain calendar mapping is private to `ReturnCaseActivities`.
+  Promoting it to a shared function on `operations/business_calendar.py` would
+  let ACC drop its duplicate. **Not requested and not done** — it is a
+  production edit, and it belongs to whichever slice owns that module.
