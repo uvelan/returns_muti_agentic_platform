@@ -1476,6 +1476,69 @@ context_assembly:
     trigger_fraction_millionths: 800000
     summary_task_id: support.context.summarize.v1
 
+support_ingress:
+  # What the platform accepts from Support and how it answers back
+  # (contracts.md sect. 5). Every value here is the code default restated, so
+  # a deployment changing one is editing configuration rather than discovering
+  # that the knob exists.
+  #
+  # The natural-language door starts shut. The structured
+  # `.../return-outcome` path is unaffected by this switch and is always on
+  # (DR-2): this gates only the free-text endpoint. Messages that arrive while
+  # it is false are persisted PARKED and reprocessed in stream order when it
+  # is flipped -- never refused -- so shipping it shut costs no message.
+  nl_enabled: false
+  # The closed classification taxonomy (contracts.md sect. 5). Widening this
+  # list widens what is *recognised*; it cannot widen what is executed,
+  # because anything outside the set becomes `other` in code.
+  intents:
+    - info_request
+    - rma_issued
+    - label_issued
+    - shipping_instruction
+    - tracking_provided
+    - partial_fulfillment
+    - rejection
+    - acknowledgement
+    - other
+  parking:
+    # A month. Long enough that flipping the switch after a quiet period still
+    # finds the traffic that arrived during it.
+    retention_seconds: 2592000
+    # A case holding this many parked messages is not a case with a backlog;
+    # it is a case nobody is reading, and it escalates.
+    per_case_quota: 50
+    # One alert per case per quarter hour. A disabled switch with live traffic
+    # behind it would otherwise page in proportion to the traffic.
+    alert_dedupe_window_seconds: 900
+  # The prompt section carrying the do-not-mix framing for a message that fans
+  # out to several return records. The key, not the text: the wording lives
+  # with the other prompt text and this names which of it applies.
+  multi_record_framing_prompt_key: support-multi-record-do-not-mix
+  agent_disclosure:
+    # Carried on every agent-authored Channel B message (contracts.md sect. 9),
+    # both through the shared prompt-section anchor on the `support.*` tasks
+    # and through the templated sends.
+    display_name: Returns Assistant
+    disclosure_line: >-
+      This message was written by the Returns Assistant, an automated agent working on this
+      return case. A branch associate reviews and can answer anything it cannot.
+  # Outbound Channel B text by template id, under sect. 8's interpolation-only
+  # grammar. Empty by default: the templates that matter are the ones a
+  # deployment writes for its own voice, and a model composes only where a
+  # deployment has configured it to.
+  outbound_templates: {}
+  limits:
+    # Refused with 413 rather than truncated: the cut half of a truncated
+    # support message may be the tracking number.
+    max_body_characters: 16000
+    # Per case rather than per principal -- the resource being protected is
+    # the case's analysis pipeline, and one transport speaking for many
+    # principals is the ordinary shape.
+    max_messages_per_case_per_window: 60
+    rate_window_seconds: 60
+    max_identifier_characters: 256
+
 copilot:
   # The agent policy every Copilot conversation turn is routed to. It must name
   # a key under `agent_policies` in the active schema release
