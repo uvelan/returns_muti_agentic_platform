@@ -11,6 +11,15 @@ So this plants reports the comparator MUST reject: a failure that is not on the
 list, a listed test that has started passing, a listed test that has vanished,
 and a run that collected nothing at all.
 
+It also plants the reports the SIZE FLOOR must reject. That half is here for a
+sharper reason than symmetry. The floor's entire job is to disbelieve a report
+that looks fine, so unlike the allowlist it has no failing test to point at and
+no red run to notice it in -- a floor wired up wrongly is indistinguishable, on
+every real run, from a floor working perfectly. The only thing that can tell
+those apart is a planted short run, which is what the second half of this file
+is. A size check with no negative control is precisely the shape of gate this
+repository already knows not to ship.
+
 No pytest, no dependencies -- it runs on a bare runner and on a developer laptop
 identically:
 
@@ -71,7 +80,36 @@ def check(label: str, condition: bool, detail: str = "") -> None:
         failures.append(label)
 
 
-def run(allowlist: Path, report: Path | str) -> tuple[int, str]:
+# The size of the standard planted report below: three cases across two
+# classnames. Controls that plant something smaller pass their own floor, so that
+# each one states the size it is being judged against rather than inheriting it.
+STANDARD_FLOOR = {"cases": 3, "files": 2}
+
+_floor_serial = 0
+
+
+def run(
+    allowlist: Path,
+    report: Path | str,
+    floor: object = STANDARD_FLOOR,
+    root: Path | None = None,
+) -> tuple[int, str]:
+    """Run the comparator. `floor` is the recorded size, or a path, or None.
+
+    `None` means "point --floor at a file that does not exist", which is its own
+    negative control: a gate whose baseline has been deleted must fail, not pass.
+    """
+
+    global _floor_serial
+    if isinstance(floor, Path):
+        floor_path = floor
+    elif floor is None:
+        floor_path = (root or Path(str(report)).parent) / "no-such-floor.json"
+    else:
+        _floor_serial += 1
+        floor_path = (root or Path(str(report)).parent) / f"floor-{_floor_serial}.json"
+        floor_path.write_text(json.dumps({"suites": {"demo": floor}}), encoding="utf-8")
+
     result = subprocess.run(
         [
             sys.executable,
@@ -80,6 +118,8 @@ def run(allowlist: Path, report: Path | str) -> tuple[int, str]:
             "demo",
             "--allowlist",
             str(allowlist),
+            "--floor",
+            str(floor_path),
             "--report",
             str(report),
         ],
@@ -167,6 +207,10 @@ def main() -> int:
                     (*HEALTHY, None),
                 ],
             ),
+            # Two cases, not three: this control deliberately drops one, so it is
+            # judged against a floor of its own rather than tripping the size
+            # check and answering 2 where this assertion wants 1.
+            floor={"cases": 2, "files": 2},
         )
         check("rejects a run that never collected an allowlisted test", code == 1, out)
 
@@ -176,6 +220,192 @@ def main() -> int:
 
         code, out = run(allowlist, root / "does-not-exist.xml")
         check("rejects a missing report", code == 2, out)
+
+        # ------------------------------------------------------------------
+        # The size floor.
+        #
+        # `empty.xml` above is the only shrinkage the comparator used to catch,
+        # and it catches it by being TOTAL. Everything below is the case that
+        # actually happened: a suite that came back partial, reported every test
+        # it ran as passing, and was internally consistent about it.
+        # ------------------------------------------------------------------
+        print("\na suite that came back SMALLER must not read as success")
+
+        def suite_of(files: int, cases_per_file: int, outcome: str | None = None):
+            """A plausible report: `files` files, `cases_per_file` tests in each."""
+
+            return [
+                (f"src/f{f}.test.ts", f"suite {f} > case {c}", outcome)
+                for f in range(files)
+                for c in range(cases_per_file)
+            ]
+
+        # The shape of the observed defect, in miniature: the recorded suite is
+        # 10 files / 50 cases, the runner brings back 6 files / 30 cases, and
+        # every one of the 30 PASSES. There is not a single failure to point at.
+        full = write("size-full.xml", suite_of(10, 5))
+        truncated = write("size-truncated.xml", suite_of(6, 5))
+        floor = {"cases": 50, "files": 10}
+        empty_allowlist = root / "empty-allowlist.json"
+        empty_allowlist.write_text(
+            json.dumps({"suites": {"demo": {"known_failures": []}}}), encoding="utf-8"
+        )
+
+        code, out = run(empty_allowlist, full, floor=floor)
+        check("accepts a run that is the size it should be", code == 0, out)
+        check("says so in the log", "suite size held" in out, out)
+
+        code, out = run(empty_allowlist, truncated, floor=floor)
+        check("REJECTS an all-green run that is missing a fifth of its files", code != 0, out)
+        check("names the shortfall in cases (50 recorded, 30 ran)", "20 did not report" in out, out)
+        check("names the shortfall in files (10 recorded, 6 ran)", "4 did not report" in out, out)
+        check("says the suite shrank", "THE SUITE SHRANK" in out, out)
+        # 2, not 1. `checks.yml` reads >1 as "the run failed, not the tests", and
+        # a suite that did not run is exactly that. Reporting 1 would file an
+        # infrastructure failure under "a test is failing", which is the wrong
+        # queue and the wrong owner.
+        check("exits 2 (the run broke), not 1 (a test failed)", code == 2, out)
+
+        # The condition the frontend suite is in every single day: legitimately
+        # red AND short. The allowlist would rule "acceptable" on the failures it
+        # can see; the floor has to override that, or a size check would be gated
+        # by the very condition it exists to doubt.
+        red_and_short = write(
+            "size-red-and-short.xml",
+            [*suite_of(6, 5), (*KNOWN_BACKEND, "failure"), (*KNOWN_FRONTEND, "failure")],
+        )
+        code, out = run(allowlist, red_and_short, floor={"cases": 52, "files": 12})
+        check("rejects a run that is short AND legitimately red", code == 2, out)
+        check("the shortfall outranks the allowlist's verdict", "THE SUITE SHRANK" in out, out)
+
+        # ------------------------------------------------------------------
+        # The size verdict must OUTRANK the allowlist verdict, not merely
+        # coexist with it. This control exists because the ordering survived a
+        # mutation: moving the size check below the `unexpected or repaired or
+        # missing` return left every other control in this file green.
+        #
+        # The control above cannot catch that, and the reason is worth stating.
+        # Its failures are ALL allowlisted, so the allowlist verdict is clean,
+        # both orderings fall through to the size check, and both answer 2.
+        #
+        # The distinguishing case is a short run that dropped a file carrying an
+        # allowlisted id -- which is not an exotic case but the MOST LIKELY real
+        # truncation, because a dropped allowlisted id is precisely when
+        # `missing` fires. There the allowlist verdict is 1 and the size verdict
+        # is 2, so the orderings disagree:
+        #
+        #   size first (correct) -> 2 -> `status -gt 1` -> the job fails
+        #   allowlist first      -> 1 -> tolerated       -> CI GREEN over a
+        #                                                   fraction of the suite
+        #
+        # 1 is the code this workflow reserves for "the tests have an opinion",
+        # and a suite that did not run has no opinion to report.
+        short_and_missing_allowlisted = write(
+            "size-short-drops-allowlisted.xml",
+            # KNOWN_FRONTEND is here and still failing; KNOWN_BACKEND's file is
+            # gone entirely, exactly as a dead worker would take it. So
+            # `missing` is non-empty AND the run is short.
+            [*suite_of(6, 5), (*KNOWN_FRONTEND, "failure")],
+        )
+        code, out = run(allowlist, short_and_missing_allowlisted, floor={"cases": 52, "files": 12})
+        check("a short run that also lost an allowlisted test exits 2, not 1", code == 2, out)
+        check("  (the allowlist DID have a verdict to give)", "was not collected" in out, out)
+        check("  (and the size check overrode it)", "THE SUITE SHRANK" in out, out)
+
+        # A single missing file, not a collapse. The floor has no slack by design:
+        # these are integer counts, not gzip bytes, and there is no measurement
+        # noise for an allowance to absorb -- so any slack would be a hole of
+        # exactly that size for tests to disappear into.
+        code, out = run(empty_allowlist, write("size-one-short.xml", suite_of(9, 5)), floor=floor)
+        check("rejects a run missing a single file", code == 2, out)
+
+        # The floor counts `<testcase>` ELEMENTS, not distinct ids. A real
+        # frontend report measured during this work held 585 elements collapsing
+        # to 577 distinct `classname::name` ids, so the two measures genuinely
+        # differ here. Against distinct ids, one of a duplicated pair could stop
+        # running without moving the number -- a blind spot the size of every
+        # duplicated name in the suite.
+        duplicated = write(
+            "size-duplicate-ids.xml",
+            [("src/f0.test.ts", "same name", None)] * 10 + suite_of(9, 5),
+        )
+        halved = write(
+            "size-duplicate-ids-halved.xml",
+            [("src/f0.test.ts", "same name", None)] * 5 + suite_of(9, 5),
+        )
+        # 9 files, not 10: the duplicate block reuses `src/f0.test.ts`, which
+        # `suite_of(9, ...)` also emits. 55 elements collapsing to 46 ids.
+        dup_floor = {"cases": 55, "files": 9}
+        code, out = run(empty_allowlist, duplicated, floor=dup_floor)
+        check("counts elements, not distinct ids (55 elements, 46 ids)", code == 0, out)
+        code, out = run(empty_allowlist, halved, floor=dup_floor)
+        check("catches five duplicate-named tests vanishing", code == 2, out)
+
+        print("\nbut it is a FLOOR, not a pin -- growth is not a failure")
+        code, out = run(empty_allowlist, write("size-grown.xml", suite_of(11, 5)), floor=floor)
+        check("accepts a suite that grew (55 cases against a floor of 50)", code == 0, out)
+
+        print("\nand a floor the suite has outgrown is a floor at zero")
+        code, out = run(empty_allowlist, write("size-way-up.xml", suite_of(20, 5)), floor=floor)
+        check("rejects a floor the suite has left far behind", code == 2, out)
+        check("prints the number to re-stake it at", '"cases": 100' in out, out)
+
+        print("\na floor that cannot fail is not a floor")
+        code, out = run(empty_allowlist, full, floor=None)
+        check("rejects a missing floor file", code == 2, out)
+        check("says a check with no floor is not a check", "is not a check" in out, out)
+
+        # These three assert the REASON, not just the exit code, and that is not
+        # belt-and-braces. A floor of 0 fails the exit-code assertion even with
+        # the `baseline <= 0` guard deleted, because 50 > 0 * 1.25 sends it down
+        # the RESTAKE branch instead -- so on the code alone this control passes
+        # while testing nothing it names, and would go on passing after the guard
+        # it exists for was removed. A control that passes for the wrong reason is
+        # a control you do not have. Naming the expected message is what ties each
+        # one to the branch it is about.
+        code, out = run(empty_allowlist, full, floor={"cases": 0, "files": 10})
+        check("rejects a floor of zero", code == 2, out)
+        check("  (via the unusable-floor guard, not the restake branch)", "no usable" in out, out)
+        check("  (and NOT via restake)", "fallen behind" not in out, out)
+
+        code, out = run(empty_allowlist, full, floor={"files": 10})
+        check("rejects a floor with a missing count", code == 2, out)
+        check("  (naming the absent key)", "no usable demo.cases floor" in out, out)
+
+        code, out = run(empty_allowlist, full, floor={"cases": "50", "files": 10})
+        check("rejects a floor that is not a number", code == 2, out)
+        check("  (naming the unusable key)", "no usable demo.cases floor" in out, out)
+
+        # `True` is an `int` in Python, which is why the guard tests
+        # `isinstance(baseline, bool)` separately. Without that clause a floor of
+        # `true` would be read as a floor of 1 and would silently pass anything.
+        code, out = run(empty_allowlist, full, floor={"cases": True, "files": 10})
+        check("rejects a boolean floor", code == 2, out)
+        check("  (booleans are ints in Python; the guard says so)", "no usable" in out, out)
+
+        no_suite = root / "floor-no-suite.json"
+        no_suite.write_text(json.dumps({"suites": {"other": {"cases": 1, "files": 1}}}), "utf-8")
+        code, out = run(empty_allowlist, full, floor=no_suite)
+        check("rejects a suite gated with no floor recorded for it", code == 2, out)
+
+        # A malformed floor file must exit 2 like every other "cannot judge this
+        # run" condition. If it escaped as an uncaught exception Python would exit
+        # 1 -- the code this script uses for "a test failed" -- and a typo in a
+        # JSON file would be filed as a failing test, which is precisely the
+        # misclassification the exit codes here exist to prevent.
+        broken = root / "floor-broken.json"
+        broken.write_text("{not json", encoding="utf-8")
+        code, out = run(empty_allowlist, full, floor=broken)
+        check("rejects an unparseable floor file with 2, not a traceback", code == 2, out)
+        check("no traceback escaped", "Traceback" not in out, out)
+
+        code, out = run(empty_allowlist, full, floor=42)
+        check("rejects a floor entry that is not an object", code == 2, out)
+
+        wrong_root = root / "floor-wrong-root.json"
+        wrong_root.write_text(json.dumps([1, 2, 3]), encoding="utf-8")
+        code, out = run(empty_allowlist, full, floor=wrong_root)
+        check("rejects a floor file whose root is not an object", code == 2, out)
 
     print()
     if failures:
