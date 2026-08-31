@@ -170,13 +170,38 @@ functions the run loop calls and **never grew a `patched` method** when producti
 grew a `workflow.patched` call. Production is correct; the harness is stale.
 
 This is exactly the class ACC-2 handed to its owner and predicted would recur
-(STATUS "Findings handed to their owners" 1 and 2). **The acceptance-gate
-consequence, which nobody had stated: one branch of item 20's deploy-replay pair
-is therefore unexercised in that module** — the structured-support-draft patch
-branch is never taken there, because the call raises before it can be. Item 20's
-"both patch branches audited" holds for the branches ACC-2 flipped directly; it
-does not hold for this module's coverage of them. And any full-suite run on this
-branch is red before an auditor starts.
+(STATUS "Findings handed to their owners" 1 and 2).
+
+**The acceptance-gate consequence, stated at its true size** (an earlier draft of
+this document said "one branch of item 20's deploy-replay pair", which was too
+narrow — corrected after RV finding ACC3-1 F1, and the correction *enlarges* the
+gap):
+
+`return_case_workflow.py` calls `workflow.patched` at **three** sites, guarding
+**three distinct patch gates**:
+
+| line | constant | patch id |
+| --- | --- | --- |
+| 1672 | `_PATCH_V3_CLARIFICATION_ROUND_TRIP` | `v3-clarification-round-trip` |
+| 2247 | `_PATCH_STRUCTURED_SUPPORT_DRAFT` | `support-draft-returns-structured-payload` |
+| 2294 | `_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE` | `support-template-review-gate` |
+
+The string `patched` does not occur **anywhere** in
+`tests/test_cumulative_support_outcomes.py` — `_Runtime` neither defines it nor
+is it monkeypatched in. So any test that reaches any of those three lines raises
+`AttributeError` and fails. **50 of the module's 51 tests pass**, which means
+none of the 50 reaches any of the three; the one that fails reaches line 2247
+and dies there.
+
+Therefore: **no branch of any patch gate is exercised in that module — both limbs
+of all three.** Not one branch of one pair. Item 20's "both patch branches
+audited" holds for the branches ACC-2 flipped directly; it describes nothing this
+module covers.
+
+This matters to whoever owns the repair: the understated version would send them
+to fix one branch and believe they were done. **Fixing `_Runtime` unblocks three
+gates, six limbs.** And any full-suite run on this branch is red before an
+auditor starts.
 
 Not repaired: ACC does not edit another slice's harness, and the audit rule
 forbids touching a failing test.

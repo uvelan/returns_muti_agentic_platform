@@ -168,6 +168,39 @@ coverage invisible in both directions.
 | 17 (relay half) | `test_the_transcript_entry_is_appended_once_across_a_redelivery` | **→ A**, by two tests together. The named test **stays green when the append-once guard is deleted** — it drives a double with its own dedupe. The guarantee is pinned in `tests/operations/test_support_relay_and_wiring.py`. The named test does pin that `relayed_entries` counts writes, not calls. |
 | 20 (deploy replay) | `tests/test_return_case_workflow_replay_compatibility.py` (15) | **remains B** — not reached. See production finding 3 below: one branch of the pair is unexercised in `test_cumulative_support_outcomes.py`. |
 
+## The falsifiable map — per guarantee, the test that reddens when you delete it
+
+Added by ACC3 because **these category tables are themselves the kind of map the
+audit found to be wrong.** A row naming a *file where tests were found* asks the
+reader to trust it. A row naming *the mechanism to delete and the test that goes
+red* is checkable in one command, by anyone, in about a minute.
+
+**Every line below was executed**, not inferred: each is a `src/` edit that was
+applied, run, and reverted (`.plan/tracks/ACC3.ledger.md` carries the verbatim
+output). A guarantee ACC3 did not inject against is **absent from this table** —
+absence here means unverified, never "fine".
+
+| guarantee | delete this in `src/` | this reddens |
+| --- | --- | --- |
+| DR-11: unmatched never creates a record | route UNMATCHED into `_record_support_outcome` | `test_an_unmatched_artifact_never_creates_a_record` (on `events.calls == []`) |
+| DR-11: ambiguous asks, never guesses | `artifact_binding.py:155` AMBIGUOUS → BOUND `records[0]` | `test_an_ambiguous_artifact_asks_rather_than_guesses` |
+| item 8: right record, decision layer | `bind_artifact` matched → `records[0]` | `test_an_artifact_naming_a_known_reference_binds_to_that_record` |
+| item 8: right record, persistence layer | `_merge_bound_artifact` search **and** write → `records[0]` | `test_a_bound_artifact_merges_onto_the_named_record_not_the_first` |
+| approval checks `draft_version` | `review_aggregate.py:747` | `test_approval_refuses_a_stale_draft_version` |
+| approval checks `canonical_edit_version` | `review_aggregate.py:751` | `test_approval_refuses_a_stale_canonical_edit_version` — **this one test only**; the 93 in the two review-gate files stay 96/96 green |
+| approval checks the payload hash | `review_aggregate.py:778` | `test_approval_refuses_a_hash_of_bytes_the_store_does_not_hold` |
+| `hold` never auto-sends | `return_case_workflow.py:2759` widen the policy test | `test_nobody_answering_parks_the_case_and_sends_nothing` |
+| autosave after `APPROVING` refused | `upsert_draft_edit`'s state guard, add `APPROVING` | `test_autosave_after_approving_is_a_409_and_the_row_survives` |
+| sent payload = frozen payload | `support_template_gate.py:709` → `review["draftPayload"]` | `test_delivery_sends_the_frozen_canonical_edit_not_the_draft` |
+| zero hardcoding of field names | renderer resolves `case_fact` by `field_id` | 23 tests, incl. every `TestComposedEquivalenceMatrix` scenario |
+| AMENDMENT-2 reach, release validation | `support_template_configuration.py:93` | `test_an_undeclared_attribute_is_refused` (+2 siblings) |
+| AMENDMENT-2 reach, render side | **both** guards at once | `test_an_undeclared_attribute_degrades_rather_than_reaching[projection]` — `[mapping]` stays green |
+| item 17: transcript appended once | `relay.py:163` append-once guard | `test_the_same_entry_is_appended_once_however_often_it_is_delivered` — **not** the test the B row named |
+| item 17: relay counts writes, not calls | `_relay_to_channel_a`'s `if wrote:` | `test_the_transcript_entry_is_appended_once_across_a_redelivery` |
+| item 12: budget checked before the call | `resolution_ladder.py:439` `>=` → `>` | `test_budget_exhaustion_writes_the_fact_and_escalates` |
+| item 9: disclosure on agent-authored sends | `_with_disclosure` returns the bare body | `test_an_auto_reply_is_delivered_with_system_provenance_and_disclosure` (+11) |
+| items 11–12: a 404 writes no command | defer the 404 past `store.record_command` | `test_a_refused_answer_records_no_command` (all 3 params) |
+
 ## C — not reached
 
 | item(s) | why |
@@ -244,12 +277,17 @@ touches nothing outside `backend/tests/` and `.plan/`.
    `_Runtime` double (line 1311) never grew a `patched` method when production
    grew a `workflow.patched` call. Production correct, harness stale — exactly
    what findings 1 and 2 predicted would recur, in a third file.
-   **The acceptance-gate consequence, not previously stated: one branch of item
-   20's deploy-replay pair is unexercised in that module**, because the call
-   raises before the branch can be taken. Item 20's "both patch branches
-   audited" holds for the branches ACC-2 flipped directly, not for this module's
-   coverage of them. Any full-suite run on this branch is red before an auditor
-   starts. Reported, not repaired.
+   **The acceptance-gate consequence:** `return_case_workflow.py` calls
+   `workflow.patched` at **three** sites (1672 `_PATCH_V3_CLARIFICATION_ROUND_TRIP`,
+   2247 `_PATCH_STRUCTURED_SUPPORT_DRAFT`, 2294 `_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE`),
+   and the string `patched` occurs nowhere in that test module — so any test
+   reaching any of them raises. 50 of 51 pass, therefore **no branch of any patch
+   gate is exercised in that module, both limbs of all three.** Item 20's "both
+   patch branches audited" holds for the branches ACC-2 flipped directly; it
+   describes nothing this module covers. **Fixing `_Runtime` unblocks three
+   gates, six limbs** — an earlier draft said "one branch of one pair", which
+   would have sent the owner to do too little (RV ACC3-1 F1). Any full-suite run
+   on this branch is red before an auditor starts. Reported, not repaired.
 5. **(ACC3) AMENDMENT-2 is defended twice; only one layer is reachable by test.**
    `support_template_renderer._record_attribute`'s allowlist can be deleted with
    the whole suite green, because `binding_source()` refuses the same binding at

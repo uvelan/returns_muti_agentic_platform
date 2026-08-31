@@ -757,3 +757,69 @@ appended (the red merge tip with its item-20 consequence, and AMENDMENT-2's
 unreachable second layer).
 
 `git diff -- backend/src/` empty. Nothing uncommitted at the boundary.
+
+---
+
+## step:10 — RV ACC3-1 F1: the item-20 claim was too narrow
+
+RV returned CHANGES_REQUIRED on one documentation finding. Verified from source
+rather than from RV's line numbers (this run has already turned up two
+coordinator errors; inheriting a third would be the same mistake in a new coat):
+
+```
+$ grep -n "workflow\.patched" src/return_platform/workflows/return_case_workflow.py
+1672:        if not workflow.patched(_PATCH_V3_CLARIFICATION_ROUND_TRIP):
+2247:            if workflow.patched(_PATCH_STRUCTURED_SUPPORT_DRAFT):
+2294:        if workflow.patched(_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE):
+```
+
+Three sites, and **three distinct gates** — the constants are separate patch ids,
+not one gate read three times:
+
+```
+157:_PATCH_STRUCTURED_SUPPORT_DRAFT: Final = "support-draft-returns-structured-payload"
+174:_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE: Final = "support-template-review-gate"
+198:_PATCH_V3_CLARIFICATION_ROUND_TRIP: Final = "v3-clarification-round-trip"
+```
+
+```
+$ grep -n "patched" tests/test_cumulative_support_outcomes.py
+(no occurrence of 'patched' in the entire module)
+$ ./.venv/Scripts/python.exe -m pytest tests/test_cumulative_support_outcomes.py -q
+1 failed, 50 passed in 1.56s
+```
+
+The argument, which is what makes the claim safe: `patched` appears nowhere in
+the 51-test module, so `_Runtime` neither defines it nor has it monkeypatched in;
+therefore **any** test reaching **any** of the three lines raises `AttributeError`
+and fails. 50 pass ⟹ none of the 50 reaches any site. The 1 failure reaches 2247
+and dies there.
+
+**RV is right and my claim was too narrow.** I wrote "one branch of item 20's
+deploy-replay pair"; the truth is **no branch of any patch gate is exercised in
+that module — both limbs of all three.** The correction enlarges the gap. As
+written it would have told the harness owner that fixing one branch closes it;
+fixing `_Runtime` unblocks **three gates, six limbs**. An understated finding
+sends its owner to do too little and then believe they are done — the same family
+as a mis-pointed row, which is the finding this whole audit turns on.
+
+Corrected in `category-b-audit.md` (with the three-site table and the pass-count
+argument) and in `STATUS.md` production finding 4.
+
+### Also added, on judgement — the falsifiable map
+
+RV raised, as a judgement call rather than an instruction, whether STATUS's rows
+could be made falsifiable. Taken up, because the cost is near zero — every entry
+is data already measured in steps 01–08 — and because **these category tables are
+themselves the kind of map this audit found to be wrong.** A row naming a file
+asks for trust; a row naming *the mechanism to delete and the test that reddens*
+is checkable in one command.
+
+Eighteen rows, one per guarantee ACC3 actually injected against. All seventeen
+distinct test names were re-verified by `grep -rn "def <name>"` against `tests/`
+before being written down, rather than transcribed from the run output above.
+A guarantee ACC3 did **not** inject against is deliberately absent: absence in
+that table means unverified, never "fine". That is what stops the map from
+becoming the next thing a reader over-trusts.
+
+Documentation only: `git diff -- backend/src/` empty.
