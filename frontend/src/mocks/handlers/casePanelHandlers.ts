@@ -1,5 +1,7 @@
 import { HttpResponse, delay, http } from "msw";
 
+import { supportPanelSections } from "./supportHandlers";
+
 /**
  * The case panel and its review endpoints, for `npm run dev:mock` and tests.
  *
@@ -222,24 +224,32 @@ function panelBody() {
     parked_messages: 0,
     accepted_commands: store.acceptedCommands,
     /*
-     * V3's contributed section, so `dev:mock` can actually be walked: an
-     * unmatched tracking number, its evidence span, and the two RMAs the case
-     * holds as candidates. The payload is opaque to this file by design -- the
-     * seam is a JSON object precisely so V3's shape never enters V1's DTO -- and
-     * its own tests own the shape.
+     * **Composed from every contributing slice, exactly as the backend registry
+     * composes it.** Two rules meet on this line and both survived the merge
+     * that produced it:
      *
-     * `clarifications: []` above stays empty and is *not* where this lives: the
-     * top-level field cannot be written by any registered contributor, so a mock
-     * that filled it would be mocking a path production has no way to take.
+     * V2's: a second `GET .../panel` handler is not an option. MSW takes the
+     * first match, so a second one would shadow this handler and silently take
+     * the reviews off the screen.
      *
-     * **One element per contributing slice, and merges compose rather than
-     * replace.** The registry lets several slices contribute sections, so a
-     * branch arriving with its own section belongs *alongside* this one. Taking
-     * either side of a conflict here drops a slice's section from `dev:mock`
-     * while both suites stay green -- nothing asserts a section it has never
-     * heard of is present. Add the element; do not swap the array.
+     * V3's: one element per contributing slice, and **merges compose rather
+     * than replace**. Taking either side of a conflict here drops a slice's
+     * section from `dev:mock` while both suites stay green -- nothing asserts
+     * that a section it has never heard of is present. Add the element; do not
+     * swap the array.
+     *
+     * `clarifications: []` above stays empty and is *not* where V3's section
+     * lives: per AMENDMENT-6 the top-level field cannot be written by any
+     * registered contributor, so a mock that filled it would be mocking a path
+     * production has no way to take. The same is true of `support_digest` and
+     * `parked_messages` for V2.
+     *
+     * Each payload is opaque to this file by design -- the seam is a JSON object
+     * precisely so V2's and V3's shapes never enter V1's DTO -- and each slice's
+     * own tests own its shape.
      */
     sections: [
+      ...supportPanelSections(),
       {
         section_id: "clarifications",
         status: "ok",

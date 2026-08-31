@@ -143,4 +143,165 @@ export const COPILOT_TOKENS = {
     clarification:
       "rounded-lg border border-secondary/50 bg-secondary-container/40 px-3 py-2 text-on-secondary-container",
   },
+  /**
+   * What Support said, and what the platform made of it (V2 phase 2).
+   *
+   * Its own group rather than more entries under `review`, for the reason the
+   * two registries are two registries: `review.*` is V1's vocabulary for a
+   * draft an associate is about to send, and this is V2's for a message that
+   * has already arrived. Folding one into the other would mean every future
+   * change to a review badge had to be checked against a support card.
+   *
+   * Where a value here is identical to a `review` one it says so, and the
+   * duplication is deliberate: two tokens naming one M3 role pair is how a
+   * design system lets the two diverge later without a rename. Every value is
+   * an M3 role. No hex, and nothing smaller than `text-xs`.
+   */
+  support: {
+    /**
+     * One return record's artifact card.
+     *
+     * `ProgressTruthPane`'s record card is the pattern -- same radius, same
+     * `surface-container-low` on `outline-variant`, same shadow -- so the two
+     * places a return record is drawn look like the same object. Extracted to
+     * a token here because that pane spells it inline, and a second inline
+     * copy is the first divergence.
+     */
+    card: "rounded-lg border border-outline-variant/40 bg-surface-container-low p-3 shadow-sm",
+    cardHeader: "flex items-baseline justify-between gap-2",
+    /** The reference Support issued. Never invented -- see `PENDING_LABEL`. */
+    reference: "truncate text-sm font-semibold text-on-surface",
+    /** A `<dl>` row. `grid` rather than `flex`, so long values wrap under. */
+    row: "grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-2 py-0.5",
+    term: "text-xs text-outline",
+    /**
+     * `break-words`, not `truncate`.
+     *
+     * A truncated tracking number is a different tracking number, and this is
+     * the value an associate reads aloud down a phone. The record card in
+     * `ProgressTruthPane` truncates because it is a glance surface with a
+     * `title`; the panel is the surface someone opens to get the value right.
+     */
+    value: "text-sm text-on-surface break-words",
+    /**
+     * A small labelled chip: an intent, a disposition, a binding status.
+     *
+     * Tone is never the only signal -- every call site puts the word inside
+     * the chip, so the meaning survives a monochrome screen and a screen
+     * reader.
+     */
+    chip: "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium",
+    chipTone: {
+      /** The ordinary case: a message that was classified and applied. */
+      neutral: "bg-surface-container-high text-on-surface-variant",
+      /**
+       * Something is waiting on a person.
+       *
+       * The same **role pair** as `review.state.APPROVING`
+       * (`tertiary-container` on `on-tertiary-container`, 4.54:1), which is the
+       * badge V1 already uses for "in somebody else's hands". Deliberately not
+       * `review.conflict`'s roles: that one is a *notice box* at
+       * `bg-tertiary-container/40` with a `tertiary` border, and a chip drawn
+       * at 40% would land near 2:1 against `on-tertiary-container`. An earlier
+       * draft of this comment named `review.conflict` as the twin, which was
+       * wrong in the one way a token comment can be dangerous -- it points the
+       * next reader at the wrong value to copy.
+       */
+      attention: "bg-tertiary-container text-on-tertiary-container",
+      /** On file, not acted on. Deliberately not an error tone -- see below. */
+      parked: "bg-secondary-container text-on-secondary-container",
+    },
+    /**
+     * Messages are being kept rather than processed.
+     *
+     * `secondary`, not `error`, and this is a judgement rather than a palette
+     * choice: `nl_enabled: false` parks a message on purpose (contracts.md
+     * sect. 5 -- "never 409"), the message is on file, counted, and replayed in
+     * stream order when the switch flips. Painting a deliberate configuration
+     * in the error colour teaches an associate to ignore the error colour.
+     */
+    notice:
+      "rounded-lg border border-outline-variant/40 bg-secondary-container/40 px-3 py-2 text-xs text-on-secondary-container",
+    /**
+     * Something is on file and waiting on a person.
+     *
+     * Added by the design critique, which found the unbound-artifact block
+     * drawn in `notice` -- the *parking* tone. Those two states are opposites
+     * from where an associate stands: a parked message is on file and needs
+     * nobody, and an unfiled artifact cannot be used by anybody until somebody
+     * says which return it belongs to. Drawing them in one colour told a reader
+     * that both were equally finished.
+     *
+     * The `tertiary` family -- V1's roles for "this is in somebody's hands" --
+     * rather than `error`, which is reserved here for the do-not-mix warning,
+     * the one case that is unrecoverable by re-reading.
+     *
+     * **The foreground is `on-surface`, not `on-tertiary-container`, and the
+     * accessibility review is why.** This palette's tertiary pair is *inverted*
+     * relative to its siblings: `secondary-container` and `error-container` are
+     * light with dark `on-` roles, but `tertiary-container` is a dark brown with
+     * a *light* `on-` role. That pair reads 4.54:1 as a solid chip -- and at the
+     * `/40` tint a notice needs, the ground lightens to roughly `#d0b7ad` while
+     * the foreground stays light, landing near **1.3:1**. The `on-` role is only
+     * the right foreground for the *solid* container, which is why the chip uses
+     * it and this does not. On the tint, `on-surface` reads about 9.6:1.
+     *
+     * `supportTokens.test.ts` now computes this from the palette rather than
+     * trusting the pairing, because the first draft of this token copied
+     * `review.conflict`'s foreground and would have shipped the 1.3:1.
+     */
+    attentionNotice:
+      "rounded-lg border border-tertiary/50 bg-tertiary-container/40 px-3 py-2 text-xs text-on-surface",
+    /**
+     * Do not mix these records up.
+     *
+     * The one place in this group that borrows `review.gap`'s roles, because
+     * it is the one place with the same weight: a label filed against the
+     * wrong RMA sends a customer's freight to the wrong dock, and it is not
+     * recoverable by reading the screen again afterwards.
+     */
+    warning:
+      "rounded-lg border border-error/40 bg-error-container/30 px-3 py-2 text-xs text-on-error-container",
+    /** One inbound message in the thread digest. */
+    digestRow: "border-t border-outline-variant/30 pt-2 first:border-t-0 first:pt-0",
+    /**
+     * A typed system entry in the Order Discovery transcript (DR-3).
+     *
+     * Full width and centred rather than a left or right bubble, because it is
+     * neither party speaking: the associate's messages sit right, the agent's
+     * sit left, and an entry that borrowed either shape would put the
+     * platform's words in somebody's mouth on a screen somebody screenshots.
+     */
+    systemEntry:
+      "rounded-xl border border-dashed border-outline-variant/60 bg-surface-container-high/60 px-4 py-2.5",
+    systemEntryKicker:
+      "mb-1 block text-xs font-bold uppercase tracking-wider text-on-surface-variant",
+    /** Same value and same rules as `review.liveRegion`: polite, never focused. */
+    liveRegion: "text-xs text-outline min-h-[1rem]",
+    /**
+     * The panel's announcement, with no visible counterpart.
+     *
+     * `sr-only`, not `hidden` and not `text-transparent`: a `display:none`
+     * region is not announced at all, which is the failure this exists to
+     * avoid. It carries no `min-h` because it occupies no space either way, so
+     * there is no layout to reserve.
+     *
+     * Why an invisible one rather than reusing `liveRegion`: what arrives is
+     * *already on the screen* -- a new artifact card, a rising parked count --
+     * so a visible line repeating it would be the same fact twice for a sighted
+     * associate, and its absence would be the fact only once for everyone else.
+     */
+    announcer: "sr-only",
+  },
 } as const;
+
+/**
+ * The one word this domain uses for "the platform has not said".
+ *
+ * `ProgressTruthPane` declares its own `PENDING` and `ReturnCopilotFabrication`
+ * allowlists exactly this spelling in its `??`-fallback rule, so a second
+ * vocabulary here would either be banned by that test or -- worse -- slip
+ * through as a new invented word. Exported so the panel sections and the record
+ * card cannot drift apart on what an unknown value is called.
+ */
+export const PENDING_LABEL = "Pending";

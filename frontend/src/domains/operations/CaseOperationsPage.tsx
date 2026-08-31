@@ -20,6 +20,9 @@ import { supportApi, type SupportMessage } from "../../api/support";
 import { useCapabilities } from "../../hooks/capabilityContext";
 import { DomainRail, RailFact, RailNote, RailSection } from "../DomainRail";
 import { CasePanel } from "../returns/panes/casePanel/CasePanel";
+// See `ReturnCopilotPage` -- V2's sections register at import time, and this is
+// the second screen that mounts the panel.
+import "../returns/panes/casePanel/support/installSupportSections";
 import { formatCompactTimestamp, formatTimestamp } from "../../format/datetime";
 import { readSlaDue } from "../../format/sla";
 import { readReturnStatus } from "../../format/returnStatus";

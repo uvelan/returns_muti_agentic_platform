@@ -1,6 +1,7 @@
 import { analyzerHandlers } from "./handlers/analyzerHandlers";
 import { canonicalHandlers } from "./handlers/canonicalHandlers";
 import { casePanelHandlers } from "./handlers/casePanelHandlers";
+import { supportHandlers } from "./handlers/supportHandlers";
 
 /**
  * Mock handlers for `npm run dev:mock` and the fixture server.
@@ -21,4 +22,9 @@ import { casePanelHandlers } from "./handlers/casePanelHandlers";
  * regeneration published the route, so it is part of the panel set now and is
  * validated against the document like the rest of it.
  */
-export const handlers = [...canonicalHandlers, ...casePanelHandlers, ...analyzerHandlers];
+export const handlers = [
+  ...canonicalHandlers,
+  ...casePanelHandlers,
+  ...supportHandlers,
+  ...analyzerHandlers,
+];
