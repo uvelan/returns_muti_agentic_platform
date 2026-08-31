@@ -1955,3 +1955,180 @@ justify spending the stack on a reproduction. **Not run without direction.**
 3. Module 64 is a new resultless module, undiagnosed.
 4. Module 30's exit code is now permanently unknowable from run 1 (sect. 1b).
 5. Pinning activity timeouts from tests needs a production change (sect. 5).
+
+---
+
+## step:14 -- the reproduction: an attempt that burns its whole ceiling, on a quiet machine
+
+Reproduction only. **The remedy is still not applied.**
+
+Machine state at measurement: six containers healthy, no pytest or runner
+process alive, CPU 19.6% then 7.5% on 8 logical processors. The three pollers
+from 30-08 were still resident and were measured in step:11 at ~1.3% of one core
+each (~0.5% of the machine); recorded rather than claimed away, and immaterial at
+that size. **No repo file was touched:** the instrument is a standalone script in
+the scratchpad that imports the test module's own `_Probe`, `_case_input` and
+`_TEMPORAL_TARGET`, and replaces only the 30s ceiling with 300s so the question
+becomes "how long does it take" instead of "did it fit".
+
+### 1. What attempt 2 actually does
+
+Measured with `--log-cli-format="MS=%(relativeCreated)d ..."` on the real test:
+
+    run A: request_bay_assignment#1@5132ms  #2@6175ms   -> gap 1043 ms
+    run B: request_bay_assignment#1@3551ms  #2@4595ms   -> gap 1044 ms
+
+**When attempt 2 runs at all, it runs 1.04s after attempt 1** -- exactly the
+1s initial interval the repository's own docstring implies. The backoff model was
+right and is not the problem.
+
+*A measurement error caught before it became a finding:* my first parse used
+`%(message).90s`, which truncated the activity lines before the `'attempt'` key,
+so it silently counted the two **workflow** warnings instead and reported a
+"gap" of 1047ms that was the interval between two unrelated log lines. The number
+was plausible, which is what made it dangerous. Re-run without truncation.
+
+### 2. The failure reproduces on a quiet machine, and it is bimodal
+
+Twelve runs of the diagnostic, ceiling 300s, machine idle:
+
+    MODE A -- fresh task queue per run (what the tests do)
+      run 1: first_activity= 3.15s   open_support_work_item= 45.73s  activities=8   FAIL@30
+      run 2: first_activity= 0.27s   open_support_work_item=  3.68s  activities=9
+      run 3: first_activity= 0.26s   open_support_work_item=  3.24s  activities=9
+      run 4: first_activity= 0.27s   open_support_work_item= 34.01s  activities=8   FAIL@30
+      run 5: first_activity= 0.22s   open_support_work_item=  2.95s  activities=9
+      run 6: first_activity= 0.23s   open_support_work_item=  3.46s  activities=9
+
+    MODE B -- ONE task queue reused across all runs (control)
+      run 1: first_activity= 2.29s   open_support_work_item=  5.29s  activities=9
+      run 2: first_activity= 0.30s   open_support_work_item= 33.87s  activities=8   FAIL@30
+      run 3: first_activity= 0.24s   open_support_work_item= 33.82s  activities=8   FAIL@30
+      run 4: first_activity= 0.23s   open_support_work_item=  3.57s  activities=9
+      run 5: first_activity= 0.20s   open_support_work_item=  2.86s  activities=9
+      run 6: first_activity= 0.30s   open_support_work_item= 32.73s  activities=8   FAIL@30
+
+Corroborated by eleven runs of the real test through pytest on the same quiet
+machine: **6 failed, 5 passed**, every failure `did not run within 30.0s`.
+
+**There is no middle.** Every run is either ~3s or ~33-46s. A defect that
+produced a continuum would be contention; a defect that produces two clusters
+separated by almost exactly 30 seconds is a **timeout firing**.
+
+### 3. Two hypotheses killed by the control, and one confirmed
+
+**Task-queue churn is exonerated.** Mode B reuses a single task queue across all
+six runs and fails **3 of 6** -- if anything worse than mode A's 2 of 6. A fresh
+task queue per test is not the cost. This also disposes of the "unique task queue
+per module" remedy from the original brief: the isolation it offers is isolation
+from something that is not happening.
+
+**Contention is not necessary.** 5 of 12 diagnostic runs and 6 of 11 pytest runs
+failed with no other load on the machine. Contention raises the rate; it does not
+create the defect. My step:11 reading -- that contention was the cause -- is
+therefore **half wrong, and I am recording it as such**: contention is a
+modifier, not the mechanism.
+
+**The per-attempt ceiling is confirmed as the operative term**, which is
+step:13's arithmetic vindicated by measurement rather than by argument:
+
+    slow runs: 45.73, 34.01, 33.87, 33.82, 32.73 s
+    fast runs: 2.86 - 5.29 s
+    difference: ~30s == _PERSIST_TIMEOUT exactly
+
+### 4. The mechanism, and the single fact that pins it
+
+**Every slow run recorded 8 activities. Every fast run recorded 9. Twelve out of
+twelve, no exceptions.** The missing call is the second bay attempt.
+
+So the sequence in a slow run is:
+
+1. Attempt 1 is dispatched and the probe raises. (Recorded: 1 bay call.)
+2. Temporal schedules attempt 2 ~1s later.
+3. **Attempt 2 never reaches the probe.** It is scheduled but not delivered.
+4. It therefore runs out its `start_to_close_timeout` -- **the full 30s** --
+   before Temporal marks the attempt failed.
+5. `maximum_attempts=2` is now exhausted, `ActivityError` is raised, the
+   workflow logs "bay request failed; continuing without a bay" and proceeds.
+
+Total = ~1s backoff + **30s of a ceiling being burned by an attempt that never
+ran** + ~3s of ordinary work = 33-34s, which is what four of the five slow runs
+measure to within a few hundred milliseconds. The 45.73s outlier had a slow start
+(`first_activity=3.15s` against a 0.2-0.3s norm) and is the same shape with a
+worse prologue.
+
+**Why the test cannot survive this:** the test budgets 30.0s for the whole
+workflow, and step 4 alone consumes 30s. The budget is not merely tight -- it is
+**exactly** the size of one term in a sum that has several.
+
+*Not established:* **why** attempt 2 is not delivered to a worker that is
+polling and alive. That is a Temporal task-delivery question, and it is the
+remaining open item. It does not block the remedy, because the remedy has to
+cover the 30s whether or not the delivery gap is ever explained.
+
+### 5. The number the remedy needs, now derived rather than guessed
+
+    per-attempt ceiling  _PERSIST_TIMEOUT           30s
+    attempts             _BEST_EFFORT_RETRY          2
+    backoff between      (1s initial, coefficient 2) ~1s
+    ------------------------------------------------------
+    worst case for the bay step alone, in spec       61s
+    observed worst case across 12 runs            45.73s
+    observed non-bay work (fast path)          2.86-5.29s
+
+**61s is the construction bound and 45.73s is the observed one, so the
+construction bound is not merely defensible -- it is the tighter statement of the
+two and it dominates what was actually seen.** A ceiling derived from
+`_PERSIST_TIMEOUT * maximum_attempts + backoff + margin` is therefore derived
+from a **complete** model, which is what the orchestrator asked me to establish
+before using it. Step:13's worry that dispatch latency was a missing term is
+resolved: the "dispatch latency" *is* the 30s ceiling, and it is already in the
+sum.
+
+### 6. Three things for the record
+
+**(a) Standing rule -- the unchecked premise.** Promoted from step:13's
+self-correction, because it is a rule and not an apology:
+
+> A correctly-reasoned inference from an unchecked premise is worse than a bad
+> inference, because it carries the confidence of good work. When a conclusion
+> rests on a premise about the environment -- what is on `PATH`, what is
+> exported, what is checked out, what else is running -- **check the premise with
+> a command, not with a reading of the code that would set it.** I verified that
+> the runner exports no `PYTHONPATH` and concluded the run had none; the
+> discriminator that disproved it cost one command and existed the whole time.
+
+This step obeys it: the machine being quiet was measured, not assumed, and the
+truncation bug in sect. 1 was caught by re-running rather than by trusting a
+plausible number.
+
+**(b) Module 64 is unexplained and is being kept separate.**
+`tests/test_case_confirmation_starts_workflow_real_infra.py` collected 1 item and
+produced nothing -- no progress dot, no summary. It is a different shape from
+module 30, which reached 30 of 33 tests first. It is in a module RV recorded
+green in **every** execution of its review. **It is not folded into the
+wall-clock finding**, and the fact that it is nearby is not evidence that it is
+the same thing.
+
+**(c) Run 1 died on an edited script, and that is the argument for the rule.**
+
+    ============================== 3 passed in 6.52s ==============================
+    scripts/dev/run_real_infra_suite.sh: line 257: _infra: command not found
+    scripts/dev/run_real_infra_suite.sh: line 258: syntax error near unexpected token `else'
+
+All 71 modules ran; the script then resumed at a byte offset into rewritten bytes
+and died before printing its summary. **The edit-mid-run hazard landed on the
+one run that was recording it**, and it destroyed the aggregate -- which is why
+step:13's total had to be reconstructed from per-module lines, and why the
+module-30 exit-code question from step:12 is now permanently unanswerable from
+run 1. Do not edit a script while a run of it is in flight.
+
+### Open
+
+1. The remedy is designed and **not applied**.
+2. Why attempt 2 is not delivered (sect. 4) is unexplained.
+3. Module 64 (sect. 6b) is unexplained.
+4. Whether any of the five 20s call sites intends its budget as an *upper bound*
+   on speed rather than a liveness net -- must be read per site before any of
+   them is changed, because raising a deliberate upper bound would be a weakened
+   assertion and the two look identical from the number alone.
