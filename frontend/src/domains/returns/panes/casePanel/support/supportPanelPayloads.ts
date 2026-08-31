@@ -499,7 +499,9 @@ export type SupportDigestPayload = {
  * This read `CasePanelView.support_digest` as a fallback until the amendment.
  * That field could never be filled by anybody: a registered contributor returns
  * a `PanelSectionView | None` into `sections[]`, it cannot write a top-level
- * field, and `api/case_panel.py` hardcodes `support_digest=()`. So the fallback
+ * field, and `api/case_panel.py` hardcoded `support_digest=()`. **The field is
+ * now retired** — off the DTO, off the composer and out of the published
+ * document — so there is no longer a line to point at. So the fallback
  * was a branch that ran on every real panel and produced nothing, while every
  * test built on a hand-written `CasePanelView` stayed green -- the same defect
  * V3 measured on `clarifications`, where restricting the reader to the dead
@@ -554,10 +556,12 @@ export type SupportParkedPayload = {
  * The parked count, **from the contributed section and nowhere else**.
  *
  * Same reasoning and the same amendment as the digest above:
- * `CasePanelView.parked_messages` is hardcoded `0` and no contributor can change
- * it, so a `?? panel.parked_messages` fallback would resolve to zero on every
- * real panel -- which is to say, the parked entry would never appear, on exactly
- * the deployments where an operator most needs it.
+ * `CasePanelView.parked_messages` was hardcoded `0` and no contributor could
+ * change it, so a `?? panel.parked_messages` fallback would have resolved to
+ * zero on every real panel -- which is to say, the parked entry would never
+ * appear, on exactly the deployments where an operator most needs it. **That
+ * field is now retired too**, so the fallback is not merely dead but
+ * unwritable: `panel.parked_messages` no longer type-checks.
  */
 export function readParkedPayload(section: PanelSectionView | undefined): SupportParkedPayload {
   return {

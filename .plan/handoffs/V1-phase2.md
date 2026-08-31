@@ -83,6 +83,17 @@ you have to live with.
 
 ### `CasePanelView`, frozen
 
+> ⚠ **2026-08-31: three rows below are superseded by AMENDMENT-6.**
+> `support_digest[]`, `parked_messages` and `clarifications[]` are **retired
+> from `CasePanelView`** — off the DTO, off the composer, out of the published
+> document. Their "arrive through the section registry" note was never true of a
+> *top-level field*: a contributor returns a `PanelSectionView | None` into
+> `sections[]` and cannot write one. Contributed content arrives in `sections[]`
+> only. The rows are preserved verbatim as the record of what was believed when
+> the DTO was frozen; **do not read this table as the current field inventory
+> for those three.** Current shape: `contracts.md` §9. Execution:
+> `.plan/tracks/AMEND6.ledger.md`.
+
 | Field | Owner | Notes |
 | --- | --- | --- |
 | `case_id`, `execution`, `timers` | V1 | `execution` degrades on a Temporal transient; timers go empty with it, because a deadline the panel invented is a countdown to nothing |

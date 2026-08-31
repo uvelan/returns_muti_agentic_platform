@@ -213,15 +213,12 @@ function panelBody() {
         return_method: "PARCEL",
       },
     ],
-    support_digest: [],
-    clarifications: [],
     timers: {
       template_review_deadline_iso: DEADLINE_ISO,
       template_review_reminders_sent: 1,
       template_review_max_reminders: 3,
       support_deadline_iso: null,
     },
-    parked_messages: 0,
     accepted_commands: store.acceptedCommands,
     /*
      * **Composed from every contributing slice, exactly as the backend registry
@@ -238,11 +235,13 @@ function panelBody() {
      * that a section it has never heard of is present. Add the element; do not
      * swap the array.
      *
-     * `clarifications: []` above stays empty and is *not* where V3's section
-     * lives: per AMENDMENT-6 the top-level field cannot be written by any
-     * registered contributor, so a mock that filled it would be mocking a path
-     * production has no way to take. The same is true of `support_digest` and
-     * `parked_messages` for V2.
+     * This is the **only** place a contributed section appears in this body.
+     * There used to be top-level `clarifications`, `support_digest` and
+     * `parked_messages` keys above, hardcoded empty and pointedly not where
+     * V3's and V2's sections lived, because no registered contributor could
+     * write a top-level field. AMENDMENT-6 retired all three from
+     * `CasePanelView`, and `schemaConformance`'s `additionalProperties: false`
+     * now makes re-adding one to this mock a red test rather than a comment.
      *
      * Each payload is opaque to this file by design -- the seam is a JSON object
      * precisely so V2's and V3's shapes never enter V1's DTO -- and each slice's

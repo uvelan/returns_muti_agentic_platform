@@ -54,15 +54,12 @@ function panelWith(
     },
     reviews: [],
     return_records: [],
-    support_digest: [],
-    clarifications: [],
     timers: {
       template_review_deadline_iso: null,
       template_review_reminders_sent: 0,
       template_review_max_reminders: 0,
       support_deadline_iso: null,
     },
-    parked_messages: 0,
     accepted_commands: [],
     sections,
     ...extra,
@@ -459,9 +456,10 @@ describe("what arrives while somebody is typing", () => {
 
   it("announces a message being parked as its own event", async () => {
     // Through the contributed section, which is the only source there is:
-    // `CasePanelView.parked_messages` is hardcoded `0` and unfillable
-    // (AMENDMENT-6), so a test driving it would be exercising a field that can
-    // never move on a real panel.
+    // `CasePanelView.parked_messages` is retired (AMENDMENT-6), and was
+    // hardcoded `0` and unfillable before it was -- so a test driving it would
+    // be exercising a field that no longer exists and could never have moved on
+    // a real panel when it did.
     const before = panelWith([section(SUPPORT_SECTION_IDS.parked, { count: 0 })]);
     const after = panelWith([section(SUPPORT_SECTION_IDS.parked, { count: 1 })]);
     const { rerender } = render(announcer(before));

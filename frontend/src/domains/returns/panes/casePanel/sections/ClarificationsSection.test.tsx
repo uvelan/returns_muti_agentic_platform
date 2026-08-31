@@ -586,17 +586,12 @@ function servePanel(clarifications: unknown[], options: { status?: string } = {}
                 return_method: "PALLET",
               },
             ],
-            support_digest: [],
-            // Deliberately empty: the section payload is the vehicle a
-            // registered contributor can actually fill.
-            clarifications: [],
             timers: {
               template_review_deadline_iso: new Date(Date.now() + 40 * 60_000).toISOString(),
               template_review_reminders_sent: 1,
               template_review_max_reminders: 3,
               support_deadline_iso: null,
             },
-            parked_messages: 0,
             accepted_commands: [],
             sections: [
               {

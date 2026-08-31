@@ -116,6 +116,14 @@ I authored that amendment — retiring three fields a registered section cannot 
 
 **Owned by V1/V3 for the code, and by me for the tracking failure.** Queued as the next dispatch; it went unnoticed until someone tried to use the thing.
 
+**EXECUTED** on branch `feat/amendment-6`, commit subject *"refactor(panel)!: execute AMENDMENT-6 — retire the three unfillable DTO fields"*. All three fields are off the DTO, off the composer, out of all four published OpenAPI copies, out of the generated types and out of the mock; the V1 comment is gone with them.
+
+*Cited by subject and branch rather than by sha, deliberately.* This block first named `dafd8a07` and then `b7e0a529`; both were orphaned by routine rebases onto a moving trunk inside a day, and `b7e0a529` was already unreachable by the time the review asking me to cite it was written. That is exactly the stranded-by-sha failure this file records three instances of today, so the pointer here is the one thing about the work that a rebase cannot move. After merge, `git log --grep` on the subject, or `.plan/tracks/AMEND6.ledger.md`, resolves it to a sha that is stable.
+
+Before deleting anything the branch checked whether the amendment had been overtaken — whether any of the three had since acquired a writer — because an amendment executed past its own justification is a different defect. It had not: every one of the nine `register_panel_section` calls in the repository is in `backend/tests/api/test_case_panel_and_reviews.py`, no production module contributes a section at all, and the single `CasePanelView(...)` construction hardcoded all three. So all three were retired rather than some, and the check was run rather than assumed.
+
+The one production reader was `clarificationModel.ts`'s second vehicle, migrated in the same commit as `.plan/reviews/V3f-1.md:316` asked; `support_digest` and `parked_messages` had no readers anywhere. The test whose subject was the retired vehicle was inverted into a guard rather than removed, so the retirement now has a watcher in `frontend-tests`. The size floor is not restaked, because this branch's collected-count delta is zero on both suites: at the branch tip backend reads **5256** and frontend **867**, and the backend rise from the 5251 measured at the original base is RUNTIME's five tests arriving on trunk mid-flight, not this branch's doing. Ledger: `.plan/tracks/AMEND6.ledger.md`.
+
 ### Rule 13 again — the accessibility sweep no workflow runs
 
 Confirmed by RV: no `playwright`, `test:e2e` or `axe` reference anywhere in `.github/workflows/*.yml`, and vitest's `src/**` include cannot reach `tests/*.spec.ts`. **The repository's only accessibility sweep is invoked by nothing.** Not ACC-4's — it authored neither the spec nor the workflows. **It belongs to whoever owns `checks.yml`, which is me.** Queued.

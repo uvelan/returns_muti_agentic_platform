@@ -325,6 +325,23 @@ touches nothing outside `backend/tests/` and `.plan/`.
    `npm run contracts:check` passes including its `git diff --exit-code`, so
    the committed document matches the live backend. Owned by V1/V3; reported,
    not repaired.
+   **CLOSED** by branch `feat/amendment-6`, commit subject *"refactor(panel)!:
+   execute AMENDMENT-6 — retire the three unfillable DTO fields"*: all three
+   retired from the DTO, the composer, all four OpenAPI copies, the generated
+   types and the mock, with the V1 comment. Verified first that none had
+   acquired a writer — all nine `register_panel_section` calls are in one test
+   file and no production module registers a section — so all three went rather
+   than some. No test deleted; the three whose subject was the retired vehicle
+   are re-pointed, one of them inverted into a guard against the read returning.
+   Floor not restaked, because this branch's collected-count delta is zero on
+   both suites: backend reads 5256 and frontend 867 at the branch tip, and the
+   backend rise from 5251 is RUNTIME's five tests landing on trunk, not this
+   branch's. Ledger: `.plan/tracks/AMEND6.ledger.md`.
+   *Cited by subject and branch rather than by sha deliberately: this record
+   named `dafd8a07`, then `b7e0a529`, and both were orphaned by routine rebases
+   onto a moving trunk within a day. A pre-merge sha in a tracking record is the
+   dangling-pointer failure pre-loaded; after merge, `git log --grep` on the
+   subject resolves it.*
 6. **(ACC4) The frontend merge tip is red, and `frontend-tests` can report green
    having run a third of the suite.** `registry.test.ts` fails 2 tests at the
    base commit — `14aa6915` registered a `/shipments` domain without updating

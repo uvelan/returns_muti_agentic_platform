@@ -6952,7 +6952,7 @@
       },
       "CasePanelView": {
         "additionalProperties": false,
-        "description": "The one shape the panel and `CaseOperationsPage` both read.\n\n**Frozen at merge.** Anything V2 or V3 wants to show goes in `sections`\nthrough the registry.",
+        "description": "The one shape the panel and `CaseOperationsPage` both read.\n\n**Frozen at merge.** Anything V2 or V3 wants to show goes in `sections`\nthrough the registry.\n\nThat sentence used to be false for three fields. `support_digest`,\n`clarifications` and `parked_messages` were declared here as top-level\nplaceholders for contributing slices to fill -- but a contributor satisfies\n`PanelSectionContributor`, which returns a `PanelSectionView | None` into\n`sections`, and **has no way to write a top-level field**. So the composer\nhardcoded all three empty and no contributor could ever change that. V3\nbuilt a clarifications section against `panel.clarifications`; it would have\ndrawn nothing on every real panel while a suite full of hand-built panel\nobjects stayed green. AMENDMENT-6 retired them, and this is where that\nlands.\n\n**Do not re-add a top-level field for a contributing slice.** If a section\nneeds to say something, it says it in its own `PanelSectionView.payload`.\nA second parallel path that the seam cannot reach is the defect, not the\nabsence of one.",
         "properties": {
           "accepted_commands": {
             "default": [],
@@ -6966,22 +6966,8 @@
             "title": "Case Id",
             "type": "string"
           },
-          "clarifications": {
-            "default": [],
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Clarifications",
-            "type": "array"
-          },
           "execution": {
             "$ref": "#/components/schemas/PanelExecutionView"
-          },
-          "parked_messages": {
-            "default": 0,
-            "title": "Parked Messages",
-            "type": "integer"
           },
           "return_records": {
             "default": [],
@@ -7006,15 +6992,6 @@
               "$ref": "#/components/schemas/PanelSectionView"
             },
             "title": "Sections",
-            "type": "array"
-          },
-          "support_digest": {
-            "default": [],
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Support Digest",
             "type": "array"
           },
           "timers": {
