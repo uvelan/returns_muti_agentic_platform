@@ -2132,3 +2132,180 @@ run 1. Do not edit a script while a run of it is in flight.
    on speed rather than a liveness net -- must be read per site before any of
    them is changed, because raising a deliberate upper bound would be a weakened
    assertion and the two look identical from the number alone.
+
+---
+
+## step:15 -- the per-site read: three sites are asserting promptness, and my derived number was too small
+
+Read only. **The remedy is still not applied.**
+
+### 1. Two corrections to my own numbers, both found by checking rather than repeating
+
+**(a) It is 12 call sites in that module, not 13.** My original grep returned 13
+lines and one of them was `async def reached` at line 320 -- the definition. I
+counted it as a site and then repeated "thirteen" in step:13, step:14 and three
+messages. Verified:
+
+    $ grep -c "probe\.reached(" test_return_case_workflow_real_infra.py
+    12
+
+**(b) The scope is 17 sites across two modules, not 12 in one.**
+`test_return_case_policy_gate_real_infra.py` carries **its own copy** of
+`reached()` at line 240 with the same `within_seconds: float = 30.0` default,
+and five call sites (352, 386, 442, 463, 516). It is the sibling probe that
+step:02 already found stale once for the same reason -- a mechanism duplicated
+across two files goes wrong in both. A remedy applied to one module and not the
+other would leave five sites asserting on the same coincidence.
+
+### 2. The per-site read
+
+Three sites are **asserting promptness and must keep their budgets.** They are
+`bay_wait_seconds=30` cases with a 20s ceiling, and the test says so itself:
+
+    :574   `bay_wait_seconds` is 30 here and the test does not take 30 seconds:
+    :575   that is the assertion. A workflow still waiting for a signal would.
+
+    :562   # It did not sit out the 30-second bay wait, and it kept the answer.
+
+**The budget being *smaller than* `bay_wait_seconds` is the entire mechanism of
+those tests.** Raise it to anything above 30s and a workflow that sat out the
+full bay wait -- the exact regression these tests exist to catch, and the exact
+bug the bay activity was written to fix -- passes silently. That is a deleted
+assertion that leaves a green test behind, which is the failure mode this remedy
+exists to avoid.
+
+| site | file | budget | `bay_wait_seconds` | verdict |
+|---|---|---:|---:|---|
+| 553 | workflow | 20s | **30** | **KEEP -- promptness** |
+| 593 | workflow | 20s | **30** | **KEEP -- promptness** |
+| 628 | workflow | 20s | **30** | **KEEP -- promptness** |
+| 772 | workflow | 20s | 30 | raise -- liveness net |
+| 808 | workflow | 20s | 0 | raise -- liveness net |
+| 427, 459, 528, 650, 683, 723, 752 | workflow | 30s | 1 (default) | raise -- liveness net |
+| 352, 386, 442, 463, 516 | policy gate | 30s | 0 (default) | raise -- liveness net |
+
+**14 raise, 3 keep.**
+
+Site 772 is the one that needed reading rather than pattern-matching: it *does*
+carry `bay_wait_seconds=30`, so it looks like the other three. But it waits for
+`request_bay_assignment`, which runs **before** the bay wait begins, and its
+assertions are `outcome.status == "CANCELLED"` and
+`"open_support_work_item" not in probe.calls`. Nothing about the 20s is
+load-bearing. Classifying it by its timings alone would have got it wrong in the
+safe direction; classifying it by its budget alone would have got it wrong in the
+dangerous one.
+
+Site 808 sets `bay_wait_seconds=0`, so there is no wait to prove avoidance of.
+The five policy-gate sites default to `bay_wait_seconds: 0` (`:262`) and none
+passes `within_seconds`, so none of them is asserting promptness either.
+
+### 3. The derived number was too small, and the correction is not small
+
+Step:14 gave the construction bound as **61s** = `_PERSIST_TIMEOUT x 2 + 1s`.
+**That is the bound for the bay activity alone, not for the path**, and the
+budget guards the whole path. Read from the objects rather than from the source:
+
+    _BEST_EFFORT_RETRY: attempts=2  initial=0:00:01  coeff=2.0
+    _PERSIST_RETRY:     attempts=5  initial=0:00:01  coeff=2.0
+    _DRAFT_RETRY:       attempts=2  initial=0:00:01  coeff=2.0
+    _PERSIST_TIMEOUT = 0:00:30
+
+`open_support_work_item` sits downstream of activities on **`_PERSIST_RETRY`**
+(`:1714`, `:1730`, `:1977` -- the status and customer writes), and that policy is
+**five** attempts:
+
+    one _BEST_EFFORT_RETRY activity exhausting:  30*2 + (1)          =  61s
+    one _PERSIST_RETRY   activity exhausting:  30*5 + (1+2+4+8)      = 165s
+    observed worst case across 12 runs                               = 45.73s
+
+So the honest construction bound for these budgets is **165s**, not 61s. My
+step:14 figure was derived from the wrong activity -- the one that happened to
+fail in front of me. **That is the same error as reasoning from the failure you
+can see**, one level up, and it is exactly what the orchestrator was guarding
+against by asking whether the model was complete.
+
+**The derivation can live in code rather than in a comment**, which was the
+requirement: every term is a readable attribute (`maximum_attempts`,
+`initial_interval`, `backoff_coefficient`) on the imported policy objects, so a
+helper can compute the ceiling from `_PERSIST_TIMEOUT` and the retry policy and
+will track production automatically if either changes.
+
+**The cost, stated rather than buried:** a 165s+ liveness net means a genuinely
+hung test takes ~3 minutes to fail instead of 30 seconds. Across 14 sites that is
+a worst-case wall-time increase the orchestrator should price before I apply it.
+It is bounded by the per-module 900s ceiling, but it is not free, and I am not
+choosing it unilaterally.
+
+### 4. The three kept sites will stay flaky, and that is the honest consequence
+
+The three promptness sites are exposed to the same 30s dead wait as everything
+else. Keeping their budgets means **keeping their flakiness** -- they will still
+fail when an attempt burns its ceiling, and under the standing rule those
+failures must be recorded as flakes, never re-run into passes.
+
+**But those three are precisely the sites where the wall clock is a proxy for a
+state fact that could be asserted directly**, which makes them the best possible
+target for option (2) rather than the worst. The claim "it did not sit out the
+bay wait" is a claim about *how the bay was resolved*, and the workflow already
+exposes it -- `test_the_bay_activity_answers_and_no_signal_is_needed` queries
+`state.bay_resolved` at `:595`, four lines after its own wall-clock wait.
+
+**Registered follow-up (option 2), with a concrete target rather than a
+direction:** replace the 20s wall-clock proxy at sites 553/593/628 with an
+assertion on `execution_state` -- that the bay was resolved by signal or by the
+activity, not by the wait expiring -- and give them the same derived liveness
+ceiling as the other 14. That is strictly stronger than the timing proxy (it
+distinguishes *why* the bay resolved, which 20s-vs-30s only infers) and it is
+deterministic. It is not done here because it changes what the tests assert, and
+that is a bigger change than the one asked for.
+
+### 5. Escalation: is the undelivered attempt a production concern?
+
+**My read: more likely a test-harness artefact than a production defect --
+but that is a judgement, not a finding, and the reassuring answer is the one I
+am least entitled to assume.**
+
+For the artefact reading: these tests construct and destroy a `Worker` **per
+test**, inside `async with`, against a client shared for the module. A production
+worker is started once and polls for the process's lifetime. Rapid worker
+churn -- a poller appearing and vanishing every few seconds -- is a property of
+the harness that production does not have. And the control points the same way:
+**mode B, which reuses one task queue across iterations and therefore accumulates
+pollers from workers that have already shut down, failed 3 of 6 against mode A's
+2 of 6.** A task matched to a poller belonging to a worker that has gone away
+would produce exactly what was measured -- started as far as the server is
+concerned, never executed, timed out at `start_to_close`.
+
+Against it, and why I will not call it settled: the worker is demonstrably alive
+and inside its `async with` for the entire measured window in every run, and
+mode A uses a **fresh queue per iteration** with no prior pollers on it at all,
+yet still failed twice. The stale-poller story does not cover mode A, so the
+mechanism I am proposing does not fully fit my own data.
+
+**What would settle it, cheaply and read-only:** the workflow's own event
+history for a slow run distinguishes the two readings in one field.
+
+    temporal workflow show --workflow-id <id> --namespace default
+
+An `ActivityTaskTimedOut` with `timeoutType: START_TO_CLOSE` means a worker
+accepted the task and never completed it -- the harness-churn reading, and
+survivable in production where workers do not churn. A `SCHEDULE_TO_START`
+timeout, or a scheduled event with no corresponding `ActivityTaskStarted`, means
+the server never delivered it to anyone -- **and that is a production concern**,
+because `_PERSIST_TIMEOUT` guards real persistence steps and a case would sit
+visibly stalled for 30 seconds per affected attempt, up to 165s on
+`_PERSIST_RETRY`, with nothing in any log to explain it.
+
+**Flagged as a possible production concern so it is not lost behind a test fix.**
+I have not run it -- it needs one slow run captured with its workflow id, which
+is a few minutes of stack, and I am not spending that without a decision.
+
+### Open
+
+1. The remedy is **not applied**. 14 sites to raise, 3 to leave.
+2. The ceiling figure needs a decision: 165s is the honest construction bound,
+   and it costs ~3 minutes per genuinely hung site.
+3. Sites 553/593/628 stay flaky by design until the option-2 follow-up lands.
+4. Whether the undelivered attempt is a production defect is **unsettled**, and
+   the discriminator in sect. 5 has not been run.
+5. Module 64 remains unexplained.
