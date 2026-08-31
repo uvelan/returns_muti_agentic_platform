@@ -29,6 +29,7 @@ from return_platform.api.canonical_ai import router as canonical_ai_router
 from return_platform.api.canonical_principal import router as canonical_principal_router
 from return_platform.api.canonical_returns import router as canonical_returns_router
 from return_platform.api.canonical_session import router as canonical_session_router
+from return_platform.api.case_clarifications import router as case_clarifications_router
 from return_platform.api.case_panel import router as case_panel_router
 from return_platform.api.case_reviews import router as case_reviews_router
 from return_platform.api.cases import router as cases_router
@@ -1416,6 +1417,12 @@ def create_app(
     # difference a comment.
     fastapi_app.include_router(case_panel_router)
     fastapi_app.include_router(case_reviews_router)
+    # The clarification answer endpoint (V3, contracts.md sect. 9). A third
+    # router on the same `/api/v1/cases` prefix, and separate for the same
+    # reason the first two are: the resource is the clarification the resolver
+    # raised, not the review or the panel, and it is the only one of the three
+    # whose 202 means "a command is on file", never "the work is done".
+    fastapi_app.include_router(case_clarifications_router)
     # `/api/agents`, not `/api/config/agents` -- see that module's own docstring
     # for why the two surfaces stay separate. It was written, tested against
     # mocks and called by the console, and never mounted here: the lifespan sets

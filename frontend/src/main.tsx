@@ -11,6 +11,7 @@ import "./index.css";
 
 
 import { APIError } from "./api/client";
+import { registerClarificationsSection } from "./domains/returns/panes/casePanel/sections/registerClarificationsSection";
 
 /**
  * Reads recover from an outage; turns do not replay themselves.
@@ -71,6 +72,22 @@ async function enableMocking() {
     }
   });
 }
+
+/**
+ * The panel sections each slice contributes, named here rather than imported
+ * for their side effects.
+ *
+ * V1 ships the section registry and never touches it again (contracts.md §9);
+ * V2 and V3 contribute from their own modules. Calling the registrations from
+ * the composition root is what keeps that true without making the layout depend
+ * on import order -- a bare `import "./…/ClarificationsSection"` would put a
+ * section on the screen or not depending on which other module happened to pull
+ * it in first, which is the failure `order` and the registry's duplicate-id
+ * refusal exist to prevent.
+ *
+ * `StrictMode` double-invokes render, never module scope, so this runs once.
+ */
+registerClarificationsSection();
 
 void enableMocking().then(() => {
   createRoot(rootElement).render(

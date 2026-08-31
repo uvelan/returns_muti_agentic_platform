@@ -9,11 +9,24 @@ import {
   setSupportNlEnabled,
 } from "../../../../../mocks/handlers/supportHandlers";
 import { CasePanel } from "../CasePanel";
+import { registerClarificationsSection } from "../sections/registerClarificationsSection";
 import { clearPanelSectionRenderers } from "../panelSectionRegistry";
 import { installSupportPanelSections, resetSupportPanelSectionInstall } from "./installSupportSections";
 
 /**
  * V2's sections in V1's panel, over the **real** mock handlers.
+ *
+ * **Both slices' renderers are installed, because the mock serves both slices'
+ * sections.** `panelBody()` composes one array from every contributing slice, so
+ * a panel rendered with only V2's renderers leaves V3's section drawing the
+ * "this console build cannot display" placeholder -- which is a true statement
+ * about that render and a false one about production, where `main.tsx` and the
+ * two screens install both. The alternative, scoping the placeholder assertion
+ * to V2's own section ids, was rejected: the placeholder is labelled with the
+ * *contributed* `section_id`, so a V2 id misspelled in the handler would produce
+ * a placeholder under the misspelled name, which is not in V2's id list, and the
+ * scoped assertion would pass. That is the exact failure the assertion exists to
+ * catch, so scoping would have quietly retired it. See the ledger, step:11.
  *
  * Every other spec in this directory renders a section against a payload this
  * file wrote, which proves the component and nothing about the seam. Here the
@@ -49,6 +62,10 @@ beforeEach(() => {
   clearPanelSectionRenderers();
   resetSupportPanelSectionInstall();
   installSupportPanelSections();
+  // V3's, as the composition root does. Two mechanisms, both order-safe: V2's
+  // installer is a guarded module side effect imported by the screens that
+  // mount the panel, V3's is an explicit call from `main.tsx`.
+  registerClarificationsSection();
 });
 
 afterEach(() => {
@@ -74,14 +91,37 @@ describe("what the panel shows once Support has been heard from", () => {
     expect(screen.getByText(/Authorised\./)).toBeVisible();
   });
 
-  it("leaves no V2 section drawn as a placeholder this build cannot display", async () => {
+  it("draws every contributed section, V3's included, with no placeholder", async () => {
     renderPanel();
     await screen.findByRole("heading", { name: "What Support has sent" });
     // The failure a spelled-twice section id actually produces. Asserted on the
     // rendered text rather than on the registry, because the registry agreeing
-    // with itself is what a spelling mistake looks like from inside it.
+    // with itself is what a spelling mistake looks like from inside it. Left
+    // deliberately **unscoped**: it fires for any section this build cannot
+    // draw, whichever slice contributed it.
     expect(screen.queryByText(/this console build cannot display/)).toBeNull();
     expect(screen.queryByText(/temporarily unavailable/)).toBeNull();
+    // And the composed mock really is serving both slices, so the assertion
+    // above is covering two sections rather than passing for want of a second.
+    expect(screen.getByText(/Map it to one of this case's returns/)).toBeVisible();
+  });
+
+  it("still reports a section this build has no renderer for", async () => {
+    // **The guard on the guard.** The assertion above only means something if it
+    // can fail, and installing more renderers is exactly the change that could
+    // make it unfailable. So: clear V3's renderer, leave its section in the
+    // composed mock, and require the placeholder -- which is the state the
+    // orchestrator's first merge attempt was actually in, reproduced on purpose.
+    clearPanelSectionRenderers();
+    resetSupportPanelSectionInstall();
+    installSupportPanelSections();
+
+    renderPanel();
+    await screen.findByRole("heading", { name: "What Support has sent" });
+    expect(screen.getByText(/clarifications: this console build cannot display/)).toBeVisible();
+    // Named, not merely present: a placeholder that did not say *which* section
+    // is a deployment skew nobody can act on.
+    expect(screen.queryByText(/Map it to one of this case's returns/)).toBeNull();
   });
 
   it("says nothing about parked messages while none are parked", async () => {

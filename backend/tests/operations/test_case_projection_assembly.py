@@ -643,6 +643,31 @@ def test_facts_project_with_their_provenance_in_a_stable_order() -> None:
     assert facts[0].recordedAt.tzinfo is not None
 
 
+def test_a_command_fact_carries_the_principal_that_authorised_it() -> None:
+    """The actor reaches the REST view, and it is not the agent.
+
+    Asserted as a pair rather than as `actorId is not None`, because a
+    projection that stamped the agent id into both fields would satisfy the
+    weaker check while destroying the distinction the field exists for: the
+    agent is what produced the observation, the actor is on whose authority a
+    command caused it.
+    """
+    facts = project_facts(
+        latest(
+            fact_document("support_clarification_answered", "yes", actorId="associate-7"),
+            fact_document("return_reason", "DAMAGED"),
+        )
+    )
+
+    assert facts is not None
+    by_name = {fact.factName: fact for fact in facts}
+    answered = by_name["support_clarification_answered"]
+    assert (answered.agentId, answered.actorId) == ("test-agent", "associate-7")
+    # An observation has no actor at all, and `None` is the honest projection of
+    # that -- not a gap to be filled with the agent.
+    assert by_name["return_reason"].actorId is None
+
+
 def test_a_non_scalar_fact_is_carried_as_deterministic_json_rather_than_dropped() -> None:
     """`confirmed_order_lines` holds a list and the contract's value is scalar."""
     facts = project_facts(latest(fact_document("confirmed_order_lines", ["LINE-2", "LINE-1"])))

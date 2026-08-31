@@ -55,6 +55,7 @@ from return_platform.operations.review_aggregate import (
     ReviewAggregateStore,
     ReviewKind,
     ReviewState,
+    TemplateReviewParkReason,
     canonical_review_payload,
     ensure_review_indexes,
 )
@@ -1524,10 +1525,15 @@ async def test_a_retry_after_the_gate_closed_is_refused_and_changes_nothing(
     assert answer.status_code == 409
     detail = answer.json()["detail"]
     assert detail["code"] == "ExecutionNoLongerHoldingReview"
-    # Naming the legal action is the point of refusing here rather than
-    # succeeding into a discard.
-    assert detail["state"] == ReviewState.HELD_FOR_OPERATIONS.value
-    assert "Reopen" in detail["message"]
+    # **The review's own state, not a state the endpoint wishes it were in.**
+    # The first version of this hardcoded `HELD_FOR_OPERATIONS` here, which was
+    # a guess about what rule 2 would have done rather than a reading -- and it
+    # also made the message offer *reopen*, which is an arrow out of
+    # `HELD_FOR_OPERATIONS` and not out of `DELIVERY_FAILED`. An operator
+    # following it would have met a second refusal.
+    assert detail["state"] == ReviewState.DELIVERY_FAILED.value
+    assert "Stop trying" in detail["message"]
+    assert "Reopen" not in detail["message"]
 
     after = await store.get_review(case_id=CASE_ID, review_id=REVIEW_ID)
     assert ReviewState(str(after["state"])) is ReviewState.DELIVERY_FAILED, (
@@ -1599,3 +1605,181 @@ async def test_a_retried_recovery_post_records_one_command_not_two(
     ]
     assert len(retries) == 1
     assert retries[0]["signalId"] == f"review_delivery_retry:{REVIEW_ID}"
+
+
+# --------------------------------------------------------------------------- #
+# F3: the review's own state is read first, and NOT_FOUND is an answer
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_a_parked_review_is_refused_definitively_even_when_the_host_is_down(
+    store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
+) -> None:
+    """RV V1p2-2 F3, probe 2 -- and this is the ordinary production sequence.
+
+    Gate closes, rule 2 parks the review, operator arrives at the recovery
+    surface. The review is `HELD_FOR_OPERATIONS`, which is the exact state
+    AMENDMENT-5 created so there would be a legal action. Consulting the
+    workflow host **first** meant any transient wobble answered "try again
+    shortly" for a review that can never be retried, and never named the exit.
+
+    Driven with the host down on purpose: the point is that the state answer is
+    reached without asking, so an unreachable host cannot degrade a definitive
+    refusal into an indefinite one.
+    """
+    failed = await _failed_delivery(store, mongo, test_settings)
+    parked = await store.hold_for_operations(
+        case_id=CASE_ID,
+        review_id=REVIEW_ID,
+        reason=TemplateReviewParkReason.TEMPLATE_REVIEW_UNANSWERED,
+    )
+    assert ReviewState(str(parked["state"])) is ReviewState.HELD_FOR_OPERATIONS
+    assert failed["deliveryId"]
+
+    for host in (_Temporal(RPCStatusCode.UNAVAILABLE), _Temporal(RPCStatusCode.NOT_FOUND)):
+        with _client(mongo, test_settings, temporal=host) as client:
+            answer = client.post(
+                f"/api/v1/cases/{CASE_ID}/reviews/{REVIEW_ID}/recovery/retry",
+                json={"reason": "support came back up"},
+            )
+
+        assert answer.status_code == 409, "definitive, not 'come back later'"
+        detail = answer.json()["detail"]
+        assert detail["retryable"] is False
+        assert detail["state"] == ReviewState.HELD_FOR_OPERATIONS.value
+        # The exits rule 2 built, named. Both are legal from here, which is why
+        # this state was chosen over any other.
+        assert "Reopen the review" in detail["message"]
+        assert "stop trying" in detail["message"]
+
+    after = await store.get_review(case_id=CASE_ID, review_id=REVIEW_ID)
+    assert ReviewState(str(after["state"])) is ReviewState.HELD_FOR_OPERATIONS
+
+
+@pytest.mark.asyncio
+async def test_a_workflow_that_does_not_exist_is_an_answer_not_an_unknown(
+    store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
+) -> None:
+    """RV V1p2-2 F3, probe 1. `NOT_FOUND` is definitive.
+
+    There is no such execution, so nothing is holding this review, and there
+    will not be in thirty seconds. Telling an operator to try again is telling
+    them to wait for something that cannot happen.
+
+    The review is genuinely `DELIVERY_FAILED` here, so the state guard passes
+    and liveness really is the question being answered -- otherwise this would
+    pass for the reason the test above passes and prove nothing about
+    classification.
+    """
+    failed = await _failed_delivery(store, mongo, test_settings)
+    assert ReviewState(str(failed["state"])) is ReviewState.DELIVERY_FAILED
+
+    with _client(mongo, test_settings, temporal=_Temporal(RPCStatusCode.NOT_FOUND)) as client:
+        answer = client.post(
+            f"/api/v1/cases/{CASE_ID}/reviews/{REVIEW_ID}/recovery/retry",
+            json={"reason": "support came back up"},
+        )
+
+    assert answer.status_code == 409
+    assert answer.json()["detail"]["code"] == "ExecutionNoLongerHoldingReview"
+    assert answer.json()["detail"]["retryable"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_genuinely_unreachable_host_is_still_a_retryable_503(
+    store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
+) -> None:
+    """The other direction, and the one the fix must not break.
+
+    `UNAVAILABLE` says nothing about the execution. Answering "final" here would
+    send an operator to abandon a message that was still perfectly deliverable,
+    which is the mirror of the defect F3 names.
+    """
+    await _failed_delivery(store, mongo, test_settings)
+
+    with _client(mongo, test_settings, temporal=_Temporal(RPCStatusCode.UNAVAILABLE)) as client:
+        answer = client.post(
+            f"/api/v1/cases/{CASE_ID}/reviews/{REVIEW_ID}/recovery/retry",
+            json={"reason": "support came back up"},
+        )
+
+    assert answer.status_code == 503
+    assert answer.json()["detail"]["code"] == "EXECUTION_LIVENESS_UNKNOWN"
+    assert answer.json()["detail"]["retryable"] is True
+
+
+def test_every_state_that_cannot_retry_says_what_can_be_done_instead() -> None:
+    """A bare "wrong state" is the 409 that sends somebody back to the same
+    button. Each refusal names an action, and none names one that is not legal
+    from that state."""
+    from return_platform.api.case_reviews import _RETRY_REFUSALS_BY_STATE
+
+    # Every non-`DELIVERY_FAILED` state is covered -- a missing one would fall
+    # to the generic sentence, which names nothing.
+    assert set(_RETRY_REFUSALS_BY_STATE) == set(ReviewState) - {ReviewState.DELIVERY_FAILED}
+    # Reopening is an arrow out of `HELD_FOR_OPERATIONS` and nowhere else, so it
+    # is the only refusal that may offer it.
+    offering_reopen = {
+        state for state, message in _RETRY_REFUSALS_BY_STATE.items() if "Reopen" in message
+    }
+    assert offering_reopen == {ReviewState.HELD_FOR_OPERATIONS}
+
+
+@pytest.mark.asyncio
+async def test_an_unclassified_rpc_failure_is_not_hidden_by_the_retry_either(
+    store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
+) -> None:
+    """The classifier owns two shapes and re-raises everything else.
+
+    `PERMISSION_DENIED` from the workflow host is somebody's incident, and a
+    surface that rendered it as "try again shortly" would hide it for as long as
+    an operator was willing to keep pressing. The panel already refused to do
+    that; now both surfaces do, through the same reader.
+    """
+    await _failed_delivery(store, mongo, test_settings)
+
+    with _client(
+        mongo, test_settings, temporal=_Temporal(RPCStatusCode.PERMISSION_DENIED)
+    ) as client:
+        with pytest.raises(RPCError):
+            client.post(
+                f"/api/v1/cases/{CASE_ID}/reviews/{REVIEW_ID}/recovery/retry",
+                json={"reason": "x"},
+            )
+
+
+def test_both_surfaces_read_the_same_temporal_answer_the_same_way() -> None:
+    """RV V1p2-2 A4. The two surfaces disagreed about `NOT_FOUND`, and it cost an
+    operator the exit they were entitled to.
+
+    Asserted on the shared reader rather than by comparing two call sites: a
+    test that ran both paths and compared outcomes would pass again the moment
+    somebody added a third status to one of them.
+    """
+    from return_platform.api import case_panel, case_reviews
+    from return_platform.api.execution_liveness import (
+        ExecutionAnswer,
+        classify_execution_failure,
+    )
+
+    assert case_panel.classify_execution_failure is classify_execution_failure
+    assert case_reviews.classify_execution_failure is classify_execution_failure
+
+    assert (
+        classify_execution_failure(RPCError("gone", RPCStatusCode.NOT_FOUND, b""))
+        is ExecutionAnswer.ABSENT
+    )
+    for status_code in (RPCStatusCode.UNAVAILABLE, RPCStatusCode.DEADLINE_EXCEEDED):
+        assert (
+            classify_execution_failure(RPCError("down", status_code, b""))
+            is ExecutionAnswer.UNREACHABLE
+        )
+    assert classify_execution_failure(TimeoutError()) is ExecutionAnswer.UNREACHABLE
+    assert classify_execution_failure(ConnectionError()) is ExecutionAnswer.UNREACHABLE
+    # `None` means "not ours -- re-raise", and it is what keeps an incident
+    # visible.
+    assert (
+        classify_execution_failure(RPCError("nope", RPCStatusCode.PERMISSION_DENIED, b"")) is None
+    )
+    assert classify_execution_failure(ValueError("boom")) is None

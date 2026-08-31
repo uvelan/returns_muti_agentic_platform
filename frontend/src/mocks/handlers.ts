@@ -15,6 +15,12 @@ import { supportHandlers } from "./handlers/supportHandlers";
  * be walked in `dev:mock` -- and mixing that into the stateless canonical
  * fixtures would make both harder to reason about. Each has its own contract
  * test.
+ *
+ * The clarification answer route was briefly a third set, because it was not in
+ * the committed OpenAPI and the panel set's contract test asserts every one of
+ * its routes is published. The integration pass mounted the router and
+ * regeneration published the route, so it is part of the panel set now and is
+ * validated against the document like the rest of it.
  */
 export const handlers = [
   ...canonicalHandlers,

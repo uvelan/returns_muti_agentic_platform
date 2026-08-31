@@ -490,6 +490,7 @@ def project_facts(
                 factName=fact_name,
                 value=_scalar(document.get("value")),
                 agentId=_text(document.get("agentId")),
+                actorId=_text(document.get("actorId")),
                 channel=_text(document.get("channel")),
                 sourceSystem=_text(document.get("sourceSystem")),
                 acquisitionMethod=_text(document.get("acquisitionMethod")),
