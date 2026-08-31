@@ -125,6 +125,14 @@ Its design principle is right — *a `GraphReadPort` returning `{}` is worse tha
 
 **But acceptance item 10** — "Support asks a question requiring a tool → agent resolves via the registry, credentials never surfaced" — **appears unreachable as shipped.** RV is asked to rule whether this is an honest deployment posture with the gate item deferred, or whether §9 requires the rung to be serviceable before the gate can pass. **Decision owed by me once RV reports.** ACC-2's brief must not assume item 10 is testable until this is settled.
 
+## Escalation to the harness owner — stale bases are a provisioning defect, not vigilance
+
+**Seven independent agents have now read the branch ref instead of the sha they were given, and all seven were right to.** Instances include a snapshot naming a commit **reachable from nothing in the repo**, and a worktree arriving checked out **100+ commits behind** on an ancestor of trunk — where branching as instructed would have silently omitted every slice merged this run.
+
+RV's judgement: *"seven independent agents reading the ref instead of the number isn't seven lucky catches. Worth fixing at provisioning before one of them doesn't notice."*
+
+**Why it is dangerous rather than annoying:** an ancestor base **fails silently**. The work compiles, the suites pass, and the slice is simply missing everything merged since — there is no red to notice. Contracts §3 now makes ref-verification mandatory, which is a mitigation, not a fix. **The fix belongs where worktrees are provisioned.**
+
 ## Open items surfaced but not yet dispatched
 
 - **`actorId` optionality — the diagnosis was WRONG, and the agent falsified it before spending on regeneration.** RV's diagnosis (schema non-required → optional TS type), which I passed on unverified, is **not in the causal path**. `frontend/src/api/cases.ts:51` defines `Served<T>` as `{ [K in keyof T]-?: Served<Exclude<T[K], undefined>> }`, which forces required-and-nullable **regardless of the document**. Probe A — hand-patching the `.d.ts` to exactly what a correct regeneration would emit — left **3 errors, same three files**, the `?` intact. Probe B — one line in one fixture — cleared that file: **2 errors**. The real cause: `actorId` postdates the three helpers and is the one field not written longhand, arriving only via a `Partial<>` spread, which TypeScript types optional.
