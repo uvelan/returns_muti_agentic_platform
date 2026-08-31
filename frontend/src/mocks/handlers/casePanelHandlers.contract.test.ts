@@ -22,6 +22,7 @@ import {
   validateAgainstSchema,
   type OpenApiDocument,
 } from "../../test/schemaConformance";
+import { fixtureServer } from "../../test/server";
 import { casePanelHandlers, resetCasePanelMocks } from "./casePanelHandlers";
 
 const document = Object.values(
@@ -218,6 +219,30 @@ describe("every case-panel mock body conforms to the schema it claims", () => {
   }
 });
 
+/**
+ * The bytes the ETag is actually computed over: the `CasePanelView`, not the
+ * HTTP response carrying it.
+ *
+ * **This boundary is the contract's, not a convenience.** The response envelope
+ * carries `meta.generated_at`, which is a per-response wall-clock stamp and
+ * *must* differ between two reads -- it says when this reply was composed. The
+ * panel's digest is taken over `body.data` for exactly that reason
+ * (`casePanelHandlers.ts`'s `etagFor(body.data)`), and sect. 9's "identical
+ * body" is a claim about the composed view.
+ *
+ * Recorded because ACC4 wrote both tests below against the whole response
+ * first, and both failed on `generated_at` alone -- a red that looks like a
+ * principal-independence failure and is nothing of the kind. The next reader
+ * gets the answer without repeating the run.
+ *
+ * `JSON.parse` preserves key insertion order and `JSON.stringify` re-emits it,
+ * so this still compares ordering: two views differing only in key order would
+ * hash differently and break the 304, and would fail here too.
+ */
+function panelBytes(responseText: string): string {
+  return JSON.stringify((JSON.parse(responseText) as { data: unknown }).data);
+}
+
 describe("the panel mock serves the conditional read the contract is built on", () => {
   beforeEach(() => {
     resetCasePanelMocks();
@@ -264,5 +289,112 @@ describe("the panel mock serves the conditional read the contract is built on", 
     // unfinished thinking and `no-cache` still permits storage.
     const edit = await fetch(`/api/v1/cases/${CASE}/reviews/${REVIEW}/edit-state`);
     expect(edit.headers.get("Cache-Control")).toBe("private, no-store");
+  });
+
+  /**
+   * **The half of hash stability the test above cannot reach.**
+   *
+   * `moves the ETag when the panel moves, and holds it when nothing does`
+   * issues its two reads back to back, so it pins stability against a
+   * millisecond-resolution wall-clock leak and nothing coarser. ACC4 measured
+   * that: a `Math.floor(Date.now()/1000)` value on a declared field
+   * (INJ-F7b) was invisible to both stability tests and was caught only by an
+   * unrelated fixture assertion elsewhere -- which would not exist for a field
+   * nobody renders.
+   *
+   * The contract's own wording is *"two polls with no state change **while a
+   * timer ticks** -> identical ETag (no wall-clock values in payload)"*, and a
+   * poll interval is ten seconds. So this one lets real time pass across a
+   * second boundary, which is the smallest gap that can catch the class.
+   */
+  it("holds the ETag across a real wall-clock second, with the deadline ticking", async () => {
+    const first = await fetch(`/api/v1/cases/${CASE}/panel`);
+    const firstEtag = first.headers.get("ETag");
+    const firstBody = panelBytes(await first.text());
+
+    // **Premise 1: a timer is actually ticking.** "No wall-clock value in the
+    // payload" is trivially true of a payload with no deadline in it, and a
+    // fixture that lost its deadline would leave this test passing for the
+    // wrong reason for ever.
+    const deadline = (JSON.parse(firstBody) as { timers: { template_review_deadline_iso: string | null } })
+      .timers.template_review_deadline_iso;
+    expect(deadline).not.toBeNull();
+    expect(Date.parse(deadline ?? "")).toBeGreaterThan(Date.now());
+
+    // **Premise 2: the clock genuinely moves between the two reads.** Real
+    // time, not a fake one: the point is to cross a boundary that a
+    // second-resolution leak would notice, and a mocked clock would only prove
+    // the mock held still.
+    const startedAt = Date.now();
+    await new Promise((resolve) => setTimeout(resolve, 1_100));
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(1_000);
+
+    const second = await fetch(`/api/v1/cases/${CASE}/panel`);
+
+    // Nothing about the case changed, so the digest must not have either --
+    // and the bytes must be identical, which is the property the digest is
+    // standing in for. Both, because an ETag that held while the body moved
+    // would be the worse of the two failures.
+    expect(second.headers.get("ETag")).toBe(firstEtag);
+    expect(panelBytes(await second.text())).toBe(firstBody);
+  });
+
+  /**
+   * Two principals, same case -> identical body **and** identical ETag
+   * (contracts.md sect. 9).
+   *
+   * The trap this test is built to avoid: if the panel carried nothing
+   * attributable to any particular actor, "identical for two principals" would
+   * be true of an empty room and would prove nothing. So it **seeds an
+   * actor-attributed value first** -- an accepted command, which sect. 9 names
+   * explicitly as the field that stays unfiltered -- and asserts it is present
+   * before comparing. The comparison then has something to be wrong about.
+   */
+  it("serves two principals the same bytes and the same ETag, commands included", async () => {
+    await fetch(`/api/v1/cases/${CASE}/reviews/${REVIEW}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer principal-one" },
+      body: JSON.stringify({
+        draft_version: 1,
+        canonical_edit_version: 0,
+        canonical_approved_payload_hash: "0".repeat(64),
+      }),
+    });
+
+    const seen: (string | null)[] = [];
+    fixtureServer.events.on("request:start", ({ request }) => {
+      if (request.url.includes("/panel")) seen.push(request.headers.get("Authorization"));
+    });
+
+    const one = await fetch(`/api/v1/cases/${CASE}/panel`, {
+      headers: { Authorization: "Bearer principal-one" },
+    });
+    const two = await fetch(`/api/v1/cases/${CASE}/panel`, {
+      headers: { Authorization: "Bearer principal-two" },
+    });
+
+    const oneBody = panelBytes(await one.text());
+    const twoBody = panelBytes(await two.text());
+    fixtureServer.events.removeAllListeners("request:start");
+
+    // **Premise 1: two genuinely different principals reached the handler.**
+    // Asserted on what the server saw, not on what this test passed -- a fetch
+    // layer that dropped the header would otherwise make the whole test a
+    // comparison of one principal with itself.
+    expect(seen).toEqual(["Bearer principal-one", "Bearer principal-two"]);
+
+    // **Premise 2: there is something actor-attributed in the body to filter.**
+    const commands = (JSON.parse(oneBody) as {
+      accepted_commands: { actor_id: string; kind: string }[];
+    }).accepted_commands;
+    expect(commands.length).toBeGreaterThan(0);
+    expect(commands[0].actor_id).toBeTruthy();
+    expect(commands[0].kind).toBe("template_approved");
+
+    // Byte-identical, not merely deep-equal: sect. 9 asks for a canonical
+    // order-stable serialization, and two bodies that differ only in key order
+    // would hash differently and break the 304 while passing `toEqual`.
+    expect(twoBody).toBe(oneBody);
+    expect(two.headers.get("ETag")).toBe(one.headers.get("ETag"));
   });
 });

@@ -486,3 +486,98 @@ $ git status --porcelain
 ```
 
 **Gate (rule 13): `frontend-tests` (`npm test`) in `.github/workflows/checks.yml`.**
+
+---
+
+## step:04 — the two guarantees with no test at all
+
+Both added to `casePanelHandlers.contract.test.ts`, which is where the map says
+the sibling ETag and cache-header guarantees live. Putting them anywhere else
+would have created exactly the mis-pointed row ACC3 spent its dispatch finding.
+
+### A wrong assertion first, kept because it is the useful part
+
+Both tests were written against the **whole HTTP response** and both failed:
+
+```
+AssertionError: expected '{"data":{"case_id":"case-mock-2026","…' to be '{"data":{"case_id":"case-mock-2026","…'
+```
+
+— on `meta.generated_at` and nothing else. That stamp *must* differ between two
+reads; it says when the reply was composed. The digest is taken over
+`body.data` for precisely that reason (`etagFor(body.data)`), and sect. 9's
+"identical body" is a claim about the composed `CasePanelView`.
+
+A red that **looks** like a principal-independence failure and is nothing of the
+kind. The boundary is now a named helper, `panelBytes`, whose docstring carries
+this so the next reader gets the answer without repeating the run.
+
+### Both injected against
+
+**FE-HOLE-2 closed — `holds the ETag across a real wall-clock second, with the
+deadline ticking`.** Two premises asserted before the comparison: the deadline
+is present and in the future (a payload with no timer satisfies "no wall-clock
+value" trivially), and at least 1,000 ms of *real* time passed between the reads
+(a mocked clock would only prove the mock held still).
+
+**INJ-F7b re-run** — `template_review_reminders_sent: Math.floor(Date.now()/1000) % 4`:
+
+```
+     × holds the ETag across a real wall-clock second, with the deadline ticking 1214ms
+ Test Files  1 failed (1)
+      Tests  1 failed | 19 passed (20)
+```
+
+**One red, nineteen green.** The nineteen include both pre-existing stability
+tests, which is the measurement: at step:02 this same injection was invisible to
+them and was caught only by an unrelated fixture assertion in another file.
+
+**Principal independence closed — `serves two principals the same bytes and the
+same ETag, commands included`.** The trap avoided: a panel carrying nothing
+attributable to any actor is identical for two principals the way an empty room
+is. So the test **approves first**, seeding an `accepted_commands` entry — which
+sect. 9 names as the field that stays unfiltered — and asserts it is there
+before comparing. It also asserts, from the server's own view of the requests,
+that two genuinely different `Authorization` values arrived:
+
+```ts
+expect(seen).toEqual(["Bearer principal-one", "Bearer principal-two"]);
+```
+
+on what the handler saw, not on what the test passed. A fetch layer that dropped
+the header would otherwise turn the whole test into a comparison of one
+principal with itself.
+
+**INJ-F11** — the panel filters `accepted_commands` to the requesting principal,
+which is the defect sect. 9 names. Run against the **whole** suite, not just its
+own file:
+
+```
+ FAIL  src/domains/registry.test.ts > … (pre-existing, 2)
+ FAIL  src/mocks/handlers/casePanelHandlers.contract.test.ts > … > serves two principals the same bytes and the same ETag, commands included
+ Test Files  2 failed | 60 passed (62)
+      Tests  3 failed | 864 passed (867)
+```
+
+**Exactly one test in 62 files catches it, and it is the new one.** Before this
+commit: none.
+
+### The suite, reverted and clean
+
+```
+$ git checkout -- src/mocks/handlers/casePanelHandlers.ts
+$ git status --porcelain
+ M frontend/src/mocks/handlers/casePanelHandlers.contract.test.ts
+$ npx vitest run --maxWorkers=2
+ FAIL  src/domains/registry.test.ts > the domain registry > declares exactly the canonical domains
+ FAIL  src/domains/registry.test.ts > the domain registry > shares a visibility capability only where that is deliberate
+ Test Files  1 failed | 61 passed (62)
+      Tests  2 failed | 865 passed (867)
+   Duration  75.43s
+```
+
+The only modified file is a test file. **Before: 61 files / 860 tests / 858
+passed. After: 62 files / 867 tests / 865 passed.** The 2 failures are
+FE-DEFECT-2's and are the same two throughout.
+
+**Gate (rule 13): `frontend-tests` (`npm test`).**
