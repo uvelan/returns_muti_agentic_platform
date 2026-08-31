@@ -27,6 +27,9 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | ACC-1 (harness) | feat/acc-harness | **MERGED** | 2 · CR → PASS (9cb3508) | c1c2b0f |
 | fabrication guard (AST) | feat/fabrication-guard-ternary | **MERGED** | 1 · PASS (fb221d8a) | 85dc4271 |
 | actorId fixtures | feat/actorid-required | **MERGED** — `tsc` now exits **0** on trunk | 1 · PASS (93ad88fa) | (merged) |
+| ACC-3 (category B audit) | feat/acc-audit-b | IN_PROGRESS | — | — |
+| CI backend lint | feat/ci-backend-lint | AWAITING RV (`a9165b76`) | — | — |
+| live-harness registration | feat/live-harness-registration | AWAITING RV (`00471116`) | — | — |
 | RV calibration | rv-calibration/seeded-hardcoding | bait CAUGHT as blocking | 1 (d59e017) | never merges |
 
 **All nine backend slices merged:** S1, S1b, ACC-1, V1 phase 1, S2, V2 phase 1, V2 phase 1b, V3, V1 phase 2. Trunk suite: **5121 passed, 1 failed** — the single known pre-existing `test_a_rejected_return_still_opens_no_work_item`.
@@ -137,11 +140,15 @@ Its design principle is right — *a `GraphReadPort` returning `{}` is worse tha
 
 ## Escalation to the harness owner — stale bases are a provisioning defect, not vigilance
 
-**Seven independent agents have now read the branch ref instead of the sha they were given, and all seven were right to.** Instances include a snapshot naming a commit **reachable from nothing in the repo**, and a worktree arriving checked out **100+ commits behind** on an ancestor of trunk — where branching as instructed would have silently omitted every slice merged this run.
+**Nine independent agents have now read the branch ref instead of the sha they were given, and all nine were right to.** Instances include a snapshot naming a commit **reachable from nothing in the repo**, and worktrees arriving checked out **837 and 847 commits behind** on ancestors of trunk — where branching as instructed would have silently omitted every slice merged this run.
 
 RV's judgement: *"seven independent agents reading the ref instead of the number isn't seven lucky catches. Worth fixing at provisioning before one of them doesn't notice."*
 
 **Why it is dangerous rather than annoying:** an ancestor base **fails silently**. The work compiles, the suites pass, and the slice is simply missing everything merged since — there is no red to notice. Contracts §3 now makes ref-verification mandatory, which is a mitigation, not a fix. **The fix belongs where worktrees are provisioned.**
+
+**The mechanism is now identified, and it is not random.** Instances 8 and 9 were both **agent worktrees under `.claude/worktrees/`**, arriving at 837 and 847 commits behind respectively — the two largest gaps recorded. That is not drift; it is a worktree provisioned from a stale point and never advanced. The number keeps growing because trunk keeps moving while the provisioning point does not, which means **the next instance will be worse than this one, and the failure will stay silent as it grows.** Every agent dispatched into a worktree must verify against the ref; the dispatch template now says so in its first paragraph, and both agents that hit it caught it there.
+
+*Related, and found by causing it:* those same worktrees are real repositories inside the working tree, so `git add -A` stages them as gitlinks — a submodule pointer to a clone nobody else has. Now ignored (`63744f2a`).
 
 ## ⚠ Bears on the acceptance run — live-suite flakiness under load
 
@@ -158,6 +165,16 @@ The harness repair recorded a residual it explicitly did **not** claim to have f
 - **UX-copy inconsistency across panes:** `CasePanel.tsx:198` says "This reply was empty." while `SupportReplyBody.tsx:95` says "This reply is empty. Rebuild it before sending — Support would receive nothing." Same state, two sentences, two panes. Owning slice's to settle.
 - **`review.conflict`'s contrast pairing** — the same failing pair at the same tint that V2 found on its own token twin. V1's token in V1's component; registered, untouched by V2, correctly.
 - **`animate-bounce` — RESOLVED by restyle** (`39fd7c0`), user-directed. The dots are now a staggered `animate-pulse`: Tailwind's bounce is a squash curve built for scroll-down arrows and disagreed with the `animate-spin` loader on the line above, **and** pulse inherits `index.css`'s `prefers-reduced-motion` rule, which freezes it outright — bounce had no such handling, so the restyle fixes an accessibility gap as well as the visual one. Never suppressed. V2 was right not to invent an ignore format for a plugin that exposes none.
+
+## Rule 13, one layer deeper — the backend quality script nothing invokes
+
+The CI-lint branch was dispatched to gate `ruff` and came back having found the larger version of its own errand. **`scripts/linux/03_run_backend_quality.sh` is the repository's own definition of backend quality** — it runs `ruff check .`, `ruff format --check .`, ruff over three further root paths, `mypy`, and `poetry check` — and **nothing in CI invokes it.** Gating only `backend/` would have reproduced the exact defect one level down; two of those three root paths were unformatted.
+
+**It also corrected the dispatch that sent it.** I had given it "15 errors, 85 unformatted files" in a phrasing that implied one population. Measured: **14 errors across 6 files, 94 unformatted, overlap 2** — and 96 unformatted once the root paths are included. `ruff check` and `ruff format --check` select genuinely different file sets, and treating them as one set is how a fix gets scoped to the wrong thing. It re-measured rather than inheriting either number.
+
+**Option 1 (fix now) was chosen on measurement, not preference:** five unmerged branches touch **zero** of the affected files, so the "large diff landing on top of in-flight reviews" objection was checked and found absent. And the six `B904`s were fixed by **chaining** rather than `from None` — which would equally have satisfied ruff while throwing the traceback away.
+
+**Left explicitly undispatched, and named rather than absorbed:** `mypy` is pinned, configured `strict = true`, run by two developer scripts, and **gated by nothing**. Same for `poetry check` and `pytest scripts/tests`. A strict-mypy debt is a different size of question and was correctly refused as out of track scope.
 
 ## Queued follow-up dispatches
 
