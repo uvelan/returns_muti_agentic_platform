@@ -2936,3 +2936,149 @@ cannot be a hard gate on this hardware, and its failures must be recorded as
 4. Module 64 and `test_order_line_reservations_real_infra.py` remain
    undiagnosed, now with a plausible but unproven common cause.
 5. The branch fails `ruff format --check` pre-existing (step:20).
+
+---
+
+## step:22 — before-state and predictions, recorded before the stack is touched
+
+Nothing has been changed at the time of writing. This entry exists so the change
+is revertible by somebody who was not here.
+
+### 1. The file, and who owns it
+
+    path    : K:\Projects\FEG\Ret\full\returns_platform_copilot_recovered_20260804-211601\compose.yaml
+    service : temporal-postgresql   (lines 348-364)
+    project : return-multi-agent-platform
+    also    : compose.novault.yaml is the second compose file for this project but
+              does NOT define temporal-postgresql -- compose.yaml is the only place
+
+**This file is outside this repository.** It belongs to a different project
+directory, and the running stack is launched from there rather than from this
+repo's `scripts/infra.sh`.
+
+**It is under version control in its own repo**, which is on branch
+`refactor/unified-return-platform` at `1839b7f`, and both compose files are
+**clean** — `git status --porcelain -- compose.yaml compose.novault.yaml`
+returned nothing. So the before-state is recoverable there with
+`git checkout -- compose.yaml` even if this ledger is lost.
+
+**My change will be left DIRTY in that repo, not committed.** It is a temporary
+test-environment change to somebody else's project, and committing it would
+assert an intent I have no standing to assert. Whoever owns that repo should
+decide whether it becomes permanent.
+
+### 2. Verbatim before-state
+
+    348   temporal-postgresql:
+    349     image: postgres:${POSTGRES_VERSION:-17.10-alpine}
+    350     environment:
+    351       POSTGRES_USER: temporal
+    352       POSTGRES_PASSWORD: ${TEMPORAL_DB_PASSWORD}
+    353       POSTGRES_DB: temporal
+    354     volumes:
+    355       - temporal_pg_data:/var/lib/postgresql/data
+    356     healthcheck:
+    357       test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
+    358       interval: 10s
+    359       timeout: 5s
+    360       retries: 12
+    361     restart: unless-stopped
+    362     networks: [platform]
+    363     logging: *default-logging
+    364     mem_limit: 1g
+
+There is **no `command:` key today**. The container runs the image default:
+
+    Entrypoint: docker-entrypoint.sh
+    Cmd       : postgres
+
+### 3. The exact change
+
+One key added after `image:`, nothing removed:
+
+    +    command:
+    +      - postgres
+    +      - -c
+    +      - fsync=off
+    +      - -c
+    +      - synchronous_commit=off
+
+**Exactly the two settings approved, and no others.** `full_page_writes=off` is
+the usual third companion and is deliberately **not** included: it was not
+approved, and adding an unrequested setting would make the A/B measure something
+other than what was sanctioned.
+
+**To revert:** delete the five added lines (or `git checkout -- compose.yaml` in
+that project), then `docker compose -p return-multi-agent-platform up -d
+temporal-postgresql`.
+
+### 4. Why this is a genuine single-variable experiment
+
+**The named volume `temporal_pg_data` is not deleted and not recreated.**
+Recreating the container re-attaches the same volume, so the database keeps its
+38 MB and its 916 executions across both arms. Accumulated state is therefore
+**held constant**, and the only thing that changes is whether Postgres waits for
+the disk. That matters because accumulation was the hypothesis this track spent
+two remedies on: this experiment cannot accidentally confirm the storage fix by
+also wiping the data.
+
+### 5. Predictions, stated before the numbers exist
+
+**Baseline to beat** (step:21, reverted budgets, quiet machine): **3 clean runs
+of 5**; failures carried `did not run within 20s` / `did not run within 30.0s`
+and `shard status unknown`. Server side, over three hours: 145 "Failed to start
+transaction", 266 "context deadline exceeded", 44 "shard status unknown", 19
+shard re-acquisitions. `pg_test_fsync`: 2.5–33.6 ops/sec.
+
+**What I expect if the storage layer is the cause:**
+
+1. `pg_test_fsync` rises by **one to three orders of magnitude**.
+2. Temporal's persistence errors during the runs fall to **zero or near it** —
+   this is the direct measurement of the mechanism.
+3. The workflow module goes **5 of 5 clean at the ORIGINAL budgets**, and run
+   times cluster near the fast end (79–93s) instead of spanning 79–275s.
+
+**What would count as noise rather than improvement:** 4 of 5 clean *with the
+server-side error counters still non-zero*. Five runs cannot separate 4/5 from
+3/5 on their own — the test counts are the weakest evidence here, and I am
+naming that in advance so I cannot later treat a lucky 4/5 as a result. **The
+load-bearing evidence is (1) and (2), which measure the mechanism directly
+rather than through the tests.**
+
+**What would falsify the storage explanation:** (1) and (2) succeed — fsync is
+fast, Temporal's errors are gone — **and the tests still fail**. That would mean
+the storage layer was real but not the whole story, and it is the more valuable
+outcome of the two. I will report it plainly if it happens.
+
+**Budgets stay reverted.** If the storage fix is the cause, the original 20s and
+30s budgets should now be *sufficient*, and a remedy that makes the original
+assertions hold is worth far more than one that relaxed them. That is the
+cleanest available confirmation and it is why re-raising would have destroyed
+the experiment.
+
+### 6. The `dd` near-miss, recorded prominently as instructed
+
+Before `pg_test_fsync` I ran:
+
+    dd if=/dev/zero of=... bs=8k count=1000 oflag=dsync
+
+It did not return within 120 seconds, and **I began writing that up as "fewer
+than 8 IOPS" — a finding, with a number.** It was nothing of the sort. The
+Postgres container's busybox `dd` had rejected the flag instantly:
+
+    dd: invalid argument 'dsync' to 'oflag'
+
+The hang was the **other leg of the same command**, the one against Mongo. So I
+had a plausible number attached to the wrong cause — **the identical shape to
+the log-truncation defect from step:18, committed two steps after I wrote the
+standing rule about exactly that.**
+
+It was caught by reading the output file before reporting it. That is the only
+defence that has worked on this run, and it works because it is mechanical:
+**read the actual output, then write the claim — never the other way round.**
+`pg_test_fsync` then replaced a guess with an instrument built for the question,
+which is the second half of the same lesson.
+
+### Open at the time of writing
+
+The change is **not applied**. The A/B is **not run**.
