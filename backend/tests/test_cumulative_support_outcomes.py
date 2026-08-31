@@ -79,6 +79,8 @@ from return_platform.workflows.return_case_activities import (
 from return_platform.workflows.return_case_workflow import (
     CaseTerminalCommand,
     DraftSupportRequestInput,
+    PolicyDecisionName,
+    PolicyGateState,
     RecordSupportOutcomeInput,
     ReturnCaseOutcome,
     ReturnCaseStatus,
@@ -112,6 +114,31 @@ NOW = datetime(2026, 8, 15, 12, 0, tzinfo=UTC)
 #: about the platform rather than about the fixture.
 SHIPPED_CONFIGURATION = load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration
 RELEASED_REQUIREMENTS = build_return_method_requirement_table(SHIPPED_CONFIGURATION)
+
+#: The same release with the policy gate switched back on, and nothing else changed.
+#:
+#: The shipped file suspends the gate on this development host
+#: (`config/returns/production.yaml`, `policy_evaluation.enabled: false`, reason
+#: "Suspended on this development host while order-discovery turns are answered
+#: through the MANUAL provider"). That is a deployment switch, and it is stated in
+#: configuration precisely so it survives a reset -- but it means the shipped
+#: release answers `SKIPPED_BY_CONFIGURATION` for every case, which *clears* the
+#: gate. A test whose whole claim is "a rejected return opens no work item" then
+#: proves nothing: no return is ever rejected, the case sails past the gate, and
+#: the assertion that no work item exists holds for a reason the test does not
+#: name.
+#:
+#: `tests/policy/test_case_policy_gate.py` overrides exactly this one value for
+#: exactly this reason (see its `configuration` fixture); the reasoning is copied,
+#: not re-derived. The skip *itself* is covered over there, against a configuration
+#: that says so explicitly.
+POLICY_ENABLED_CONFIGURATION = SHIPPED_CONFIGURATION.model_copy(
+    update={
+        "policy_evaluation": SHIPPED_CONFIGURATION.policy_evaluation.model_copy(
+            update={"enabled": True, "disabled_reason": None}
+        )
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1960,8 +1987,14 @@ async def test_a_rejected_return_still_opens_no_work_item(
     against the *work-item collection*, because a case can be marked
     `POLICY_REJECTED` and still have opened a thread with a human on the end of
     it.
+
+    Run against `POLICY_ENABLED_CONFIGURATION`, because the claim is about what
+    the gate *decides* and the shipped release currently suspends it. Under the
+    shipped release this test passed its own assertions for the wrong reason --
+    `SKIPPED_BY_CONFIGURATION` clears the gate, so nothing was rejected and "no
+    work item" was true of a case that had simply not been judged.
     """
-    harness = _harness(monkeypatch)
+    harness = _harness(monkeypatch, configuration=POLICY_ENABLED_CONFIGURATION)
     for name in (
         "condition_new",
         "suitable_for_resale",
@@ -2002,6 +2035,16 @@ async def test_a_rejected_return_still_opens_no_work_item(
     assert "record_support_outcome" not in harness.runtime.calls, "the drain ran on a rejection"
     # The gate is evaluated, and nothing after it is.
     assert "evaluate_case_eligibility" in harness.runtime.calls
+    # And it is evaluated *as a rejection*, not skipped into a pass. Without this
+    # the three assertions above are all true of a suspended gate, which is what
+    # the shipped release now configures.
+    assert harness.instance._state.policy is not None
+    assert harness.instance._state.policy.state == PolicyGateState.EVALUATED.value
+    assert harness.instance._state.policy.decision == PolicyDecisionName.REJECT.value
+    # `_open_support` is the statement after the gate and holds the only two
+    # `workflow.patched` calls on this path, so an empty marker log is the
+    # positional guarantee restated: nothing past the gate ran at all.
+    assert harness.runtime.patch_ids == []
 
 
 async def test_a_resumed_case_holding_a_work_item_does_not_re_evaluate_the_policy(

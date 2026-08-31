@@ -191,3 +191,63 @@ E           temporalio.exceptions.ActivityError: 'record_template_draft'
 in the same test is uncovered underneath it. Diagnosed in step 3.
 
 Next step: the second staleness, then the coverage the fix unblocks.
+
+---
+
+## Step 3 — the second staleness: the test's own premise never fired
+
+Files touched: `backend/tests/test_cumulative_support_outcomes.py`.
+
+**Diagnosis.** With `patched` working, `test_a_rejected_return_still_opens_no_work_item`
+runs *into* `_open_support`, which is the one place it must never reach. A probe on
+the run (temporary file, removed in step 5) said why:
+
+```
+POLICY CaseEligibilityOutcome(state='SKIPPED_BY_CONFIGURATION', route=None, decision=None, reason_codes=(), support_queue=None, failure_reason=None)
+CALLS ['record_case_customer_identity', 'record_case_status', 'request_bay_assignment', 'evaluate_case_eligibility', 'draft_support_request', 'record_template_draft']
+PATCH_IDS ['support-draft-returns-structured-payload', 'support-template-review-gate']
+STATUSES ['AWAITING_BAY']
+```
+
+`config/returns/production.yaml:1449` sets `policy_evaluation.enabled: false`
+("Suspended on this development host while order-discovery turns are answered
+through the MANUAL provider"). `return_case_activities.py:1000` short-circuits on it
+before the rule set is even required, and `_evaluate_policy` treats
+`SKIPPED_BY_CONFIGURATION` as **cleared**. So the test's rejected return was never
+rejected: the case sailed past the gate, and "no work item" would have been true of a
+case nobody judged.
+
+Two independent stalenesses in one test, and the ordering hid the second: without
+`patched` the `AttributeError` fires at 2247 *before* any assertion, so the
+configuration problem could not be seen. Both are harness staleness. **Production is
+correct; `backend/src/` is untouched.**
+
+**Fix.** A `POLICY_ENABLED_CONFIGURATION` module constant -- the shipped release with
+`policy_evaluation.enabled` and nothing else overridden -- and the test runs against
+it. Not invented here: `tests/policy/test_case_policy_gate.py`'s `configuration`
+fixture (:365-390) overrides exactly that one value for exactly this reason, and the
+comment says so. Same probe, with the gate on:
+
+```
+OUTCOME POLICY_REJECTED None
+POLICY CaseEligibilityOutcome(state='EVALUATED', route='STANDARD_RETURN', decision='REJECT', reason_codes=('STANDARD_RETURN_CONDITION_FAILED',), support_queue=None, failure_reason=None)
+CALLS ['record_case_customer_identity', 'record_case_status', 'request_bay_assignment', 'evaluate_case_eligibility', 'record_case_status']
+PATCH_IDS []
+STATUSES ['AWAITING_BAY', 'POLICY_REJECTED']
+```
+
+Assertions **strengthened**, not weakened -- the previous four were all true of a
+suspended gate:
+
+- the policy state is `EVALUATED` and the decision is `REJECT`;
+- `runtime.patch_ids == []`. `_open_support` holds the only two `workflow.patched`
+  calls on this path, so an empty marker log restates 3A.7's positional guarantee
+  directly: nothing past the gate ran at all.
+
+```
+$ PYTHONPATH=...\src ...python.exe -m pytest tests/test_cumulative_support_outcomes.py -q
+...................................................                      [100%]
+51 passed in 1.65s
+```
+
+Next step: the coverage the fix unblocks.
