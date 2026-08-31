@@ -19,6 +19,7 @@ from pymongo import AsyncMongoClient
 from temporalio.client import Client
 
 from return_platform.ai.gateway.final_dispatch import ALLOW_ALL
+from return_platform.bootstrap.system_store import bootstrap_system_store
 from return_platform.configuration.runtime_activation import build_worker_runtime_activation
 from return_platform.configuration.runtime_integrations import verify_runtime_validation_receipts
 from return_platform.configuration.runtime_loader import (
@@ -42,10 +43,11 @@ from return_platform.operations.integrations.outbox import (
 )
 from return_platform.operations.integrations.temporal_signal import TemporalSignalDispatcher
 from return_platform.operations.repository import OperationalRepository
-from return_platform.operations.return_support.composition import (
-    build_support_message_classify_dispatcher,
+from return_platform.operations.return_support.resolver_composition import (
+    build_resolving_classify_dispatcher,
 )
 from return_platform.operations.support_events import SUPPORT_RESPONSE_SIGNAL_TOPIC
+from return_platform.platform.reasoning.checkpoint import SystemStoreCheckpointSaver
 from return_platform.workflows.return_case_recovery import build_case_recovery_service
 
 logger = logging.getLogger("return_platform.workers.integration_outbox")
@@ -106,12 +108,26 @@ async def run() -> None:
         # mechanism two of three callers never opted into looked like a
         # mechanism everyone had. No `route_pool=` either -- this worker owns no
         # pool of its own, so there is no circuit state here to share.
-        classify_topic, classify_dispatcher = build_support_message_classify_dispatcher(
+        #
+        # V3's factory, which delegates to V2's for the analysis half and
+        # attaches the resolution ladder: same topic, same arguments, plus a
+        # `checkpointer`. `bootstrap_system_store` is called here rather than
+        # inside the factory because it creates Mongo structures and runs
+        # migrations -- a factory that quietly did that would make every
+        # construction a schema change. `checkpointer` has no default and must
+        # not acquire one: `None` would build a ladder that runs perfectly and
+        # remembers nothing, restarting every retry at full model cost with
+        # `per_case_llm_budget` reset, silently, because the run still
+        # completes and still answers.
+        classify_topic, classify_dispatcher = build_resolving_classify_dispatcher(
             settings=settings,
             mongo=client,
             return_configuration=runtime.return_configuration.configuration,
             ai_gateway=runtime.ai_gateway_configuration,
             interception=ALLOW_ALL,
+            checkpointer=SystemStoreCheckpointSaver(
+                *await bootstrap_system_store(settings, client)
+            ),
         )
         dispatchers[classify_topic] = classify_dispatcher
         if (
