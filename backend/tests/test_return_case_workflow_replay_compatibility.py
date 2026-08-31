@@ -461,16 +461,30 @@ def test_a_test_worker_for_the_case_workflow_exists_to_be_checked() -> None:
     workers = _case_workflow_workers()
 
     assert len(workers) >= 20, f"expected the real-infra suites' workers, found {len(workers)}"
-    #: An equality, not a superset. A file that *stopped* being seen is the
-    #: failure this pin exists for, and a superset check cannot see one.
+    #: A subset, not an equality. This was an equality until a legitimate new
+    #: worker file on trunk made an unrelated merge red, and the reason the
+    #: equality looked load-bearing is that the sibling registration guard could
+    #: not import a file in a subdirectory (see the module-path derivation
+    #: there). With that fixed the sibling checks *every* file the walker finds,
+    #: new ones included -- so equality's extra half, "and no file has been
+    #: added", asserts nothing the sibling does not already assert, and charges
+    #: the whole of the tax.
     #:
-    #: If a new file legitimately builds a `ReturnCaseWorkflow` worker, add it
-    #: here -- and read the sibling assertion's report first, because a new
-    #: probe is exactly where an under-registered one arrives.
-    assert {path.name for path, _line, _cls, _src in workers} == {
+    #: The half that matters is kept: a file that *stopped* being seen -- a
+    #: renamed `_Probe`, a moved real-infra file, an `activities=` expression
+    #: the walker cannot read -- still fails here, which is the failure this pin
+    #: exists for.
+    #:
+    #: THE RESIDUAL, AND IT IS REAL: a *newly added* worker file is not
+    #: protected against silently dropping back out until somebody names it
+    #: below. Equality gave that automatically. The second net is the
+    #: `len(workers) >= 20` floor above -- raise it when you add a name here.
+    #: The set is append-only by intent: adding is optional, removing is a
+    #: decision that should be reviewed.
+    assert {
         "test_return_case_policy_gate_real_infra.py",
         "test_return_case_workflow_real_infra.py",
-    }
+    } <= {path.name for path, _line, _cls, _src in workers}
     unresolved = [
         f"{path.name}:{line} activities={source}"
         for path, line, provider, source in workers

@@ -3302,3 +3302,97 @@ The gate that runs everything in this entry and every entry below it is the
 default `pytest` run in `scripts/linux/02_run_backend_tests.sh` / the backend job
 in `checks.yml`. Nothing here needs live infrastructure: the guard is a
 static/import-time check.
+
+---
+
+## step:25 — F5: the population pin inverted to a subset, and proved it still catches the drop-out
+
+> **Correction to step:24, made here rather than by editing it.** Step:24 names
+> the gate as `scripts/linux/02_run_backend_tests.sh`. **No such script exists.**
+> The gates are `scripts/linux/03_run_backend_quality.sh:24` (`poetry run
+> pytest`) and `.github/workflows/checks.yml:129` (`poetry run python -m pytest
+> tests`), verified by grep, not from memory. Step:24's `addopts` claim is also
+> incomplete: `backend/pyproject.toml:139-140` deselects `not live_infra and not
+> browser`, two markers, not one. Neither correction changes step:24's
+> conclusion — this file carries no marker and is collected by both gates.
+
+**The change.** `test_return_case_workflow_replay_compatibility.py:463-484`.
+The exact-set equality becomes a subset in the direction that matters:
+
+    assert {
+        "test_return_case_policy_gate_real_infra.py",
+        "test_return_case_workflow_real_infra.py",
+    } <= {path.name for path, _line, _cls, _src in workers}
+
+**Why, and I checked RV's reasoning rather than taking it.** RV argues equality's
+extra strictness is redundant with the sibling registration guard, which already
+checks every file the walker finds — and that equality only *looked* load-bearing
+because F6 made a new file fatal, so the two defects were propping each other up.
+That is testable and I tested it: with F6 fixed (step:26), the sibling guard
+imports and checks `tests/acceptance/test_items_15_16_...py` and reports a real
+finding against it (step:27). So the "a new probe is exactly where an
+under-registered one arrives" job that the old comment claimed for equality is
+in fact done by the sibling, and done better — the sibling names the missing
+activities, equality only says "a name you did not expect". **No dispute.**
+
+**The residual is in the test's own comment, not only here** — that was the
+condition, and the comment carries it in the most visible form I could give it:
+
+    #: THE RESIDUAL, AND IT IS REAL: a *newly added* worker file is not
+    #: protected against silently dropping back out until somebody names it
+    #: below. Equality gave that automatically. The second net is the
+    #: `len(workers) >= 20` floor above -- raise it when you add a name here.
+
+**Effect on the merge tree** (`mt_f5` = merge tree `920bbe6c` + this fix only):
+
+    2 failed, 15 passed  ->  1 failed, 16 passed in 6.72s
+
+and the one remaining failure is F6, unchanged.
+
+### Injection — does the inverted assertion still catch what equality caught?
+
+This is the question that decides whether this fix is a repair or a
+capitulation, so it is answered by injection, twice, in throwaway copies of the
+merge tree.
+
+**Inj-F5-a — a pinned file is *moved* away** (`tests/test_return_case_workflow_
+real_infra.py` -> `tests/acceptance/test_return_case_workflow_moved_real_infra.py`).
+This is the drop-out shape the pin's own docstring names first, and note that
+under F6's fix the moved file is still *importable*, so nothing else would have
+noticed:
+
+    E       AssertionError: assert {'test_return...eal_infra.py'} <= {'test_items_...eal_infra.py'}
+    E         Extra items in the left set:
+    E         'test_return_case_workflow_real_infra.py'
+    1 failed in 4.08s
+
+**Caught, and it names the file that vanished.**
+
+**Inj-F5-b — a pinned file stays but stops registering the workflow.** The more
+likely real regression: 8 sites of `workflows=(ReturnCaseWorkflow,)` in
+`test_return_case_policy_gate_real_infra.py` rewritten to another workflow, so
+the walker's *semantic* filter drops the file while the filename survives.
+
+    sites rewritten: 8
+    E       AssertionError: expected the real-infra suites' workers, found 18
+    E       assert 18 >= 20
+    1 failed in 2.08s
+
+The **floor** fired first here. That is a real second net doing its job, but it
+leaves open whether the subset assertion itself would have caught it, so I
+isolated it — same injected tree, floor lowered to `>= 0` so only the subset can
+speak:
+
+    E       AssertionError: assert {'test_return...eal_infra.py'} <= {'test_items_...eal_infra.py'}
+    E         Extra items in the left set:
+    E         'test_return_case_policy_gate_real_infra.py'
+    1 failed in 2.07s
+
+**Caught on its own, without the floor's help.** Both nets fire independently on
+the same defect, which is what "second net" is supposed to mean and is not
+something I was willing to assert without separating them.
+
+### Gate (rule 13)
+
+`scripts/linux/03_run_backend_quality.sh:24` and `.github/workflows/checks.yml:129`
+— the default backend `pytest` run. Verified by running the module itself, above.
