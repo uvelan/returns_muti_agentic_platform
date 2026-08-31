@@ -135,10 +135,21 @@ jobs:
       # `.env`, and they are unaffected.) The gate existed, named itself, and
       # could not execute: the same defect it was written to prevent.
       #
-      # `.env.example` is tracked, and this is not an invented command line --
+      # `.env.example` is tracked, and this is not an invented command line:
       # `scripts/bootstrap_host.sh:17` and
-      # `scripts/linux/reset_docker_environment.sh:85` already run exactly
-      # this copy, and two further scripts instruct developers to.
+      # `scripts/linux/reset_docker_environment.sh:85` run this same copy, and
+      # two further scripts instruct developers to.
+      #
+      # To be exact, since a comment that rounds off is how this file got into
+      # trouble in the first place: both of those wrap the copy in
+      # `if [[ ! -f .env ]]` and follow it with `chmod 600`. The `cp` line is
+      # identical; the two wrappers are dropped here deliberately. The guard
+      # protects a developer's filled-in `.env` from being overwritten, and
+      # after `actions/checkout` no such file can exist -- a guard against an
+      # impossible state reads as though the state were possible. And
+      # `chmod 600` narrows access on a shared workstation; a runner is
+      # single-tenant and discarded with the job, and the content is a tracked
+      # file already public in the repository.
       #
       # Measured rather than assumed, with the red observed first: absent
       # `.env` gives INTERNALERROR and exit 3; `.env.example` gives
