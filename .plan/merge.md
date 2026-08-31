@@ -243,6 +243,22 @@ The harness repair recorded a residual it explicitly did **not** claim to have f
 
 **Why it matters beyond that branch:** the sanctioned entry point (`run_real_infra_suite.sh`) runs **all 512 live tests in one process**, so the acceptance gate will meet this at far larger scale than two files reveal. A gate that fails a different test every run is indistinguishable from a gate that found something — which is precisely the ambiguity this run has spent itself eliminating. **RV is asked to rule whether "pre-existing" is established or assumed, and whether this blocks the acceptance run.**
 
+### ⚖ RULED (HARNESS-1) — it blocks. The acceptance run cannot be trusted as it stands.
+
+RV ran live tests throughout — eleven runs against a healthy stack — and the ruling rests on measurement, not inference.
+
+**The residual is materially worse than the branch recorded.** The ledger said "each passes in full alone." Three consecutive runs of the offending file **alone** gave **5, 4 and 1** spurious failures (487s / 409s / 303s, against 13-passed-in-73s on a fresh server). Spurious failures appeared at **every** load tested — 1 file: 5/4/1; 2 files: 0/0/1; 5 files: 3/1.
+
+**And they were all in one module.** Every single spurious failure across every run was in `test_return_case_workflow_real_infra.py`. A 512-test single-process run creates strictly more of the accumulated server state that drives this, so it will return a **non-empty, non-repeating failure set essentially every time** — each entry indistinguishable from a real regression.
+
+**"Pre-existing" is asserted and cannot be established:** at base, 16 of those 21 tests never finish, so the control run does not exist. **The repair is nonetheless exonerated, on other evidence** — the diff adds no infrastructure load, and the four untouched live modules (32 tests) were green in all eleven runs. *Exonerated by evidence, not by an unavailable control* — the distinction matters, because "we could not test it and nothing broke" is not the same claim.
+
+*Related correction:* the branch's "17 failing tests" is **16**. RV measured the policy-gate file three times at base: 4 failed / 4 passed every run, not 5/3. The likeliest explanation is that **a flake was counted into a defect total** — the same confusion this residual causes, at small scale.
+
+**Remedy chosen: run the live suite per module, in a fresh process per file.** RV named two sufficient fixes; the other was quarantining the module. Quarantine removes coverage to make a number look clean, while per-module execution keeps every test and changes only the execution model — nothing is hidden. Dispatched into `scripts/dev/run_real_infra_suite.sh` with one non-negotiable: **the aggregate must not be able to lie.** Many exit codes now exist where there was one, and a runner that exits 0 because the last module passed would be a fresh instance of this run's oldest defect.
+
+*Unverified and not claimed:* the remaining ~490 live tests. RV scoped its verdict to what it observed.
+
 ## Open items surfaced but not yet dispatched
 
 - **`actorId` optionality — the diagnosis was WRONG, and the agent falsified it before spending on regeneration.** RV's diagnosis (schema non-required → optional TS type), which I passed on unverified, is **not in the causal path**. `frontend/src/api/cases.ts:51` defines `Served<T>` as `{ [K in keyof T]-?: Served<Exclude<T[K], undefined>> }`, which forces required-and-nullable **regardless of the document**. Probe A — hand-patching the `.d.ts` to exactly what a correct regeneration would emit — left **3 errors, same three files**, the `?` intact. Probe B — one line in one fixture — cleared that file: **2 errors**. The real cause: `actorId` postdates the three helpers and is the one field not written longhand, arriving only via a `Partial<>` spread, which TypeScript types optional.
