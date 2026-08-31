@@ -97,7 +97,17 @@ Every slice has shipped at least one green-but-blind test. The shapes found so f
 
 **Tripwire: DONE** (`266b14b8`, `92bdb479`, `aa4cbe88`). All three runbook steps executed and the tripwire deleted. Notable outcomes: step 3's regeneration produced **zero changes** — the earlier integration pass had already published everything, reported honestly rather than as an empty commit. And **the exactly-three-keys guarantee did not move and was not lost**: `src/test/schemaConformance.ts` validates **response** bodies only (`responseSchema()` reads `operation.responses`), so nothing in that machinery inspects a request — the request-side tests correctly stayed where they were. The generated request type is wrapped in `Required<>` because the two nullable fields carry `None` defaults, so the schema marks them non-required and the generator renders them optional; without it a *dropped* field would read as a deliberate `null`. `MAX_ANSWER_CHARACTERS` and the `map|reject` union stay hand-written with reasons in place — `maxLength` and `pattern` are keywords `openapi-typescript` cannot carry into a type, and keeping the union makes a misspelt choice a compile error rather than a 422 at the counter.
 
-## ⚠ CI POSTURE — the most consequential finding of the run, and it is not about this work
+## CI — WIRED (`c6c15256`, `.github/workflows/checks.yml`)
+
+The gap below is closed. The workflow runs the repository's **own** scripts and invents no command lines. Three design choices worth keeping:
+
+- **Gate 0 is a self-test of the allowlist**, on the same reasoning as `secret-scan.yml`'s scanner self-test: both suite jobs report "acceptable" while three tests fail, and that verdict is worth nothing unless the comparator can still say no. *A broken comparator turns the whole workflow into an expensive `exit 0`.* Verified locally — its negative controls include "a suite that collapsed reports no failures, and must not read as success".
+- **The suites run in full.** Nothing deselected, skipped or deleted. `scripts/ci/assert_known_failures.py` reads the JUnit report and fails on **any** unnamed failure — **and on a named failure that has started passing**, so the list is self-pruning and cannot rot into a blanket excuse. The three known failures are named with their diagnosed causes.
+- **Exit codes are discriminated:** pytest/vitest `>1` means the *run* broke, not the tests, and no allowlist covers that.
+
+**New finding it surfaced, deliberately not papered over:** `npm run check` is `lint && build`, and `build` includes `check:bundle`, which **FAILS** — all JavaScript now totals **278.5 kB gzipped against a 260.0 kB budget** (the entry chunk is fine at 79.1/80.0). The budget's own comment says to raise it "deliberately, in a commit that says what earned the weight". **Choosing a new number is a product decision, not a wiring one**, so the workflow gates `lint` and `typecheck` directly instead of through `check`, and states plainly that `vite build` and `check:bundle` are gated by **nothing** until the budget is settled. **Open decision for the user.** When settled, the `frontend-static` job collapses to a single `npm run check`.
+
+## ⚠ The CI gap this closed (kept for the record)
 
 The `actorId` agent found something sharper than "typecheck is not gated":
 
