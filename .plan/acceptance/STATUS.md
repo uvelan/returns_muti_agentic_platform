@@ -85,6 +85,10 @@ skips.
 | **17** (relay half) | ACC3: append-once under a genuine redelivery, and the write-vs-call count | `category-b-audit.md` |
 | **9, 12** | ACC3: disclosure line dropped; budget checked after the call instead of before | `category-b-audit.md` |
 | **11–12** (authz) | ACC3: 403/404 **with no fact written** — the second half had no test | `category-b-audit.md` |
+| **24–25** (conflict presence) | ACC4: the marker's effect on Send, its banner, and its clearing by the canonical-edit write — **nothing watched any of the three**; two injections each left `858 passed` | `frontend-audit.md` |
+| **24–25** (hash stability) | ACC4: pinned against a millisecond leak only; a **per-second** one was invisible to both existing stability tests | `frontend-audit.md` |
+| **24–25** (principal independence) | ACC4: no test existed; the obvious one would have been vacuous, so the guard seeds an actor-attributed `accepted_commands` entry first | `frontend-audit.md` |
+| **24–25** (304, cache headers, degraded ≠ gap, parked entry, stale source) | ACC4: five scenarios injected against and **already pinned** — verdict A, no change needed | `frontend-audit.md` |
 
 ## Injection tally
 
@@ -168,6 +172,15 @@ coverage invisible in both directions.
 | 17 (relay half) | `test_the_transcript_entry_is_appended_once_across_a_redelivery` | **→ A**, by two tests together. The named test **stays green when the append-once guard is deleted** — it drives a double with its own dedupe. The guarantee is pinned in `tests/operations/test_support_relay_and_wiring.py`. The named test does pin that `relayed_entries` counts writes, not calls. |
 | 20 (deploy replay) | `tests/test_return_case_workflow_replay_compatibility.py` (15) | **remains B** — not reached. See "Findings handed to their owners" **4**: in `test_cumulative_support_outcomes.py`, **no branch of any patch gate is exercised — both limbs of all three** (`v3-clarification-round-trip`, `support-draft-returns-structured-payload`, `support-template-review-gate`), because `_Runtime` has no `patched` at all. |
 
+**ACC phase 4 extended the same instrument to the frontend (items 24–25).** Its
+headline is not phase 3's. Six of eight scenarios were pinned and stayed pinned
+under injection; but for **three** the search returned *nothing at all*, and the
+worst of those is the conflict-presence marker — removing its effect on the Send
+control and then removing its banner each left the suite at `858 passed`. Where
+phase 3 found coverage in the wrong place, phase 4 found three guarantees with
+no coverage anywhere. Full record: `frontend-audit.md` and
+`.plan/tracks/ACC4.ledger.md`.
+
 ## The falsifiable map — per guarantee, the test that reddens when you delete it
 
 Added by ACC3 because **these category tables are themselves the kind of map the
@@ -176,9 +189,11 @@ reader to trust it. A row naming *the mechanism to delete and the test that goes
 red* is checkable in one command, by anyone, in about a minute.
 
 **Every line below was executed**, not inferred: each is a `src/` edit that was
-applied, run, and reverted (`.plan/tracks/ACC3.ledger.md` carries the verbatim
-output). A guarantee ACC3 did not inject against is **absent from this table** —
-absence here means unverified, never "fine".
+applied, run, and reverted (`.plan/tracks/ACC3.ledger.md` and
+`.plan/tracks/ACC4.ledger.md` carry the verbatim output). A guarantee no phase
+injected against is **absent from this table** — absence here means unverified,
+never "fine". The backend rows are ACC3's and edit `backend/src/`; the `24–25`
+rows are ACC4's and edit `frontend/src/`.
 
 | guarantee | delete this in `src/` | this reddens |
 | --- | --- | --- |
@@ -200,6 +215,16 @@ absence here means unverified, never "fine".
 | item 12: budget checked before the call | `resolution_ladder.py:439` `>=` → `>` | `test_budget_exhaustion_writes_the_fact_and_escalates` |
 | item 9: disclosure on agent-authored sends | `_with_disclosure` returns the bare body | `test_an_auto_reply_is_delivered_with_system_provenance_and_disclosure` (+11) |
 | items 11–12: a 404 writes no command | defer the 404 past `store.record_command` | `test_a_refused_answer_records_no_command` (all 3 params) |
+| 24–25: the conditional read happens | `casePanel.ts:158`'s `If-None-Match` | `revalidates with the ETag it holds and answers from the cache on 304` |
+| 24–25: `private, no-cache` + `Vary` | `PANEL_HEADERS`'s `Vary` entry | `declares the cache headers the contract fixes, on both surfaces` |
+| 24–25: ETag holds across a **second** | a per-second value on any declared field | `holds the ETag across a real wall-clock second…` — **this one only** |
+| 24–25: two principals, one body + ETag | filter `accepted_commands` by principal | `serves two principals the same bytes and the same ETag…` — **1 test in 62 files** |
+| 24–25: a stale source is not masked by a 304 | drop `sections` from the digest input | 3 tests in `support/supportPanelIntegration.test.tsx` — **not** a panel or contract file |
+| 24–25: degraded is not empty | `isDegraded` → `false` | `supportPanelPayloads.test.ts`, `supportSections.test.tsx` |
+| 24–25: the parked entry is visible | parked `count` → 0 | 8 tests across 4 files |
+| 24–25: a conflict blocks Send, and says why | `blocked`'s `\|\| conflict_present` limb | `blocks it, and names the conflict as the reason…` |
+| 24–25: clearing it is the canonical-edit **write** | the `resolveEdit` call behind "Keep this version" | `is done by the canonical-edit write, and the panel then unblocks` |
+| 24–25: a blocked Send stays keyboard-discoverable | `aria-disabled` → `disabled` | `keeps a blocked Send focusable and says why` (+3) |
 
 ## C — not reached
 
@@ -211,7 +236,7 @@ absence here means unverified, never "fine".
 | 9, 11–12 (resolver disclosure line, budget, authz) | **closed by ACC3** — all three. The ladder's other 20 scenarios and the roundtrip's remainder are still not injected against. Item 10's tool rung remains deliberately absent. |
 | **14 (panel HTTP composition)** | not attempted. The workflow half is verified; composing `GET /panel` after a reload needs the API surface up as well as a worker. |
 | **17 (relay half)** | not attempted. The omc half is verified (`amendment-4-eventually-once.md`); "relayed once" through the transcript is covered in-slice (category B) and was not audited. |
-| 24–25 (frontend) | **outside this dispatch's scope as written** — "backend tests only". Needs the frontend suite (`npm test`, `contracts:check`, MSW conformance) and a widened brief or a different owner. |
+| 24–25 (frontend) | **partly closed by ACC4** — see `frontend-audit.md`. Eight scenarios injected against at the frontend's own contract surface; three holes closed. **What remains not reached is named there and repeated below**: the `/panel` and `/edit-state` guarantees *as the backend serves them* (ACC4 ran no backend test at all), parked reprocessing in stream order, the two-viewer edit-store scenario, `conflict_present`'s participation in the **hash** as opposed to the render, and the panel load test — so `copilot.case_poll_interval_ms = 10_000` is **still ungated by measurement**. |
 
 Nothing in C is claimed as green.
 
@@ -290,7 +315,39 @@ touches nothing outside `backend/tests/` and `.plan/`.
    gates, six limbs** — an earlier draft said "one branch of one pair", which
    would have sent the owner to do too little (RV ACC3-1 F1). Any full-suite run
    on this branch is red before an auditor starts. Reported, not repaired.
-5. **(ACC3) AMENDMENT-2 is defended twice; only one layer is reachable by test.**
+5. **(ACC4) AMENDMENT-6 was ruled and never executed.** `support_digest`,
+   `clarifications` and `parked_messages` are still on `CasePanelView`
+   (`operations/case_panel.py:205-208`), still hardcoded empty by the composer
+   (`api/case_panel.py:112-115`), still in the published OpenAPI, and still in
+   the frontend mock. `git log -S'support_digest'` names **one** commit ever —
+   the one that added them. The V1 comment AMENDMENT-6 quotes as *"a connection
+   that does not exist"* is still there word for word. Measured, not guessed:
+   `npm run contracts:check` passes including its `git diff --exit-code`, so
+   the committed document matches the live backend. Owned by V1/V3; reported,
+   not repaired.
+6. **(ACC4) The frontend merge tip is red, and `npm test` under load reports
+   green while a third of it never runs.** `registry.test.ts` fails 2 tests at
+   the base commit — `14aa6915` registered a `/shipments` domain without
+   updating the test — so `frontend-tests` is red on trunk. Separately,
+   `vitest.config.ts` sets no `maxWorkers`; on a loaded machine 21 of 61 files
+   failed to start while the summary read `40 passed (40)`, the denominator
+   being the files that started. Only the exit code catches it. Capping at 2
+   makes the suite complete **and 4× faster**.
+7. **(ACC4) The accessibility sweep items 24–25 ask for is gated by nothing.**
+   The only axe run is `frontend/tests/canonical-routes.spec.ts`, a Playwright
+   spec; `grep -rn "playwright\|test:e2e" .github/workflows/*.yml` returns
+   nothing, and vitest's `include` is `src/**`. A guard with no gate, in the
+   a11y plane. (Contrast itself *is* gated, by `reviewContrast.test.ts`, which
+   exists because `review.conflict` shipped at 1.29:1.)
+8. **(ACC4) `TemplateReviewSection.tsx:39` cites a test file that did not
+   exist.** The markup-escaping guarantee it claims is real and pinned — in
+   `CasePanel.test.tsx`. ACC3's mis-pointed-row class, one level deeper: in
+   production source, pointing at nothing rather than at the wrong thing.
+9. **(ACC4) A conflict arriving mid-draft is never announced.** No
+   `role="status"` / `aria-live` on the banner, while this console's own
+   announcer (`supportSections.tsx`) exists for exactly that purpose and keys
+   on `artifacts|unbound|parked` with no conflict term.
+10. **(ACC3) AMENDMENT-2 is defended twice; only one layer is reachable by test.**
    `support_template_renderer._record_attribute`'s allowlist can be deleted with
    the whole suite green, because `binding_source()` refuses the same binding at
    release validation first. Legitimate defence in depth, and the docstring says

@@ -759,3 +759,74 @@ them:
 **Gates (rule 13):** the two new/extended test files run in **`frontend-tests`**
 (`npm test`); `lint`/`typecheck` in **`frontend-static`**; the OpenAPI and MSW
 conformance in **`contracts`**. Every guard ACC4 adds is executed on every push.
+
+---
+
+## step:06 — the last scenario, and the findings written down
+
+### INJ-F13 — stale source vs the 304
+
+The one item 24–25 scenario not yet touched: *"a contributing source serving
+stale data is caught by end-state assertions, not masked by a 304"*. The
+mechanism is that contributed `sections` are inside the digest input, so a
+section that moves moves the ETag. Broken by taking them out:
+
+```ts
+const { sections: _ignored, ...withoutSections } = body.data; // INJ-F13
+const etag = etagFor(withoutSections);
+```
+
+```
+ FAIL  src/domains/returns/panes/casePanel/support/supportPanelIntegration.test.tsx > … > shows a message that arrived after the screen was open, on the next read
+ FAIL  src/domains/returns/panes/casePanel/support/supportPanelIntegration.test.tsx > … > draws a message carrying tool-shaped instructions as characters
+ FAIL  src/domains/returns/panes/casePanel/support/supportPanelIntegration.test.tsx > … > tells an operator that a message was parked, and why, and that it is safe
+ Test Files  2 failed | 60 passed (62)
+      Tests  5 failed | 862 passed (867)
+```
+
+**Caught by three tests**, the first of which is the scenario almost by name.
+Verdict **A** — and a **mis-pointed row** in ACC3's sense: it lives in the
+*support integration* file, not in anything a reader would search for under
+"panel" or "contract".
+
+### Written up
+
+* `.plan/acceptance/frontend-audit.md` — the full injection table, the three
+  closed holes, the falsifiable map, six production findings, and the
+  not-reached table.
+* `.plan/acceptance/STATUS.md` — four rows added to **A**; the 24–25 row in
+  **C** rewritten from "outside this dispatch's scope" to a named partial with
+  its remainder listed; ten falsifiable-map rows added; five findings appended
+  to "Findings handed to their owners" (renumbering ACC3's fifth to tenth); the
+  category-B preamble given ACC4's headline, which is **not** phase 3's — phase
+  3 found coverage in the wrong place, phase 4 found three guarantees with no
+  coverage anywhere.
+
+Following that document's own convention: **absence from a table means
+unverified, never "fine"**, and the largest absence is stated first in the
+not-reached table — *these guarantees were measured against the MSW contract
+surface, not against the server that implements them*, because no backend test
+was run on this branch.
+
+### Final state
+
+```
+$ npm run lint      (clean)
+$ npm run typecheck (clean)
+$ npx vitest run --maxWorkers=2
+ FAIL  src/domains/registry.test.ts > the domain registry > declares exactly the canonical domains
+ FAIL  src/domains/registry.test.ts > the domain registry > shares a visibility capability only where that is deliberate
+ Test Files  1 failed | 61 passed (62)
+      Tests  2 failed | 865 passed (867)
+   Duration  93.16s
+$ git status --porcelain
+$ (empty)
+```
+
+**Before: 61 files / 860 tests / 858 passed / 2 failed.**
+**After: 62 files / 867 tests / 865 passed / 2 failed.**
+The 2 are FE-DEFECT-2's, present at the base commit and untouched.
+
+`git diff 2d0e3d65 -- frontend/src/` touches **two test files and no production
+code**. No test was deleted, skipped, or weakened; no `.skip` or `.only` was
+added; no backend test was run.
