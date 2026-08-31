@@ -299,7 +299,27 @@ RV ran live tests throughout — eleven runs against a healthy stack — and the
 
 *Also repaired in passing:* the collected-total report was already broken — `tail -1` was picking pytest's capture-warnings docs URL, so the whole-suite run printed a URL where its total belonged.
 
-**Remaining options, none yet chosen:** quarantine (rejected on coverage grounds, and that rejection now costs more); adjudicated re-runs recorded **as flakes, never as passes**; or isolation of the shared server state itself. The third is dispatched, with the hypothesis to be *established* by making the failures appear and vanish on demand rather than assumed.
+### ⚑ THE MECHANISM, FOUND — and it was written down in this repository in August
+
+**It is not accumulated server state. It is a fixed wall-clock budget meeting a loaded machine.**
+
+`test_return_case_workflow_real_infra.py:320` defines `reached(name, *, within_seconds=30.0)`, whose timeout path raises at **line 333**: `f"{name} did not run within {within_seconds}s"`. Twelve call sites in the module, several tightened to 20s. **Every test named as spuriously failing, across all three independent investigation rounds, routes through that helper.**
+
+`docs/execution-context/remediation/LEDGER.md:445` — dated August, **eight days before this run began** — records the same tests failing the same way and concludes: *"a fixed wall-clock budget is the mechanism; contention is the cause."* It also records this exact trap being fallen into once before, when a slowdown blamed on leaked containers turned out to be the suite starving its own I/O.
+
+**Confirmed from the investigation's own captured output, unread at the time.** Step:09's failure record for `test_a_rejected_return_needs_no_graph_sync` reads `tests\test_return_case_workflow_real_infra.py:333: AssertionError`. **Line 333 is that raise.** The agent's verdict on itself: *"I had the message and did not read it."*
+
+So "a different set each time" was never evidence of arbitrariness — it is **the population that waits on a wall clock**, failing in a shuffled order under load. Two facts that never fitted accumulation now fit easily: 53+ modules with zero spurious failures and no upward drift in per-module time, and the failures appearing only in the rounds where the machine was busy.
+
+**And the contention was mine.** Three and four concurrent agents, several running full backend suites, throughout every round in which these failures were measured — including RV's eleven runs and step:09's three. Nobody recorded it because ambient load is invisible. **RV's fresh-versus-loaded table measured a real effect in which "loaded" meant *the machine*, not the namespace** — the same numbers read as evidence for server-state accumulation are equally readable as contention, and the two were never separated. My server-state hypothesis was a worse guess than the one already in this repository, and I dispatched an agent to chase it.
+
+### ⚑ THE RULE THAT WOULD HAVE PREVENTED ALL OF IT
+
+**A flake investigation that records names and not messages is not an investigation.**
+
+Across fourteen measured runs — RV's eleven and step:09's three — **no failure message was ever captured. Only test names.** `did not run within 30.0s`, an assertion failure, and a connection error are three unrelated defects; every round discarded the one field distinguishing them and then reasoned about the residue. Three remedies were proposed and one implemented before anyone read a message. The mechanism was recoverable at all only because an August ledger happened to record one.
+
+*Remaining options if the controlled experiment does not settle it:* quarantine (rejected on coverage grounds); adjudicated re-runs recorded **as flakes, never as passes**. The experiment states its predictions in advance and names what would refute it — quiet machine, module alone 5×, every message captured; then under manufactured load, predicting `did not run within Ns` reappears; then load off, predicting it vanishes.
 
 **Standing fact until proven otherwise: the live suite has never once been run to completion. No live-suite result may be quoted.**
 
