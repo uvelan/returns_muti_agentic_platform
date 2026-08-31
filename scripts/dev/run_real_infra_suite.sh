@@ -224,6 +224,17 @@ fi
 # Override for a deliberately slow selection:  LIVE_MODULE_TIMEOUT=1800 ...
 LIVE_MODULE_TIMEOUT="${LIVE_MODULE_TIMEOUT:-900}"
 TIMEOUT_CMD="$(command -v timeout || true)"
+# Emptiness is not the only way this can be the wrong `timeout`. On Windows,
+# `C:\WINDOWS\system32\timeout.exe` is a pause utility that takes `/T` and
+# rejects the arguments below, and it sits on `PATH` in any shell that has not
+# put Git's `/usr/bin` first -- so a name check alone would hand every module to
+# a program that exits 1 without ever running pytest. Ask the binary what it is.
+if [[ -n "$TIMEOUT_CMD" ]] && ! "$TIMEOUT_CMD" --version 2>/dev/null | grep -qi coreutils; then
+  echo "warning: '$TIMEOUT_CMD' is on PATH but is not coreutils 'timeout'" >&2
+  echo "         (likely Windows timeout.exe). Ignoring it; modules run" >&2
+  echo "         without a ceiling." >&2
+  TIMEOUT_CMD=""
+fi
 if [[ -z "$TIMEOUT_CMD" ]]; then
   # Said out loud rather than degraded quietly: without `timeout` a hanging
   # module still hangs the run, and the operator should know which of the two
@@ -232,7 +243,13 @@ if [[ -z "$TIMEOUT_CMD" ]]; then
   echo "         so a hanging module will hang this run indefinitely." >&2
 fi
 
-echo "running ${#modules[@]} modules, one process each (ceiling ${LIVE_MODULE_TIMEOUT}s per module)"
+# On stdout, not only stderr. The operator reads the log file; a run that was
+# holding the ceiling-less runner used to say so only on a terminal nobody kept.
+if [[ -n "$TIMEOUT_CMD" ]]; then
+  echo "running ${#modules[@]} modules, one process each (ceiling ${LIVE_MODULE_TIMEOUT}s per module)"
+else
+  echo "running ${#modules[@]} modules, one process each (NO CEILING -- 'timeout' unavailable)"
+fi
 echo
 
 suite_started=$SECONDS
@@ -318,6 +335,16 @@ for module in "${modules[@]}"; do
     if [[ -z "$n_passed$n_failed$n_errors$n_skipped" ]]; then
       # Unreadable is not zero. Say so, and let it count against the run.
       counts_unparsed+=("$module")
+      # And say it *inline*, where the operator is actually reading. The ceiling
+      # is not the only way a module ends without a summary, and the summary
+      # block at the bottom is not where anyone looks first. In run 1,
+      # `test_order_line_reservations_real_infra.py` was stopped by something
+      # that was not this script, so `rc` was neither 124 nor 137, the `!!!`
+      # line above never fired, and the log carried a row of progress dots
+      # followed by the next module's header with no explanation anywhere.
+      # A gate that cannot lie has to cover the case where the module was
+      # stopped by something that was not the gate.
+      echo "!!! $module produced no readable summary (exit $rc) -- no counts; the module did not finish"
     fi
     total_passed=$(( total_passed + ${n_passed:-0} ))
     total_failed=$(( total_failed + ${n_failed:-0} + ${n_errors:-0} ))
