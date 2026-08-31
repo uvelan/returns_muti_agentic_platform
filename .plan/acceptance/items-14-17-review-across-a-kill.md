@@ -143,3 +143,48 @@ deliberately, and that was re-confirmed after the trunk merge (`36 collected,
 * full default suite: **5220 passed, 1 failed, 10 skipped, 514 deselected** —
   the allowlisted `test_a_rejected_return_still_opens_no_work_item`. **Zero new
   failures.**
+
+
+---
+
+## Item 20 — deploy replay across both patch branches, audited
+
+Covered in-slice by `tests/test_return_case_workflow_replay_compatibility.py`
+(15 tests) plus the gate suite. Audited rather than duplicated, by flipping the
+patch decision each way:
+
+| # | injected fault | result |
+| --- | --- | --- |
+| INJ-20a | `workflow.patched(_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE)` → `True` — a pre-gate history replays down the gated path | **1 failed** — `test_a_legacy_history_opens_support_instead_of_wedging`, message `unexpected activity record_template_draft` |
+| INJ-20b | → `False` — the gated branch is never taken | **19 failed** across the gate suite |
+
+Both branches are genuinely load-bearing and neither is green by accident.
+**Item 20: verified.**
+
+## ⚠ A guard that exists, is gated, and does not reach what broke
+
+`test_return_case_workflow_replay_compatibility.py::test_every_activity_the_workflow_calls_is_registered_on_the_worker`
+exists **precisely** for the defect found above. Its own docstring:
+
+> An unregistered activity is a stall with no exception anywhere. … Two
+> activities added in V3 phase 2 were unregistered against a green suite until
+> this existed.
+
+It derives the called set from the workflow's `execute_activity` calls and the
+registered set from `worker.py`'s attribute references — correct, gated by the
+default suite, and it passes, because **`worker.py` is right**. What it does not
+read is the *other* registration surface: the workers the tests themselves
+construct. The stale `_Probe` is one, and it is one level outside where the
+detector looks.
+
+That is `merge.md`'s *"a detector must reach as far as the thing it protects"*
+meeting rule 13: the guard is not missing and is not ungated — its reach stops
+short of the surface that rotted, twice.
+
+**The fix has a shape, and it is deliberately not shipped here.** Extending the
+same derivation over every `Worker(..., activities=…)` constructed under
+`tests/` would catch this class permanently — and it would be **red on arrival**
+against the stale probe. A guard that must be born red belongs with the repair,
+in one change, owned by the slice that owns the probe. Shipping it alone would
+either break the gate or require naming the very defect it exists to catch in an
+allowlist, which is the guard excusing its own subject.

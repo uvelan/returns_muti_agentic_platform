@@ -1118,3 +1118,33 @@ none live-classified; full default suite → **5220 passed, 1 failed, 10 skipped
 **Still unexecuted, and not claimed:** item 17's relay half, item 20 (deploy
 replay across both patch branches), item 14's HTTP panel composition, and items
 1-9 / 11-12 / 24-25 as previously recorded.
+
+---
+
+## step:11 — item 20 audited; the guard that does not reach what broke
+
+**Item 20 — verified.** Both patch branches audited by flipping the decision:
+forcing the gated path reds `test_a_legacy_history_opens_support_instead_of_wedging`
+(`unexpected activity record_template_draft`); forcing the legacy path reds **19**
+gate tests. Neither branch is green by accident. Not duplicated — the in-slice
+replay suite is sound and now measured.
+
+**A finding that completes step:10's.**
+`test_every_activity_the_workflow_calls_is_registered_on_the_worker` exists for
+exactly the defect step:10 found — its docstring says so — and it **passes**,
+correctly, because `worker.py` is right. It reads the workflow's calls and
+`worker.py`'s registrations. It does not read the workers the tests construct,
+and the stale `_Probe` is one of those. The guard is not missing and not
+ungated: **its reach stops one level short of the surface that rotted, twice.**
+`merge.md`'s "a detector must reach as far as the thing it protects", meeting
+rule 13.
+
+**The fix is named and deliberately not shipped.** Extending the derivation over
+every `Worker(..., activities=…)` under `tests/` would close the class — and be
+**red on arrival** against the stale probe. A guard that must be born red belongs
+with the repair, as one change owned by the probe's slice. Shipping it alone
+would either break the gate or require naming its own subject in the CI
+allowlist, which is the guard excusing what it exists to catch.
+
+**Commands:** `python -m pytest tests/test_return_case_workflow_replay_compatibility.py -q`
+→ 15 passed on the clean tree. Injections reverted; `git status` clean.
