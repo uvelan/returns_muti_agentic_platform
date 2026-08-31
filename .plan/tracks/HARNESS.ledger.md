@@ -2739,3 +2739,200 @@ So the runner as it now stands — A's step:12 plus my step:17 — **has never b
 run end to end by anyone.** The live suite has still never been run to completion
 with both authors' changes present, and no one should quote a live-suite result
 until it has.
+
+---
+
+## step:21 — the root cause is fsync latency on the Temporal database, and no test-side change can fix it
+
+### 1. The re-run, on reverted budgets, with the fixed instrument
+
+    workflow_run1   [ 93s]  13 passed
+    workflow_run2   [118s]  1 failed, 12 passed
+                            FAILED test_a_bay_failure_does_not_stop_the_return
+                              E  AssertionError: open_support_work_item did not run within 30.0s
+    workflow_run3   [ 88s]  13 passed
+    workflow_run4   [ 79s]  13 passed
+    workflow_run5   [275s]  2 failed, 11 passed
+                            FAILED test_the_bay_activity_answers_and_no_signal_is_needed
+                            FAILED test_a_signal_that_won_the_race_is_not_overwritten_by_the_activity
+                              E  AssertionError: open_support_work_item did not run within 20s
+                              E  temporal_sdk_bridge.RPCError: (14, 'shard status unknown', b'')
+                              E  temporalio.service.RPCError: shard status unknown
+    policygate_run1 [ 67s]  8 passed
+    policygate_run2 [ 25s]  8 passed
+    outbox_run1     [ 22s]  7 passed
+
+**3 clean runs of 5 on the reverted budgets, against 1 of 5 with the 180s
+ceiling.** Small samples, but they point the same way as the reversion argument:
+the raise bought nothing, and a longer ceiling means a failing test occupies the
+stack longer, which is why run times ballooned to 649s under it.
+
+The instrument fix earned itself immediately: signature (c) reappeared with a
+**different message** — `shard status unknown` (gRPC status 14, UNAVAILABLE) —
+where run 4 of the previous batch had `h2 protocol error`. Under the old
+`-Last 12` harness the second of run 5's two failures would have been lost.
+
+### 2. Following the transport error into the server
+
+`shard status unknown` came back from `get_workflow_execution_history`. That is
+not a test-side condition, so I read the server's own logs. Over three hours:
+
+    "Failed to start transaction"   145
+    "context deadline exceeded"     266
+    "shard status unknown"           44
+    "Acquired shard"                 19
+
+Representative lines:
+
+    {"level":"error","msg":"Operation failed with internal error.",
+     "error":"UpdateTaskQueue failed. Failed to start transaction.
+              Error: context deadline exceeded"}
+    {"level":"error","msg":"Persistent fetch operation Failure","shard-id":4}
+    {"level":"warn","msg":"Failed to poll for task.","Error":"context deadline exceeded"}
+    {"level":"info","msg":"Acquired shard","shard-id":4}
+
+**Temporal cannot start transactions against its Postgres inside its own
+deadlines.** When that persists, it loses and re-acquires history shards —
+nineteen times in three hours — and a client whose call lands during a shard
+handover gets `shard status unknown`.
+
+And Postgres says why:
+
+    checkpoint complete: wrote 1830 buffers (11.2%); write=174.354 s, total=235.963 s
+    checkpoint complete: wrote  971 buffers (5.9%);  write= 98.828 s, total=100.167 s
+    checkpoint complete: wrote  920 buffers (5.6%);  write= 94.058 s, total= 95.377 s
+
+**1830 buffers is about 14 MB. It took 174 seconds to write.**
+
+### 3. The measurement that settles it
+
+`pg_test_fsync`, run on the Temporal Postgres data volume:
+
+    Compare file sync methods using one 8kB write:
+        open_datasync         33.557 ops/sec    29800 usecs/op
+        fdatasync              7.949 ops/sec   125797 usecs/op
+        fsync                  2.464 ops/sec   405867 usecs/op
+        open_sync             10.639 ops/sec    93993 usecs/op
+
+    Non-sync'ed 8kB writes:
+        write            1087454.346 ops/sec        1 usecs/op
+
+**Between 30 and 406 milliseconds for a single 8 kB durable write.** A healthy
+SSD does this in well under a millisecond, at thousands of operations per
+second. This volume manages **two to thirty-three**. The unsync'd figure —
+over a million ops/sec — shows the data path itself is fine; it is **durability**
+that costs, which is precisely what a database does on every commit and every
+checkpoint.
+
+The arithmetic closes: a checkpoint of 1830 buffers at single-digit sync
+operations per second is on the order of two to three minutes, and the log says
+174 seconds.
+
+### 4. What this rules out, by measurement rather than by argument
+
+| candidate | measurement | verdict |
+|---|---|---|
+| accumulated workflow state | database is **38 MB**, 916 executions | **ruled out** |
+| memory pressure | Postgres at **166 MB of a 1 GB** limit | ruled out |
+| a slow Windows bind mount | it is a **named Docker volume**, not a bind mount | ruled out |
+| sequential disk throughput | **53 MB/s** (Mongo's volume: 278 MB/s) | ruled out |
+| durable write latency | **30–406 ms per 8 kB sync** | **this is it** |
+
+**The accumulation hypothesis is now dead on a direct measurement rather than on
+an inference.** A 38 MB database with 916 executions is not a database that
+needs pruning, and clearing the namespace would not move a number that is set by
+how long the disk takes to acknowledge a flush.
+
+### 5. Why every remedy this track has tried was doomed
+
+This is the finding that reframes the whole investigation, and it is worth
+stating plainly rather than tactfully:
+
+- **Per-module execution** (step:08–09) could not help: a process boundary does
+  not change fsync latency.
+- **Namespace or task-queue isolation** — the original brief's leading
+  candidate, and the module docstring's rejected experiment — could not help,
+  and the reused-queue control in step:14 already showed it empirically.
+- **My derived ceiling** (step:16) could not help. A budget cannot outrun a
+  server whose transactions are timing out; it can only make a stuck test wait
+  longer before it gives up, which is exactly what step:18 measured.
+- **The three promptness sites** cannot be rescued by any budget at all, because
+  their budgets are assertions.
+
+Every one of these aimed at the test process or the Temporal namespace. **The
+constraint is under both of them, in the storage layer**, and nothing in
+`backend/tests` can reach it.
+
+It also explains the residue nobody could place: activity attempts accepted and
+never completed (step:16's `START_TO_CLOSE`, verbatim from the history) are what
+a worker looks like when its completion RPC cannot commit; the bimodality is a
+write that either lands or waits on a stalled flush; and the two modules that
+produced no result at all — `test_order_line_reservations_real_infra.py` and
+module 64 — are the shape of a client blocked on a server that has lost its
+shard. **None of those are established as the same defect and I am not claiming
+they are**, but they are now all consistent with one cause for the first time.
+
+### 6. A near-miss of my own, recorded
+
+I first ran the sync test with `dd ... oflag=dsync`, it did not return inside
+120 seconds, and I wrote that up as "fewer than 8 IOPS" — a finding. It was not.
+The Postgres container's busybox `dd` had rejected the flag instantly:
+
+    dd: invalid argument 'dsync' to 'oflag'
+
+The hang was the *other* leg of the same command, against Mongo. **I had a
+plausible number attached to the wrong cause, which is the exact shape of the
+truncation bug from step:18**, two steps after writing the rule about it. Caught
+by reading the output file before reporting rather than after. `pg_test_fsync`
+replaced the guess with an instrument built for the question.
+
+### 7. Where the stack actually comes from
+
+Worth recording, because it bears on who can fix this and it is not what the
+dispatch assumed:
+
+    com.docker.compose.project.config_files :
+      K:\Projects\FEG\Ret\full\returns_platform_copilot_recovered_20260804-211601\compose.yaml
+      ...\compose.novault.yaml
+
+**The running stack is defined by a compose file in a different project
+directory entirely, not by this repository's `scripts/infra.sh`.** Anything done
+about section 8 touches a file outside this repo and shared with whatever else
+uses that stack.
+
+### 8. Remedy — proposed, NOT applied
+
+The fix is at the storage layer and it is cheap, but it is **not mine to apply
+unilaterally**: it is infrastructure config, it lives outside this repository,
+and it changes a stack other work may be using.
+
+For a **disposable test database**, durability is a cost with no benefit — the
+data is thrown away between runs, and a crash mid-suite means re-running the
+suite, not losing records. Two options, either of which removes the bottleneck:
+
+1. `synchronous_commit=off` and `fsync=off` on the Temporal Postgres service
+   (command flags or `POSTGRES_INITDB_ARGS`). Commits stop waiting on the disk.
+2. Mount the Temporal Postgres data directory on **tmpfs**. The data is
+   disposable by definition, and RAM has no fsync problem.
+
+**This is testable the way the brief asked for**: turn it on, re-run the module
+five times, turn it off, re-run. If flakiness tracks the setting, the mechanism
+is established end to end and the live suite becomes usable. **I have not done
+it**, and I will not start a container restart on a shared stack without a
+decision.
+
+If it is refused, the honest fallback is the one already identified: this suite
+cannot be a hard gate on this hardware, and its failures must be recorded as
+**flakes, never re-run into passes**.
+
+### Open
+
+1. The remedy is proposed and unapplied; the on/off experiment is unrun.
+2. Signature (b) — `tests/workflow_result.py:84`, "no failed workflow task" —
+   did not recur in this batch and is still uncharacterised. Whether it is a
+   product defect remains **unestablished**; I have not fixed anything on that
+   suspicion.
+3. Signature (d)'s message is still uncaptured — it did not recur either.
+4. Module 64 and `test_order_line_reservations_real_infra.py` remain
+   undiagnosed, now with a plausible but unproven common cause.
+5. The branch fails `ruff format --check` pre-existing (step:20).
