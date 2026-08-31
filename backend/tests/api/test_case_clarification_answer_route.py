@@ -43,13 +43,40 @@ CLARIFICATION_ID = "clar-1"
 ACTOR = "associate-7"
 
 
+SUPPORT_EVENT_ID = "evt-9"
+QUESTION = "Which return is this tracking number for?"
+
+
+def _clarification_fact(clarification_id: str = CLARIFICATION_ID) -> dict[str, Any]:
+    """The `support_clarification_requested` fact the endpoint reads back.
+
+    The endpoint takes the support event and the question from **this**, never
+    from the request body: an answer whose caller chose which question it was
+    answering is an answer to whatever the caller preferred.
+    """
+    return {
+        "factId": f"support_clarification_requested-{clarification_id}",
+        "factName": "support_clarification_requested",
+        "value": {
+            "clarificationId": clarification_id,
+            "supportEventId": SUPPORT_EVENT_ID,
+            "verbatimQuestion": QUESTION,
+        },
+    }
+
+
 class _StubRepository:
-    def __init__(self, case: dict[str, Any] | None) -> None:
+    def __init__(self, case: dict[str, Any] | None, facts: list[dict[str, Any]] | None = None) -> None:
         self._case = case
+        self._facts = [_clarification_fact()] if facts is None else facts
 
     async def get_case(self, case_id: str) -> dict[str, Any] | None:
         del case_id
         return self._case
+
+    async def list_case_facts(self, case_id: str) -> list[dict[str, Any]]:
+        del case_id
+        return list(self._facts)
 
 
 #: Distinguishes "the test did not override the case" from "the case is absent".
@@ -81,12 +108,14 @@ def _client(
     case: dict[str, Any] | None = None,
     roles: frozenset[str] = frozenset({r.RETURN_SUPPORT}),
     tenant_id: str = TENANT,
+    facts: list[dict[str, Any]] | None = None,
 ) -> Iterator[TestClient]:
     monkeypatch.setattr(
         module,
         "_repository",
         lambda request: _StubRepository(
-            _case_document() if case is None else (None if case is _MISSING else case)
+            _case_document() if case is None else (None if case is _MISSING else case),
+            facts,
         ),
     )
     monkeypatch.setattr(module, "_command_store", lambda request: store)
@@ -305,8 +334,93 @@ def test_the_recorded_command_carries_the_server_stamped_actor(
     document = asyncio.run(_only_command(mongo))
     assert document["actorId"] == ACTOR
     assert document["kind"] == "clarification_answered"
-    assert document["payload"]["answered_by"] == ACTOR
-    assert document["payload"]["answer_text"] == "It belongs to RMA-4471."
+    # `actor` and `answer`, not `answered_by` and `answer_text`: the payload is
+    # the signal body and its keys are `ClarificationAnsweredNotice`'s field
+    # names. The old spelling could not have deserialized into the notice the
+    # workflow declares, so the round-trip would have dead-lettered on the first
+    # real answer -- see `TestTheSignalBodyIsTheNoticeTheWorkflowDeclares`.
+    assert document["payload"]["actor"] == ACTOR
+    assert document["payload"]["answer"] == "It belongs to RMA-4471."
+
+
+class TestTheSignalBodyIsTheNoticeTheWorkflowDeclares:
+    """The payload this endpoint stores *is* the signal Temporal delivers.
+
+    `DurableCaseCommandStore` copies it verbatim into the outbox row, and
+    `CaseCommandSignalDispatcher` hands it to `handle.signal(...)` unchanged --
+    so a key this endpoint spells differently from
+    `ClarificationAnsweredNotice` is a signal that cannot be deserialized, on a
+    path that had no end-to-end test to notice. It did not have one: the payload
+    shipped as `answer_text`/`answered_by`/`case_id` with no `signal_id` at all,
+    and every test passed.
+    """
+
+    def test_every_stored_key_is_a_field_of_the_notice(
+        self, monkeypatch: pytest.MonkeyPatch, store: DurableCaseCommandStore, mongo: FakeClient
+    ) -> None:
+        import asyncio
+        from dataclasses import fields
+
+        from return_platform.workflows.return_case_workflow import ClarificationAnsweredNotice
+
+        for client in _client(monkeypatch, store):
+            assert _post(client).status_code == 202
+            break
+        payload = asyncio.run(_only_command(mongo))["payload"]
+        declared = {field.name for field in fields(ClarificationAnsweredNotice)}
+        assert set(payload) <= declared, set(payload) - declared
+
+    def test_the_stored_payload_constructs_the_notice(
+        self, monkeypatch: pytest.MonkeyPatch, store: DurableCaseCommandStore, mongo: FakeClient
+    ) -> None:
+        """Constructed, not merely key-checked.
+
+        A subset assertion alone would pass for a payload missing a *required*
+        field -- which is precisely how the old shape failed, having no
+        `signal_id`.
+        """
+        import asyncio
+
+        from return_platform.workflows.return_case_workflow import ClarificationAnsweredNotice
+
+        for client in _client(monkeypatch, store):
+            assert _post(client).status_code == 202
+            break
+        payload = asyncio.run(_only_command(mongo))["payload"]
+        notice = ClarificationAnsweredNotice(**payload)
+        assert notice.actor == ACTOR
+        assert notice.support_event_id == SUPPORT_EVENT_ID
+        assert notice.verbatim_question == QUESTION
+        assert notice.signal_id
+
+    def test_an_answer_to_a_clarification_this_case_never_asked_is_a_404(
+        self, monkeypatch: pytest.MonkeyPatch, store: DurableCaseCommandStore
+    ) -> None:
+        """The same 404 as a case the principal cannot see.
+
+        Accepting it would record a command, queue a delivery, and relay a
+        stranger's words to Support under an id nobody recognises.
+        """
+        for client in _client(monkeypatch, store, facts=[]):
+            response = _post(client)
+            assert response.status_code == 404
+            assert response.json()["detail"]["code"] == "CASE_CLARIFICATION_NOT_FOUND"
+            break
+
+    def test_the_question_comes_from_the_case_and_never_from_the_body(
+        self, monkeypatch: pytest.MonkeyPatch, store: DurableCaseCommandStore, mongo: FakeClient
+    ) -> None:
+        """The request model has no field for it, and the stored one is the fact's."""
+        import asyncio
+
+        from return_platform.api.case_clarifications import ClarificationAnswerRequest
+
+        assert "verbatimQuestion" not in ClarificationAnswerRequest.model_fields
+        for client in _client(monkeypatch, store):
+            assert _post(client).status_code == 202
+            break
+        payload = asyncio.run(_only_command(mongo))["payload"]
+        assert payload["verbatim_question"] == QUESTION
 
 
 async def _only_command(mongo: FakeClient) -> dict[str, Any]:

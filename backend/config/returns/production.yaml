@@ -1582,6 +1582,30 @@ support_resolver:
   # `support_resolver_budget_exhausted` and escalates, so a case that outruns
   # its budget becomes visible work rather than an unanswered message.
   per_case_llm_budget: 12
+  # Which classified intents reach the resolution ladder at all, and therefore
+  # which support messages the platform tries to answer by itself.
+  #
+  # `info_request` alone. Of the closed taxonomy under `support_ingress.intents`
+  # -- info_request, rma_issued, label_issued, shipping_instruction,
+  # tracking_provided, partial_fulfillment, rejection, acknowledgement -- it is
+  # the only member in which Support is *asking* rather than *telling*. The
+  # other seven are Support informing the platform, and the extraction stage
+  # already commits what they say; running a ladder over one of them would
+  # compose a reply to a statement.
+  #
+  # Narrowing this to `[]` disables automatic resolution entirely: every inbound
+  # support question then reaches an associate, which is a legitimate way to run
+  # the platform and not a broken configuration.
+  #
+  # `other` is refused at parse time. It is not a classification -- it is the
+  # sink every unrecognised classification is coerced into -- so naming it here
+  # would trigger the ladder on every unclassifiable message on every case.
+  #
+  # Every value must also appear in `support_ingress.intents`; one that does not
+  # can never be produced by the classifier, and the resolver would be
+  # configured, deployed and silently inert. Refused when the process starts.
+  trigger_intents:
+    - info_request
 
 copilot:
   # The agent policy every Copilot conversation turn is routed to. It must name
