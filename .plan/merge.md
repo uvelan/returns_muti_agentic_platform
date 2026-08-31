@@ -337,7 +337,29 @@ So "a different set each time" was never evidence of arbitrariness — it is **t
 
 Across fourteen measured runs — RV's eleven and step:09's three — **no failure message was ever captured. Only test names.** `did not run within 30.0s`, an assertion failure, and a connection error are three unrelated defects; every round discarded the one field distinguishing them and then reasoned about the residue. Three remedies were proposed and one implemented before anyone read a message. The mechanism was recoverable at all only because an August ledger happened to record one.
 
-*Remaining options if the controlled experiment does not settle it:* quarantine (rejected on coverage grounds); adjudicated re-runs recorded **as flakes, never as passes**. The experiment states its predictions in advance and names what would refute it — quiet machine, module alone 5×, every message captured; then under manufactured load, predicting `did not run within Ns` reappears; then load off, predicting it vanishes.
+### ⚑ RESOLVED — and the August entry was itself half wrong
+
+**The mechanism is a fixed test budget smaller than one term of the schedule it waits on.**
+
+`start_to_close_timeout` is **per attempt**, not per activity. `_PERSIST_TIMEOUT` is 30s, `_BEST_EFFORT_RETRY` allows 2 attempts, backoff ~1s — so the bay step alone is bounded at **61s** by construction, and the path the test waits on runs through `_PERSIST_RETRY` at 5 attempts: **165s**. The test budgeted **30.0s** for the whole workflow. *The test's entire budget equalled the ceiling of a single attempt of one step it had to wait through.* It has been asserting on the coincidence that a failing attempt fails fast since the day it was written.
+
+**Pinned by evidence, not argument.** Twelve instrumented runs on an idle machine came back **bimodal — ~3s or ~33–46s, with nothing between.** A continuum would be contention; two clusters separated by almost exactly 30s is a timeout firing, and 30s is `_PERSIST_TIMEOUT` exactly. Then the count that settles it: **every slow run recorded 8 activities, every fast run 9, twelve of twelve.** The missing call is the second bay attempt, which burns its full per-attempt ceiling.
+
+**The August ledger was right about the mechanism and wrong about the cause.** It said *"a fixed wall-clock budget is the mechanism; contention is the cause."* Five failures in twelve runs, and six in eleven, **on a quiet machine** — contention is a modifier, not the cause. *A prior finding is evidence, not an oracle.*
+
+**Two hypotheses killed by control, one of them mine.** Reusing a single task queue failed **worse** than fresh queues (3/6 against 2/6), which exonerates queue churn — and disposes of "a unique namespace or task queue per module", a remedy shape **my own brief named as likely**. A dispatch that lists candidate remedies can send an agent down a path the evidence never supported.
+
+**The production question, escalated and then answered by mechanism.** An activity was accepted and never completed. The discriminating event: `ACTIVITY_TASK_TIMED_OUT / TIMEOUT_TYPE_START_TO_CLOSE`, with **`s2s=0s`** — `schedule_to_start` unlimited. Had the *server* failed to deliver, the task would have queued **forever** rather than timing out at 30s. **The alarming reading is excluded by the structure of the observation, not by absence of evidence.** Downgraded to a worker-side stall — which is what `start_to_close` exists to bound and what production retries, leaving a case *delayed and visible in history* rather than silently stuck. Why a worker inside a live `async with Worker(...)` accepts a task and does not run it is **left unexplained rather than fitted to a story**, since the poller-churn account does not cover the fresh-queue failures.
+
+### The remedy, and the three sites it deliberately does not touch
+
+`LIVENESS_CEILING_SECONDS = 180.0` — 165s construction bound plus a 15s margin derived as ~3× the worst observed fast path (2.86–5.29s), deliberately small beside the figure it modifies. Every term is read off the imported `RetryPolicy` objects, so **the derivation lives in code and moves when production moves.** Uniform across the 14 sites by design, with the docstring saying why, so nobody refines it into fourteen fragile per-site derivations — the exact error caught mid-investigation, when the first bound was derived from *the activity that happened to fail in front of the investigator.*
+
+**Why the cost objection dissolves:** a `reached()` wait returns as soon as its condition is met. The budget is a **ceiling, not a duration** — so a larger bound slows failing tests only and never passing ones.
+
+**Three sites keep their 20s budget, because they are asserting promptness, and the file says so** at line 574: *"`bay_wait_seconds` is 30 here and the test does not take 30 seconds: that is the assertion."* Raising those deletes the regression check the bay activity was written to provide — invisibly, since the tests would still pass. **This is why the per-site read was mandatory rather than diligent.** A fourth site pattern-matched to that group and was different on reading: *classifying by timings alone would have been wrong safely; by budget alone, wrong dangerously.*
+
+*Scope corrected twice:* 12 sites in the module, not 13 — a grep that counted its own `async def reached` definition, then repeated three times because it was already written down. And **17 across two modules**, because the sibling carries its own copy of the helper. **That duplication is now 2-for-2 on causing defects** — once when the probe list rotted, once here. Collapsing the two implementations is registered, not done.
 
 **Standing fact until proven otherwise: the live suite has never once been run to completion. No live-suite result may be quoted.**
 
