@@ -127,7 +127,17 @@ async def probe_database(test_settings: Settings) -> Any:
 
 
 @pytest.mark.asyncio
-async def test_the_union_lands_as_six_indexes_on_the_server(probe_database: Any) -> None:
+async def test_the_union_lands_on_the_server_exactly_as_declared(probe_database: Any) -> None:
+    """Every index `ensure_integration_outbox_indexes` declares, as the server stored it.
+
+    Was `test_the_union_lands_as_six_indexes_on_the_server`. The count came out
+    of the name deliberately: it had already gone stale once. S2 step:02 added
+    the two named ordering indexes below (contracts.md sect. 7) and this pin was
+    not updated, so the test failed 9-against-7 from that commit until now --
+    caught only when the live suite got a working entry point. A name carrying a
+    number invites exactly that, and re-pinning it to "eight" would just reset
+    the same trap.
+    """
     information = await probe_database[INTEGRATION_OUTBOX_COLLECTION].index_information()
 
     keys = {name: list(definition["key"]) for name, definition in information.items()}
@@ -139,8 +149,27 @@ async def test_the_union_lands_as_six_indexes_on_the_server(probe_database: Any)
         "leaseUntil_1": [("leaseUntil", 1)],
         "createdAt_-1": [("createdAt", -1)],
         "status_1_reconciliationState_1": [("status", 1), ("reconciliationState", 1)],
+        "case_stream_sequence_unique": [
+            ("aggregateId", 1),
+            ("stream", 1),
+            ("streamSequence", 1),
+        ],
+        "case_stream_event_id_unique": [("eventId", 1)],
     }
     assert information["idempotencyKey_1"].get("unique") is True
+    # The ordering pair. Both halves are the guarantee, not decoration: unique is
+    # the second lock on `allocate_case_stream_sequence`'s CAS counter, and the
+    # partial predicate is what keeps the millions of commands written before
+    # streams existed from colliding on a missing field. An index that landed
+    # non-unique, or non-partial, would still show the right key pattern above.
+    assert information["case_stream_sequence_unique"].get("unique") is True
+    assert information["case_stream_sequence_unique"]["partialFilterExpression"] == {
+        "stream": {"$type": "string"}
+    }
+    assert information["case_stream_event_id_unique"].get("unique") is True
+    assert information["case_stream_event_id_unique"]["partialFilterExpression"] == {
+        "eventId": {"$type": "string"}
+    }
     # The partial predicate as the server stored it, which is what the planner
     # compares `claim()`'s filter against. An index that landed non-partial
     # would still be usable and would still be the wrong index: `status` would
@@ -351,7 +380,12 @@ async def test_rebuilding_the_union_against_a_populated_collection_is_a_no_op(
 
     after = await probe_database[INTEGRATION_OUTBOX_COLLECTION].index_information()
     assert sorted(after) == sorted(before)
-    assert len(after) == 7
+    # Eight declared indexes plus `_id_`. The two named ordering indexes are the
+    # ones that could have made this a boot failure rather than a no-op, since
+    # `create_index` raises `IndexOptionsConflict` when the same keys already
+    # exist under a different name -- so the re-entrancy claim is load-bearing
+    # for them specifically, not just for the five left to default naming.
+    assert len(after) == 9
 
 
 @pytest.mark.asyncio

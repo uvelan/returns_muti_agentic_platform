@@ -934,3 +934,326 @@ to have read â€” one it is still reading. The safe move was the one step:09
 already identified and I talked myself out of.
 
 **Next step:** step:12 â€” run 1's completion, reported from the log.
+
+---
+
+## step:11 -- arrival: the stack was not clean, the interpreter was not mine, and the mechanism is not the one we named
+
+No live run was executed in this step. Everything below is read-only observation
+of the machine, `git`, and source. That is deliberate: a full per-module suite
+run started by the previous agent was **still in flight** when I arrived, and the
+defect under investigation is accumulated shared state. A second writer to the
+same stack does not make a measurement noisy, it makes it not a measurement.
+
+### 1. Base verified by ref, and the first check I ran was the wrong one
+
+    $ git rev-parse HEAD
+    497c1ca77a79d6687bbe5d9c71591ee8cf795177
+
+    $ git rev-parse refs/heads/refactor/unified-return-platform
+    b7f07838d22d016021ca52c0c86f0b249e867049
+
+    $ git rev-list --left-right --count refs/heads/refactor/unified-return-platform...HEAD
+    83      5
+
+    $ git merge-base refs/heads/refactor/unified-return-platform HEAD
+    7a898cf9f3a44b0947bce9a0de6c5fed1679954a
+
+    $ git merge-base --is-ancestor 7a898cf9 refs/heads/refactor/unified-return-platform
+    -> true    BASE OK (behind, not orphaned)
+
+**Recording my own error because it is the interesting half.** My first check was
+`git merge-base --is-ancestor <trunk-head> HEAD`, which returned false and which
+I briefly read as "BASE-STALE". That check is wrong: it asks whether *trunk* is
+an ancestor of *my branch*, which is false for every branch that is merely
+behind. The protocol question is the reverse one, and it passes. Being 83 behind
+is not a stale-base incident; being orphaned would be. Contracts sect. 3 asks the
+second question, and RV HARNESS-1 had already settled it the same way.
+
+### 2. The stack was not clean. It had an entire suite run in it.
+
+The dispatch said two hung pytest processes had been killed and the stack should
+be clean, but to check rather than assume. Checked:
+
+    $ Get-CimInstance Win32_Process -Filter "Name='bash.exe'" | ... CommandLine
+    ProcessId 5664   CreationDate 31-08-2026 15:47:52
+      "C:\Program Files\Git\usr\bin\bash.exe" scripts/dev/run_real_infra_suite.sh
+    ProcessId 15104  CreationDate 31-08-2026 16:57:51   (child of 5664)
+      "C:\Program Files\Git\usr\bin\bash.exe" scripts/dev/run_real_infra_suite.sh
+
+`15104` is a **child** of `5664`, not a second run -- checked rather than
+assumed, because "two suite runs are racing" and "one suite run re-execed" are
+very different reports:
+
+    $ Get-CimInstance Win32_Process -Filter "ParentProcessId=5664"
+    ProcessId 15104  bash.exe  scripts/dev/run_real_infra_suite.sh
+
+So: **one** full per-module run, started 15:47:52, alive and progressing. At the
+time of writing it is at module 42 of 71. This is the furthest a live-suite run
+has ever got in this repository. It was not stopped, and I ran nothing against
+the stack while it was in flight.
+
+Also still resident, from **2026-08-30 18:31**, three processes the previous
+rounds did not account for:
+
+    PID 4012   1600.7s CPU   ...\backend\.venv\Scripts\python.exe C:\...\tmpb7ioi3yb\child.py
+    PID 21028  1597.6s CPU   ...\backend\.venv\Scripts\python.exe C:\...\tmp28d2bnx0\c.py
+    PID 10092  1597.1s CPU   ...\backend\.venv\Scripts\python.exe C:\...\tmpro8zlllo\c.py
+
+Sampled twice, ten seconds apart, before drawing any conclusion about them:
+
+    PID 4012 : 1600.671875 -> 1600.796875   (+0.125s over 10s)
+    PID 21028: 1597.609375 -> 1597.750000   (+0.140s over 10s)
+    PID 10092: 1597.125000 -> 1597.250000   (+0.125s over 10s)
+
+**About 1.3% of one core each, on 8 logical processors.** They are low-grade
+pollers, not the CPU hogs their totals suggest -- the 1597s is 22 hours of
+accumulation, not current burn. Recorded as present and quantified rather than
+blamed: they are leftovers of the ACC signal proof and they are not a plausible
+cause of a 6x wall-time degradation on their own. They should still be reaped
+before any timing measurement is taken.
+
+### 3. The interpreter was importing another branch's production code
+
+The dispatch's second load-bearing fact, verified rather than accepted:
+
+    $ python.exe -c "import return_platform,os; print(os.path.dirname(return_platform.__file__))"
+    # with PYTHONPATH unset
+    K:\Projects\Ret\returns_muti_agentic_platform\backend\src\return_platform
+
+    # with PYTHONPATH=<this worktree>\backend\src
+    K:\...\.claude\worktrees\agent-af79f912fcfd95e05\backend\src\return_platform
+
+The main worktree is checked out on **`feat/acc-frontend`** (`f4d9743a`), not on
+this branch and not on trunk. And the runner sets nothing:
+
+    $ grep -n "export\|PYTHONPATH" scripts/dev/run_real_infra_suite.sh
+    1:#!/usr/bin/env bash          # (the only match: the shebang)
+
+    $ grep -n "pythonpath" backend/pyproject.toml      -> no match
+    $ grep -n "sys.path\|PYTHONPATH" backend/tests/conftest.py  -> no match
+    $ ls -d backend/.venv                              -> No such file or directory
+
+So there is no `.venv` in this worktree, no `pythonpath` in the pytest config and
+no `sys.path` shim in `conftest.py`. **Every per-module run made from this
+worktree -- including the one in flight, and including step:09's three isolated
+runs -- imported `return_platform` from the main worktree, on `feat/acc-frontend`.**
+The tests are this branch's; the production code under them is not.
+
+**Blast radius, measured rather than feared.** 42 files differ in `backend/src`
+between this branch and what those runs actually imported:
+
+    $ git diff --name-only HEAD f4d9743a -- backend/src | wc -l
+    42
+
+But the two modules that carry this step's findings are **bit-identical** across
+the two trees:
+
+    identical: backend/src/return_platform/workflows/return_case_workflow.py
+    identical: backend/src/return_platform/operations/integrations/outbox.py
+    DIFFERS  : backend/src/return_platform/workflows/return_case_activities.py
+
+`test_return_case_workflow_real_infra.py` imports only from
+`...workflows.return_case_workflow` and drives probes rather than the real
+activities, so the differing `return_case_activities.py` is not in its path.
+**Both findings below therefore survive the defect.** The other 40 files are in
+the path of other modules in the 71, so the in-flight run's *green* modules are
+the ones to re-read with care -- they are greens for a hybrid tree.
+
+### 4. `test_integration_outbox_index_plans_real_infra.py` -- production is right, the test was stale. Fixed.
+
+The previous agent's read, verified independently rather than inherited.
+
+`ensure_integration_outbox_indexes` issues eight `create_index` calls
+(`outbox.py:287,288,289,293,294,295,301,307`); with `_id_` the server holds
+**nine**. The test pinned seven. The two extra are S2 step:02's named ordering
+indexes, and they are load-bearing rather than decorative:
+
+    $ grep -rn "streamSequence" backend/src/ | grep -v pycache
+    operations/case_commands.py:312          "caseSequence": ordering["streamSequence"],
+    operations/case_commands.py:345          case_sequence=int(ordering["streamSequence"]),
+    operations/integrations/outbox.py:386    "streamSequence": sequence,
+    operations/integrations/outbox.py:626    "streamSequence": {"$lt": command.stream_sequence},
+    operations/return_support/ingress_store.py:538   sort=[("streamSequence", -1)],
+    operations/return_support/ingress_store.py:639   key=lambda command: int(command.get("streamSequence") or 0),
+
+The field is written, filtered, sorted and ordered on, and `outbox.py:326`
+records the unique index as "the second lock on the same door" behind
+`allocate_case_stream_sequence`'s CAS counter, against contracts.md sect. 7.
+Deleting either index to make the test green would remove a concurrency guard.
+**Production is correct; the pin was stale from S2 step:02 until now.** Ownership
+has passed to trunk, so the test is fixed here rather than reported onward.
+
+**What changed, and why it is not a weakened assertion.** The expected map gained
+the two indexes it was missing, `len(after) == 7` became `9`, and four
+assertions were **added** -- `unique` and `partialFilterExpression` on each of
+the two -- so the pin now covers the properties that make them guards rather than
+merely their key patterns. An index that landed non-unique or non-partial used to
+be invisible to this test and now reddens it.
+
+`test_the_union_lands_as_six_indexes_on_the_server` is renamed to
+`test_the_union_lands_on_the_server_exactly_as_declared`. The count came out of
+the name on purpose: it had already gone stale once, and re-pinning it to "eight"
+would reset the same trap. The old name is recorded here and at
+`docs/execution-context/remediation/LEDGER.md:480`, which is the one other place
+that referenced it.
+
+    $ PYTHONPATH=<worktree>\backend\src python -m ruff check <file>   -> All checks passed!
+    $ PYTHONPATH=<worktree>\backend\src python -m ruff format --check -> 1 file already formatted
+    $ python -c "ast.parse(...)"                                      -> parses OK
+
+**Not executed.** The stack was not mine. This fix is prepared and unverified
+against a live server, and must not be read as green until it has been run.
+
+**Rule 13.** This file is `*_real_infra.py` and carries `pytestmark =
+pytest.mark.live_infra`, and `addopts` carries `-m "not live_infra and not
+browser"`. So **nothing in CI runs it** -- it falls on the ungated side, and its
+only gate is `scripts/dev/run_real_infra_suite.sh`, the runner this track is
+trying to make trustworthy. It is not in `scripts/ci/known_test_failures.json`
+and does not belong there: that allowlist governs the CI suites, which never
+collect this test.
+
+### 5. The mechanism is a fixed wall-clock budget under contention -- not, on the evidence, namespace-scoped server state
+
+The brief asked for a mechanism that can be turned on and off, and warned against
+working through a candidate list blindly. Before touching the stack I went
+looking for what the *previous* rounds had already measured, and the answer was
+sitting in a ledger nobody in this track had cited.
+
+`docs/execution-context/remediation/LEDGER.md:445` (2026-08-23, four complete
+504-test runs, predating every branch in this run):
+
+> **The residual two are flaky, not failing.** They are different tests in each
+> run -- `test_the_case_completes_when_support_answers` and
+> `test_the_support_wait_survives_a_worker_restart` in one,
+> `test_the_policy_review_wait_survives_a_worker_restart` and
+> `test_a_graph_sync_failure_parks_the_case_loudly` in the next -- always from
+> the two workflow real-infra modules, always `did not run within 30.0s`. Those
+> two files pass 21/21 in isolation, and the two that failed the third run pass
+> together **in 9.60s** against the 30s budget they exceeded under load. **A
+> fixed wall-clock budget is the mechanism; contention is the cause.**
+
+That signature is still in the source at head:
+
+    backend/tests/test_return_case_workflow_real_infra.py:320
+        async def reached(self, name: str, *, within_seconds: float = 30.0) -> None:
+    :330            async with asyncio.timeout(within_seconds):
+    :333            raise AssertionError(f"{name} did not run within {within_seconds}s")
+
+Thirteen call sites, budgets of 20s and 30s. **Every test named as spuriously
+failing across all three independent rounds routes through it:**
+
+| test | line | `reached` call | budget | named by |
+|---|---|---|---|---|
+| `test_the_case_completes_when_support_answers` | 420 | 427 | 30s | Aug ledger |
+| `test_the_support_wait_survives_a_worker_restart` | 444 | 459 | 30s | Aug ledger |
+| `test_a_bay_failure_does_not_stop_the_return` | 519 | 528 | 30s | step:09 run 2 |
+| `test_a_graph_sync_failure_parks_the_case_loudly` | 708 | 723 | 30s | Aug ledger, RV, step:09 run 2 |
+| `test_a_rejected_return_needs_no_graph_sync` | 740 | 752 | 30s | step:09 run 1 |
+
+Step:09 read the fact that the names are "drawn fresh each time rather than
+converging on weak tests" as evidence the failure set is arbitrary. It is better
+read the other way: **the population is not arbitrary, it is exactly the tests
+that wait on a fixed wall-clock budget**, and which of them loses depends on
+which is waiting when the machine is slowest. That is the same conclusion the
+August ledger reached from a different direction.
+
+**Why this displaces the accumulated-server-state hypothesis rather than
+refining it.** The state hypothesis predicts degradation that grows with what the
+namespace holds. Two observations sit badly with it:
+
+- The in-flight per-module run has completed **41 modules with zero spurious
+  failures**, and module 41 (`test_structure_physical_identity.py`, 18.10s) is no
+  slower than module 4 (`test_conversation_tenant_isolation_real_infra.py`,
+  4.34s). If executions and task queues piling up in `default` were the driver,
+  the run should be getting worse. It is not.
+- The August ledger's own correction records the same trap being fallen into
+  once already: a slowdown attributed to 54 leaked containers exhausting the
+  daemon, where `docker ps` "does return in **0s** once the suite is not
+  running... The container count was never the cause and pruning would have
+  fixed nothing; **the daemon was starved of I/O by the suite itself.**"
+
+`asyncio.timeout` measures wall clock. A test that needs a Temporal round trip
+inside 30s fails when the *machine* is loaded, whatever the namespace holds.
+
+**And it explains the negative result in step:09 without contradicting it.**
+Step:09 concluded per-module execution does not help, from three consecutive
+isolated runs giving 1f/2f/0f. Those three runs were taken back-to-back on a
+machine that had been running the suite continuously, with the three pollers of
+sect. 2 resident, and -- per sect. 3 -- against another branch's production code.
+Per-module execution removes *in-process* state, which step:09 correctly says is
+not the mechanism; but it also does nothing to make the machine quieter, which on
+this reading *is* the mechanism. The experiment did not isolate the variable it
+needed to isolate. **This does not make step:09 wrong about what it measured, and
+its central point stands: a process boundary is not a remedy for shared state.**
+It makes its conclusion under-determined.
+
+**The experiment that would settle it, to be run when the stack is free.** The
+mechanism is turnable on and off without touching Temporal at all:
+
+1. Reap the three pollers, let the in-flight run finish, confirm the machine is
+   idle.
+2. Run `test_return_case_workflow_real_infra.py` alone, five times, serially,
+   with `PYTHONPATH` set, recording every failure *with its message* -- which no
+   previous round recorded, and which is the datum that decides this.
+3. Then run it again under a manufactured CPU/IO load, and predict: failures
+   reappear, and their messages are `... did not run within 30.0s`.
+4. Remove the load; predict they vanish.
+
+If step 3 fails to produce failures, the contention reading is wrong and the
+server-state hypothesis comes back. If it produces them and step 2 did not, the
+mechanism is established in the on/off form the brief asked for.
+
+**A gap in the record, worth naming.** Across RV's eleven runs and step:09's
+three, **no failure message was ever recorded** -- only test names. The single
+most diagnostic field was discarded at every round. That is why this was still
+open, and it is why sect. 5's experiment records messages rather than counts.
+
+### 6. The in-flight run: what it will and will not be able to say
+
+- **Its per-module result lines are real** and are pytest's own output, already
+  written to the log.
+- **Its aggregate cannot be trusted**: `run_real_infra_suite.sh` was edited while
+  bash was executing it, and bash re-reads a script by byte offset. The summary
+  block may be read from edited bytes. The aggregate must be recomputed from the
+  log rather than quoted from the run. Recorded as an incident: **do not edit
+  the runner while a run of it is in flight.**
+- **Its greens are hybrid-tree greens** (sect. 3), for the 40 differing modules.
+- `tests/operations/test_order_line_reservations_real_infra.py` **hung again** --
+  second occurrence, same shape, 30 of 33 tests then silence:
+
+      === [30/71] tests/operations/test_order_line_reservations_real_infra.py
+      collected 33 items
+      tests\operations\test_order_line_reservations_real_infra.py ............ [ 36%]
+      ..................
+      === [31/71] tests/operations/test_return_shipment_concurrency_real_infra.py
+
+  **Step:10's ceiling worked**: the run moved on instead of hanging forever.
+  But there is no `TIMED OUT` marker anywhere in the log --
+
+      $ Select-String -Path permodule_run1.log -Pattern "TIMED|124|no result"
+      (no matches)
+
+  -- because the marker is written to stderr and the log captures stdout. A
+  ceiling that fires silently in the operator's log is most of a fix: the run
+  survives, but the reader of `permodule_run1.log` sees a module that produced
+  no summary line and no explanation. Recorded against step:10, mine to fix.
+
+  Provenance of the hang is **still unestablished** and I am not going to guess
+  it. One new datum: `docs/execution-context/remediation/LEDGER.md:469-485`
+  records a *different* module of this family hanging in August
+  (`test_integration_outbox_index_plans_real_infra.py`, "still undiagnosed",
+  with `pytest -o faulthandler_timeout=N` named as the next step and not run).
+  That module now completes in 33.53s, so its hang did not persist. The
+  resemblance is suggestive and is **not** evidence about this one;
+  `faulthandler_timeout` remains the cheap diagnostic and needs an idle stack.
+
+### Open
+
+1. **Nothing in sect. 4 or 5 has been executed.** The outbox fix is prepared, not
+   verified. The mechanism in sect. 5 is argued from three rounds of prior
+   measurement and from source, and is **not yet established** -- the on/off
+   experiment is designed and unrun.
+2. **The suite has still never been run to completion**, and the run in flight
+   will not settle it, for the three reasons in sect. 6.
+3. The three pollers of sect. 2 should be reaped before any timing measurement.
