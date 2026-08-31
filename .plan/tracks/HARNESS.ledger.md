@@ -72,6 +72,12 @@ looked healthier only because most of its scenarios stop at the gate and never
 reach an approved case — green because the scenarios could not exercise the
 property, a shape already on `merge.md`'s list.
 
+> **Corrected in step:07 (RV HARNESS-1 / F1). The number is 16, not 17.** The
+> `5 failed, 3 passed` above was a single run and is not reproducible; the file
+> measures 4 failed / 4 passed. The fifth failure was a flake, counted into a
+> defect total. The clause it supports — that the sibling probe was stale and the
+> dispatch's 12 understated the defect — stands unchanged.
+
 ## step:03 — the repair
 
 New `backend/tests/activity_probe.py`. `declared_activities(probe)` derives the
@@ -202,8 +208,173 @@ larger than either file measured alone. Not fixed here: it is outside this
 slice's scope and its diagnosis (namespace isolation) was already tried and
 rejected on evidence in that docstring.
 
+> **Corrected in step:07 (RV HARNESS-1 / F2 and F3).** Two of the three claims in
+> the paragraph above are wrong. "Each passes in full alone" is false — one file
+> alone flakes, at up to five failures per run. "It is not new" is unestablished
+> and cannot be established, because at base 16 of these 21 tests never finish, so
+> the control run does not exist. "It is not this repair" is *correct*, but not for
+> the reason given: it is carried by other evidence, set out in step:07.
+
 **The dispatch's wider consequence stands, and is now discharged.** *"All 26
 acceptance items green against live infra"* could not have been asserted from the
 suite in its arrival state — 17 live tests were failing on a stale harness, and
 nothing would have said so. It can be asserted now for these two files; the
 remaining ~490 live tests are unexecuted by this slice and are not claimed.
+
+*(17 → 16, per step:07 / F1. The consequence is unchanged by the number.)*
+
+---
+
+## step:07 — RV HARNESS-1 corrections (F1, F2, F3)
+
+RV returned `CHANGES_REQUIRED` on `.plan/reviews/HARNESS-1.md`. Three findings,
+**all in this ledger, none in the code.** The code was verified by RV's own
+injections and held; rule 13 is satisfied by the gate itself, since
+`test_return_case_workflow_replay_compatibility.py` carries no `live_infra`
+marker and CI's `pytest tests` therefore collects it.
+
+**Form of the correction.** contracts.md §3 makes this ledger append-only, so the
+three wrong statements are not rewritten. Each keeps its original wording, with a
+block-quoted forward pointer inserted beneath it, and the corrected record is
+here. What was believed and what is now known are both legible; that is the point
+of an append-only record, and rewriting the three lines would have destroyed
+exactly the evidence this branch exists to protect.
+
+**Provenance of the numbers below.** Every measurement in this step was made by
+RV against a healthy stack (~3 minutes per run) and is reproduced here as RV
+reported it. **I did not re-derive them**, and I am not claiming them as my own
+runs. Step:08 onward records runs I executed myself.
+
+### F1 — the count is 16, not 17
+
+The step:02 figure `5 failed, 3 passed` for the policy-gate file was one run.
+RV measured the same file at the same base three times:
+
+    pytest -m live_infra tests/test_return_case_policy_gate_real_infra.py   @base 7a898cf9
+    -> 4 failed, 4 passed   (run 1)
+    -> 4 failed, 4 passed   (run 2)
+    -> 4 failed, 4 passed   (run 3, in-process with the sibling file; the union, no extra)
+
+    pytest -m live_infra tests/test_return_case_workflow_real_infra.py      @base 7a898cf9
+    -> 12 failed, 1 passed
+
+**12 + 4 = 16 live tests were failing on the registration defect.** Every one of
+them carried the same `NotFoundError: Activity function ... is not registered`.
+The four that passed are the rejection/park/cancel scenarios, unchanged from
+step:02's category-B reading, which stands.
+
+**State it plainly: a flake was counted into a defect total.** The fifth failure
+was not a fifth defect; it was the module's instability, recorded as damage. And
+it is not a separate mistake from F2 — **it is the residual, at n=1.** The same
+mechanism that makes a 512-test acceptance run unreadable made a 8-test
+measurement wrong by one, and in both cases the error has the same shape: a
+non-reproducing failure absorbed into a total that reads as deterministic. A
+defect count that silently absorbs a flake and a green that silently absorbs one
+are the same error with the sign flipped. This ledger did the first while arguing
+against the second.
+
+### F2 — the residual, restated to what was observed
+
+"Each passes in full alone" is **false**. RV ran the workflow file **alone, in its
+own process, six times** at head:
+
+    pytest -m live_infra tests/test_return_case_workflow_real_infra.py   @head 00471116
+    -> 13 passed
+    -> 1 failed
+    -> 13 passed
+    -> 3 failed
+    -> 13 passed
+    -> 1 failed
+
+and the failing tests **differ every time**. Across those runs and RV's earlier
+loaded-server set the names seen were:
+
+    test_the_support_wait_survives_a_worker_restart
+    test_a_bay_result_arriving_before_the_wait_is_kept
+    test_a_graph_sync_failure_parks_the_case_loudly
+    test_the_case_completes_when_support_answers
+
+One file. One process. No sibling module in the room. Under a loaded server the
+same single file has produced **5, 4 and 1** spurious failures on consecutive
+runs, against `13 passed in 73.60s` on a fresh one.
+
+The sibling is not implicated:
+
+    pytest -m live_infra tests/test_return_case_policy_gate_real_infra.py @head
+    -> 8 passed, clean every time
+
+Full load table, all RV's runs at head:
+
+| load | tests | spurious failures observed |
+|---|---|---|
+| 1 file (workflow), fresh server | 13 | 0 |
+| 1 file (workflow), loaded server | 13 | 5, 4, 1 |
+| 1 file (workflow), six isolated runs | 13 | 0, 1, 0, 3, 0, 1 |
+| 1 file (policy gate), any | 8 | 0 |
+| 2 files, one process | 21 | 0, 0, 1 |
+| 5 files, one process | 53 | 3, 1 |
+
+**Every spurious failure in every run was in
+`test_return_case_workflow_real_infra.py`.** Without exception.
+
+So the residual was understated on both axes. **Blast radius:** it is not "two
+files in one process" — one file alone is enough. **Magnitude:** it is not "1–2
+tests" — it is up to five. The correct statement is that
+`test_return_case_workflow_real_infra.py` is unstable in proportion to
+accumulated Temporal server state, alone as well as in company, at up to five
+failures per run, with a non-repeating failure set.
+
+### F3 — the attribution, relabelled
+
+The ledger asserted "it is not new". **That cannot be established, and the reason
+is structural rather than a matter of effort: at base, 16 of these 21 tests never
+finish, so there is no pre-repair population that could be observed flaking. The
+control run does not exist.** RV ran base anyway and got exactly the deterministic
+16 with no extra flake among the five eligible tests — one run, five tests, far
+too small to carry anything. An unavailable control is not a control that came
+back negative, and the ledger wrote it as though it had.
+
+The docstring the ledger cited does not close the gap either: it diagnoses this
+*signature*, but the *cause* it names — an unclosed per-test `Client.connect`,
+executions started and never terminated — is already remediated at base and at
+head by the module-scoped client fixture and the autouse
+`_terminate_started_executions`. It explains a flake that was fixed, not the one
+that remains.
+
+**The repair is nonetheless exonerated — on other evidence, which is a different
+and stronger claim than the one it replaces.** Three items, all measured:
+
+1. **The diff adds no infrastructure load.** It adds one module
+   (`activity_probe.py`) and eight in-process probe methods. No client
+   connection, no task queue, no workflow execution, nothing that touches a
+   datastore.
+2. **Four untouched live modules stayed green throughout.**
+   `test_case_concurrency_real_infra.py`, `test_durable_interception_real_infra.py`,
+   `test_case_confirmation_starts_workflow_real_infra.py` and their siblings —
+   **32 tests — were green in all eleven of RV's runs**, including the heaviest
+   loads, and `32 passed` three times in dedicated runs at base.
+3. **Localisation.** Every spurious failure observed anywhere in this review was
+   in the one module whose own docstring says it is the one that stresses this
+   server: long timers, business time, worker restarts, graph-sync retries.
+
+The distinction matters and is the whole of this finding. *"We could not test it
+and nothing broke"* is an absence of evidence dressed as evidence. *"The diff
+adds no infrastructure load, and 32 tests in four untouched live modules were
+green across every run"* is a positive result about the repair, and it survives
+being checked. **The residual is not caused by this repair. Whether it predates
+the repair is unestablished, because at base these tests do not run.**
+
+**Files touched:** `.plan/tracks/HARNESS.ledger.md` only. No code change; none
+was asked for and none is made.
+
+**Command and output:**
+
+    $ git diff --stat 00471116 -- .
+     .plan/tracks/HARNESS.ledger.md | 168 +++++++++++++++++++++++++++++++++++++++++
+     1 file changed, 168 insertions(+)
+
+Insertions only — the append-only property is machine-checkable here, and this is
+the check.
+
+**Next step:** step:08 — RV's acceptance-run ruling. Per-module execution in
+`scripts/dev/run_real_infra_suite.sh`.
