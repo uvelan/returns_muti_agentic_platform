@@ -118,7 +118,26 @@ The gap below is closed. The workflow runs the repository's **own** scripts and 
 - **The suites run in full.** Nothing deselected, skipped or deleted. `scripts/ci/assert_known_failures.py` reads the JUnit report and fails on **any** unnamed failure — **and on a named failure that has started passing**, so the list is self-pruning and cannot rot into a blanket excuse. The three known failures are named with their diagnosed causes.
 - **Exit codes are discriminated:** pytest/vitest `>1` means the *run* broke, not the tests, and no allowlist covers that.
 
-**New finding it surfaced, deliberately not papered over:** `npm run check` is `lint && build`, and `build` includes `check:bundle`, which **FAILS** — all JavaScript now totals **278.5 kB gzipped against a 260.0 kB budget** (the entry chunk is fine at 79.1/80.0). The budget's own comment says to raise it "deliberately, in a commit that says what earned the weight". **Choosing a new number is a product decision, not a wiring one**, so the workflow gates `lint` and `typecheck` directly instead of through `check`, and states plainly that `vite build` and `check:bundle` are gated by **nothing** until the budget is settled. **Open decision for the user.** When settled, the `frontend-static` job collapses to a single `npm run check`.
+**The bundle-budget decision is SETTLED and the section above is superseded.** It read, until now, that `check:bundle` failed at 278.5 kB against a 260.0 kB budget, that picking a new number was a product decision the workflow had no business making, and that `vite build` and `check:bundle` were therefore gated by nothing. All three clauses are stale. `frontend/scripts/check-bundle.js` is a **ratchet** now — it compares each build against measured values in `frontend/bundle-budget.json` and fails on growth — so there is no number left to pick and no reason left not to gate it. Both steps run in `frontend-static`, decomposed rather than collapsed into one `npm run check`, because `&&` short-circuits (a lint error would mean the bundle is never measured) and because a failing step names itself on the summary line.
+
+**Also added since:** a `backend-static` job gating `ruff check` and `ruff format --check` over the whole surface `scripts/linux/03_run_backend_quality.sh` defines — not just `backend/`.
+
+## ⚠ RULE 13, TURNED ON THE GATE I WROTE — the backend job has never run in CI
+
+RV found it while reviewing something else, and it is the sharpest instance of the pattern yet, because the guard is mine.
+
+`backend/tests/conftest.py:29` **hard-raises** when the repository-root `.env` is missing:
+
+```python
+if not ROOT_ENV_FILE.is_file():
+    raise RuntimeError(f"Required repository environment file was not found: {ROOT_ENV_FILE}")
+```
+
+`.env` is gitignored (`.gitignore:25`) and untracked — verified: `git ls-files --error-unmatch .env` says no such path. So on a fresh runner, after `actions/checkout`, `pytest_configure` raises **before collection**, pytest exits **3**, and my own exit-code discriminator reports *"pytest exited 3 — the run failed, not the tests"* and fails the job.
+
+**Consequence, stated plainly:** the `backend` job has almost certainly never completed a run since it was wired. Every *"green on this commit"* claim in `checks.yml`'s comments rests on **local replication on a Windows workstation that happens to have a `.env`**, not on the pipeline. The allowlist self-test, the frontend jobs and `contracts` are unaffected — none of them import that conftest.
+
+This is precisely rule 13's shape and I wrote it: **a gate whose green nobody had watched arrive.** The gate exists, it names itself correctly, its comments are careful — and it cannot execute. `.env.example` is tracked and is the repo's own documented starting point, so the fix is likely small; whether `.env.example`'s values satisfy `Settings` validation is the thing to measure rather than assume. **Dispatched separately and reviewed on its own** — not folded into the lint branch that found it.
 
 ## ⚠ The CI gap this closed (kept for the record)
 
