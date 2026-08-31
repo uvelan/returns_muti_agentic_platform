@@ -325,6 +325,15 @@ touches nothing outside `backend/tests/` and `.plan/`.
    `npm run contracts:check` passes including its `git diff --exit-code`, so
    the committed document matches the live backend. Owned by V1/V3; reported,
    not repaired.
+   **CLOSED** by `feat/amendment-6` (`dafd8a07`): all three retired from the
+   DTO, the composer, all four OpenAPI copies, the generated types and the
+   mock, with the V1 comment. Verified first that none had acquired a writer —
+   all nine `register_panel_section` calls are in one test file and no
+   production module registers a section — so all three went rather than some.
+   No test deleted; the three whose subject was the retired vehicle are
+   re-pointed, one of them inverted into a guard against the read returning.
+   Suite sizes unchanged (backend 5251, frontend 867); floor not restaked.
+   Ledger: `.plan/tracks/AMEND6.ledger.md`.
 6. **(ACC4) The frontend merge tip is red, and `frontend-tests` can report green
    having run a third of the suite.** `registry.test.ts` fails 2 tests at the
    base commit — `14aa6915` registered a `/shipments` domain without updating

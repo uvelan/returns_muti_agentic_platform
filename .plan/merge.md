@@ -116,6 +116,12 @@ I authored that amendment — retiring three fields a registered section cannot 
 
 **Owned by V1/V3 for the code, and by me for the tracking failure.** Queued as the next dispatch; it went unnoticed until someone tried to use the thing.
 
+**EXECUTED** on `feat/amendment-6` (`dafd8a07`), cut from trunk `c8eac86d`. All three fields are off the DTO, off the composer, out of all four published OpenAPI copies, out of the generated types and out of the mock; the V1 comment is gone with them.
+
+Before deleting anything the branch checked whether the amendment had been overtaken — whether any of the three had since acquired a writer — because an amendment executed past its own justification is a different defect. It had not: every one of the nine `register_panel_section` calls in the repository is in `backend/tests/api/test_case_panel_and_reviews.py`, no production module contributes a section at all, and the single `CasePanelView(...)` construction hardcoded all three. So all three were retired rather than some, and the check was run rather than assumed.
+
+The one production reader was `clarificationModel.ts`'s second vehicle, migrated in the same commit as `.plan/reviews/V3f-1.md:316` asked; `support_digest` and `parked_messages` had no readers anywhere. The test whose subject was the retired vehicle was inverted into a guard rather than removed, so the retirement now has a watcher in `frontend-tests`. Suite sizes unchanged on both suites (backend 5251, frontend 867), so the size floor is not restaked. Ledger: `.plan/tracks/AMEND6.ledger.md`.
+
 ### Rule 13 again — the accessibility sweep no workflow runs
 
 Confirmed by RV: no `playwright`, `test:e2e` or `axe` reference anywhere in `.github/workflows/*.yml`, and vitest's `src/**` include cannot reach `tests/*.spec.ts`. **The repository's only accessibility sweep is invoked by nothing.** Not ACC-4's — it authored neither the spec nor the workflows. **It belongs to whoever owns `checks.yml`, which is me.** Queued.
