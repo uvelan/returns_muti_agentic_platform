@@ -410,10 +410,11 @@ describe("the parked-messages entry", () => {
   });
 
   it("counts nothing when no section says so, rather than reading a field nobody can fill", () => {
-    // `CasePanelView.parked_messages` is hardcoded `0` in `api/case_panel.py`
-    // and no contributor can write it (AMENDMENT-6). A `?? panel.parked_messages`
-    // fallback resolved to zero on every real panel, so the entry would never
-    // have appeared -- on exactly the deployments where an operator needs it.
+    // `CasePanelView.parked_messages` is retired (AMENDMENT-6) and was
+    // unfillable before it was: hardcoded `0` in `api/case_panel.py`, with no
+    // contributor able to write it. A `?? panel.parked_messages` fallback
+    // resolved to zero on every real panel, so the entry would never have
+    // appeared -- on exactly the deployments where an operator needs it.
     expect(readParkedPayload(undefined)).toEqual({
       count: 0,
       nlEnabled: null,

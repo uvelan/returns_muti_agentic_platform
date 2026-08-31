@@ -583,3 +583,180 @@ measured against was fixed on trunk mid-flight.
 **The floor was not touched.** The instruction was that a change altering
 collected counts must restake deliberately; this change does not alter them.
 
+
+---
+
+## Step 9 — RV round 1: `CHANGES_REQUIRED`, three findings, all documentation-plane
+
+`.plan/reviews/AMEND6-1.md`. Rebased onto the review tip first (`16868eaa`).
+All three findings accepted. None touches code that runs.
+
+### F1 — four sentences still asserting the retired fields exist
+
+`supportPanelPayloads.ts:502` and `:557-558` said in the present tense that
+`api/case_panel.py` hardcodes `support_digest=()` and that
+`CasePanelView.parked_messages` "is hardcoded `0`". Both false as of the
+retirement, and RV's framing is the one to keep: **the same shape as the defect
+AMENDMENT-6 exists to retire, in the same directory, about the same fields, 26
+lines from a comment that already says it correctly.** Fixed in all four places
+(two production docstrings, two test comments): past tense for what was true,
+and the retirement named. The reasoning each comment exists to give — why there
+is no fallback — is preserved intact; only the tense and the now-dangling line
+reference changed.
+
+### F2 — a sha that does not resolve, and a superseded figure
+
+Both fixed, and the sha half **not** as literally prescribed. RV suggested
+citing `b7e0a529`. That commit was *already unreachable from the branch head by
+the time I read the review* — the rebase onto the review tip had moved it to
+`a46e858b`, exactly as the earlier rebase had moved `dafd8a07` to `b7e0a529`:
+
+### `git merge-base --is-ancestor dafd8a07 HEAD; echo "dafd8a07 reachable from head: exit $?"`
+
+```
+dafd8a07 reachable from head: exit 1
+```
+
+*exit 0*
+
+### `git merge-base --is-ancestor b7e0a529 HEAD; echo "b7e0a529 reachable from head: exit $?"`
+
+```
+b7e0a529 reachable from head: exit 1
+```
+
+*exit 0*
+
+### `git log --format="%h %s" HEAD | grep "execute AMENDMENT-6"`
+
+```
+a46e858b refactor(panel)!: execute AMENDMENT-6 -- retire the three unfillable DTO fields
+```
+
+*exit 0*
+
+Two shas named by this record in one day, both orphaned by routine rebases onto
+a moving trunk; writing a third would re-introduce F2 on the next rebase, and
+this branch will rebase again before it merges. So both records now cite the
+**branch and the commit subject** — the two things a rebase cannot change —
+with a sentence saying why, and pointing at `git log --grep` and the ledger for
+resolution after merge. This meets F2's requirement (a pointer that resolves)
+rather than its literal suggestion; RV asked to be argued with on evidence, and
+the evidence is the two `exit 1`s above.
+
+The figure half is straightforward: both records said "suite sizes unchanged
+(backend 5251, frontend 867)". They now say backend **5256** / frontend **867**
+at the branch tip, with the reason 5256 is not this branch's doing — RUNTIME's
+five tests landing on trunk — stated inline rather than left to be reconciled
+against `suite_size_floor.json`.
+
+### F3 — the two handoffs: banners, not rewrites
+
+**RV is right and I was wrong.** My position was history-versus-guidance at the
+document level. The closing argument is the one that lands: I had already
+banner-corrected `STATUS.md` and `merge.md`, so the distinction actually
+operating on this branch was *documents I opened* versus *documents I didn't*,
+which has no principle behind it. History and guidance are properties of a
+passage.
+
+Dated banners added; **not one wrong sentence was edited or removed.**
+
+- `V1-phase2.md` — at the head of the table literally titled "`CasePanelView`,
+  frozen", which is the field inventory a later slice opens to learn what the
+  DTO has. Names the three retired rows and says not to read the table as
+  current for them.
+- `V3-frontend.md` §1 — the passage where somebody *noticed*, preserved whole
+  including "**Nothing can fill it**", which was correct and is the amendment's
+  provenance. The banner separates the three states RV distinguished: the
+  diagnosis (accepted and acted on), "What the console does" (**no longer what
+  it does**), and "What is owed on the backend" (**still owed** — no production
+  module registers a clarifications section).
+- `V3-frontend.md` break-test 3 — annotated in place: it no longer type-checks,
+  and the equivalent injection today is named, with its measured result (one
+  red, the retirement guard). The original 3-of-14 measurement stays as the
+  evidence that produced the amendment.
+
+### Re-verification after the three fixes
+
+F1 touched two test files (comments only). Re-run in full rather than reasoned
+about:
+
+### `cd frontend && npm run typecheck`
+
+```
+
+> return-platform-console@0.1.0 typecheck
+> tsc -b --pretty false
+
+```
+
+*exit 0*
+
+### `cd frontend && npm run lint`
+
+```
+
+> return-platform-console@0.1.0 lint
+> eslint . --max-warnings=0
+
+```
+
+*exit 0*
+
+### `cd frontend && python ../scripts/ci/assert_known_failures.py --suite frontend --report junit-frontend.xml`
+
+```
+suite size held: 62 test files/modules, 867 test cases (floor 61 / 860)
+858 tests ran, 2 failed, 2 allowlisted
+only the 2 known, still-failing tests failed
+```
+
+*exit 0*
+
+### `cd frontend && RETURN_PLATFORM_PYTHON="K:\Projects\Ret\returns_muti_agentic_platform\backend\.venv\Scripts\python.exe" PYTHONPATH="K:\Projects\Ret\rmap-amend6\backend\src" npm run contracts:check 2>&1 | tail -3`
+
+```
+> node scripts/check-served-fields.js
+
+Fully-required schemas verified against the published document: CaseFactProjection (11)
+```
+
+*exit 0*
+
+### `tail -1 backend/pytest-final.log`
+
+```
+5246 passed, 10 skipped, 514 deselected, 2 warnings in 277.50s (0:04:37)
+```
+
+*exit 0*
+
+### `cd backend && python ../scripts/ci/assert_known_failures.py --suite backend --report junit-backend.xml`
+
+```
+suite size held: 441 test files/modules, 5256 test cases (floor 441 / 5251)
+5256 tests ran, 0 failed, 0 allowlisted
+only the 0 known, still-failing tests failed
+```
+
+*exit 0*
+
+Unchanged on both suites: backend 5256 collected / 5246 passed / 10 skipped / 0
+failed; frontend 62 files / 867 cases / 865 passed / 2 allowlisted failures.
+Both gates exit 0, `contracts:check` exits 0, typecheck and lint clean. The
+three fixes were comments and planning documents, and the measurements say so.
+
+## Open / not closed (updated)
+
+- `.plan/reviews/ACC4-1.md` is now on trunk (`bf7fa140`, per RV) — closed by
+  someone else's commit; the earlier ledger note stands as the record of why it
+  was read by `git show`.
+- **E2 (FE-DEFECT-5, the axe sweep no workflow runs)** — untouched, different
+  owner (`checks.yml`).
+- The two allowlisted `registry.test.ts` failures — pre-existing, owned
+  elsewhere.
+- **F2's sha citation is answered with an argument rather than the literal
+  edit.** If RV wants a sha in those two records despite the two orphanings
+  demonstrated above, the merge commit is the only one that will hold, and that
+  sha does not exist until this branch merges — so it would have to be written
+  by whoever merges it, not here.

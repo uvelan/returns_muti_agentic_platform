@@ -12,6 +12,18 @@ changes what somebody else has to do.
 
 ## 1. The seam, and where V1's own documents disagree
 
+> ⚠ **2026-08-31: the diagnosis below was accepted and acted on — AMENDMENT-6
+> retired `CasePanelView.clarifications[]` rather than filling it.** This section
+> is the first-hand account of how the defect was found and is preserved
+> verbatim, including "Nothing can fill it", which was correct. What has changed
+> is the *console* half: **"What the console does" below is no longer what it
+> does.** `readClarifications` now reads the contributed section and nothing
+> else; there is no second vehicle to de-duplicate against, and
+> `panel.clarifications` no longer exists to read. The backend work in "What is
+> owed on the backend" is **still owed and still correct** — no production module
+> registers a clarifications section yet. Current shape: `contracts.md` §9.
+> Execution: `.plan/tracks/AMEND6.ledger.md`.
+
 `CasePanelView.clarifications[]` is declared on the frozen DTO and attributed to
 V3. **Nothing can fill it.**
 
@@ -214,6 +226,12 @@ it; satisfy it.
    like safety.
 3. **Point `readClarifications` at `panel.clarifications` alone.** Three of
    fourteen model tests fail. Eleven stay green — that is how invisible this was.
+   *(⚠ 2026-08-31: no longer runnable as written — AMENDMENT-6 retired the
+   field, so this injection does not type-check. The equivalent today is to
+   restore the retired read by spreading a `clarifications` key onto the panel
+   and reading it back; that reds exactly one test, the retirement guard in
+   `clarificationModel.test.ts`. The measurement above is preserved as the
+   evidence that produced the amendment.)*
 4. **Make `registerClarificationsSection` a no-op.** 18 of 19 section tests fail;
    the survivor is the one that renders nothing.
 5. **Make the kind switch sniff `payload.messageText`** instead of `review_kind`.
