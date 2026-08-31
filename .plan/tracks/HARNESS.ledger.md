@@ -546,3 +546,190 @@ Recorded because a run against the wrong `src` is a result about the wrong code,
 and nothing in the tooling says which one you got.
 
 **Next step:** step:09 â€” run the live suite per module and report what happens.
+
+---
+
+## step:09 â€” the per-module run, and what it says (negative result)
+
+**Headline: per-module execution does NOT eliminate the spurious failures.** It
+was the wrong one of the two remedies RV offered, and the evidence for that is
+below rather than argued. The runner from step:08 is still worth having â€” it
+fixed a broken total, it surfaces failures a single-process run would have
+buried, and its aggregate is proven â€” but it does **not** discharge RV's ruling,
+and the acceptance run is still not readable.
+
+### 1. The decisive experiment
+
+Per-module execution *is* "one file, one fresh process". RV had already measured
+that exact condition six times at head and got failures in three of them. So the
+remedy and the condition under which the defect was measured are the same thing,
+and the prediction was that it would not help. Executed rather than left as a
+prediction â€” three consecutive isolated runs of the module RV identified as the
+sole contributor:
+
+    $ python -m pytest -m live_infra tests/test_return_case_workflow_real_infra.py -q
+
+    ########## run 1 ##########
+    FAILED tests/test_return_case_workflow_real_infra.py::test_a_rejected_return_needs_no_graph_sync
+    1 failed, 12 passed in 162.37s (0:02:42)
+
+    ########## run 2 ##########
+    FAILED tests/test_return_case_workflow_real_infra.py::test_a_bay_failure_does_not_stop_the_return
+    FAILED tests/test_return_case_workflow_real_infra.py::test_a_graph_sync_failure_parks_the_case_loudly
+    2 failed, 11 passed in 232.99s (0:03:52)
+
+    ########## run 3 ##########
+    13 passed in 116.11s (0:01:56)
+
+**1 failed, then 2 failed, then 0 failed. A different set every time.** Two of
+the three names â€” `test_a_rejected_return_needs_no_graph_sync` and
+`test_a_bay_failure_does_not_stop_the_return` â€” do not appear anywhere in RV's
+eleven runs, which strengthens rather than weakens the reading: the failure set
+is not converging on a fixed group of weak tests, it is drawn fresh each time.
+
+**Why per-module cannot work, stated plainly.** A new process resets *in-process*
+state: the Temporal client, the worker, the event loop, module globals. The
+mechanism F2 measures is not in the process. It is accumulated state on the
+**shared Temporal server** â€” open executions, task-queue backlog, timers â€” and
+that server is the same server across every process the fan-out starts. Isolating
+the client from itself does nothing about the thing the client is talking to.
+
+This was visible in the brief's own numbers before a line of script was written,
+and I did not see it until the runs came back. Recording that, because "the
+measurements already contained the answer" is the more useful lesson than the
+result.
+
+### 2. The suite run â€” incomplete, and reported as incomplete
+
+The full per-module suite run **did not finish** and no verdict is claimed from
+it. It completed 29 of 71 modules, hung on the 30th, and its harness task was
+terminated at the timeout. Per the standing rule that an unexecuted scenario is
+not a green one, this is recorded as a partial observation, not a result.
+
+    collection: 512/5711 tests collected (5199 deselected) in 6.19s
+    running 71 modules, one process each
+
+**29 modules completed: 28 fully green, 1 with two failures. 190 passed,
+2 failed, 4 skipped. Zero spurious failures among them** â€” every module in that
+first 29 either passed cleanly or failed deterministically for a reason that
+reproduces on inspection. That is a real and encouraging signal, but note what it
+excludes: alphabetical order puts
+`tests/test_return_case_workflow_real_infra.py` at roughly position 65, so **the
+one module that produces the spurious failures had not been reached when the run
+stopped.** The clean first 29 is therefore not evidence about the question in Â§1;
+Â§1 answers it directly instead.
+
+### 3. A real, deterministic, pre-existing failure the runner surfaced
+
+    === [29/71] tests/operations/test_integration_outbox_index_plans_real_infra.py
+    ======================== 2 failed, 5 passed in 33.53s =========================
+    FAILED ...::test_the_union_lands_as_six_indexes_on_the_server
+    FAILED ...::test_rebuilding_the_union_against_a_populated_collection_is_a_no_op
+
+    E  Left contains 2 more items:
+    E  {'case_stream_event_id_unique': [('eventId', 1)],
+    E   'case_stream_sequence_unique': [('aggregateId', 1), ('stream', 1), ('streamSequence', 1)]}
+    E  AssertionError: assert 9 == 7
+
+Not a flake. `ensure_integration_outbox_indexes` creates nine indexes; the test
+pins seven. Provenance, established by log rather than by guess:
+
+    $ git log --oneline -3 -- backend/src/.../operations/integrations/outbox.py
+    4359bf9e (S2) step:08 recovery: waiting is not the same as broken
+    1a1b6c81 (S2) step:02 per-case streams on the outbox: CAS sequences, ...
+    bf7d2e7e fix(platform): close the copilot lifecycle defects ...
+
+    $ git log --oneline -3 -- backend/tests/operations/test_integration_outbox_index_plans_real_infra.py
+    bf7d2e7e fix(platform): close the copilot lifecycle defects ...
+
+    $ git diff --name-only 7a898cf9 HEAD          # this branch touches neither
+    .plan/tracks/HARNESS.ledger.md
+    backend/tests/activity_probe.py
+    backend/tests/test_return_case_policy_gate_real_infra.py
+    backend/tests/test_return_case_workflow_real_infra.py
+    backend/tests/test_return_case_workflow_replay_compatibility.py
+    scripts/dev/run_real_infra_suite.sh
+
+**S2 step:02 added the two named ordering indexes (contracts.md Â§7, and the
+production docstring explains the naming choice) and did not update the live test
+that pins the index set. The test file has not been touched since before that
+commit.** Nothing caught it because the live suite had no working entry point â€”
+which is this branch's whole thesis, arriving as a second instance.
+
+**Not fixed here, and deliberately.** `backend/src` is off-limits, and I will not
+touch it. The stale assertion belongs to S2's slice, not this one, and editing
+another slice's test to make a number go green is exactly rule 10's and rule 11's
+territory. **Reported to the orchestrator.** My reading is that the production
+code is correct and the test is stale, but that is S2's call to make, not mine.
+
+### 4. A hang, and a defect in the step:08 runner
+
+    === [30/71] tests/operations/test_order_line_reservations_real_infra.py
+    tests\operations\test_order_line_reservations_real_infra.py ............ [ 36%]
+    ..................
+
+Thirty of its thirty-three tests passed, then the process stopped producing
+output for **28 minutes** before the harness task was terminated. It was blocked,
+not spinning:
+
+    PID 27660  CPU=6.06s  Threads=5  WS=184MB      # idle, no CPU growth
+    PID 28092  CPU=0.03s  Threads=1  WS=11MB       # the launcher shim
+
+Six seconds of CPU across thirty completed database tests, then nothing. Peer
+modules in this suite finish in 30â€“100s.
+
+**This is a defect in the runner I shipped in step:08, and it is mine.** There is
+no per-module timeout. One hanging module hangs the entire gate forever, and an
+acceptance gate that never returns is worse than one that returns a wrong number:
+a wrong number gets adjudicated, an unterminated run gets re-run until someone
+gives up. The step:08 header argues an aggregate must not be able to lie; silence
+is the one failure mode that argument did not cover.
+
+Fixing it needs a `timeout`-wrapped module invocation that records the module as
+failed-by-timeout and moves on. **Not implemented in this step**, because the
+script was being executed by a live bash process throughout â€” bash reads a script
+incrementally and editing it mid-run corrupts the loop. It is the first thing
+step:10 should do.
+
+Whether the hang is pre-existing or per-module-induced is **unestablished**. It
+is in a module nobody has run, so the same F3 problem applies: there is no
+control. I am not going to guess, and I am not going to call it pre-existing on
+the strength of it looking like the outbox case.
+
+I could not terminate the hung process to let the loop continue â€” the permission
+system refused `Stop-Process`, and the bash `kill` could not map the Windows PID.
+That is why the run ends at 29 rather than at 71.
+
+### 5. Wall-clock cost, as a number
+
+Over the 29 completed modules:
+
+    sum of pytest's own reported per-module times : 1088s  (18.1 min)
+    wall clock, launch to module 30's start       : ~36.5 min
+
+**Roughly 38 seconds per module of pure process overhead** â€” a fresh interpreter,
+`conftest.py` import and a collection pass, 29 times. Per-module execution
+therefore costs about **as much again as the tests themselves take**, and
+extrapolates to **~45 minutes of overhead** across all 71 modules on top of
+whatever the tests cost. Reported rather than judged: whether that is acceptable
+is the orchestrator's call, and it now has a number instead of an adjective.
+
+### 6. What this leaves
+
+- RV's ruling on the acceptance run **stands, undischarged.** Per-module was the
+  wrong remedy; the state that drives the failures is on the server and does not
+  care about process boundaries.
+- The two remedies still on RV's list that address a *server-side* mechanism are
+  quarantine (rejected here on coverage grounds, and it is worth noting that
+  rejection now costs more than it did) and adjudicated re-runs recorded **as
+  flakes rather than as passes**. A third that RV did not list, and that follows
+  directly from the mechanism: **reset the Temporal server between modules**, or
+  give each module its own namespace with a fresh task queue. The module's own
+  docstring records that namespace isolation was tried and rejected on evidence,
+  so that history needs reading before it is tried again.
+- This is a decision about the acceptance gate, not about this slice. It goes to
+  the orchestrator.
+
+**Next step:** step:10 â€” a per-module timeout, so the gate cannot hang; then the
+acceptance-gate remedy, which is an orchestrator decision and not this branch's
+to take.
