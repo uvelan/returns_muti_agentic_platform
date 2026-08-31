@@ -382,9 +382,17 @@ Across fourteen measured runs — RV's eleven and step:09's three — **no failu
 
 ### ⚑ ROOT CAUSE — the storage layer, underneath everything this track tried
 
-**Temporal's Postgres cannot complete durable writes fast enough on this hardware.** `pg_test_fsync` on its volume: **30–406 ms per 8 kB durable write**, against a sub-millisecond expectation. The unsync'd path runs at **1,087,454 ops/sec** — so the data path is fine and it is *durability* that costs, which is what a database does on every commit and checkpoint.
+**Temporal's Postgres pays ~126 ms per WAL flush on this hardware**, against a sub-millisecond expectation. With `synchronous_commit=on`, **every Temporal transaction pays it.** The unsync'd path runs at **1,087,454 ops/sec** — the data path is fine; it is *durability* that costs.
 
-The chain, server-side throughout: `shard status unknown` arrived from `get_workflow_execution_history`, not from a test; Temporal's own logs over three hours carried **145** `Failed to start transaction`, **266** `context deadline exceeded`, **44** `shard status unknown` and **19** `Acquired shard`; and Postgres logged `checkpoint complete: wrote 1830 buffers; write=174.354 s` — 14 MB in 174 seconds.
+The chain, server-side throughout: `shard status unknown` arrived from `get_workflow_execution_history`, not from a test; and Temporal's own logs over three hours carried **145** `Failed to start transaction`, **266** `context deadline exceeded`, **44** `shard status unknown` and **19** `Acquired shard`.
+
+> **⚠ TWO CORRECTIONS TO THIS SECTION'S ORIGINAL EVIDENCE — both were mine to propagate, and the first was the headline.**
+>
+> **The 175-second checkpoint was not pathology.** This section led with `checkpoint complete: wrote 1830 buffers; write=174.354 s` and read it as disk starvation. **`checkpoint_completion_target = 0.9` means Postgres deliberately spreads a timed checkpoint's write phase over 0.9 × 300 s = 270 s, precisely to avoid an I/O spike.** A 175 s write inside a 270 s budget is Postgres working as designed. The phase that synchronously touches disk is `sync=` — **3.0 seconds.** Proved independently: unspread, the same database wrote 820 buffers in **0.076 s**. *Normal behaviour misread as pathology — the largest number in the log was reached for as an illustration and never checked for what it meant.*
+>
+> **And the wrong row of the right measurement was quoted.** "30–406 ms" spanned the whole `pg_test_fsync` table. The server uses `wal_sync_method = fdatasync`, whose measured rate is **7.949 ops/sec — 126 ms per flush**, four times worse than the `open_datasync` row originally cited as relevant.
+>
+> **The mechanism survives, correctly located: WAL commit latency, not checkpoints.** The relocation makes it *more* explicable, not less — a per-transaction cost fits Temporal's error profile better than a periodic one ever did.
 
 **Ruled out by measurement, not argument:** memory (166 MB of 1 GB), bind-mount overhead (it is a named volume), sequential throughput (53 MB/s) — and **accumulated state: the database is 38 MB with 916 executions.** *The hypothesis that opened this investigation, survived three rounds and drove two remedies, died to one query.*
 
@@ -400,7 +408,13 @@ The chain, server-side throughout: `shard status unknown` arrived from `get_work
 | run-time spread | 79–275 s | **39.5–42.0 s** |
 | persistence errors in window | 145 / 266 / 44 | **0 / 0 / 0** |
 
-**At the original, un-raised budgets.** That is the cleanest possible confirmation: *the remedy made the tests pass by removing the cause, not by relaxing what they check.* The reverted ceiling was the right call.
+**At the original, un-raised budgets** — so whatever the setting does, it does not do it by relaxing what the tests check. The reverted ceiling was the right call.
+
+> **⚠ THE A/B IS UNINFORMATIVE ON FLAKINESS, AND THE B ARM SAID SO.** Reverting the setting produced **5 of 5 clean as well.** At a ~40% baseline failure rate, P(0 failures in 5) ≈ **7.8%** — unlikely, possible, and it happened in *both* arms. **Neither arm's clean sweep discriminates.** The success criterion had been set without checking whether five runs could clear it, which is a criterion that could only ever confirm.
+>
+> **A forced-checkpoint experiment was then run instead of buying thirty passive runs — and it failed to build its own condition.** Of 49 forced checkpoints, the first cleared a restart backlog and **all 48 others were trivial** (37–853 buffers, 0.03–0.55 s), because a manual `CHECKPOINT` is immediate rather than spread and firing one every 5 s never lets the dirty set grow. One failure in three runs is indistinguishable from background rate. **Recorded inconclusive, and stopped there** rather than upgraded to a refutation — "the forced checkpoints were too light" and "the hypothesis is wrong" cannot be separated from three runs.
+>
+> **So: established** — ~126 ms per WAL flush; the suite runs **~2× faster** on every Temporal-dependent module; Temporal persistence errors **zero** across a full run window; and the Mongo-only outbox control **unmoved**, disposing of "the machine got faster". **Not established** — that any of it removes the flakiness. *Nothing in this record should be read as proving that link.*
 
 **The variance collapse is the sharper signal than the pass count** — a 2.5-second band where there was a 200-second spread. The bimodality that first identified a timeout is simply gone, and five runs of pass/fail could never have shown that.
 
