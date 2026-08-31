@@ -1257,3 +1257,167 @@ open, and it is why sect. 5's experiment records messages rather than counts.
 2. **The suite has still never been run to completion**, and the run in flight
    will not settle it, for the three reasons in sect. 6.
 3. The three pollers of sect. 2 should be reaped before any timing measurement.
+
+---
+
+## step:12 -- a retraction, the load that was never recorded, and a rule about messages
+
+No live run in this step either. The stack is still held by the in-flight run and
+is being drained by the orchestrator.
+
+### 1. Retraction: I claimed step:10's ceiling fired. It did not, and I could not have known it did.
+
+In step:11 sect. 6 I wrote that the module-30 hang was handled and that "step:10's
+ceiling worked", on the reasoning that the run moved on to module 31. **That was
+an inference dressed as an observation, and it is the same error this track keeps
+finding in others.** Withdrawn.
+
+What is actually established:
+
+    $ Select-String -Path permodule_run1.log -Pattern "TIMED|124|no result"
+    (no matches)
+
+The marker at `run_real_infra_suite.sh:266` is `echo "!!! $module $summary"` --
+**stdout**, not stderr. My step:11 explanation (that it went to stderr while the
+log captured stdout) was wrong. And the ceiling machinery is sound in this
+environment, checked rather than assumed:
+
+    $ command -v timeout                 -> /usr/bin/timeout
+    $ timeout --version | head -1        -> timeout (GNU coreutils) 8.32
+    $ timeout --kill-after=30s 2s sleep 10; echo $?
+    -> 124
+
+`set -euo pipefail` is set (line 66), so `rc=${PIPESTATUS[0]}` receives 124 and
+the branch at line 263 fires. **So if the ceiling had fired, the marker would be
+in the log.** It is not. Therefore module 30 did not exit through the ceiling --
+it exited some other way, most plausibly the external kill of the hung pytest
+that the orchestrator reported making. The `else` branch then took the partial
+log's last non-empty line (a row of progress dots) as the summary, found no
+counts in it, and added the module to `counts_unparsed`.
+
+**The consequence, stated plainly: step:10's ceiling has still never been observed
+firing in a real run.** It was proved in step:10 against a synthetic
+`time.sleep(3600)` module at `LIVE_MODULE_TIMEOUT=25`, which is a proof of the
+mechanism and not of the ceiling doing its job on the actual hang. In the one
+real opportunity it has had, something else got there first.
+
+**What will settle it:** the run's own summary block. If module 30 appears as
+`exit 124 -- TIMED OUT after 900s`, the ceiling fired and I am wrong. If it
+appears under `counts could not be read` with a different exit code, it did not.
+Recorded as a prediction before the fact so it cannot be fitted afterwards.
+
+### 2. A hypothesis raised and ruled out, recorded because near-misses are cheap to hide
+
+While checking the above I found that in a shell whose `PATH` lacks Git's
+`/usr/bin`, `command -v timeout` resolves to **`/c/WINDOWS/system32/timeout`** --
+Windows' pause utility, which takes `/T` and rejects the script's arguments:
+
+    $ /c/WINDOWS/system32/timeout --kill-after=30s 900s echo HELLO
+    ERROR: Invalid syntax. Default option is not allowed more than '1' time(s).
+    exit=1
+
+`TIMEOUT_CMD` is set by `command -v timeout || true` (line 208) and is tested only
+for emptiness (line 209), so a namesake on `PATH` would pass that test, and every
+module would exit 1 *without pytest ever running*.
+
+**This is not what happened, and I nearly reported that it was.** The stripped
+`PATH` was an artifact of my own `bash -lc` invocation. In the environment the
+runner actually ran in, `timeout` is coreutils (sect. 1), and modules 1-29 all
+executed pytest normally, which they could not have done under the Windows
+binary. **Ruled out as the cause; retained as a latent fragility** worth one line
+of hardening, since the check that would have caught it costs nothing.
+
+### 3. The load was never recorded, and that is the largest single correction to this track
+
+The orchestrator has disclosed that **three to four concurrent agents, several
+running full backend suites, were active throughout every round in which these
+failures were measured** -- RV's eleven runs, and step:09's three consecutive
+isolated runs. Nobody was measuring a quiet machine. The load was ambient and
+therefore invisible, and no round recorded it.
+
+This is recorded here as a fact about the measurements, not as an excuse for
+them. Its consequences are specific:
+
+- **Step:09's negative result is under-determined, not wrong.** Its three runs
+  (1f/2f/0f) were taken on a machine carrying several concurrent suites. Its
+  conclusion -- that a process boundary is no remedy for shared state -- stands
+  on its own reasoning. Its inference that per-module execution therefore cannot
+  help does not, because the variable it needed to hold still was moving and
+  unrecorded.
+- **RV's fresh-vs-loaded table** (13 tests in 73.60s clean, 302-487s "loaded")
+  measured a real effect, but "loaded" meant *the machine*, not the Temporal
+  namespace. The same numbers that were read as evidence for accumulated server
+  state are equally evidence for contention, and the two were never separated.
+- **The accumulated-server-state hypothesis was a worse guess than the one
+  already written in this repository in August**, which named a fixed wall-clock
+  budget and machine contention from four complete runs. Two rounds were spent
+  chasing the newer guess.
+
+### 4. Standing rule: a flake investigation that records names and not messages is not an investigation
+
+Across **fourteen measured runs** -- RV's eleven, step:09's three -- not one
+failure *message* was captured. Only test names.
+
+`did not run within 30.0s`, a bare assertion failure, and a connection error are
+three different defects with three different owners. The field that distinguishes
+them was discarded at every round, and the rounds then reasoned about what was
+left. The mechanism in step:11 sect. 5 was recoverable only because the *August*
+ledger had recorded the message, once, eight days before this run began.
+
+**The rule, for this track and any other:**
+
+> When recording a flaky failure, record the failure **message** and not only the
+> test name. A name says which test lost; the message says what it was waiting
+> for. A run that reports `N failed` and a list of names has thrown away the only
+> field that makes the next round cheaper than this one.
+
+Applied immediately: the sect. 5 experiment records `pytest -rA` output per
+failure, and any summary this track writes reports messages beside names.
+
+### 5. The in-flight run: what it is, and what it is not
+
+Restated because it has twice been described as something it is not. It is **not**
+the first complete live-suite run, and no one should call it that:
+
+- Its production code is `feat/acc-frontend`'s, not this branch's (step:11
+  sect. 3). 42 `src` files differ. Its greens are **hybrid-tree greens**.
+- Its aggregate is unreliable: the runner was edited while bash was executing it.
+- It has one module (30) whose exit is unclassified, per sect. 1.
+
+**What it is still worth, and it is not nothing:** its per-module result lines are
+pytest's own output and are real, and they carry the two things this
+investigation needs -- **per-module timings** (no upward drift across 47 modules,
+which is the observation that sits worst with the accumulation hypothesis) and
+**the hang's second occurrence**. It is being allowed to finish for those.
+
+### 6. The marker fix -- designed, and deliberately not applied yet
+
+`run_real_infra_suite.sh` is the file the live bash process is executing. Bash
+reads a script incrementally by byte offset, so editing it mid-run corrupts the
+loop -- which is why step:09 deferred this same class of fix to step:10, and why
+it is deferred again here. **Not applied. Blocked on the run finishing.**
+
+The defect the run exposed is *not* the one step:11 named. It is this: a module
+that exits non-zero **without a parseable summary** leaves the operator's log a
+row of progress dots followed by the next module's header, and no explanation
+anywhere. That is what module 30 looks like right now. The `!!!` marker exists
+only for `rc == 124 || rc == 137`; every other abnormal exit -- an external kill,
+a crash, an interpreter abort -- is silent inline.
+
+Three changes, smallest first:
+
+1. **Confirm `TIMEOUT_CMD` is coreutils, not a namesake** (sect. 2):
+   `"$TIMEOUT_CMD" --version 2>/dev/null | grep -qi coreutils` before trusting
+   it; otherwise treat as absent and announce.
+2. **Announce the ceiling's status on stdout**, so the operator's log records
+   which of the two runners they are holding rather than only their terminal.
+3. **Print an inline marker for every non-zero `rc`**, not only the two timeout
+   codes -- naming the module, the exit code, and that counts were unreadable.
+   A gate that cannot lie has to include the case where the module was killed by
+   something that was not the gate.
+
+### Open
+
+1. Sect. 1's prediction is unresolved until the run prints its summary.
+2. Everything in step:11 sect. 4 and 5 remains unexecuted.
+3. The marker fix is designed and blocked.
