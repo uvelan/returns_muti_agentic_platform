@@ -87,3 +87,9 @@ linux_kit_validation/
 # `.claude/skills/testmanual/SKILL.md`, so nothing is lost by its absence -- the
 # script is a shortcut, not the source of truth.
 scripts/dev/start_manual_mode.sh
+
+# JUnit reports written by `.github/workflows/checks.yml`. They are an artifact
+# of a run, uploaded from CI and read by scripts/ci/assert_known_failures.py --
+# never a committed file, including when the same command is run locally.
+backend/junit-backend.xml
+frontend/junit-frontend.xml

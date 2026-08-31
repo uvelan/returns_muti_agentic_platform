@@ -1,0 +1,277 @@
+name: checks
+
+# The repository defines what "checked" means in its own scripts -- `npm run
+# lint`, `npm run typecheck`, `npm run contracts:check`, `npm test`, and the
+# backend's pytest suite -- and until now nothing executed any of them.
+# `.github/workflows/` contained exactly one file, `secret-scan.yml`. That is
+# how three typecheck errors survived a merge on a run where every slice was
+# deliberately fault-injected: the gate existed, and nobody ran it.
+#
+# This workflow runs the repository's own scripts. It invents no command lines.
+#
+# ---------------------------------------------------------------------------
+# The three known failures, and why this is not red on arrival
+# ---------------------------------------------------------------------------
+#
+# Trunk does not run clean. One backend test and two frontend tests fail for
+# reasons that predate this work and are recorded in `.plan/merge.md`. A gate
+# that demanded a clean exit code would have been red the hour it merged, and a
+# gate that is red on arrival is a gate people learn to scroll past -- which is
+# the exact habit this file exists to break.
+#
+# So the suites run IN FULL. Nothing is deselected, nothing is marked skipped,
+# nothing is deleted. `scripts/ci/assert_known_failures.py` reads the JUnit
+# report and fails the job on ANY failure that is not named in
+# `scripts/ci/known_test_failures.json` -- and equally on a named failure that
+# has started passing, so the list cannot rot into a blanket excuse.
+#
+# ---------------------------------------------------------------------------
+# What this does NOT gate, stated plainly
+# ---------------------------------------------------------------------------
+#
+# `npm run check` is `lint && build`, and `build` is `typecheck && vite build &&
+# check:bundle`. Measured on this commit: lint passes, `tsc -b` exits 0, `vite
+# build` succeeds -- and `check:bundle` FAILS, because all JavaScript now totals
+# 278.5 kB gzipped against the 260.0 kB budget in
+# `frontend/scripts/check-bundle.js`. (The entry chunk is fine at 79.1 / 80.0.)
+#
+# That budget says of itself: "Raise them deliberately, in a commit that says
+# what earned the weight." Choosing a new number is a product decision, not a
+# wiring decision, so this workflow does not make it and does not paper over it:
+# it gates `lint` and `typecheck` directly instead of through `check`, and
+# `vite build` and `check:bundle` are gated by nothing at all until the budget
+# is settled.
+#
+# WHEN THE BUDGET IS SETTLED, the `frontend-static` job below collapses to a
+# single `npm run check` and this comment goes away.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Gate 0 -- prove the allowlist can still say no.
+  #
+  # Same reasoning as secret-scan.yml's scanner self-test. Both suite jobs
+  # below report "acceptable" while three tests are failing, and that verdict
+  # is worth nothing unless the comparator can still fail. A broken comparator
+  # turns this entire workflow into an expensive `exit 0`.
+  # ---------------------------------------------------------------------
+  allowlist-self-test:
+    name: allowlist self-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Negative controls
+        run: python scripts/ci/test_assert_known_failures.py
+
+  # ---------------------------------------------------------------------
+  # The backend suite. `[tool.pytest.ini_options]` already deselects the
+  # `live_infra` and `browser` markers, so the default run is the normal
+  # suite -- unit plus in-process integration, no MongoDB, no Temporal
+  # server, no browser. It needs nothing this runner does not have.
+  # ---------------------------------------------------------------------
+  backend:
+    name: backend suite
+    needs: allowlist-self-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # backend/pyproject.toml: requires-python = ">=3.13,<3.14";
+          # backend/Dockerfile builds on python:3.13-slim.
+          python-version: "3.13"
+
+      - name: Install the backend toolchain
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          # POETRY_VERSION in backend/Dockerfile. poetry.lock, not this file,
+          # is the source of truth for the dependency set.
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          # --no-root for the reason the Dockerfile's test stage gives: the
+          # code under test arrives on PYTHONPATH from the checkout, never as
+          # a copy installed at setup time.
+          poetry install --with dev --no-root
+
+      - name: Run the suite
+        working-directory: backend
+        env:
+          PYTHONPATH: ${{ github.workspace }}/backend/src
+        run: |
+          # `set +e`: the default shell here is `bash -e`, which would abort on
+          # a failing suite before the allowlist ever got to rule on it.
+          set +e
+          poetry run python -m pytest tests --junitxml=junit-backend.xml
+          status=$?
+          # 0 = clean, 1 = tests failed and the allowlist gets to rule on it.
+          # Anything else (2 interrupted, 3 internal error, 4 usage, 5 nothing
+          # collected) is the run itself breaking, and no allowlist covers that.
+          if [ "$status" -gt 1 ]; then
+            echo "::error::pytest exited $status -- the run failed, not the tests"
+            exit "$status"
+          fi
+
+      - name: Only the known failures failed
+        working-directory: backend
+        run: python ../scripts/ci/assert_known_failures.py --suite backend --report junit-backend.xml
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-backend
+          path: backend/junit-backend.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ---------------------------------------------------------------------
+  # The frontend's static checks: the repository's own `lint` and
+  # `typecheck` scripts, both green on this commit and both hard gates.
+  #
+  # `typecheck` is `tsc -b --pretty false` -- the script that would have
+  # caught the three errors that survived the merge.
+  # ---------------------------------------------------------------------
+  frontend-static:
+    name: frontend lint and typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # frontend/.nvmrc: 24.18.0, matching frontend/Dockerfile's
+          # node:24.18.0-bookworm-slim and package.json's engines field.
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+
+      - name: npm run lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: npm run typecheck
+        working-directory: frontend
+        run: npm run typecheck
+
+  # ---------------------------------------------------------------------
+  # The frontend suite, under the same allowlist rule as the backend one.
+  # ---------------------------------------------------------------------
+  frontend-tests:
+    name: frontend suite
+    needs: allowlist-self-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+
+      - name: npm test
+        working-directory: frontend
+        run: |
+          # `set +e` for the same reason as the backend job.
+          set +e
+          # The repository's own `test` script is `vitest run`; the reporter
+          # flags only change how the same run is written down. `default` stays
+          # so the log still reads like a test run to a human.
+          npm test -- --reporter=default --reporter=junit --outputFile.junit=junit-frontend.xml
+          status=$?
+          if [ "$status" -gt 1 ]; then
+            echo "::error::vitest exited $status -- the run failed, not the tests"
+            exit "$status"
+          fi
+
+      - name: Only the known failures failed
+        working-directory: frontend
+        run: python ../scripts/ci/assert_known_failures.py --suite frontend --report junit-frontend.xml
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-frontend
+          path: frontend/junit-frontend.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ---------------------------------------------------------------------
+  # Contract drift. `npm run contracts:check` regenerates the OpenAPI
+  # document and the generated `.d.ts` from the live FastAPI app and fails on
+  # any diff, so it needs both toolchains: `scripts/export-contracts.js`
+  # shells out to Python to import the application.
+  #
+  # Green on this commit, so it is a plain hard gate.
+  # ---------------------------------------------------------------------
+  contracts:
+    name: contract drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install the backend toolchain
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          poetry install --with dev --no-root
+
+      - name: Install the frontend toolchain
+        working-directory: frontend
+        run: npm ci
+
+      - name: npm run contracts:check
+        working-directory: frontend
+        env:
+          # export-contracts.js looks for backend/.venv first and falls back to
+          # `python3.13`; on this runner the interpreter Poetry installed into
+          # is the one that can import the app, so name it rather than hope.
+          PYTHONPATH: ${{ github.workspace }}/backend/src
+        run: |
+          set -euo pipefail
+          RETURN_PLATFORM_PYTHON="$(cd ../backend && poetry env info --executable)" \
+            npm run contracts:check
