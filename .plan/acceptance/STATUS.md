@@ -46,10 +46,14 @@ only the ones in `tests/acceptance/`.
   runs it is Linux; that criticism belongs to a guard whose *only* runner skips
   it.
 
-**Gating of every module this branch adds**, re-confirmed after each trunk merge:
-`36 collected, 2 deselected` — the two being the live review-gate module, which
-cannot be otherwise because a worker kill needs a worker, and which is labelled
-ungated in its own docstring rather than counted as coverage.
+**Gating of every module this branch adds**, re-confirmed after each trunk merge
+by collecting rather than by counting from memory: at step:13,
+`36/38 tests collected (2 deselected)`. The two deselected are the live
+review-gate module's, which cannot be otherwise because a worker kill needs a
+worker, and which says so in its own docstring rather than being counted as
+coverage. **Everything else this branch adds runs on every push**, including the
+POSIX signal proof, which the pipeline executes and only a Windows workstation
+skips.
 
 ---
 
