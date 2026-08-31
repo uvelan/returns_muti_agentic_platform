@@ -378,3 +378,171 @@ the check.
 
 **Next step:** step:08 — RV's acceptance-run ruling. Per-module execution in
 `scripts/dev/run_real_infra_suite.sh`.
+
+---
+
+## step:08 â€” the acceptance run: a process per module
+
+RV's ruling (`HARNESS-1`, "Ruling: the acceptance run") is that
+`scripts/dev/run_real_infra_suite.sh` cannot be trusted as it stands, because it
+runs all 512 live tests in one process and therefore manufactures more of the
+accumulated server state that F2 measures than any measurement taken.
+
+RV named two sufficient fixes. **Quarantining
+`test_return_case_workflow_real_infra.py` was rejected deliberately.** It is the
+cheaper change and it would produce a cleaner number, and that is the objection:
+it removes 13 tests' worth of coverage from the gate in order to make the gate
+read green. **Per-module execution keeps every test and changes only the
+execution model** â€” a fresh interpreter, a fresh Temporal client and a fresh
+worker per file, so state cannot cross a module boundary.
+
+**Files touched:** `scripts/dev/run_real_infra_suite.sh` only. No test file, no
+production file.
+
+### What was preserved
+
+- The datastore preflight is **byte-identical**, exit 2 and all.
+- Argument pass-through is unchanged.
+- The collected-total report survives â€” and had to be repaired to survive, see
+  below.
+- A positional path or a `-k` expression skips the fan-out and runs one process,
+  because fanning out over a set the caller narrowed to one thing buys nothing.
+
+### The collected-total report was already broken
+
+Found while testing, not looked for. The report was
+`... --collect-only -q "$@" | tail -1`, and pytest's last line is the last line
+only when there is no warnings summary. On the whole suite there is one:
+
+    $ bash -x scripts/dev/run_real_infra_suite.sh --collect-only -q   # before
+    + collected='-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html'
+    collection: -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+
+Not cosmetic. That line exists because "a marker typo that collects zero tests
+exits 0 and looks identical to success" â€” the script's own header says so â€” and a
+report that prints a URL cannot show that. Now anchored on pytest's count line:
+
+    $ bash scripts/dev/run_real_infra_suite.sh --ignore=...   # after
+    collection: 11/2957 tests collected (2946 deselected) in 4.25s
+
+The same collection pass now feeds both the report and the module list, so the
+number reported and the set executed cannot disagree.
+
+### Discovery
+
+Modules come from `pytest -m live_infra --collect-only -q`, not from a glob. A
+glob over `*_real_infra.py` would have missed roughly twenty live modules that
+are not named that way (`tests/reasoning/test_run_lifecycle.py`,
+`tests/platform/test_index_drift.py`, `tests/source_connectors/*_docker.py`, â€¦) â€”
+and missing them silently is the exact defect shape this branch exists to fix.
+
+    73 modules, 512 tests.
+
+### Rule 13 â€” the gate that runs this guard
+
+**This one runs in no CI gate, and I am not going to imply otherwise.**
+`addopts` carries `-m "not live_infra and not browser"`, so CI's
+`poetry run python -m pytest tests` (`.github/workflows/checks.yml:129`) does not
+execute one live test. This script *is* the gate for the live suite, invoked by a
+person, and what step:08 changes is whether that gate's verdict is readable â€” not
+whether something runs it. The guard added here is the aggregate check inside the
+script, and the thing that runs it is the script's own exit code, proven below
+rather than asserted.
+
+That is the honest side of the line, and it is the weaker one. It is unchanged by
+this step and out of its scope: wiring the live suite into CI is a separate
+decision about runtime and infrastructure, and it belongs to the orchestrator.
+The guard added in step:04 is the one that falls on the *other* side â€” it carries
+no `live_infra` marker, so `pytest tests` collects it and CI runs it.
+
+### The aggregate cannot lie â€” proven, not argued
+
+One exit code became 73. The failure mode is a runner that exits 0 because the
+last module passed, which would be a fresh instance of this run's oldest defect.
+
+Proof by construction: two temporary modules, one **failing** placed so it sorts
+**first** (`tests/api/test_aaa_runner_selftest_real_infra.py`) and one **passing**
+placed so it sorts **last**
+(`tests/test_zzz_runner_selftest_green_real_infra.py`). If the runner took the
+last exit code, this arrangement returns 0.
+
+    $ bash scripts/dev/run_real_infra_suite.sh --ignore=<the other 70 modules>
+    SCRIPT EXIT: 1
+    collection: 11/2957 tests collected (2946 deselected) in 4.25s
+    ================== live-infrastructure suite: summary ==================
+    modules run     : 3
+    modules passed  : 2
+    modules failed  : 1
+    tests passed    : 10
+    tests failed    : 1
+    wall time       : 0m 29s (one process per module)
+
+    FAILED modules:
+      x tests/api/test_aaa_runner_selftest_real_infra.py
+          exit 1 -- 1 failed, 1 passed in 0.31s
+
+    the live-infrastructure suite FAILED (1 of 3 modules).
+    Logs were per module; re-run one with:
+      scripts/dev/run_real_infra_suite.sh tests/api/test_aaa_runner_selftest_real_infra.py
+
+Exit 1 with a green last module. The failing module is named, with its counts,
+and 10 + 1 = 11 reconciles against the collected total.
+
+**The proof found a real defect on its first run, which is the argument for
+running it.** The first attempt printed `tests failed: 0` beside a failing
+module, and flagged two of three modules as counts-unreadable. The count regexes
+required a non-digit before the number, and pytest's summary begins with one:
+`8 passed in 24.51s`. So every all-green module parsed as unreadable and every
+`N failed` opening a summary line was dropped. Had the summary been written
+against the theory instead of executed, the runner would have shipped reporting
+zero failures next to a red exit code. Fixed by padding the line; the run above
+is the re-proof.
+
+Note the guard that caught it was the one that refuses to call unreadable counts
+a pass â€” it fired, correctly, and blocked a false green while the parser was
+broken. It stays in for that reason.
+
+### The trap RV flagged: the anti-vacuity population pin
+
+`test_a_test_worker_for_the_case_workflow_exists_to_be_checked` asserts filename
+**equality**, not a superset, so a new file in `tests/` is capable of failing it â€”
+step:05(b) demonstrated exactly that. Reasoned rather than assumed: the pin's
+population is files that build a `Worker(workflows=[ReturnCaseWorkflow], ...)`.
+Both proof modules declare `pytestmark = pytest.mark.live_infra` and a bare
+assertion; neither imports `Worker` or `ReturnCaseWorkflow`. So the pin should not
+see them. Checked rather than reasoned about only:
+
+    $ python -m pytest tests/test_return_case_workflow_replay_compatibility.py -q
+      ### with both temporary live modules present ###
+      17 passed in 5.21s
+
+      ### after deleting them ###
+      17 passed in 4.58s
+
+Unaffected, and now known to be unaffected. Separately, the runner change cannot
+reach the pin at all: the pin walks `tests/**/*.py` from source, and step:08
+touches one file under `scripts/`.
+
+    $ git status --porcelain
+     M scripts/dev/run_real_infra_suite.sh
+
+Both temporary modules deleted. Nothing else in the tree.
+
+### Environment note
+
+This worktree has no `backend/.venv`, so the script takes its documented third
+branch and uses `python` from `PATH`. The repository's venv is at the main
+checkout and its `return_platform_backend.pth` hardcodes *that* checkout's
+`backend/src` â€” so running the worktree's tests through it silently imports the
+main checkout's newer `src`, which fails collection in
+`tests/operations/test_case_projection.py` on an `actorId` field that does not
+exist at this branch's base. Every run recorded in this ledger from step:08 on
+was made with `PYTHONPATH` pinned to **this worktree's** `backend/src`, verified:
+
+    $ python -c "import return_platform; print(return_platform.__file__)"
+    K:\...\worktrees\agent-af79f912fcfd95e05\backend\src\return_platform\__init__.py
+
+Recorded because a run against the wrong `src` is a result about the wrong code,
+and nothing in the tooling says which one you got.
+
+**Next step:** step:09 â€” run the live suite per module and report what happens.
