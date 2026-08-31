@@ -361,6 +361,33 @@ Across fourteen measured runs — RV's eleven and step:09's three — **no failu
 
 *Scope corrected twice:* 12 sites in the module, not 13 — a grep that counted its own `async def reached` definition, then repeated three times because it was already written down. And **17 across two modules**, because the sibling carries its own copy of the helper. **That duplication is now 2-for-2 on causing defects** — once when the probe list rotted, once here. Collapsing the two implementations is registered, not done.
 
+### ✗ THE REMEDY FAILED, AND IT WAS NEVER ONE DEFECT
+
+**One clean run in five.** Run 5 failed with `did not run within **180.0s**` — the ceiling derived from the retry schedule, exceeded at one of the fourteen sites it was applied to. **Two successive derivations, 61s then 180s, each falsified by the next measurement, is evidence the quantity is not bounded by the retry schedule at all.**
+
+**With messages finally captured, there are at least four distinct signatures:**
+
+| | signature | note |
+|---|---|---|
+| (a) | the derived ceiling, exceeded | the only one the wall-clock diagnosis addressed |
+| (b) | a workflow-history assertion — `no failed workflow task; last event types: 7, 10, 11, 12, 5, 6, 7, 10` | **no budget involved at all**; may be a product defect |
+| (c) | `RPCError: h2 protocol error: http2 error` | a **transport** fault on the gRPC connection, never seen in this track before, plausibly bearing on **every** live module |
+| (d) | the graph-sync test, twice | the only repeat offender — and the one whose message was lost |
+
+**So the convergence that drove three rounds was true and insufficient.** Every failing test did route through `reached()`. That fact cannot distinguish (a) from (b), (c) or (d) — **names never could**, which is the whole point, arriving one level deeper than when it was first stated.
+
+**The ceiling is reverted, all fourteen sites**, including the policy-gate module that went green twice under it: *that module was green before the raise as well, and nothing ever recorded it as flaky, so two greens without a control is a correlation.* Keeping fourteen because two look fine is the error the reversion undoes. **Reverting is not a retreat** — the per-attempt fact remains true, but it is one of four signatures, and re-raising requires a derivation that *survives* measurement rather than one that predicts it. **A third derivation would be fitting a number to data.**
+
+*Kept from the attempt:* twelve lines of comment marking the three promptness budgets as **assertions, not liveness nets** — placed at the call sites, because *a ledger entry is not what a future reader has open when they decide to finish the job on three budgets that look unfixed beside eleven others.*
+
+### The instrument was the defect, again
+
+`repeat.ps1` captured each run with `Select-Object -Last 12`, so three failures in one run compressed to a single partial traceback — **and signature (d), the only repeat offender, has a name and no message.** In the author's own words: *"I wrote the rule that a flake investigation recording names and not messages is not an investigation, and then built a harness that truncates messages. A rule stated in a ledger does not enforce itself; the harness has to."*
+
+**That is the run's most durable lesson about its own method.** Every rule recorded here — messages not names, verify the ref, name the gate — is a rule about what a *tool* must do. Writing it down changes nothing until something enforces it.
+
+*Two orchestrator errors in this stretch, both mine:* I told the agent its repetition had been **killed**, inferring death from an empty process table when the run had **completed** — a process table cannot distinguish *finished* from *killed*, and I checked neither the log's mtime nor the exit status. Had it accepted that, seven of eight runs would have been discarded and `13 passed` reported as the only datum. And **I put two authors on one append-only ledger**, producing duplicate `step:11`/`12`/`13` headings; resolved by appending an index rather than renumbering, with both authors' "intruder" framings withdrawn as symmetrically mistaken about a cause that was mine.
+
 **Standing fact until proven otherwise: the live suite has never once been run to completion. No live-suite result may be quoted.**
 
 ### Incidents from that attempt, kept because the rules generalise
