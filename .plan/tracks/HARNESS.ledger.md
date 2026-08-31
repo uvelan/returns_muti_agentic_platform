@@ -3396,3 +3396,87 @@ something I was willing to assert without separating them.
 
 `scripts/linux/03_run_backend_quality.sh:24` and `.github/workflows/checks.yml:129`
 — the default backend `pytest` run. Verified by running the module itself, above.
+
+---
+
+## step:26 — F6: the module path is derived from the file, and the walker is left alone
+
+**The change.** `test_return_case_workflow_replay_compatibility.py:517-531`.
+
+    dotted = ".".join(path.relative_to(_test_root().parent).with_suffix("").parts)
+    module = importlib.import_module(dotted)
+
+replacing `importlib.import_module(f"tests.{path.stem}")`, which hard-coded one
+directory level against a walker that is deliberately repo-wide.
+
+**What I did not do, and why it is recorded here rather than in a commit
+message.** The cheaper fix was to scope the walker to `tests/*.py`, and I
+rejected it. Two reasons, the first decisive:
+
+1. It would make the red go away **by removing the region the defect is in**.
+   The only file the old importer could not reach is the only file that turns out
+   to be under-registered (step:27). Scoping is narrowing a check to the region
+   where it already passes, and it would be this branch committing the pattern
+   rule 13 exists to catch — with the twist that the check would be narrowed by
+   the very change that made it work.
+2. It contradicts the walker's own stated design, four lines above it at
+   `:425`: *"A worker for some other workflow is none of this rule's business
+   ... so the filter is on the workflow, not on the file."* The filter is
+   semantic by intent. Scoping would replace it with a positional one.
+
+Both reasons are written into the code as a comment at the fix site, because the
+next person to see this guard go red on a subpackage file will reach for exactly
+that scoping.
+
+**Effect on the merge tree** (`mt_f56` = merge tree `920bbe6c` + F5 + F6):
+
+    1 failed, 16 passed in 8.03s
+
+The importer now resolves `tests.acceptance.test_items_15_16_review_survives_a_
+kill_real_infra`, and the remaining failure is **not** a guard bug. It is F7 —
+the guard working, and reporting a real defect. That is step:27.
+
+### Injection — does the fixed importer still catch under-registration?
+
+An importer rewritten until it stops raising, that no longer detects the rot it
+was written for, would be worse than the bug. Two injections, both in throwaway
+copies of `mt_f56`.
+
+First, a **failed** injection, recorded because it says something true about the
+guard. I renamed the *method* `record_case_status` -> `record_case_status_RENAMED`
+on the top-level `_Probe` and the guard did not report it. That is correct, not a
+miss: `activity_probe.py:83-95` reads the **decorator's** `name=` argument, not
+the Python attribute, *"those are the names a worker registers under and the
+names the workflow asks for, and they are allowed to differ."* The rename left
+`@activity.defn(name="record_case_status")` intact, so nothing was
+under-registered and there was nothing to report. I had built the wrong
+injection; the guard was right and I was wrong.
+
+**Inj-F6-a — the control, a top-level probe under-registers.**
+`@activity.defn(name="record_case_status")` -> `name="record_case_status_GONE"`
+in `tests/test_return_case_workflow_real_infra.py`:
+
+    'test_return_case_workflow_real_infra.py:422 (_Probe)': {'record_case_status'}
+    'test_return_case_workflow_real_infra.py:454 (_Probe)': {'record_case_status'}
+    'test_return_case_workflow_real_infra.py:467 (_Probe)': {'record_case_status'}
+
+**Caught**, at every worker site, naming the activity.
+
+**Inj-F6-b — the one the old code could not have caught at all.** The same
+single-activity drop, in the **subdirectory** file
+`tests/acceptance/test_items_15_16_review_survives_a_kill_real_infra.py`:
+
+    'test_items_15_16_review_survives_a_kill_real_infra.py:566 (_GateProbe)':
+        {'record_clarification_answer', 'case_has_return_details',
+         'record_case_status', 'relay_clarification_to_support'}
+
+`record_case_status` appears alongside the three F7 activities. Under the old
+importer this file produced `ModuleNotFoundError` and **no finding of any kind** —
+step:24's traceback is that exact file. So the fix does not merely stop the
+crash: it extends real detection into a region the guard had never actually
+covered, which is the opposite of what scoping would have done.
+
+### Gate (rule 13)
+
+`scripts/linux/03_run_backend_quality.sh:24` and `.github/workflows/checks.yml:129`
+— the default backend `pytest` run, which collects this module unmarked.

@@ -515,7 +515,19 @@ def test_every_test_worker_registers_every_activity_the_workflow_calls() -> None
 
     missing: dict[str, set[str]] = {}
     for path, line, provider, _source in _case_workflow_workers():
-        module = importlib.import_module(f"tests.{path.stem}")
+        #: The module path is *derived from where the file is*, not assumed to be
+        #: `tests.<stem>`. The walker above is deliberately repo-wide -- its
+        #: filter is on the workflow, not on the file -- so it finds worker files
+        #: in subpackages, and `backend/tests/` has several. Hard-coding one level
+        #: raised `ModuleNotFoundError` on the first such file and would do so
+        #: again on the next one.
+        #:
+        #: Narrowing the *walker* to top-level files would have silenced this the
+        #: same way and must not be done: it would blind the guard to exactly the
+        #: subpackage where an under-registered probe actually lives, which is
+        #: narrowing a check to the region where it already passes.
+        dotted = ".".join(path.relative_to(_test_root().parent).with_suffix("").parts)
+        module = importlib.import_module(dotted)
         probe_class = getattr(module, provider, None)
         assert probe_class is not None, f"{path.name}:{line} has no class named {provider}"
         absent = called - declared_activity_names(probe_class)
