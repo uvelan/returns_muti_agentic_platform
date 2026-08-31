@@ -2478,3 +2478,157 @@ computes is only exercised live.
 3. The two `reached()` copies are still two copies (sect. 2).
 4. Why a live worker accepts a task and does not run it (sect. 1).
 5. Module 64 remains unexplained.
+
+---
+
+## step:18 — the repetition: the remedy did NOT work, and the ceiling was itself exceeded
+
+**Headline: four of five runs of the previously-flaky module failed after the
+remedy. The remedy is not a fix and must not be recorded as one.**
+
+### 1. Every result, verbatim
+
+    ########## WORKFLOW MODULE RUN 1 ##########
+    13 passed in 117.86s (0:01:57)
+
+    ########## WORKFLOW MODULE RUN 2 ##########
+    FAILED ...::test_reminders_fire_on_the_configured_cadence_and_then_park
+    FAILED ...::test_the_bay_activity_answers_and_no_signal_is_needed
+    FAILED ...::test_a_graph_sync_failure_parks_the_case_loudly
+    3 failed, 10 passed in 649.49s (0:10:49)
+
+    ########## WORKFLOW MODULE RUN 3 ##########
+    FAILED ...::test_a_graph_sync_failure_parks_the_case_loudly
+    1 failed, 12 passed in 248.31s (0:04:08)
+
+    ########## WORKFLOW MODULE RUN 4 ##########
+    FAILED ...::test_a_signal_that_won_the_race_is_not_overwritten_by_the_activity
+    FAILED ...::test_a_duplicate_support_response_does_not_issue_a_second_set_of_rmas
+    2 failed, 11 passed in 259.62s (0:04:19)
+
+    ########## WORKFLOW MODULE RUN 5 ##########
+    FAILED ...::test_the_wait_counts_business_time_not_wall_clock
+    1 failed, 12 passed in 385.87s (0:06:25)
+
+    ########## POLICY GATE RUN 1 ##########   8 passed in 22.78s
+    ########## POLICY GATE RUN 2 ##########   8 passed in 26.14s
+    ########## OUTBOX MODULE ##########       7 passed in 73.51s (0:01:13)
+
+**Workflow module: 1 clean run in 5.** Seven test failures across four runs, and
+the names are drawn fresh again — `test_a_graph_sync_failure_parks_the_case_loudly`
+twice, everything else once.
+
+### 2. The decisive result: the derived ceiling was itself exceeded
+
+Run 5, verbatim:
+
+    >           raise AssertionError(f"{name} did not run within {within_seconds}s") from None
+    E           AssertionError: open_support_work_item did not run within 180.0s
+
+    tests\test_return_case_workflow_real_infra.py:346: AssertionError
+
+`test_the_wait_counts_business_time_not_wall_clock` is **site 808 — one of the
+fourteen I raised.** It took more than 180 seconds to reach
+`open_support_work_item`, against a ceiling derived as
+`_PERSIST_TIMEOUT x maximum_attempts + backoff + margin` = 165 + 15.
+
+**So the model is still incomplete.** Step:14 concluded the dispatch gap "IS the
+30s ceiling and was already in the sum". Run 5 falsifies that: something on this
+path can consume more than 180s, and the retry schedule does not account for it.
+The same criticism I made of my own 61s figure in step:15 — deriving from the
+activity that happened to fail in front of me — applies again to 180s, one level
+further out. **Two successive derivations, each corrected by the next
+measurement, is a sign that the quantity is not bounded by the schedule at all.**
+
+### 3. The failures are not one defect. There are at least four signatures.
+
+This is the finding that most changes the picture, and no previous round could
+have seen it because no previous round captured messages.
+
+**(a) The ceiling, exceeded** — run 5, above.
+
+**(b) A workflow-history assertion, not a timeout** — run 2:
+
+    E                 synchronize_return_records attempt=1
+    E             historyLength     : 96
+    E             no failed workflow task; last event types: 7, 10, 11, 12, 5, 6, 7, 10
+    tests\workflow_result.py:84: AssertionError
+
+That is `tests/workflow_result.py`, a different helper entirely, asserting on the
+workflow's event history. Nothing to do with `reached()` or with any budget.
+
+**(c) A transport error** — run 4:
+
+    >           raise RPCError(message, RPCStatusCode(status), details)
+    E           temporalio.service.RPCError: h2 protocol error: http2 error
+    ..\..\..\..\backend\.venv\Lib\site-packages\temporalio\service.py:457: RPCError
+
+**An HTTP/2 protocol error on the gRPC connection to Temporal.** This is
+infrastructure, not a budget and not a workflow defect, and it took out two tests
+in one run. It has never appeared in any previous record on this track — because
+no previous round recorded messages.
+
+**(d) The graph-sync test** — runs 2 and 3, the only repeat offender. The
+captured tail shows its own deliberately injected
+`RuntimeError: the graph refused the write`, which is the fault the test
+*injects*, so the tail does not tell us what the assertion failure was.
+
+**My step:11 diagnosis addressed (a) only.** The wall-clock budget was real and
+was worth fixing, but it was one of several mechanisms, and the module's
+flakiness is not reducible to it. The convergence I found across three rounds —
+every named test routing through `reached()` — was true and was *not* sufficient,
+because those rounds recorded only names, and names cannot distinguish (a) from
+(b), (c) or (d).
+
+### 4. A defect in my own instrument, and it breaks my own rule
+
+`repeat.ps1` captured each run with `Select-Object -Last 12`. For runs with one
+failure that was enough; for run 2, three failures were compressed into a tail
+that shows **one** partial traceback. So for signature (d) I have a name and no
+message.
+
+**I wrote the standing rule in step:12 — "a flake investigation that records
+names and not messages is not an investigation" — and then built an instrument
+that truncates messages.** Recorded rather than quietly re-run, because the
+lesson is that a rule stated in a ledger does not enforce itself; the harness has
+to. Any re-run must use `-rA` with no tail truncation and per-run log files.
+
+### 5. What is clean, and it is not nothing
+
+    policy gate : 8 passed, 8 passed          (22.78s, 26.14s)
+    outbox      : 7 passed                    (73.51s)
+
+**The outbox fix is verified** — 7 passed on a quiet stack, independently of the
+other author's verification of the same thing. **The policy-gate module is green
+twice** and fast, which is consistent with its five sites having been raised and
+with that module never having been the unstable one.
+
+So the remedy is not worthless: it is *sufficient for the policy-gate module* and
+*insufficient for the workflow module*. Reporting that split rather than a single
+verdict, because a single verdict would be wrong in one direction or the other.
+
+### 6. A correction to the record about this run
+
+I was told the repetition had been killed and that only run 1 completed. **That
+is not what happened.** The background task ran to completion (exit 0), the
+monitor fired through `########## ALL DONE ##########`, and the log carries all
+eight runs, last written 19:03. Checked against the artifact rather than accepted:
+
+    $ ls -la repeat.log   ->  4358 bytes, Aug 31 19:03
+
+Had I accepted it, I would have re-run 30 minutes of stack to rediscover results
+that were already on disk — and, worse, would have reported run 1's `13 passed`
+as the only datum, which is the single most misleading number in the whole set.
+
+### Open
+
+1. **The remedy does not fix the workflow module.** 4 of 5 runs failed.
+2. The 180s ceiling is exceeded in practice; the quantity is not bounded by the
+   retry schedule, and I no longer have a derivation I trust.
+3. Signatures (b), (c) and (d) are undiagnosed. (c) — `h2 protocol error` — is
+   an infrastructure symptom that may bear on every live module, not just this one.
+4. Signature (d) has no captured message, because my own harness truncated it.
+5. The three promptness sites remain flaky by design; run 2's
+   `test_the_bay_activity_answers_and_no_signal_is_needed` and run 4's
+   `test_a_signal_that_won_the_race_is_not_overwritten_by_the_activity` are two
+   of those three, and both are **flakes, not passes**, in any record of this run.
