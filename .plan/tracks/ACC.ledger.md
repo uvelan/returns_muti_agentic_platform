@@ -805,3 +805,46 @@ exercise the property.
 
 **Next step:** step:05 — AMENDMENT-4's "never atomically" half, then the
 remaining groups. See the halt/scope note at the end of this ledger.
+
+---
+
+## step:05 — AMENDMENT-4: eventually once, and the gap asserted as a gap
+
+**Files:** `backend/tests/acceptance/test_amendment_4_omc_mirror_is_eventually_once.py`,
+`.plan/acceptance/amendment-4-eventually-once.md` (both new).
+
+Item 17's observable is unchanged; the mechanism is not a transaction. Both
+halves are asserted, and the second is the one nothing else in the suite makes:
+after a crash between the merge and the mirror the intermediate state is
+**observable** — record merged, no mirror row, no outbox row — which a
+transaction would make unrepresentable. Then the redelivery converges to exactly
+one of each, and a third delivery changes neither.
+
+Against the **real** `DurableOmcMirror` over a real `OperationalRepository` with
+both uniqueness constraints in force, not the classification suite's
+`_RecordingOmc` (which is right for what it asserts and has no rows and no
+outbox, so it cannot show an order). The redelivery is the load-bearing path:
+the merge writes nothing on it, so it is exactly where a mirror gated on `wrote`
+is lost permanently. The in-slice test covers that gating with the post-crash
+state **built by hand**; this reaches it by actually crashing.
+
+**Injections — three landed, one discarded:**
+
+| # | fault | result |
+| --- | --- | --- |
+| INJ-A4a | mirror gated on `wrote` | 1 failed, 1 passed — crash scenario red, **control green**, which is what proves the recovery path is the one under test |
+| INJ-A4b | outbox idempotency key fresh per attempt | 2 failed — the duplicate omc write item 17 forbids |
+| INJ-A4c | mirror hoisted above the merge | 1 failed, 1 passed — "the merge did not commit before the crash" |
+
+**An injection was discarded rather than recorded.** INJ-A4b's first form
+swapped the mirror's `$setOnInsert` for `$set` and produced
+`NotImplementedError: the double only upserts with an _id in the filter` — the
+Mongo double failing, not the property. No assertion ran. Replaced with the
+outbox-key form. Second refusal of a wrong-reason red on this run.
+
+**Commands:** `python -m pytest tests/acceptance -q` → **25 passed**.
+`python -m pytest tests -q` → **5211 passed, 1 failed, 10 skipped, 512
+deselected** (3:56) — the known pre-existing failure, **zero new**.
+`ruff check` / `ruff format` clean.
+
+**Next step:** the remaining scenario groups. See the scope note below.
