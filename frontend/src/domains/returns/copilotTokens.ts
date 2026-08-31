@@ -91,9 +91,47 @@ export const COPILOT_TOKENS = {
       "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-surface-container-high text-outline",
     /** A field the release marked required and the case cannot answer. */
     gap: "rounded-lg border border-error/40 bg-error-container/30 px-3 py-2 text-xs text-on-error-container",
-    /** Somebody else is editing this. Case-level, never one actor's contents. */
+    /**
+     * Somebody else is editing this. Case-level, never one actor's contents.
+     *
+     * **The foreground is `on-surface`, not `on-tertiary-container`.** This
+     * token shipped as the paired role at a `/40` tint and read at **1.29:1** --
+     * unreadable, on the one notice that tells an associate somebody else is
+     * editing the review they are about to approve.
+     *
+     * The rule it broke, which now holds across this file: *an opacity modifier
+     * is never applied to a `*-container` ground whose foreground is the paired
+     * `on-*-container` role.* The pair is contrast-tested **as a pair**, so
+     * tinting one side invalidates the test that licensed it. Use the container
+     * at full strength, or tint it and pick a foreground tested against the
+     * tint.
+     *
+     * Why that rule bites here and nowhere else: this palette's `tertiary` pair
+     * is **inverted** relative to its siblings. `secondary-container` and
+     * `error-container` are light grounds with dark `on-` roles, so a tint moves
+     * the ground *away* from the foreground and the pairing survives --
+     * `review.gap` at `/30` actually improves, to 8.68:1. `tertiary-container`
+     * is a dark brown with a *light* `on-` role, so the same tint moves the
+     * ground **towards** the foreground and the two meet in the middle. A
+     * reviewer cannot see that by reading class names: the token looks exactly
+     * like its siblings.
+     *
+     * Why not simply drop the tint: at full strength the pair reads 4.54:1,
+     * which passes a 4.5 threshold by 0.04 and is one palette tweak from
+     * failing. On this notice that is not a margin worth having.
+     *
+     * `on-surface` on the tint reads **9.08:1**, and this is the second time
+     * that answer has been reached in this file rather than a new idea --
+     * `support.attentionNotice` is the same ground, the same tint and the same
+     * foreground, for the same diagnosed reason. Two tokens, one rule. The
+     * `tertiary` family is kept because its documented meaning, "this is in
+     * somebody else's hands", is exactly what an edit conflict is.
+     *
+     * Measured by `reviewContrast.test.ts`, off the token string and the real
+     * palette -- the gate that did not exist when this shipped.
+     */
     conflict:
-      "rounded-lg border border-tertiary/50 bg-tertiary-container/40 px-3 py-2 text-xs text-on-tertiary-container",
+      "rounded-lg border border-tertiary/50 bg-tertiary-container/40 px-3 py-2 text-xs text-on-surface",
     field: {
       row: "grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)] gap-3 py-1.5 items-start",
       label: "text-xs font-medium text-outline pt-1.5",
