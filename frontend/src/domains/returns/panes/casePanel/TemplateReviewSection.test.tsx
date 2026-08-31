@@ -273,7 +273,7 @@ describe("clearing it", () => {
       ),
       http.post(
         "/api/v1/cases/:caseId/reviews/:reviewId/edit-state/resolve",
-        async ({ request }) => {
+        ({ request }) => {
           resolved = true;
           resolveCalls.push(request.url);
           return HttpResponse.json({

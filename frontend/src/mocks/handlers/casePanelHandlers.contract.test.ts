@@ -321,10 +321,14 @@ describe("the panel mock serves the conditional read the contract is built on", 
     expect(deadline).not.toBeNull();
     expect(Date.parse(deadline ?? "")).toBeGreaterThan(Date.now());
 
-    // **Premise 2: the clock genuinely moves between the two reads.** Real
-    // time, not a fake one: the point is to cross a boundary that a
-    // second-resolution leak would notice, and a mocked clock would only prove
-    // the mock held still.
+    // **Premise 2: the clock genuinely moves between the two reads.**
+    //
+    // Real time rather than `vi.setSystemTime`, and the honest reason is not
+    // that a fake clock could not detect the leak -- it could. It is that fake
+    // timers and MSW's `delay()` have to be reconciled (`shouldAdvanceTime`)
+    // before a request will resolve at all, which makes the test's result
+    // depend on that reconciliation being right. 1.1 s of real time cannot lie
+    // about having passed, and this is one test.
     const startedAt = Date.now();
     await new Promise((resolve) => setTimeout(resolve, 1_100));
     expect(Date.now() - startedAt).toBeGreaterThanOrEqual(1_000);
@@ -351,7 +355,7 @@ describe("the panel mock serves the conditional read the contract is built on", 
    * before comparing. The comparison then has something to be wrong about.
    */
   it("serves two principals the same bytes and the same ETag, commands included", async () => {
-    await fetch(`/api/v1/cases/${CASE}/reviews/${REVIEW}/approve`, {
+    const seeded = await fetch(`/api/v1/cases/${CASE}/reviews/${REVIEW}/approve`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: "Bearer principal-one" },
       body: JSON.stringify({
@@ -360,6 +364,10 @@ describe("the panel mock serves the conditional read the contract is built on", 
         canonical_approved_payload_hash: "0".repeat(64),
       }),
     });
+    // Asserted so a failure here reads as "the seed did not take" rather than
+    // surfacing two screens later as an empty `accepted_commands`. Premise 2
+    // below would still catch it; this just says where it went wrong.
+    expect(seeded.status).toBe(200);
 
     const seen: (string | null)[] = [];
     fixtureServer.events.on("request:start", ({ request }) => {

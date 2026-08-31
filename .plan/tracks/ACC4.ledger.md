@@ -581,3 +581,181 @@ passed. After: 62 files / 867 tests / 865 passed.** The 2 failures are
 FE-DEFECT-2's and are the same two throughout.
 
 **Gate (rule 13): `frontend-tests` (`npm test`).**
+
+---
+
+## step:05 — the outcome gates, with evidence rather than an assurance
+
+Contracts ruling 11 and §3's frontend-outcome-gate rule. Every named skill used
+here **was available**; no degradation to record on availability.
+
+### The static gates — `frontend-static` and `contracts`
+
+```
+$ npm run lint
+> eslint . --max-warnings=0
+$ npm run typecheck
+> tsc -b --pretty false
+```
+
+Both clean. The first run was **not**:
+
+```
+K:\…\src\domains\returns\panes\casePanel\TemplateReviewSection.test.tsx
+  276:29  error  Async arrow function has no 'await' expression  @typescript-eslint/require-await
+```
+
+An MSW resolver declared `async` with nothing to await. Fixed by dropping
+`async`, not by relaxing the rule.
+
+```
+$ npm run contracts:check
+> npm run contracts:generate && npm run contracts:served && git diff --exit-code openapi/return-platform.openapi.json src/api/generated/return-platform.d.ts
+🚀 openapi/return-platform.openapi.json → src/api/generated/return-platform.d.ts [501.5ms]
+Fully-required schemas verified against the published document: CaseFactProjection (11)
+```
+
+Clean, **including the `git diff --exit-code`**. That last part matters more
+than it looks: it means the committed OpenAPI is **byte-identical to what the
+backend generates today**, which converts FE-DEFECT-3 from "the document might
+be stale" into a measured fact — `clarifications`, `parked_messages` and
+`support_digest` are on the live backend DTO, and AMENDMENT-6's retirement has
+not been executed anywhere.
+
+### MSW conformance
+
+`casePanelHandlers.contract.test.ts` is the conformance gate and it runs
+green (20/20). Its own strength was measured rather than assumed: INJ-F7a added
+an undeclared key to the mock panel body and it reddened on
+`additionalProperties: false`, so the document→mock direction genuinely bites.
+
+### Token reuse — `design:design-system`, met by injection
+
+`review.conflict` is `bg-tertiary-container/40 … text-on-surface`, an M3 role
+pairing with no hex. It is measured, not asserted, by
+`reviewContrast.test.ts:297`, which requires **≥ 7:1** — and that file exists
+because `review.conflict` originally shipped at **1.29:1** and was found by an
+audit rather than by a gate. It also has its own vacuity guard
+(*"computes real ratios -- the helper is not agreeing with itself"*).
+
+Worth recording for the map: `supportTokens.test.ts` is scoped to the `support`
+group **by an explicit decision in its header**, so it does not cover `review`.
+That is not a gap — `reviewContrast.test.ts` covers `review` under its own
+ownership — but a reader who found only the first file would conclude wrongly.
+
+### Accessibility — `design:accessibility-review`, WCAG 2.1 AA
+
+Skill invoked; audit run against the conflict surface
+(`TemplateReviewSection.tsx` banner ~252, "Keep this version", Send ~590).
+
+| criterion | finding | evidence |
+| --- | --- | --- |
+| 1.1.1 non-text | `<Users aria-hidden="true">` — decorative icon correctly hidden | source |
+| 1.4.3 contrast | `review.conflict` ≥ 7:1, against AA's 4.5:1 | `reviewContrast.test.ts:297`, gated by `frontend-tests` |
+| 2.1.1 / 2.4.3 keyboard | Send uses `aria-disabled`, **never `disabled`**, so it stays in the tab order and can be discovered | **INJ-F12** |
+| 3.3.1 error identification | the block names its cause in words — "Settle the other edit first." — not a code | new test |
+| 4.1.2 name/role/value | Send announces disabled **and** carries `aria-describedby="send-blocked-reason"` | **INJ-F12** |
+
+**INJ-F12** — `aria-disabled={busy || blocked}` + `aria-describedby` replaced by
+`disabled={busy || blocked}`:
+
+```
+ FAIL  src/domains/returns/panes/casePanel/CasePanel.test.tsx > the keyboard path: review, edit, send > keeps a blocked Send focusable and says why
+ FAIL  …/TemplateReviewSection.test.tsx > what an unresolved conflict does to Send > blocks it, and names the conflict as the reason rather than a missing field
+ FAIL  …/TemplateReviewSection.test.tsx > what an unresolved conflict does to Send > leaves Send pressable once nothing is in conflict
+ FAIL  …/TemplateReviewSection.test.tsx > clearing it > is done by the canonical-edit write, and the panel then unblocks
+ Test Files  3 failed | 59 passed (62)
+      Tests  6 failed | 861 passed (867)
+```
+
+Pinned already on the **gap** limb by `CasePanel.test.tsx`; now pinned on the
+**conflict** limb too. Verdict **A**.
+
+Two a11y findings, both reported and neither repaired:
+
+**FE-DEFECT-5 — the a11y sweep item 24–25 asks for is gated by nothing.** The
+repository's only axe run is `frontend/tests/canonical-routes.spec.ts`, a
+Playwright spec.
+
+```
+$ grep -rn "playwright\|test:e2e" .github/workflows/*.yml
+$ (no output)
+```
+
+No workflow runs Playwright at all, and `vitest`'s `include` is `src/**`, which
+does not match `tests/*.spec.ts`. `reviewContrast.test.ts` states this for its
+own token; the grep generalises it: **the sweep is not executed by CI on any
+push.** Same shape as STATUS's "a guard with no gate", in the a11y plane.
+
+**FE-DEFECT-6 — a conflict appearing mid-draft is never announced.** The banner
+arrives on a background poll and carries no `role="status"` / `aria-live`. This
+console already has the pattern and uses it deliberately elsewhere — the
+announcer in `supportSections.tsx` exists precisely to tell "whoever is not
+looking at the screen" that an artifact arrived or a message was parked — and
+its signature is `artifacts|unbound|parked` with **no conflict term**. So a
+screen-reader associate typing into a draft learns about the other person's
+edit only when Send refuses. Not invented against an outside standard: measured
+against the project's own established pattern.
+
+### UX copy — `design:ux-copy`
+
+The conflict path's three strings, judged against §3's list (send confirmation,
+"support is asking you this", do-not-mix, empty/error states):
+
+* *"Somebody else is editing this draft"* — names the person, not the flag.
+* *"Their wording is not shown here — it is theirs until it is agreed."* — the
+  load-bearing one. §6 keeps private edit contents out of the shared payload, so
+  there is genuinely nothing to show; without this sentence the associate hunts
+  for text that does not exist. **This is the empty-state copy for a deliberate
+  absence**, and it is now asserted rather than admired.
+* *"Settle the other edit first."* — an instruction with a verb, distinct from
+  the gap limb's *"Fill the missing details first."* The distinctness is what
+  makes the conflict limb observable; the new test asserts the presence of one
+  **and the absence of the other**.
+
+### Code review — `engineering:code-review`
+
+Skill invoked on the ACC4 diff (test files only, 462 insertions, no production
+code). Two findings raised against my own work, **both acted on**:
+
+1. **An overstated justification.** The wall-clock test's comment claimed a
+   mocked clock "would only prove the mock held still". Not true — a fake clock
+   *would* detect the leak. The honest reason for real time is that fake timers
+   and MSW's `delay()` must be reconciled (`shouldAdvanceTime`) before a request
+   resolves at all, which makes the result depend on that reconciliation. A
+   comment that reads like the mechanism but is not one is the exact defect this
+   audit keeps finding; corrected rather than left.
+2. **An unasserted precondition.** The principal test's seeding approve had its
+   status unchecked; a 409 would have surfaced two screens later as an empty
+   `accepted_commands`. `expect(seeded.status).toBe(200)` added — premise 2 would
+   still have caught it, but now the failure says where.
+
+Noted and **not** changed: the `removeAllListeners` call is not in a `finally`,
+so a throw between registration and removal leaks a listener. It matches the
+existing pattern in `casePanel.test.ts:58`, and the listener only appends to a
+closed-over array that is then discarded, so the blast radius is nil. Recorded
+so the choice is visible rather than accidental.
+
+### Re-verified after the review edits
+
+```
+$ npm run lint     (clean)
+$ npm run typecheck (clean)
+$ npx vitest run --maxWorkers=2
+ Test Files  1 failed | 61 passed (62)
+      Tests  2 failed | 865 passed (867)
+```
+
+And both guards re-injected together, to prove the review edits did not soften
+them:
+
+```
+     × holds the ETag across a real wall-clock second, with the deadline ticking 1203ms
+     × serves two principals the same bytes and the same ETag, commands included 156ms
+ Test Files  1 failed (1)
+      Tests  2 failed | 18 passed (20)
+```
+
+**Gates (rule 13):** the two new/extended test files run in **`frontend-tests`**
+(`npm test`); `lint`/`typecheck` in **`frontend-static`**; the OpenAPI and MSW
+conformance in **`contracts`**. Every guard ACC4 adds is executed on every push.
