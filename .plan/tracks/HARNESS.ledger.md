@@ -3082,3 +3082,152 @@ which is the second half of the same lesson.
 ### Open at the time of writing
 
 The change is **not applied**. The A/B is **not run**.
+
+---
+
+## step:23 — the A/B, the forced checkpoint, and a correction to step:21's mechanism
+
+Three results: a validated latency fix, an **inconclusive** causal experiment,
+and a **correction to my own headline finding** that matters more than either.
+
+### 1. The A/B on the setting — uninformative on failures, decisive on latency
+
+    A: fsync=off, synchronous_commit=off      B: reverted (fsync=on)
+      13 passed in 41.99s                       13 passed in 71.02s
+      13 passed in 41.84s                       13 passed in 79.71s
+      13 passed in 39.48s                       13 passed in 97.30s
+      13 passed in 41.82s                       13 passed in 83.10s
+      13 passed in 41.16s                       13 passed in 75.11s
+      policygate  9.49s /  7.30s                policygate 22.85s / 23.73s
+      outbox     25.89s                         outbox     21.50s
+
+**5/5 clean in both arms**, so on "does the fix remove the flakiness" this
+experiment says **nothing**. At the baseline 2-in-5 rate, P(0 in 5) is 7.8%, and
+it happened twice. My step:22 prediction that 5/5 would confirm success was
+badly set: **I chose a bar without checking whether the sample size could clear
+it**, which is a prediction that could only ever confirm.
+
+**What the A/B does establish, on non-overlapping ranges:**
+
+    workflow module   39.5-42.0s (off)   vs   71.0-97.3s (on)      ~2x
+    policy gate        7.3- 9.5s (off)   vs   22.9-23.7s (on)      ~2.5x
+    outbox (control)  25.9s      (off)   vs   21.5s      (on)      unchanged
+
+**The outbox module is the control and it did not move.** It is Mongo-only and
+never touches Temporal's Postgres. So this is not "the machine got faster".
+
+Temporal persistence errors across a full A-arm run window (909 log lines):
+**0 / 0 / 0 / 0** for failed-transaction, deadline-exceeded, shard-unknown and
+shard-reacquisition.
+
+### 2. The forced-checkpoint experiment — INCONCLUSIVE, and I am stopping
+
+Rather than buy 30 passive runs to catch a ~40% coincidence, the trigger was
+forced: a loop issuing `CHECKPOINT;` every 5 seconds against Temporal's Postgres
+throughout the run, so any critical wait was guaranteed to overlap one.
+
+    ARM=fsync_on, forced checkpoints, 3 runs
+      run 1 [ 74s]  13 passed
+      run 2 [122s]  1 failed, 12 passed
+            FAILED test_a_bay_failure_does_not_stop_the_return
+              E  AssertionError: open_support_work_item did not run within 30.0s
+      run 3 [ 98s]  13 passed
+
+A failure did appear. **It is not attributable to the forced checkpoints**, and
+the reason is in the checkpoint log itself. Of 49 forced checkpoints, the first
+cleared the restart backlog (1671 buffers, write=156.6s) and **every subsequent
+one was trivial**:
+
+    buffers= 820  write=0.076s   buffers=330  write=0.268s
+    buffers= 274  write=0.280s   buffers=242  write=0.108s
+    buffers=  48  write=0.068s   buffers= 37  write=0.034s
+    ... 47 more, all write= 0.03-0.55s
+
+**The experiment did not create the condition it was built to create.** A manual
+`CHECKPOINT` is immediate rather than spread, and issuing one every 5 s keeps the
+dirty set tiny, so I produced 48 cheap checkpoints instead of one heavy stall.
+One failure in three runs is indistinguishable from the background rate.
+
+**Verdict: inconclusive, for a reason I can state.** Per the standing
+instruction, I am stopping here rather than buying another hour to try again.
+
+### 3. The correction: step:21 misread the checkpoint numbers
+
+This is the part that outlives the experiment. Step:21 led with:
+
+> checkpoint complete: wrote 1830 buffers (11.2%); write=174.354 s
+> **1830 buffers is about 14 MB. It took 174 seconds to write.**
+
+and read that as disk starvation. **It is not.** The full line, and the config:
+
+    wrote 1753 buffers  write=175.638s  sync=3.016s  total=180.411s
+    checkpoint_completion_target = 0.9
+    checkpoint_timeout           = 5min
+
+`checkpoint_completion_target=0.9` means Postgres **deliberately spreads** a
+timed checkpoint's write phase across 0.9 x 300s = **270 seconds**, to avoid an
+I/O spike. A 175-second write phase inside a 270-second budget is Postgres
+working exactly as designed. The phase that actually touches the disk
+synchronously is `sync=`, and it is **3.0 seconds**.
+
+The manual checkpoints in section 2 prove it independently: unspread, the same
+database wrote 820 buffers in **0.076 s**.
+
+**So the headline number in step:21 was normal behaviour misread as pathology.**
+I had a real mechanism, reached for the largest number in the log to illustrate
+it, and did not check what that number meant.
+
+**The mechanism itself survives, correctly located.** It is **WAL commit
+latency**, not checkpoints:
+
+    wal_sync_method = fdatasync
+    pg_test_fsync, fdatasync:  7.949 ops/sec   125797 usecs/op   (~126 ms)
+
+With `synchronous_commit=on`, **every Temporal transaction waits ~126 ms for a
+WAL flush**, which caps the server's commit rate and is what produced
+`context deadline exceeded` and `shard status unknown`. `synchronous_commit=off`
+removes that wait. That is why the fix works, and it is a different sentence
+from the one step:21 wrote.
+
+Note also that step:21 quoted `open_datasync` at 30 ms as the relevant figure.
+This server uses `fdatasync`, at **126 ms** — four times worse. I quoted the
+wrong row of my own measurement.
+
+### 4. What is established, and what is not
+
+**Established:**
+- Durable-write latency on this volume is ~126 ms per WAL flush against a
+  sub-millisecond expectation (`pg_test_fsync`, `fdatasync`).
+- `fsync=off` + `synchronous_commit=off` makes the live suite **~2x faster** on
+  every Temporal-dependent module, with a Mongo-only control unmoved.
+- It takes Temporal's persistence errors to **zero** across a full run window.
+
+**Not established:**
+- **That it removes the test flakiness.** Both A/B arms were clean; the forced
+  trigger was mis-built. The link between the storage fix and the failure rate
+  is **unproven**, and nothing in this ledger should be read as proving it.
+- Whether checkpoint overlap is a trigger at all. Section 2 did not test it.
+
+### 5. Final state
+
+`compose.yaml` in the external project carries the change, **left uncommitted**
+(`M compose.yaml`) so its owner decides whether it becomes permanent. `SHOW
+fsync` / `SHOW synchronous_commit` both return `off`; stack healthy. Revert is
+one `git checkout -- compose.yaml` plus a `docker compose up -d
+temporal-postgresql`.
+
+**The gate question is unchanged by all of this.** With the flakiness link
+unproven, the honest position is the one already recorded: **this suite cannot
+be a hard gate on this hardware, and its failures are flakes that are never
+re-run into passes.** The 2x speedup is worth having on its own and does not
+depend on settling the flakiness question.
+
+### Open
+
+1. The storage-fix / flakiness link is **unproven** (sect. 4).
+2. Signatures (b) and (d) never recurred and remain uncharacterised. (b) may be
+   a product defect; **nothing was changed on that suspicion.**
+3. Module 64 and `test_order_line_reservations_real_infra.py` remain undiagnosed.
+4. The branch fails `ruff format --check`, pre-existing (step:20).
+5. The runner (author A's step:12 + my step:17) has still never been run end to
+   end, and the live suite has still never been run to completion.
