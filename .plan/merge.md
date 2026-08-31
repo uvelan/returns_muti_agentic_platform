@@ -67,9 +67,24 @@ Phase 2 left a category B: *"tests exist, found by name, bodies never read, neve
 
 The seven added tests are each injected against, and the sent-payload one **asserts its own premise** — that the canonical edit and the draft actually differ — so it cannot decay back into vacuity. That is the right shape for a test closing a hole of this kind: it fails if the *conditions that make it meaningful* stop holding, not only if the guarantee breaks.
 
+### The remedy: a falsifiable map, and the two disciplines that keep it honest
+
+The mis-pointed-row finding was turned on the record that produced it. STATUS's category tables **are** a map of exactly the kind found to be wrong, so phase 3 replaced trust with a check: ~18 rows, one per guarantee actually injected against, each naming **the mechanism to delete and the test that reddens** — e.g. *delete `review_aggregate.py:751` → `test_approval_refuses_a_stale_canonical_edit_version` reddens, that one test only, while the 93 in the named review-gate files stay 96/96 green.* A row naming a file where tests were found asks for trust; a row naming a deletion and its consequence is checkable in one command. Cost was near zero — every entry had already been measured.
+
+**Two disciplines were applied deliberately to stop the map becoming the next over-trusted artifact:**
+
+1. Every test name was re-verified with `grep -rn "def <name>"` against `tests/` rather than transcribed from run output — the same rule that caught interrupted work four times on this run.
+2. **Guarantees not injected against are absent, and the table says absence means *unverified*, never *fine*.** A completeness-implying map would recreate precisely the defect it exists to fix.
+
+That second point is the general lesson and it outlives this audit: **a map's honesty lives in what it refuses to imply about its own gaps.**
+
 ### Handed to the gate's owner
 
-`test_a_rejected_return_still_opens_no_work_item` is red on the merge tip: its `_Runtime` double never grew a `patched` method when production grew a `workflow.patched` call. Production correct, harness stale — **ACC-2's handed-off finding recurring in a third file.** The consequence nobody had stated: **one branch of item 20's deploy-replay pair is unexercised in that module**, because the call raises before the branch can be taken. Item 20's "both patch branches audited" holds for the branches phase 2 flipped directly, not for this module's coverage of them.
+`test_a_rejected_return_still_opens_no_work_item` is red on the merge tip: its `_Runtime` double never grew a `patched` method when production grew a `workflow.patched` call. Production correct, harness stale — **ACC-2's handed-off finding recurring in a third file.**
+
+**The consequence, corrected by RV and larger than first reported.** Phase 3 initially wrote *"one branch of item 20's deploy-replay pair is unexercised."* In fact `_Runtime` has no `patched` attribute at all, and `return_case_workflow.py` calls `workflow.patched` at **three** sites guarding **three distinct gates** — `_PATCH_V3_CLARIFICATION_ROUND_TRIP` (1672), `_PATCH_STRUCTURED_SUPPORT_DRAFT` (2247), `_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE` (2294). Since `patched` appears nowhere in that 51-test module and is never monkeypatched in, any test reaching any site raises `AttributeError`; 50 of 51 pass, so **none of the 50 reaches any site.** The correct statement is **three gates, six limbs, none exercised.**
+
+*Why the correction matters more than the arithmetic:* as first written, the record would have sent the harness owner to fix one branch and then believe they were done — **a sixth of the work, followed by false confidence.** An understated finding misdirects its owner exactly as a mis-pointed row does, one level up. Fitting thing to have gotten wrong in this particular audit, and it was caught because RV re-derived the claim instead of accepting it.
 
 *Not reached, and recorded as unexecuted rather than green:* AMENDMENT-5's four retry-409 tests, item 20's replay suite, item 8's prompt-injection fixture (read, never injected against), `graph:`/`literal:` bindings, ~85 other review-gate tests, and 20 further ladder scenarios.
 
