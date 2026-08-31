@@ -141,3 +141,116 @@ $ ./.venv/Scripts/python.exe -m pytest tests/operations/test_support_message_cla
 ......................                                                   [100%]
 22 passed in 2.43s
 ```
+
+---
+
+## step:02 — item 8, cross-assignment. One blind spot found and closed; one injection discarded.
+
+Item 8's shape: two records on one case, an artifact for record B — can any path
+bind it to A? There are **two** mechanisms, and the suite covered only one.
+
+### INJ-B3 — the decision layer cross-assigns (`bind_artifact`)
+
+`artifact_binding.py:132-137`, `return_record_id=str(matched[...])` replaced with
+`records[0][...]`. Identical whenever the case holds one record; cross-assigns
+whenever it holds several. Run against the **whole backend suite**:
+
+```
+$ ./.venv/Scripts/python.exe -m pytest tests -q -p no:randomly
+FAILED tests/operations/test_artifact_binding.py::TestBindingRules::test_an_artifact_naming_a_known_reference_binds_to_that_record
+FAILED tests/test_cumulative_support_outcomes.py::test_a_rejected_return_still_opens_no_work_item
+2 failed, 5232 passed, 10 skipped, 514 deselected, 2 warnings in 266.23s (0:04:26)
+```
+
+**CAUGHT** — by `tests/operations/test_artifact_binding.py:59`, which is the real
+cross-assignment case (`records = [rec-1/RMA-1, rec-2/RMA-2]`, artifact bound to
+`RMA-2`, asserts `rec-2`). STATUS listed items 7–8 only against
+`test_support_message_classification.py`; **S1's own module suite was never in
+the category-B row**, and it is where this property actually lives. The decision
+half of item 8 is therefore **A**.
+
+(The second failure is unrelated — see step:03.)
+
+### INJ-B4 — DISCARDED, green for the wrong reason
+
+`_merge_bound_artifact._attempt`, the record search replaced with
+`next(iter(await records.list_return_records(case_id)), None)`. Intended as the
+persistence-layer cross-assignment. Whole-suite run:
+
+```
+$ ./.venv/Scripts/python.exe -m pytest tests -q -p no:randomly
+FAILED tests/test_cumulative_support_outcomes.py::test_a_rejected_return_still_opens_no_work_item
+1 failed, 5233 passed, 10 skipped, 514 deselected, 2 warnings in 267.42s (0:04:27)
+```
+
+Nothing caught it — and reading the source explains why the injection was *not
+the one I thought I had written*. `update_return_record` is called with
+`str(decision.return_record_id)` (line 263), not with the found document's id;
+only `expected_version` and the redelivery check come from `stored`. So B4
+corrupts the version read, **not the write target**, and produces no
+cross-assignment at all. Re-run against the strengthening below, it left the
+cross-assignment test green and reddened only the `LookupError` one — with
+`RuntimeError: coroutine raised StopIteration`, a shape that is not the
+business failure either.
+
+**Discarded**, in the phase-2 sense: an injection aimed at a line that reads like
+the mechanism rather than the line that is one. Recorded because the reasoning
+is the finding.
+
+### The blind spot it exposed anyway
+
+Every test in `TestBoundPersistence` (lines 203-241) stores **exactly one
+record**. `records[0]` and "the record the decision names" are then the same
+document, so the selection step in `_merge_bound_artifact` cannot be wrong and
+the `LookupError` branch cannot be reached other than by an empty case. This is
+the category-B family exactly: *green because the inputs could not exercise the
+property*. Two tests added at `tests/operations/test_artifact_binding.py`:
+
+* `test_a_bound_artifact_merges_onto_the_named_record_not_the_first` — two
+  records, artifact bound to the second; asserts the write **and** the untouched
+  neighbour, because asserting rec-2 alone would pass if rec-1 were written too;
+* `test_a_decision_naming_a_record_the_case_does_not_hold_refuses` — the merge
+  raises rather than falling back to a neighbour, which is only a meaningful
+  claim when a neighbour exists.
+
+Green on the clean tree:
+
+```
+$ ./.venv/Scripts/python.exe -m pytest tests/operations/test_artifact_binding.py -q
+....................                                                     [100%]
+20 passed in 0.97s
+```
+
+### INJ-B5 — the faithful cross-assignment, against the strengthening
+
+Search picks `records[0]` **and** the write targets `str(stored["returnRecordId"])`
+— the record the broken search found. This one really does cross-assign.
+
+```
+FAILED tests/operations/test_artifact_binding.py::TestBoundPersistence::test_a_bound_artifact_merges_onto_the_named_record_not_the_first
+FAILED tests/operations/test_artifact_binding.py::TestBoundPersistence::test_a_decision_naming_a_record_the_case_does_not_hold_refuses
+2 failed, 18 passed in 1.29s
+```
+
+and the assertion that reddens is the business failure, named:
+
+```
+>       assert store.updates == [("rec-2", {"trackingReference": "TRK-9"})]
+E       AssertionError: assert [('rec-1', {'...e': 'TRK-9'})] == [('rec-2', {'...e': 'TRK-9'})]
+E         At index 0 diff: ('rec-1', {'trackingReference': 'TRK-9'}) != ('rec-2', {'trackingReference': 'TRK-9'})
+tests\operations\test_artifact_binding.py:266: AssertionError
+```
+
+Support's tracking number for RMA-2 written onto RMA-1. The strengthening is
+itself injected-against, so it is not another blind test.
+
+Reverted; `git diff` touches **no `src/`**:
+
+```
+$ git diff --stat
+ backend/tests/operations/test_artifact_binding.py | 45 +++++++++++++++++++++++
+ 1 file changed, 45 insertions(+)
+$ ./.venv/Scripts/python.exe -m pytest tests/operations/test_artifact_binding.py tests/operations/test_support_message_classification.py -q
+..........................................                               [100%]
+42 passed in 3.99s
+```
