@@ -733,3 +733,104 @@ is the orchestrator's call, and it now has a number instead of an adjective.
 **Next step:** step:10 â€” a per-module timeout, so the gate cannot hang; then the
 acceptance-gate remedy, which is an orchestrator decision and not this branch's
 to take.
+
+---
+
+## step:10 â€” a ceiling per module, so the gate cannot hang
+
+Closes the defect step:09 recorded against my own step:08 runner: no per-module
+timeout, so the hang in `test_order_line_reservations_real_infra.py` took the
+whole gate with it and the run ended at 29 of 71 modules.
+
+**Files touched:** `scripts/dev/run_real_infra_suite.sh` only.
+
+Each module now runs under `timeout --kill-after=30s ${LIVE_MODULE_TIMEOUT}s`,
+default **900s**. Chosen against measurement rather than taste: the slowest
+module observed *finishing* in step:09 was
+`test_order_discovery_fulltext_real_infra.py` at **276.85s**, so the ceiling is a
+little over three times the worst honest case. Overridable by environment for a
+deliberately slow selection.
+
+Three details that matter more than the timeout itself:
+
+- **A timeout is not a failure with a count â€” it is the absence of a result.**
+  Handled *before* the summary is parsed, because a killed pytest leaves a
+  partial log whose last line is a row of progress dots; parsing that would
+  invent counts for a module that produced nothing. The module is instead marked
+  counts-unreadable, which makes the run refuse to report totals as its result.
+- **`timeout` missing is announced, not degraded quietly.** If coreutils
+  `timeout` is not on `PATH` the script says so on stderr and runs without a
+  ceiling. An operator should know which of the two runners they are holding.
+- The narrowed-path `exec` now removes the collection temp file and clears the
+  trap first â€” `exec` replaces the shell, so the `EXIT` trap never fired and the
+  file leaked on every single-file invocation.
+
+### Proved, with a module that actually hangs
+
+A temporary module doing `time.sleep(3600)`, placed to sort **first**, and a green
+module placed to sort **last** so a green tail cannot mask the result.
+`LIVE_MODULE_TIMEOUT=25` to keep the proof short:
+
+    $ LIVE_MODULE_TIMEOUT=25 bash scripts/dev/run_real_infra_suite.sh --ignore=...
+    SCRIPT EXIT: 1
+    collection: 2/2948 tests collected (2946 deselected) in 15.03s
+    running 2 modules, one process each (ceiling 25s per module)
+
+    tests\api\test_aaa_hang_selftest_real_infra.py !!! tests/api/test_aaa_hang_selftest_real_infra.py TIMED OUT after 25s -- no result; the module did not finish
+
+    ================== live-infrastructure suite: summary ==================
+    modules run     : 2
+    modules passed  : 1
+    modules failed  : 1
+    tests passed    : 1
+    tests failed    : 0
+    wall time       : 0m 42s (one process per module)
+
+    counts could not be read for 1 module(s); the totals above are
+    incomplete and must not be quoted as the suite's result:
+      ? tests/api/test_aaa_hang_selftest_real_infra.py
+
+    FAILED modules:
+      x tests/api/test_aaa_hang_selftest_real_infra.py
+          exit 124 -- TIMED OUT after 25s -- no result; the module did not finish
+
+    the live-infrastructure suite FAILED (1 of 2 modules).
+
+The run terminates, exits **1**, names the hung module, and â€” the part worth
+having â€” declines to quote its own totals, because one module produced no result.
+`tests failed: 0` sits next to a failed run and is explicitly labelled
+incomplete rather than read as a green.
+
+### Population pin, re-run again
+
+Both temporary modules were deleted, and the pin was run with them present and
+after removing them, as in step:08:
+
+    $ python -m pytest tests/test_return_case_workflow_replay_compatibility.py -q
+    17 passed in 9.29s
+
+    $ git status --porcelain
+     M scripts/dev/run_real_infra_suite.sh
+
+### What step:10 does not do
+
+It does not make the acceptance run trustworthy. **Step:09's negative result
+stands: per-module execution does not eliminate the spurious failures**, because
+the state driving them is on the shared Temporal server and no process boundary
+touches it. A ceiling stops the gate hanging; it does not stop the gate lying
+about a flake. RV's ruling is still undischarged and the remedy is an
+orchestrator decision.
+
+**Open, and handed on:**
+
+1. **The acceptance-gate remedy.** Per-module was the wrong choice of RV's two.
+   What remains is quarantine (rejected here on coverage grounds â€” that rejection
+   now costs more than it did), adjudicated re-runs recorded *as flakes rather
+   than as passes*, or a server-side reset between modules. Orchestrator's call.
+2. **`test_integration_outbox_index_plans_real_infra.py`** â€” two deterministic
+   failures from S2 step:02's index addition against a stale test pin. S2's
+   slice. Not touched here.
+3. **The hang in `test_order_line_reservations_real_infra.py`** â€” real, and now
+   bounded rather than diagnosed. Provenance unestablished.
+4. **The suite has still never been run to completion.** 29 of 71 modules is what
+   exists. No one should quote a live-suite result until it has.

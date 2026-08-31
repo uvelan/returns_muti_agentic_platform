@@ -176,6 +176,9 @@ done
 if (( narrowed )); then
   echo "arguments name a specific selection -- running it in one process"
   echo
+  # `exec` replaces this shell, so the EXIT trap never fires. Clean up first.
+  rm -f "$collect_out"
+  trap - EXIT
   exec "$PYTHON" -m pytest -m live_infra "$@"
 fi
 
@@ -196,7 +199,22 @@ if (( ${#modules[@]} == 0 )); then
   exit 1
 fi
 
-echo "running ${#modules[@]} modules, one process each"
+# The per-module ceiling. 900s is chosen against measurement, not taste: the
+# slowest module observed finishing took 277s, so this is a little over three
+# times the worst honest case -- loose enough that a slow module is never cut
+# short, tight enough that a hang costs fifteen minutes instead of the run.
+# Override for a deliberately slow selection:  LIVE_MODULE_TIMEOUT=1800 ...
+LIVE_MODULE_TIMEOUT="${LIVE_MODULE_TIMEOUT:-900}"
+TIMEOUT_CMD="$(command -v timeout || true)"
+if [[ -z "$TIMEOUT_CMD" ]]; then
+  # Said out loud rather than degraded quietly: without `timeout` a hanging
+  # module still hangs the run, and the operator should know which of the two
+  # runners they are holding.
+  echo "warning: coreutils 'timeout' not found -- modules run without a ceiling," >&2
+  echo "         so a hanging module will hang this run indefinitely." >&2
+fi
+
+echo "running ${#modules[@]} modules, one process each (ceiling ${LIVE_MODULE_TIMEOUT}s per module)"
 echo
 
 suite_started=$SECONDS
@@ -220,28 +238,54 @@ for module in "${modules[@]}"; do
   rc=0
   # `|| rc=$?` rather than `set +e`: the loop must survive every failure, and it
   # must survive it the same way each time.
-  "$PYTHON" -m pytest -m live_infra "$module" 2>&1 | tee "$log" || rc=${PIPESTATUS[0]}
-
-  # pytest's last non-empty line is its own summary; take it verbatim rather
-  # than recomposing one.
-  summary="$(grep -v '^[[:space:]]*$' "$log" | tail -1 | sed 's/^=*[[:space:]]*//; s/[[:space:]]*=*$//')"
-  [[ -n "$summary" ]] || summary="(no output)"
-
-  # The leading space matters. `[^0-9]` before the digits needs something to
-  # match, and `8 passed in 24.51s` begins with the digit -- so without it every
-  # all-green module parsed as unreadable and every `N failed` that opened a
-  # summary line was dropped. Caught by the deliberate-failure proof, which
-  # reported `tests failed: 0` next to a failing module.
-  padded=" $summary"
-  n_passed="$(printf '%s' "$padded" | sed -n 's/.*[^0-9]\([0-9]\+\) passed.*/\1/p')"
-  n_failed="$(printf '%s' "$padded" | sed -n 's/.*[^0-9]\([0-9]\+\) failed.*/\1/p')"
-  n_errors="$(printf '%s' "$padded" | sed -n 's/.*[^0-9]\([0-9]\+\) error.*/\1/p')"
-  if [[ -z "$n_passed$n_failed$n_errors" ]]; then
-    # Unreadable is not zero. Say so, and let it count against the run.
-    counts_unparsed+=("$module")
+  #
+  # The timeout is not belt-and-braces. `test_order_line_reservations_real_infra`
+  # was observed stopping dead after 30 of its 33 tests -- blocked, 6s of CPU and
+  # no growth -- and with no ceiling it took the whole gate with it. An
+  # acceptance gate that never returns is worse than one that returns a wrong
+  # number: a wrong number gets adjudicated, an unterminated run gets re-run
+  # until somebody gives up. Silence is the one failure mode the aggregate
+  # argument above does not otherwise cover.
+  if [[ -n "$TIMEOUT_CMD" ]]; then
+    "$TIMEOUT_CMD" --kill-after=30s "${LIVE_MODULE_TIMEOUT}s" \
+      "$PYTHON" -m pytest -m live_infra "$module" 2>&1 | tee "$log" || rc=${PIPESTATUS[0]}
+  else
+    "$PYTHON" -m pytest -m live_infra "$module" 2>&1 | tee "$log" || rc=${PIPESTATUS[0]}
   fi
-  total_passed=$(( total_passed + ${n_passed:-0} ))
-  total_failed=$(( total_failed + ${n_failed:-0} + ${n_errors:-0} ))
+
+  # 124 is `timeout`'s own code for the deadline; 137 is SIGKILL, which is what
+  # `--kill-after` sends when the module ignores the first signal. Handled before
+  # the summary is parsed, because a killed pytest leaves a partial log whose last
+  # line is a row of progress dots -- parsing that would invent counts for a
+  # module that produced no result. A timeout is reported as its own state rather
+  # than folded into the generic failure line: a module that hangs and a module
+  # that fails need different people looking at them.
+  if (( rc == 124 || rc == 137 )); then
+    summary="TIMED OUT after ${LIVE_MODULE_TIMEOUT}s -- no result; the module did not finish"
+    counts_unparsed+=("$module")
+    echo "!!! $module $summary"
+  else
+    # pytest's last non-empty line is its own summary; take it verbatim rather
+    # than recomposing one.
+    summary="$(grep -v '^[[:space:]]*$' "$log" | tail -1 | sed 's/^=*[[:space:]]*//; s/[[:space:]]*=*$//')"
+    [[ -n "$summary" ]] || summary="(no output)"
+
+    # The leading space matters. `[^0-9]` before the digits needs something to
+    # match, and `8 passed in 24.51s` begins with the digit -- so without it every
+    # all-green module parsed as unreadable and every `N failed` that opened a
+    # summary line was dropped. Caught by the deliberate-failure proof, which
+    # reported `tests failed: 0` next to a failing module.
+    padded=" $summary"
+    n_passed="$(printf '%s' "$padded" | sed -n 's/.*[^0-9]\([0-9]\+\) passed.*/\1/p')"
+    n_failed="$(printf '%s' "$padded" | sed -n 's/.*[^0-9]\([0-9]\+\) failed.*/\1/p')"
+    n_errors="$(printf '%s' "$padded" | sed -n 's/.*[^0-9]\([0-9]\+\) error.*/\1/p')"
+    if [[ -z "$n_passed$n_failed$n_errors" ]]; then
+      # Unreadable is not zero. Say so, and let it count against the run.
+      counts_unparsed+=("$module")
+    fi
+    total_passed=$(( total_passed + ${n_passed:-0} ))
+    total_failed=$(( total_failed + ${n_failed:-0} + ${n_errors:-0} ))
+  fi
 
   if (( rc == 0 )); then
     passed_count=$(( passed_count + 1 ))
