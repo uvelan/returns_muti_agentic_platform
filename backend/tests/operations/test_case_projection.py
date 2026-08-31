@@ -184,6 +184,40 @@ def artifact(
     )
 
 
+def fact(
+    *,
+    fact_id: str,
+    fact_name: str,
+    value: str | int | float | bool | None,
+) -> CaseFactProjection:
+    """One projected fact, with every provenance field explicitly `None`.
+
+    `CaseFactProjection` carries no defaults on purpose -- all eleven fields are
+    required-and-nullable, because the writer always writes all eleven and a
+    document saying otherwise would let a client type an impossible absence.
+    That makes every construction site name every field, which is why this
+    builder exists: the tests below care about `factName`/`value` and nothing
+    else, and nine literal `None`s repeated at five sites would obscure that.
+
+    Each field is bound **explicitly**, never spread from a mapping: a builder
+    that forwards `**kwargs` into the model would keep type-checking after a
+    field is renamed and quietly stop populating it.
+    """
+    return CaseFactProjection(
+        factId=fact_id,
+        factName=fact_name,
+        value=value,
+        agentId=None,
+        actorId=None,
+        channel=None,
+        sourceSystem=None,
+        acquisitionMethod=None,
+        observedAt=None,
+        recordedAt=None,
+        supersedesFactId=None,
+    )
+
+
 def shipment(
     shipment_id: str = "SHP-1",
     *,
@@ -797,14 +831,14 @@ def test_return_facts_needs_a_return_fact_not_merely_a_fact() -> None:
     discovery_only = case(
         confirmedOrder=ConfirmedOrderProjection(orderReference="SO-1"),
         selectedItems=(SelectedItemProjection(returnItemId="RI-1", orderLineReference="L1"),),
-        facts=(CaseFactProjection(factId="F-1", factName="order_number", value="SO-1"),),
+        facts=(fact(fact_id="F-1", fact_name="order_number", value="SO-1"),),
     )
     assert derive_copilot_stage(discovery_only) is CopilotStage.ITEM_SELECTION
 
     with_return_fact = case(
         confirmedOrder=ConfirmedOrderProjection(orderReference="SO-1"),
         selectedItems=(SelectedItemProjection(returnItemId="RI-1", orderLineReference="L1"),),
-        facts=(CaseFactProjection(factId="F-2", factName="return_reason", value="DAMAGED"),),
+        facts=(fact(fact_id="F-2", fact_name="return_reason", value="DAMAGED"),),
     )
     assert derive_copilot_stage(with_return_fact) is CopilotStage.RETURN_FACTS
 
@@ -987,7 +1021,7 @@ _LIFECYCLE: tuple[tuple[str, CaseProjectionState], ...] = (
         case(
             confirmedOrder=ConfirmedOrderProjection(orderReference="SO-1"),
             selectedItems=(SelectedItemProjection(returnItemId="RI-1", orderLineReference="L1"),),
-            facts=(CaseFactProjection(factId="F-1", factName="return_reason", value="DAMAGED"),),
+            facts=(fact(fact_id="F-1", fact_name="return_reason", value="DAMAGED"),),
         ),
     ),
     (
@@ -1754,9 +1788,9 @@ def gate_suspended(*, reason: str = "eligibility gate suspended") -> CaseFactPro
     yet" -- which is why the completion profile has to read it.
     """
     assert reason
-    return CaseFactProjection(
-        factId="F-POLICY-STATE",
-        factName=POLICY_GATE_STATE_FACT,
+    return fact(
+        fact_id="F-POLICY-STATE",
+        fact_name=POLICY_GATE_STATE_FACT,
         value=POLICY_GATE_SUSPENDED,
     )
 
@@ -1826,8 +1860,10 @@ def test_any_other_gate_state_is_still_awaited() -> None:
     for state_value in ("EVALUATED", "EVALUATION_FAILED", "POLICY_NOT_CONFIGURED"):
         state = case(
             facts=(
-                CaseFactProjection(
-                    factId="F-POLICY-STATE", factName=POLICY_GATE_STATE_FACT, value=state_value
+                fact(
+                    fact_id="F-POLICY-STATE",
+                    fact_name=POLICY_GATE_STATE_FACT,
+                    value=state_value,
                 ),
             )
         )

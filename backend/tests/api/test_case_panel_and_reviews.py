@@ -742,6 +742,84 @@ def test_revising_then_approving_is_refused(
     assert answer.json()["detail"]["code"] == "PendingRevisionError"
 
 
+@pytest.mark.parametrize(
+    "body", [pytest.param("", id="empty"), pytest.param("  \n ", id="whitespace")]
+)
+@pytest.mark.asyncio
+async def test_approving_an_empty_reply_is_409_with_the_gap_reason(
+    store: ReviewAggregateStore,
+    mongo: FakeClient,
+    test_settings: Settings,
+    body: str,
+) -> None:
+    """The whole point of R3, at the surface an associate actually reaches.
+
+    Two panes disagreeing about the wording was the symptom; that an empty
+    reply could be *approved* was the defect. The refusal has to arrive as a
+    409 the UI can render -- with the reason, not a bare "Conflict" -- or the
+    associate is told no and not told why.
+    """
+    reply_id = "review-reply-empty"
+    await store.create_review(
+        case_id=CASE_ID,
+        request_id="support-reply:evt-1",
+        review_kind=ReviewKind.SUPPORT_REPLY,
+        draft_payload={"messageText": body, "supportEventId": "evt-1", "intent": "rma_issued"},
+        review_id=reply_id,
+    )
+    review = await store.get_review(case_id=CASE_ID, review_id=reply_id)
+
+    with _client(mongo, test_settings) as client:
+        answer = client.post(
+            f"/api/v1/cases/{CASE_ID}/reviews/{reply_id}/approve",
+            json=_approve_body(review),
+        )
+
+    assert answer.status_code == 409
+    detail = answer.json()["detail"]
+    assert detail["code"] == "EmptyReplyBodyError"
+    assert detail["gap_reason"] == "SUPPORT_REPLY_BODY_EMPTY"
+    assert detail["field"] == "messageText"
+    # The review is still approvable once somebody rebuilds it -- a refusal
+    # that also parked it would turn a fixable draft into an operations ticket.
+    after = await store.get_review(case_id=CASE_ID, review_id=reply_id)
+    assert ReviewState(str(after["state"])) is ReviewState.OPEN
+
+
+@pytest.mark.asyncio
+async def test_approving_a_reply_that_has_a_body_still_succeeds(
+    store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
+) -> None:
+    """The other direction, through the endpoint rather than the store.
+
+    A refusal that fired on every reply would satisfy the test above and break
+    the feature, and the two tests differ in exactly one character of input.
+    """
+    reply_id = "review-reply-full"
+    await store.create_review(
+        case_id=CASE_ID,
+        request_id="support-reply:evt-2",
+        review_kind=ReviewKind.SUPPORT_REPLY,
+        draft_payload={
+            "messageText": "Your RMA is RMA-9100.",
+            "supportEventId": "evt-2",
+            "intent": "rma_issued",
+        },
+        review_id=reply_id,
+    )
+    review = await store.get_review(case_id=CASE_ID, review_id=reply_id)
+
+    with _client(mongo, test_settings) as client:
+        answer = client.post(
+            f"/api/v1/cases/{CASE_ID}/reviews/{reply_id}/approve",
+            json=_approve_body(review),
+        )
+
+    assert answer.status_code == 200, answer.text
+    after = await store.get_review(case_id=CASE_ID, review_id=reply_id)
+    assert ReviewState(str(after["state"])) is ReviewState.APPROVING
+
+
 def test_a_missing_review_is_404_not_409(
     store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
 ) -> None:

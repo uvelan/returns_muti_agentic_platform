@@ -177,19 +177,35 @@ class CaseFactProjection(ProjectionModel):
     `latest_case_facts_scoped` convergence (contracts.md sect. 10's registered
     follow-up), not ahead of it. `turnId` and `correlationId` are request-tracing
     links rather than provenance, and are not what the audit question needs.
+
+    **No field here carries a default, and that is the whole point.** In
+    Pydantic *any* default -- `= None` included -- emits the field as
+    non-required, so eleven always-serialised fields were published as nine
+    optional ones and a client had to type them optional and write defensive
+    code for an absence that cannot occur. Declaring `X | None` with no default
+    produces required-and-nullable, which is what the writer actually
+    guarantees: `case_repository.append_scoped_case_fact` writes every key,
+    `None` included, and `assembly.project_facts` binds all eleven on every
+    construction. *Absent* and *null* therefore stay distinguishable, which is
+    the difference between provenance and a gap. Adding a default to any field
+    below silently re-opens that hole, and neither `tsc` nor any type-level
+    assertion can see it -- the console's `Served<T>` alias strips optionality
+    regardless of the document. The guard is a *data* assertion over the
+    emitted `required` array, `frontend/scripts/check-served-fields.js`, run by
+    `npm run contracts:check` and gated by CI's `contract drift` job.
     """
 
     factId: Reference
     factName: Reference
-    value: str | int | float | bool | None = None
-    agentId: Reference | None = None
-    actorId: Reference | None = None
-    channel: Reference | None = None
-    sourceSystem: Reference | None = None
-    acquisitionMethod: Reference | None = None
-    observedAt: AwareDatetime | None = None
-    recordedAt: AwareDatetime | None = None
-    supersedesFactId: Reference | None = None
+    value: str | int | float | bool | None
+    agentId: Reference | None
+    actorId: Reference | None
+    channel: Reference | None
+    sourceSystem: Reference | None
+    acquisitionMethod: Reference | None
+    observedAt: AwareDatetime | None
+    recordedAt: AwareDatetime | None
+    supersedesFactId: Reference | None
 
 
 class PolicyOverrideProjection(ProjectionModel):

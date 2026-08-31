@@ -192,6 +192,45 @@ class PendingRevisionError(RuntimeError):
         self.review_id = review_id
 
 
+#: Why an empty reply body refuses approval, in the vocabulary the UI already
+#: renders for a blocked review. A `SUPPORT_REPLY` with no text is the reply
+#: kind's equivalent of an unresolved required `TemplateGap`: the field the
+#: message is *made of* has no value, so there is nothing to send.
+EMPTY_REPLY_BODY_GAP_REASON: Final = "SUPPORT_REPLY_BODY_EMPTY"
+
+#: The one field a `SUPPORT_REPLY` draft cannot be sent without.
+REPLY_BODY_FIELD: Final = "messageText"
+
+
+class EmptyReplyBodyError(RuntimeError):
+    """A `SUPPORT_REPLY` whose body is empty cannot be approved. API: 409.
+
+    **The defect this closes is not a copy inconsistency.** Two panes disagreed
+    about how to describe an empty reply draft, which is how it was noticed --
+    but the reason the disagreement mattered is that the draft was *approvable*.
+    A wording fix leaves an associate able to approve nothing and Support able
+    to receive nothing, with a delivery receipt saying it went fine.
+
+    So the refusal belongs here rather than in either pane. Sect. 6's approval
+    transition is the single place both the associate's approve and `auto_send`
+    (`actor=SYSTEM`) pass through, and it already refuses unresolved conflicts
+    and pending revisions for the same reason: a review that cannot be *acted*
+    on must not be *approvable*. Adding the condition here means no caller can
+    route around it, and the client constant becomes an explanation of the
+    refusal rather than the only thing standing between an empty draft and a
+    send.
+    """
+
+    def __init__(self, review_id: str) -> None:
+        super().__init__(
+            f"review {review_id!r} has an empty {REPLY_BODY_FIELD}; rebuild the reply "
+            "before approving -- Support would receive nothing"
+        )
+        self.review_id = review_id
+        self.gap_reason = EMPTY_REPLY_BODY_GAP_REASON
+        self.field = REPLY_BODY_FIELD
+
+
 class ApprovedPayloadHashMismatchError(RuntimeError):
     """The client approved bytes that are not the store's canonical payload."""
 
@@ -223,6 +262,20 @@ def canonical_review_payload(review: Mapping[str, Any]) -> dict[str, Any]:
     if isinstance(canonical_edit, Mapping) and canonical_edit.get("canonical_payload"):
         return dict(cast(Mapping[str, Any], canonical_edit["canonical_payload"]))
     return dict(cast(Mapping[str, Any], review.get("draftPayload") or {}))
+
+
+def _has_reply_body(payload: Mapping[str, Any]) -> bool:
+    """Whether a `SUPPORT_REPLY` payload carries something Support could read.
+
+    Whitespace is not a body. A draft of `"   "` sends a blank message and
+    reads on the receiving end as an agent with nothing to say, which is the
+    outcome the refusal exists to prevent -- so the strip is the check, not a
+    tidy-up. A missing key and a non-string value are equally empty: neither
+    can be delivered, and treating either as "present" would let the one shape
+    nobody anticipated through.
+    """
+    value = payload.get(REPLY_BODY_FIELD)
+    return isinstance(value, str) and bool(value.strip())
 
 
 def _now() -> datetime:
@@ -703,6 +756,24 @@ class ReviewAggregateStore:
                 canonical_edit_version,
             )
         frozen_payload = canonical_review_payload(review)
+        # Checked against the *frozen* payload rather than the draft, because
+        # the frozen payload is what gets sent: a canonical edit that emptied
+        # the body must refuse just as a draft that was born empty does.
+        #
+        # Before the hash check on purpose. A stale client approving an empty
+        # body has two problems, and only one of them is fixed by reloading --
+        # "rebuild the reply" is the action either way, so reporting the
+        # emptiness is the more useful of the two answers.
+        #
+        # Safe to decide on the read: `draftPayload` only changes with an
+        # `$inc` on `draftVersion` and `canonicalEdit.canonical_payload` only
+        # with an `$inc` on `canonicalEditVersion`, and the transaction below
+        # CASes on both. The payload cannot change between this line and the
+        # lock without the lock missing.
+        if review["reviewKind"] == ReviewKind.SUPPORT_REPLY.value and not _has_reply_body(
+            frozen_payload
+        ):
+            raise EmptyReplyBodyError(review_id)
         actual_hash = canonical_payload_digest(frozen_payload)
         if actual_hash != canonical_approved_payload_hash:
             raise ApprovedPayloadHashMismatchError(review_id)
