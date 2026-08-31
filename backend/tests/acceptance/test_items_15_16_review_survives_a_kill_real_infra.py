@@ -85,6 +85,8 @@ from return_platform.operations.support_template_gate import (
 )
 from return_platform.workflows.return_case_workflow import (
     CaseEligibilityOutcome,
+    ClarificationAnswerResult,
+    ClarificationRelayView,
     HoldUnsettledReviewsInput,
     HoldUnsettledReviewsResult,
     PolicyDecisionName,
@@ -365,6 +367,43 @@ class _GateProbe:
         )
         return await activities.snapshot_sent_template(request)
 
+    # -- Registered but unreached, for `worker.py`'s stated reason -------------
+    #
+    # None of the three below is reachable by this module's scenarios today:
+    # `case_has_return_details` is only polled when
+    # `ReturnCaseTimings.return_details_required` is on, which defaults to False
+    # and which this file never sets; the clarification pair is called only from
+    # the `clarification_answered` signal handler, and this file never sends
+    # that signal. They are registered anyway, which is the same call
+    # `test_return_case_workflow_real_infra.py` makes at its own clarification
+    # block: an activity the worker has not registered leaves a case that
+    # legitimately reaches it stopped, with no exception and no log, and a probe
+    # that registers only what its own scenarios happen to call is green because
+    # its inputs cannot exercise the property rather than because the property
+    # holds. That matters more here than elsewhere: this module kills the worker
+    # mid-run, and a restart is exactly where a case can take a path the happy
+    # scenarios do not.
+
+    @activity.defn(name="case_has_return_details")
+    async def case_has_return_details(self, request: Any) -> bool:
+        del request
+        self._record("case_has_return_details")
+        return True
+
+    @activity.defn(name="record_clarification_answer")
+    async def record_clarification_answer(self, request: Any) -> ClarificationAnswerResult:
+        del request
+        self._record("record_clarification_answer")
+        return ClarificationAnswerResult(recorded=True)
+
+    @activity.defn(name="relay_clarification_to_support")
+    async def relay_clarification_to_support(self, request: Any) -> ClarificationRelayView:
+        self._record("relay_clarification_to_support")
+        return ClarificationRelayView(
+            delivery_id=f"dlv-{request.clarification_id}",
+            message_id=f"msg-{request.clarification_id}",
+        )
+
     def all(self) -> tuple[Any, ...]:
         return (
             self.record_case_status,
@@ -382,6 +421,9 @@ class _GateProbe:
             self.record_template_revision,
             self.hold_unsettled_reviews,
             self.snapshot_sent_template,
+            self.case_has_return_details,
+            self.record_clarification_answer,
+            self.relay_clarification_to_support,
         )
 
 
