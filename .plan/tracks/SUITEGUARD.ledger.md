@@ -314,3 +314,214 @@ $ python scripts/ci/test_assert_known_failures.py
 all negative controls passed
 EXIT=0
 ```
+
+---
+
+## step:03 — the floor recorded, the gate named, both suites proved
+
+**Rebased first.** Trunk moved during the work: `refactor/unified-return-platform`
+went `b7f07838` -> `80c280f9`. The delta is five `docs(merge)` commits and
+touches nothing under `scripts/ci`, `.github/workflows`, `frontend/src` or
+`backend/src`, so it changed no assumption here, but the rebase was done anyway
+rather than finishing on a base known to be stale.
+
+```
+$ git rev-list --count b7f07838..80c280f9
+5
+$ git diff --stat b7f07838 80c280f9 -- scripts/ci .github/workflows frontend/src backend/src
+(empty)
+$ git rebase 80c280f9
+Successfully rebased and updated refs/heads/feat/suite-size-guard.
+```
+
+Re-checked on the new tip, because two separate messages have now told me the
+backend allowlist is empty: **it is not.** It still holds the one
+`test_a_rejected_return_still_opens_no_work_item` entry. Recorded and left
+alone. It matters only because it is the accidental partial guard discussed
+below, and the guard here does not depend on it either way.
+
+### Measuring the frontend floor took three attempts, which is itself evidence
+
+The first two `npm test` runs on this machine were **truncated** — the defect,
+twice:
+
+| run | files | cases | note |
+|---|---|---|---|
+| default pool, backend suite running alongside | 47 | 585 | `Failed to start forks worker`, 14 errors |
+| `--maxWorkers=2` | 53 | 586 | 8 errors |
+| `--maxWorkers=1` | **61** | **860** | complete |
+
+So the condition RV could not reproduce reproduces readily here. That is
+recorded as an observation and is deliberately NOT what the guard's
+justification rests on — see below.
+
+The complete run was corroborated by a second, independent instrument that does
+not execute anything:
+
+```
+$ npx vitest list --json    # collection only, no test bodies run
+entries: 860
+distinct files: 61
+```
+
+860/61 from collection, 860/61 from the JUnit report of the executed run. Two
+instruments, same numbers — which is the discipline `frontend/bundle-budget.json`
+sets out ("Measure with the gate, not with the build log"), except that here the
+two agree, so there is no gate-versus-log discrepancy to resolve.
+
+`scripts/ci/suite_size_floor.json` records:
+
+```
+backend  : 5251 cases / 441 files   (1 failed, 5240 passed, 10 skipped, 514 deselected)
+frontend :  860 cases /  61 files   (2 failed -- both allowlisted)
+```
+
+### The justification was rewritten to stand on the mechanism
+
+Two coordinator messages landed mid-step, and both improved the work. The first
+warned that "unreproduced" must not become "not a problem", and that a guard
+justified by an anecdote is deleted by the first person who cannot reproduce the
+anecdote. The second supplied a sharper structural reading, which is now the one
+written into all three files:
+
+* Against a run that dropped whole files, `unexpected` (`failed - allowed`) and
+  `repaired` (`allowed & (ran - failed)`) are **structurally empty** — a dropped
+  file yields neither a failure nor a pass, so those rules are not unlikely to
+  fire, they are incapable of it.
+* `missing` (`allowed - ran`) is the only rule that can fire, and only if a
+  dropped file happened to carry an allowlisted id.
+* `if not ran` catches **total** collapse and nothing short of it.
+* And the framing that matters most, because it protects the guard from being
+  deleted by someone who reads the existing gate and finds it reasonable:
+  **an allowlist comparator can only notice failures already on its list.** It
+  is the right instrument for "did anything new break" and the wrong one for
+  "did the suite actually run". The allowlist is not defective at its own job;
+  nothing was asking the second question.
+
+All of that is checkable by reading `checks.yml` and the comparator. None of it
+depends on reproducing anything.
+
+### Rule 13 — the gate that runs the guard
+
+| Guard | Gate that runs it |
+|---|---|
+| the size floor, backend | `checks.yml` job `backend`, step **"The suite ran in full, and only the known failures failed"** |
+| the size floor, frontend | `checks.yml` job `frontend-tests`, step **"The suite ran in full, and only the known failures failed"** |
+| the floor's negative controls | `checks.yml` job `allowlist-self-test`, step **"Negative controls"** — Gate 0, which both suite jobs `needs:` |
+
+The steps were renamed. The old name, "Only the known failures failed", was true
+of the collapsed run that motivated this, which is exactly why it needed to say
+"ran in full" first. No new step was added: the floor rides the call both jobs
+already make, so a suite cannot be gated by the allowlist without also being
+measured.
+
+### What was NOT done, and who should own it
+
+**No `maxWorkers` cap was added.** `--maxWorkers=1` was used *by me, on the
+command line, to obtain a baseline* and is not written into
+`frontend/vitest.config.ts` or into `checks.yml`. Capping the pool would make
+truncation rarer without making it visible, which on a gate whose job is to
+report what did not run is the worse of the two outcomes. The cap addresses
+vitest's pool behaviour; the floor addresses this workflow being unable to tell.
+A cap may well be worth setting and is **proposed, not folded in** — it belongs
+to whoever owns `frontend/vitest.config.ts`.
+
+### Injection, both directions, both suites
+
+Truncated reports were MANUFACTURED by trimming the real ones — whole modules
+removed from the tail of collection order, every surviving case left
+byte-identical, and the `testsuite` totals rewritten so the report stays
+internally consistent. That last part matters: the difficulty of this defect is
+that the headline agreed with itself. Script at
+`<scratchpad>/truncate_report.py`.
+
+**Frontend.** 20 of 61 files removed, and `registry.test.ts` — which carries
+both allowlisted failures — SURVIVES. So this is precisely the case the
+accidental catch cannot see:
+
+```
+$ python truncate_report.py junit-frontend-FULL-real.xml junit-frontend-TRUNCATED.xml 0.34
+modules     : 61 -> 41 (20 dropped)
+cases       : 860 -> 551 (309 removed)
+failures    : 2
+$ python -c "...registry.test.ts present?..."
+registry.test.ts present: True
+failures in truncated report: 2
+
+$ python /tmp/old_comparator.py --suite frontend --report junit-frontend-TRUNCATED.xml --allowlist scripts/ci/known_test_failures.json
+543 tests ran, 2 failed, 2 allowlisted
+only the 2 known, still-failing tests failed
+EXIT=0                                    <-- green, over 41 of 61 files
+
+$ python scripts/ci/assert_known_failures.py --suite frontend --report junit-frontend-TRUNCATED.xml
+::error::THE SUITE SHRANK: 551 test cases reported, but the recorded floor is 860 -- 309 did not report.
+   ...
+   in scripts/ci/suite_size_floor.json:  "cases": 551
+::error::THE SUITE SHRANK: 41 distinct test files/modules reported, but the recorded floor is 61 -- 20 did not report.
+   ...
+   in scripts/ci/suite_size_floor.json:  "files": 41
+543 tests ran, 2 failed, 2 allowlisted
+EXIT=2
+
+$ python scripts/ci/assert_known_failures.py --suite frontend --report junit-frontend-FULL-real.xml
+suite size held: 61 test files/modules, 860 test cases (floor 61 / 860)
+851 tests ran, 2 failed, 2 allowlisted
+only the 2 known, still-failing tests failed
+EXIT=0                                    <-- and this run is legitimately RED
+```
+
+The last one is the case the dispatch singled out: the frontend suite exits
+non-zero on a correct run, and the floor still returns a clean verdict about its
+size. The size check runs before the allowlist comparison and independently of
+it, so it is never gated by the condition it exists to doubt.
+
+**Backend.** No suite was re-run — the coordinator asked for machine quiet, and a
+saved report is the better instrument anyway because it is fixed and replayable.
+The report from step:02's run was trimmed:
+
+```
+$ python truncate_report.py junit-backend-FULL-real.xml junit-backend-TRUNCATED.xml 0.20
+modules     : 441 -> 353 (88 dropped)
+cases       : 5251 -> 4155 (1096 removed)
+failures    : 1
+
+$ python /tmp/old_comparator.py --suite backend --report junit-backend-TRUNCATED.xml --allowlist scripts/ci/known_test_failures.json
+4155 tests ran, 1 failed, 1 allowlisted
+only the 1 known, still-failing tests failed
+EXIT=0                                    <-- green, over 353 of 441 modules
+
+$ python scripts/ci/assert_known_failures.py --suite backend --report junit-backend-TRUNCATED.xml
+::error::THE SUITE SHRANK: 4155 test cases reported, but the recorded floor is 5251 -- 1096 did not report.
+::error::THE SUITE SHRANK: 353 distinct test files/modules reported, but the recorded floor is 441 -- 88 did not report.
+4155 tests ran, 1 failed, 1 allowlisted
+EXIT=2
+
+$ python scripts/ci/assert_known_failures.py --suite backend --report junit-backend-FULL-real.xml
+suite size held: 441 test files/modules, 5251 test cases (floor 441 / 5251)
+5251 tests ran, 1 failed, 1 allowlisted
+only the 1 known, still-failing tests failed
+EXIT=0
+```
+
+Both new-comparator invocations above use the DEFAULT `--floor`, i.e. exactly
+the command line `checks.yml` runs. Nothing is passed that CI would not pass.
+
+### A misclassification found and fixed while writing the controls
+
+A malformed `suite_size_floor.json` would have raised out of `json.loads`, and an
+uncaught exception exits **1** — the code this script uses for "a test failed".
+A typo in a JSON file would have been filed as a failing test: the exact
+misclassification the exit-code discipline exists to prevent, arriving through
+the guard added to enforce it. Reading the floor is now fully defended, and four
+controls cover it.
+
+### Final state
+
+```
+$ python scripts/ci/test_assert_known_failures.py
+all negative controls passed          (35 controls: the original 8, plus 27)
+$ python -m ruff check ../scripts/ci/
+All checks passed!
+$ python -c "import yaml; yaml.safe_load(open('.github/workflows/checks.yml'))"
+checks.yml parses
+```

@@ -272,7 +272,7 @@ def main() -> int:
         # by the very condition it exists to doubt.
         red_and_short = write(
             "size-red-and-short.xml",
-            suite_of(6, 5) + [(*KNOWN_BACKEND, "failure"), (*KNOWN_FRONTEND, "failure")],
+            [*suite_of(6, 5), (*KNOWN_BACKEND, "failure"), (*KNOWN_FRONTEND, "failure")],
         )
         code, out = run(allowlist, red_and_short, floor={"cases": 52, "files": 12})
         check("rejects a run that is short AND legitimately red", code == 2, out)
@@ -334,6 +334,25 @@ def main() -> int:
         no_suite.write_text(json.dumps({"suites": {"other": {"cases": 1, "files": 1}}}), "utf-8")
         code, out = run(empty_allowlist, full, floor=no_suite)
         check("rejects a suite gated with no floor recorded for it", code == 2, out)
+
+        # A malformed floor file must exit 2 like every other "cannot judge this
+        # run" condition. If it escaped as an uncaught exception Python would exit
+        # 1 -- the code this script uses for "a test failed" -- and a typo in a
+        # JSON file would be filed as a failing test, which is precisely the
+        # misclassification the exit codes here exist to prevent.
+        broken = root / "floor-broken.json"
+        broken.write_text("{not json", encoding="utf-8")
+        code, out = run(empty_allowlist, full, floor=broken)
+        check("rejects an unparseable floor file with 2, not a traceback", code == 2, out)
+        check("no traceback escaped", "Traceback" not in out, out)
+
+        code, out = run(empty_allowlist, full, floor=42)
+        check("rejects a floor entry that is not an object", code == 2, out)
+
+        wrong_root = root / "floor-wrong-root.json"
+        wrong_root.write_text(json.dumps([1, 2, 3]), encoding="utf-8")
+        code, out = run(empty_allowlist, full, floor=wrong_root)
+        check("rejects a floor file whose root is not an object", code == 2, out)
 
     print()
     if failures:

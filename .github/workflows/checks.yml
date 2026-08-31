@@ -26,6 +26,70 @@ name: checks
 # has started passing, so the list cannot rot into a blanket excuse.
 #
 # ---------------------------------------------------------------------------
+# The gate could not see a test that never ran
+# ---------------------------------------------------------------------------
+#
+# Everything above describes a gate that reasons about the failures IN a report,
+# which left one way for this whole workflow to report green over a suite it did
+# not run. The case for closing it is made from THIS FILE, not from an incident:
+# a guard justified by an anecdote is deleted by the first person who cannot
+# reproduce the anecdote, and this one is visible by reading three things here.
+#
+#   1. Both suite steps below run `set +e` and bail out only on `status -gt 1`.
+#      Exit 1 is the TOLERATED path and has to be -- `frontend-tests` exits 1 on
+#      a CORRECT run, because of the two allowlisted failures in
+#      src/domains/registry.test.ts. A truncated run exiting 1 passes that step.
+#   2. Against a run that dropped whole files, `assert_known_failures.py`'s
+#      "new failure" and "now passes" rules are STRUCTURALLY empty -- a dropped
+#      file produces neither a failure nor a pass, so neither rule can fire.
+#      Only "an allowlisted test was not collected" can, and only when a dropped
+#      file happens to carry an allowlisted id.
+#   3. Its one remaining floor, "the report contains no test cases", catches
+#      TOTAL collapse and nothing short of it.
+#
+# So: one accidental partial guard, one all-or-nothing guard. Drop any set of
+# files carrying no allowlisted id and the job exits 0 over a fraction of the
+# suite -- and on `backend` the accident turns entirely on the single name that
+# list happens to hold; empty it and the accident is gone outright.
+#
+# This is NOT a defect in the allowlist. An allowlist comparator can only notice
+# failures already on its list: it is the right instrument for "did anything new
+# break" and the wrong one for "did the suite actually run", and nothing here
+# asked the second question. That distinction is worth keeping in mind before
+# deleting the floor -- the gate it sits next to is reasonable, and looking
+# reasonable is exactly why the gap survived.
+#
+# The observation that prompted the work is recorded as an observation and not
+# as the argument: under memory pressure `npm test` came back with
+# `Test Files  40 passed (40)` while 21 of 61 files never started -- not "21
+# failed"; vitest believed there were forty. It has resisted repetition on some
+# machines and reproduced readily on others. The three facts above hold either
+# way, which is the point of writing it this way round.
+#
+# `assert_known_failures.py` now also floors the run against
+# `scripts/ci/suite_size_floor.json`: the number of test files and test cases the
+# report accounts for, compared with what this repository has reason to expect.
+# It is a FLOOR and not a pin -- a suite that grows never fails it -- and
+# lowering it is a deliberate one-line edit in a data file, because that is the
+# distinction the check is built around. A suite that ran fewer tests because
+# somebody deleted some is a code change and arrives with a diff to review; a
+# suite that ran fewer because a worker died is an infrastructure failure
+# reporting green.
+#
+# It exits 2 rather than 1 when the floor is breached, on this file's own
+# boundary: 1 is a verdict about the tests, and anything above it is the run
+# itself breaking. Both suite steps below already treat it that way.
+#
+# NOT DONE HERE, and deliberately: no `maxWorkers` cap was added to the frontend
+# suite. Capping vitest's pool would make truncation rarer without making it
+# visible, which on a gate whose whole job is reporting what did not run is the
+# more dangerous of the two outcomes -- a defect that still exists and now fires
+# seldom enough that nobody sees it. The cap addresses vitest's pool behaviour;
+# the floor addresses this workflow being unable to tell. They are different
+# changes and this is only the second. A cap may well be worth setting, and it
+# belongs to whoever owns `frontend/vitest.config.ts` -- proposed, not folded in.
+#
+# ---------------------------------------------------------------------------
 # Everything `npm run check` covers is now gated -- as separate steps
 # ---------------------------------------------------------------------------
 #
@@ -90,6 +154,16 @@ jobs:
   # below report "acceptable" while three tests are failing, and that verdict
   # is worth nothing unless the comparator can still fail. A broken comparator
   # turns this entire workflow into an expensive `exit 0`.
+  #
+  # This now also covers the SIZE FLOOR, which needs it more than the allowlist
+  # does. The allowlist has failing tests to point at, so a run notices when it
+  # misbehaves; the floor's whole job is to disbelieve a report that looks fine,
+  # so on every healthy run a floor wired up wrongly is indistinguishable from a
+  # floor working perfectly. The only thing that can tell those apart is a
+  # planted short run, and those live in
+  # `scripts/ci/test_assert_known_failures.py` -- the central one being an
+  # all-green report missing a fifth of its files, which the comparator accepted
+  # before the floor existed.
   # ---------------------------------------------------------------------
   allowlist-self-test:
     name: allowlist self-test
@@ -239,7 +313,16 @@ jobs:
             exit "$status"
           fi
 
-      - name: Only the known failures failed
+      # Rule 13: for every guard added, name the gate that runs it. THIS STEP is
+      # the name for the size floor in `scripts/ci/suite_size_floor.json`, as
+      # well as for the allowlist -- which is why it is one call and not two. A
+      # suite cannot be gated by the allowlist without also being measured,
+      # because the same script does both and both jobs already invoke it.
+      #
+      # The step name says "ran in full" first on purpose. The old name promised
+      # only that the failures were known, which was true of the collapsed run
+      # that motivated the floor.
+      - name: The suite ran in full, and only the known failures failed
         working-directory: backend
         run: python ../scripts/ci/assert_known_failures.py --suite backend --report junit-backend.xml
 
@@ -488,7 +571,14 @@ jobs:
             exit "$status"
           fi
 
-      - name: Only the known failures failed
+      # The other half of rule 13's answer for the size floor, and the job the
+      # defect was actually observed in. This step is reached on a vitest exit of
+      # 0 OR 1 -- the `set +e` above only bails out above 1 -- which matters more
+      # here than anywhere else in this file: the frontend suite exits non-zero
+      # on a CORRECT run, because of the two allowlisted failures in
+      # src/domains/registry.test.ts. A size check that only ran after a green
+      # suite would be gated by the very condition it exists to doubt.
+      - name: The suite ran in full, and only the known failures failed
         working-directory: frontend
         run: python ../scripts/ci/assert_known_failures.py --suite frontend --report junit-frontend.xml
 

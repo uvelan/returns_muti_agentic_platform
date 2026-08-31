@@ -28,21 +28,48 @@ Everything above reasons about the failures IN the report, and that is a hole
 wide enough to drive a green CI run through: **neither check can see a test that
 never ran.**
 
-The hole is not theoretical. Under memory pressure `npm test` was observed
-reporting
+The argument for closing it is made from the MECHANISM, not from an incident,
+because a guard justified by an anecdote is deleted by the first person who
+cannot reproduce the anecdote. Every step below is checkable by reading
+`.github/workflows/checks.yml` and this file:
+
+1. Both suite steps in that workflow run under `set +e` and bail out only when
+   the status is `-gt 1`. Exit 1 is the TOLERATED path, by design -- the frontend
+   suite exits 1 on a correct run because of its two allowlisted failures. A
+   truncated run that exits 1 therefore passes that step.
+2. Take the three allowlist rules against a run that dropped whole files. Those
+   files produced neither failures nor passes, so `unexpected` (failed - allowed)
+   and `repaired` (allowed & (ran - failed)) are STRUCTURALLY EMPTY -- not
+   unlikely to fire, but incapable of it. `missing` (allowed - ran) is the only
+   rule that can fire, and it fires only if a dropped file happened to carry an
+   allowlisted id.
+3. The one remaining floor is `if not ran`, which catches TOTAL collapse and
+   nothing short of it.
+
+So the comparator has exactly one accidental partial guard and one all-or-nothing
+guard, and neither asks the question. Drop any set of files carrying no
+allowlisted id and this script exits 0 over a fraction of the suite; on a suite
+whose allowlist is empty even the accident is unavailable, there being no named
+test whose absence could be noticed.
+
+**None of that is a defect in the allowlist.** An allowlist comparator can only
+notice failures already on its list. It is the right instrument for "did anything
+new break" and the wrong instrument for "did the suite actually run", and until
+now nothing in `checks.yml` asked the second question. The floor in
+`suite_size_floor.json` is that second question, and it closes (2) precisely
+because it does not depend on which files were lost.
+
+The observation that prompted the work is consistent with this and is recorded
+as an observation rather than as the load-bearing argument: under memory pressure
+`npm test` reported
 
     Test Files  40 passed (40)
 
-while 21 of the suite's 61 files never started. Read that line again -- it does
-not say "21 failed". vitest *believed there were forty files*. The headline is
-internally consistent, entirely green, and describes two thirds of a suite. On
-an unloaded machine the same commit reports 62 files and 867 tests, so this is a
-behaviour under load, not a miscount that would show up in review. The backend
-has the same exposure in principle: pytest writes a JUnit report of what it ran,
-and a comparator that reads only that report cannot miss what is not in it.
-
-So this script also measures the suite and refuses a run that came back smaller
-than the recorded floor in `suite_size_floor.json`.
+while 21 of 61 files never started -- not "21 failed"; vitest believed there were
+forty. It has resisted repetition on some machines and reproduced readily on
+others. The hole above is there either way, and the backend has it too: pytest
+writes a report of what it ran, and a comparator reading only that report cannot
+miss what is not in it.
 
 The distinction it is built around: a suite that ran fewer tests because
 somebody deleted some is a CODE CHANGE, and it arrives with a diff to review. A
@@ -157,11 +184,23 @@ def _check_size(suite: str, floor_path: Path, cases: int, files: set[str]) -> in
         )
         return 2
 
-    document = json.loads(floor_path.read_text(encoding="utf-8"))
-    recorded = document.get("suites", {}).get(suite)
-    if recorded is None:
+    # Everything about reading this file is defended, because the alternative is
+    # an uncaught exception -- and an uncaught exception exits 1, which is the one
+    # code this script uses to mean "a test failed". A malformed floor file would
+    # then be filed as a test failure: the exact misclassification the whole
+    # exit-code discipline here exists to prevent, arriving through the guard that
+    # was added to enforce it.
+    try:
+        document = json.loads(floor_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        print(f"::error::{floor_path} could not be read as JSON: {error}")
+        return 2
+
+    suites = document.get("suites") if isinstance(document, dict) else None
+    recorded = suites.get(suite) if isinstance(suites, dict) else None
+    if not isinstance(recorded, dict):
         print(
-            f"::error::no suite named {suite!r} in {floor_path} -- record a floor for it "
+            f"::error::no usable floor for suite {suite!r} in {floor_path} -- record one "
             "before gating it, or the job cannot tell a full run from a collapsed one."
         )
         return 2
@@ -169,7 +208,15 @@ def _check_size(suite: str, floor_path: Path, cases: int, files: set[str]) -> in
     measured = {"cases": cases, "files": len(files)}
     failed = False
 
-    for key, label in (("cases", "test cases"), ("files", "test files")):
+    # "distinct JUnit classnames" rather than "test files" because that is what
+    # is actually counted and the two are not the same on both suites: vitest
+    # writes the test file's path, so one classname is one file, while pytest
+    # writes a dotted module path AND appends the test class where there is one,
+    # so a module holding two `Test*` classes contributes three. That is fine for
+    # a floor -- it is stable run to run, and it still moves when a worker dies --
+    # but the message must not claim to be counting files on a suite where it is
+    # not.
+    for key, label in (("cases", "test cases"), ("files", "distinct test files/modules")):
         baseline = recorded.get(key)
         # Not a truthiness test: 0 is falsy and would read as "absent", and a
         # floor of 0 is a floor that cannot fail and must be rejected out loud.
@@ -189,7 +236,7 @@ def _check_size(suite: str, floor_path: Path, cases: int, files: set[str]) -> in
                 "   If a worker died or the runner ran out of memory, this is an\n"
                 "   infrastructure failure that was about to report green: re-run it.\n"
                 "   If tests were deliberately removed, lower the floor in the SAME commit\n"
-                f"   that removes them, in scripts/ci/suite_size_floor.json:  \"{key}\": {count}"
+                f'   that removes them, in scripts/ci/suite_size_floor.json:  "{key}": {count}'
             )
             failed = True
         elif count > baseline * (1 + RESTAKE_ALLOWANCE):
@@ -199,7 +246,7 @@ def _check_size(suite: str, floor_path: Path, cases: int, files: set[str]) -> in
                 "   This is not a complaint about the suite -- it grew, which is good. It is\n"
                 "   that a floor this far below the suite no longer catches anything: a run\n"
                 f"   could lose {count - baseline} {label} and still clear it. Re-stake it:\n"
-                f"     \"{key}\": {count}"
+                f'     "{key}": {count}'
             )
             failed = True
 
@@ -207,7 +254,8 @@ def _check_size(suite: str, floor_path: Path, cases: int, files: set[str]) -> in
         return 2
 
     print(
-        f"suite size held: {measured['files']} test files, {measured['cases']} test cases "
+        f"suite size held: {measured['files']} test files/modules, "
+        f"{measured['cases']} test cases "
         f"(floor {recorded['files']} / {recorded['cases']})"
     )
     return 0
