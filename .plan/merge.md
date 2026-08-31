@@ -137,7 +137,25 @@ if not ROOT_ENV_FILE.is_file():
 
 **Consequence, stated plainly:** the `backend` job has almost certainly never completed a run since it was wired. Every *"green on this commit"* claim in `checks.yml`'s comments rests on **local replication on a Windows workstation that happens to have a `.env`**, not on the pipeline. The allowlist self-test, the frontend jobs and `contracts` are unaffected — none of them import that conftest.
 
-This is precisely rule 13's shape and I wrote it: **a gate whose green nobody had watched arrive.** The gate exists, it names itself correctly, its comments are careful — and it cannot execute. `.env.example` is tracked and is the repo's own documented starting point, so the fix is likely small; whether `.env.example`'s values satisfy `Settings` validation is the thing to measure rather than assume. **Dispatched separately and reviewed on its own** — not folded into the lint branch that found it.
+This is precisely rule 13's shape and I wrote it: **a gate whose green nobody had watched arrive.** The gate exists, it names itself correctly, its comments are careful — and it cannot execute.
+
+**The fix is settled, and it was measured rather than argued.** `cp .env.example .env` in the job:
+
+| `.env` source | outcome |
+|---|---|
+| absent | INTERNALERROR, exit **3** |
+| the real `.env` | 1 failed, **5197 passed**, 10 skipped, 512 deselected |
+| **`.env.example`** | 1 failed, **5197 passed**, 10 skipped, 512 deselected |
+
+Byte-identical, down to the single allowlisted failure and the exit code the allowlist step then passes. `Settings` accepts the placeholders, and the normal suite has live-infra deselected so nothing dials a real service.
+
+**Both alternatives I proposed were rejected on evidence, and the first rejection is the one worth keeping.** A committed `.env.ci` is ignored by `.gitignore:31`'s `.env.*` rule — and the comment above that rule records *why it exists*: `backend/.env.vault-backup` once carried a live provider key into git history and was caught by push protection. Adding `!.env.ci` would **punch a hole in a guard installed after a real credential incident, to solve a problem a tracked file already solves.** A degrading conftest was rejected too: the raise is a deliberate guard making a missing `.env` loud rather than letting tests run against silent defaults, so copying satisfies it honestly while degrading weakens it — rule 13 in spirit.
+
+And it is not an invented command line, which is `checks.yml`'s own stated principle: `scripts/bootstrap_host.sh:17` and `reset_docker_environment.sh:85` already run exactly that copy, two further scripts instruct developers to, and `ensure_runtime_env_keys.py` maintains `.env.example` as the authoritative key set so it cannot silently rot.
+
+**Two conditions on whoever implements it:** `contracts` is likely exposed the same way since it imports the app — verify it too. And **prove the fix by watching the job fail first**; a fix for a gate that has never run is exactly the claim that needs its red observed before its green.
+
+**Dispatched separately and reviewed on its own** — not folded into the lint branch that found it. Ordering matters: both touch `checks.yml`, so the lint branch merges first.
 
 ## ⚠ The CI gap this closed (kept for the record)
 
