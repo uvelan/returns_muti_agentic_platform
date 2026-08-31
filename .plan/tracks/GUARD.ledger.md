@@ -105,3 +105,79 @@ report the same clean tree a genuinely clean tree reports.
 
 **Next step:** step:02 — the reviewer's own probe, planted in both forms, with
 the injection verified to have done what it claims.
+
+---
+
+## step:02 — the reviewer's probe, both forms, and the tell
+
+**Files touched:** this ledger. No source change — the injection is planted,
+measured and reverted, and the tree is clean at the boundary.
+
+**Site.** `frontend/src/domains/returns/modes/ReturnHistorySection.tsx:76`,
+which renders `{record.returnReference ?? "RMA pending"}` — a real business
+value (the support-issued RMA) behind a sanctioned absence word. Replacing that
+word with a fabricated one is exactly the defect the audit found, at a line
+that renders to an associate.
+
+**The matrix.** Both forms of the same fabricated string, against both versions
+of the guard. Each cell is a run of
+`npx vitest run src/domains/returns/ReturnCopilotFabrication.test.ts`.
+
+| | `?? "Delivered on time"` | `=== null ? "Delivered on time" : …` |
+|---|---|---|
+| guard at base `921041c5` | 1 failed / 34 passed | **35 passed — the hole** |
+| guard at `d90bb9bd` | 1 failed / 59 passed | 1 failed / 59 passed |
+
+The top-right cell reproduces the reviewer's finding exactly (35 passed), under
+this agent's own hands rather than on report, and the bottom row is the fix:
+**both forms now fail.**
+
+**Verifying the injection did what it claims** — `.plan/merge.md`'s newest
+recurring shape is an injection that goes red for the wrong reason, so the red
+itself is not the evidence. Four tells, each ruling out a different wrong
+reason:
+
+1. **The diff is a substitution, not a deletion.** `git diff --stat` reported
+   `1 file changed, 1 insertion(+), 1 deletion(-)` and `git diff -U0` showed
+   one hunk, `@@ -76 +76 @@`, with the old line out and the new line in. The
+   V1p2 failure mode — anchors matching elsewhere and silently deleting a block
+   — is excluded by inspection of the hunk, not assumed.
+2. **The failing test is named, and it is the right one.** In every red cell
+   exactly one test failed and it was the fallback scan (`keeps no literal
+   fallback on a business value`; on the baseline, its predecessor `keeps no
+   `??` literal fallback…`). Not a rendering test that happened to assert
+   `"RMA pending"`, not the shape scan, not a parse error taking the file out.
+3. **The failure message names the site *and the idiom*.** Form A reported
+   ``modes/ReturnHistorySection.tsx:76: ?? falls back to "Delivered on time"``;
+   form B reported ``modes/ReturnHistorySection.tsx:76: ternary falls back to
+   "Delivered on time"``. Same file, same line, *different idiom* — so the walk
+   recognised the construct actually written, rather than tripping over the
+   string by some other route. A shape-regex hit or a leftover `??` match could
+   not produce the word `ternary`.
+4. **59 of 60 still passed in both red cells.** Had the injection broken the
+   parse, the walk would have seen an empty tree and gone *green*; had it
+   broken the file, the anti-tautology test (`still finds this domain's real
+   fallback positions`) and the glob-reach test would have gone red too.
+   Exactly one red, and it is the assertion under test.
+
+**Revert verified, not assumed.** `git checkout HEAD --` on both files, then
+`git status --short` empty and line 76 grepped back to `"RMA pending"`.
+
+**Commands and results.**
+
+| Command | Result |
+|---|---|
+| `npx vitest run` (full suite, after revert) | 747 passed, 2 failed — the two known pre-existing `registry.test.ts` `/shipments` collisions. Zero new. |
+| `RETURN_PLATFORM_PYTHON=…/backend/.venv/Scripts/python.exe npm run contracts:check` | passed; `git status` clean afterwards, so no regenerated drift |
+| `git status --short` | clean |
+
+**No dispatch raised.** The extended guard found no fabrication in merged
+source. It did surface seven merged literals in fallback positions; every one
+was read against the vocabulary's membership test — *does it report an absence
+or fill it* — and every one reports. They are admitted to
+`ABSENCE_VOCABULARY` with the file naming each, not silenced. Two of them,
+`"This reply was empty."` (`CasePanel.tsx:198`) and `"This reply is empty.
+Rebuild it before sending — Support would receive nothing."`
+(`SupportReplyBody.tsx:95`), are two different sentences for the same state on
+two panes; that is a UX-copy observation for the owning slice, not a
+fabrication and not a change made here.
