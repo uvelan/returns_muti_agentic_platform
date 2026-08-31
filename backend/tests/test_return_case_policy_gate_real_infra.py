@@ -37,8 +37,11 @@ from temporalio.worker import Worker
 from return_platform.workflows.return_case_workflow import (
     BayResultNotice,
     CaseEligibilityOutcome,
+    ClarificationAnswerResult,
+    ClarificationRelayView,
     DraftSupportRequestInput,
     EvaluateCaseEligibilityInput,
+    HoldUnsettledReviewsResult,
     OpenSupportWorkItemInput,
     PolicyDecisionName,
     PolicyGateState,
@@ -59,7 +62,11 @@ from return_platform.workflows.return_case_workflow import (
     SupportResponseNotice,
     SupportReturnRecord,
     SynchronizeReturnRecordsInput,
+    TemplateDeliveryResult,
+    TemplateReviewDraftResult,
+    TemplateReviewDraftSet,
 )
+from tests.activity_probe import declared_activities
 from tests.workflow_result import result_within
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -167,6 +174,65 @@ class _Probe:
         self._record("synchronize_return_records")
         return "gen-under-test"
 
+    # The review gate, the clarification round-trip and the return-details poll.
+    # Registered on the same reasoning `worker.py` states for its own list: what
+    # a case runs is decided by its pinned release, not by what this file's
+    # scenarios happen to reach, and a worker missing an activity leaves such a
+    # case stopped with nothing raised and nothing logged. The gate answers "no
+    # template published" so an approved case takes the composed path, which is
+    # what this file's approval scenarios asserted before the gate existed.
+
+    @activity.defn(name="record_template_draft")
+    async def record_template_draft(self, request: Any) -> TemplateReviewDraftSet:
+        del request
+        self._record("record_template_draft")
+        return TemplateReviewDraftSet(drafts=(), template_available=False)
+
+    @activity.defn(name="rerender_template_draft")
+    async def rerender_template_draft(self, request: Any) -> TemplateReviewDraftResult:
+        self._record("rerender_template_draft")
+        return TemplateReviewDraftResult(
+            request_id=request.request_id, review_id=request.review_id, state="DRAFT"
+        )
+
+    @activity.defn(name="record_template_revision")
+    async def record_template_revision(self, request: Any) -> None:
+        del request
+        self._record("record_template_revision")
+
+    @activity.defn(name="hold_unsettled_reviews")
+    async def hold_unsettled_reviews(self, request: Any) -> HoldUnsettledReviewsResult:
+        del request
+        self._record("hold_unsettled_reviews")
+        return HoldUnsettledReviewsResult(held_review_ids=())
+
+    @activity.defn(name="snapshot_sent_template")
+    async def snapshot_sent_template(self, request: Any) -> TemplateDeliveryResult:
+        self._record("snapshot_sent_template")
+        return TemplateDeliveryResult(
+            review_id=request.review_id, state="SENT", work_item_id=f"wi-{request.case_id}"
+        )
+
+    @activity.defn(name="record_clarification_answer")
+    async def record_clarification_answer(self, request: Any) -> ClarificationAnswerResult:
+        del request
+        self._record("record_clarification_answer")
+        return ClarificationAnswerResult(recorded=True)
+
+    @activity.defn(name="relay_clarification_to_support")
+    async def relay_clarification_to_support(self, request: Any) -> ClarificationRelayView:
+        self._record("relay_clarification_to_support")
+        return ClarificationRelayView(
+            delivery_id=f"dlv-{request.clarification_id}",
+            message_id=f"msg-{request.clarification_id}",
+        )
+
+    @activity.defn(name="case_has_return_details")
+    async def case_has_return_details(self, request: Any) -> bool:
+        del request
+        self._record("case_has_return_details")
+        return True
+
     def _record(self, name: str) -> None:
         self.calls.append(name)
         self._reached.setdefault(name, asyncio.Event()).set()
@@ -180,18 +246,15 @@ class _Probe:
             raise AssertionError(f"{name} did not run within {within_seconds}s") from None
 
     def all(self) -> tuple[Any, ...]:
-        return (
-            self.record_case_status,
-            self.record_case_customer_identity,
-            self.request_bay_assignment,
-            self.evaluate_case_eligibility,
-            self.resolve_business_deadline,
-            self.draft_support_request,
-            self.open_support_work_item,
-            self.send_support_reminder,
-            self.record_support_outcome,
-            self.synchronize_return_records,
-        )
+        """Derived, not listed -- see `tests/activity_probe.py`.
+
+        This probe carried the same stale tuple of ten as its sibling in
+        `test_return_case_workflow_real_infra.py`. It stayed green only because
+        an approved case here is the exception rather than the rule, so most of
+        its scenarios stop at the gate and never reach the activities it was
+        missing. Green because the scenarios could not exercise the property.
+        """
+        return declared_activities(self)
 
 
 def _timings(**overrides: Any) -> ReturnCaseTimings:

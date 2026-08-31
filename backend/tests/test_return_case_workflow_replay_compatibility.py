@@ -354,6 +354,166 @@ def test_every_activity_the_workflow_calls_is_registered_on_the_worker() -> None
     assert called <= registered, called - registered
 
 
+# ---------------------------------------------------------------------------
+# 4b. The same rule, over the workers the *tests* build
+# ---------------------------------------------------------------------------
+#
+# The check above reads `worker.py`. Production is not the only place that
+# constructs a worker for this workflow: every real-infra test builds its own,
+# with a probe supplying the activities, and those registrations were a second
+# hand-maintained copy of the same list.
+#
+# That copy rotted twice -- `5b7d60f6` re-synced it, and V1 phase 2's review
+# gate staled it again on the day it merged, leaving 12 of 13 tests failing
+# with `NotFoundError: ... record_template_draft ... is not registered`. It
+# survived because **nothing ran them**: CI's backend job is `pytest tests`,
+# `addopts` deselects `live_infra`, and the suite's only entry point was a
+# script a person had to start. A guard with no gate is a comment.
+#
+# So the rule moves here, into the default suite that CI does run. The
+# registration list is now derived from each probe's own `@activity.defn`
+# methods (`tests/activity_probe.py`), which closes the tuple; this closes the
+# methods, and it closes them **without live infrastructure** -- the whole
+# defect is visible from the source.
+
+
+def _test_root() -> pathlib.Path:
+    return pathlib.Path(__file__).resolve().parent
+
+
+def _is_worker_call(node: ast.AST) -> bool:
+    """`Worker(...)` or `worker.Worker(...)` -- both spellings appear."""
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if isinstance(func, ast.Name):
+        return func.id == "Worker"
+    return isinstance(func, ast.Attribute) and func.attr == "Worker"
+
+
+def _keyword(call: ast.Call, name: str) -> ast.expr | None:
+    for keyword in call.keywords:
+        if keyword.arg == name:
+            return keyword.value
+    return None
+
+
+def _provider_classes(tree: ast.Module) -> dict[str, str]:
+    """`probe = _Probe(...)` -> {"probe": "_Probe"}, module-wide.
+
+    The activities a test worker registers arrive as `<name>.all()`, so the
+    class behind `<name>` is what has to be inspected. Collected across the
+    whole module rather than per-function: the names are distinct per file
+    (`probe`, `resumed`) and always bound from the same class.
+    """
+    providers: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        value = node.value
+        if not (isinstance(value, ast.Call) and isinstance(value.func, ast.Name)):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                providers[target.id] = value.func.id
+    return providers
+
+
+def _case_workflow_workers() -> list[tuple[pathlib.Path, int, str, str]]:
+    """Every test-built `Worker` registering `ReturnCaseWorkflow`.
+
+    Returns `(path, line, provider-variable, activities-source)`. A worker for
+    some *other* workflow is none of this rule's business -- the order-discovery
+    and reasoning suites build their own and call different activities -- so the
+    filter is on the workflow, not on the file.
+    """
+    found: list[tuple[pathlib.Path, int, str, str]] = []
+    for path in sorted(_test_root().rglob("*.py")):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:  # pragma: no cover - a broken test file fails on its own
+            continue
+        providers = _provider_classes(tree)
+        for node in ast.walk(tree):
+            if not _is_worker_call(node):
+                continue
+            assert isinstance(node, ast.Call)
+            workflows = _keyword(node, "workflows")
+            activities = _keyword(node, "activities")
+            if workflows is None or activities is None:
+                continue
+            if "ReturnCaseWorkflow" not in ast.unparse(workflows):
+                continue
+            source = ast.unparse(activities)
+            variable = source.split(".", 1)[0]
+            found.append((path, node.lineno, providers.get(variable, ""), source))
+    return found
+
+
+def test_a_test_worker_for_the_case_workflow_exists_to_be_checked() -> None:
+    """The guard below is worthless if it walks over nothing.
+
+    A rename of `_Probe`, a move of the real-infra files, or an `activities=`
+    expression this walker cannot read would all reduce the check to an
+    assertion over an empty list -- which passes. So the population is pinned
+    first, and separately.
+    """
+    workers = _case_workflow_workers()
+
+    assert len(workers) >= 20, f"expected the real-infra suites' workers, found {len(workers)}"
+    #: An equality, not a superset. A file that *stopped* being seen is the
+    #: failure this pin exists for, and a superset check cannot see one.
+    #:
+    #: If a new file legitimately builds a `ReturnCaseWorkflow` worker, add it
+    #: here -- and read the sibling assertion's report first, because a new
+    #: probe is exactly where an under-registered one arrives.
+    assert {path.name for path, _line, _cls, _src in workers} == {
+        "test_return_case_policy_gate_real_infra.py",
+        "test_return_case_workflow_real_infra.py",
+    }
+    unresolved = [
+        f"{path.name}:{line} activities={source}"
+        for path, line, provider, source in workers
+        if not provider or not source.endswith(".all()")
+    ]
+    assert unresolved == [], f"activities expression not resolvable to a probe class: {unresolved}"
+
+
+def test_every_test_worker_registers_every_activity_the_workflow_calls() -> None:
+    """A stale probe is the production defect with no production involved.
+
+    An activity the worker has not registered is not an error anywhere: the
+    workflow schedules the task, nothing polls for it, and the execution stops.
+    In production that is a case stuck in `AWAITING_SUPPORT`. In a test it is a
+    suite that hangs until its ceiling and then reports the wedge -- which is
+    only useful if somebody runs the suite, and for this one nobody did.
+
+    Checked against each probe's **declared** activities rather than a
+    constructed instance: the policy-gate probe takes a required argument, and a
+    check that silently skipped the probes it could not build would be exactly
+    the vacuum this file's other guards were written to avoid.
+    """
+    import importlib
+
+    from tests.activity_probe import declared_activity_names
+
+    called = {name for name, _result_type, _line in _activity_calls() if name is not None}
+
+    missing: dict[str, set[str]] = {}
+    for path, line, provider, _source in _case_workflow_workers():
+        module = importlib.import_module(f"tests.{path.stem}")
+        probe_class = getattr(module, provider, None)
+        assert probe_class is not None, f"{path.name}:{line} has no class named {provider}"
+        absent = called - declared_activity_names(probe_class)
+        if absent:
+            missing[f"{path.name}:{line} ({provider})"] = absent
+
+    assert missing == {}, (
+        "test workers under-register activities the workflow calls; each of "
+        f"these leaves a case scheduled on a task nothing polls: {missing}"
+    )
+
+
 def test_every_activity_call_names_its_activity_literally() -> None:
     """A computed activity name cannot be pinned, so it must not appear.
 
