@@ -974,3 +974,68 @@ item 18 as fully green until this is ruled. Nothing was fixed — populating
 
 **Commands:** `python -m pytest tests/acceptance -q` → **28 passed**.
 `ruff check` / `ruff format` clean.
+
+---
+
+## step:08 — items 21 and 22: the restart the determinism tests cannot see
+
+**Files:** `backend/tests/acceptance/test_item_21_context_is_byte_identical_across_a_restart.py`,
+`backend/tests/acceptance/test_item_22_the_release_stays_pinned_across_a_promotion.py`,
+`.plan/acceptance/items-21-22-context-and-pinning.md` (all new).
+
+**Item 21.** The in-slice determinism suite is thorough and all twenty-one of its
+tests run **in one process**, so they share a `PYTHONHASHSEED` and cannot see a
+hash-order dependence. A restart is a new seed. The module assembles the same
+fact log in two fresh interpreters under different seeds and compares hash,
+payload, `consumed_fact_ids` and `omitted_fact_ids`.
+
+The injection that justifies it: **INJ-21b** leaves the canonical output order
+intact and makes only the *eviction tie-break* `hash()`-dependent — **1 failed,
+23 passed**, and all twenty-one in-slice tests stay green. Nothing else in the
+repository sees it. (INJ-21a, a crude `set` in the projection, is caught in-slice
+too; reported as the honest half.)
+
+**A fifth instrument defect, found in my own work.** The squeezed-budget test
+asserted `len(consumed) < len(_FACTS)` at a budget of 120 — where **nothing is
+omitted**, because the scoped-latest projection alone accounts for the drop from
+six facts to four. The guard was green while the test was the generous-budget
+case again. Now asserts a non-empty `omitted_fact_ids` at a budget verified to
+evict.
+
+**Item 22.** Compaction's two clauses are covered in-slice and were **audited by
+injection** (disabling the pinned pass reds two; dropping the omission record
+reds three) rather than duplicated. The third clause — the release pin across a
+mid-retry promotion — was covered by nothing: the existing crash-resume test
+rebuilds the analyser on the *same* release. Three scenarios added, including a
+**control** (a second event pinned under a later release), because every "the pin
+did not move" assertion also passes for a build that can never adopt a new
+release.
+
+**INJ-22a is a finding about where a guarantee lives.** Disabling
+`pin_routing_decision`'s early return — the branch whose docstring explains
+keeping the first pin — changed **nothing**: 25 passed. The `{… field: None}`
+CAS filter is what enforces it; the fast path is an optimisation. Removing both
+(**INJ-22b**) reds the two new pin tests while the **entire 22-test in-slice
+classification suite stays green** — so before this step the guarantee was
+asserted by nothing. `merge.md`'s "cite the mechanism that actually fires", found
+in production code rather than in a test.
+
+**An expectation of mine was wrong and the code was right.** The first scenario
+expected a never-completed extraction stage to adopt the promoted release; it
+keeps the one pinned before the crash, because the pin is taken *before*
+invocation. Found by reading `pin_routing_decision` rather than reporting a
+defect. Recorded in the test's own comment, because "adjusted until it passed"
+and "wrong for a reason someone can check" look identical in a diff.
+
+**Commands:** `python -m pytest tests -q` → **5220 passed, 1 failed, 10 skipped,
+512 deselected** (4:44) — the allowlisted failure, **zero new**. `ruff check` /
+`ruff format` clean.
+
+**Still unreached: items 14-17 and 20.** Not attempted, and not claimed. They
+need a live-infra build driving a real `ReturnCaseWorkflow` through the template
+review gate against Temporal — `tests/test_return_case_workflow_real_infra.py`
+proves the *Support* wait survives a restart and contains **zero** review-gate
+coverage (grep: no occurrence of `review` in the file). That build is
+substantial, and per rule 13 it is worth saying what would gate it: **nothing in
+CI**, since `addopts` deselects `live_infra` and the workflow runs plain
+`pytest tests`.
