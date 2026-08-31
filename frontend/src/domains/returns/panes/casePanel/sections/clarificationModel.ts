@@ -19,31 +19,31 @@ import type { CasePanelView, PanelSectionView } from "../../../../../api/casePan
  *
  * ---
  *
- * ## Where clarifications actually come from, and why this reads two places
+ * ## Where clarifications come from — one vehicle, since AMENDMENT-6
  *
- * §9 names **two** vehicles and they do not agree with each other.
+ * §9 used to name **two** vehicles that did not agree with each other: the
+ * clarification reaches the console as a *panel section*, and `clarifications[]`
+ * was also declared on the panel DTO, which V1 phase 2's handoff repeated in its
+ * frozen-DTO table — "arrive through the section registry", of a **top-level
+ * field**.
  *
- * Line 104 says the clarification reaches the console as a *panel section*. Line
- * 106 declares `clarifications[]` on the panel DTO, and V1 phase 2's handoff
- * repeats that in its frozen-DTO table — "arrive through the section registry",
- * of a **top-level field**.
- *
- * Only one of those is buildable today. `register_panel_section`'s contributor
+ * Only one of those was ever buildable. `register_panel_section`'s contributor
  * Protocol returns `PanelSectionView | None` and has no way to write a top-level
- * DTO field, and `api/case_panel.py` sets `clarifications=()` as a literal. So
- * `panel.clarifications` is empty on every real panel and will stay empty until
- * somebody changes V1's composer.
+ * DTO field, so `api/case_panel.py` set `clarifications=()` as a literal and no
+ * slice could have changed that. The first draft of this file read **only**
+ * `panel.clarifications` and would therefore have rendered nothing, ever, while
+ * every test that handed it a fabricated panel stayed green — the
+ * consumer-tested-against-a-synthetic-producer shape, exactly.
  *
- * The first draft of this file read **only** `panel.clarifications`, and would
- * therefore have rendered nothing, ever, while every test that handed it a
- * fabricated panel stayed green — the consumer-tested-against-a-synthetic-
- * producer shape, exactly.
+ * This file then read both vehicles, de-duplicated, on the reasoning that
+ * whichever one the integration pass wired, the section would draw. AMENDMENT-6
+ * settled it the other way: the DTO field is **retired**, not filled, because a
+ * second parallel path the seam cannot reach is the defect. So the field half is
+ * gone and the section payload is the whole source.
  *
- * So this reads **both**, section payload first, de-duplicated on
- * `clarificationId`. Not defensiveness: whichever vehicle the batched
- * integration pass ends up wiring, this section draws. Reading one and going
- * dark on the other is how a feature disappears at integration time with no test
- * anywhere turning red.
+ * The de-duplication stayed. It is no longer about two vehicles disagreeing —
+ * it is that one payload carrying an id twice must still draw one card, and
+ * `readClarifications`' order guarantee is what keeps the list from shuffling.
  */
 
 /** The section id V3 contributes under, on both sides of the seam. */
@@ -112,24 +112,31 @@ export function readClarification(raw: unknown): CaseClarification | null {
 }
 
 /**
- * Every clarification on this panel, from either vehicle, in a stable order.
+ * Every clarification the contributed section carries, in the order it carries
+ * them.
  *
- * Section payload first, then anything on `panel.clarifications` the section did
- * not already carry. First writer of an id wins, so a panel that grows a
- * populated `clarifications[]` later does not draw every card twice — and the
- * order does not shuffle when it does, because appending never reorders what is
- * already in the list.
+ * First writer of an id wins, so a payload that names the same clarification
+ * twice draws one card — and the order does not shuffle, because skipping a
+ * repeat never reorders what is already in the list.
+ *
+ * `panel` stays in the signature deliberately, unread. It is what lets
+ * `clarificationModel.test.ts`'s retirement guard hand this function a panel
+ * that still carries a top-level `clarifications` key — an older release, or a
+ * server that has not been redeployed — and assert that **nothing** is drawn
+ * from it. Drop the parameter and that assertion becomes unwritable, which
+ * would leave AMENDMENT-6 with no watcher on the console side.
  */
 export function readClarifications(
   panel: CasePanelView,
   section: PanelSectionView | undefined,
 ): readonly CaseClarification[] {
+  void panel;
   const payload = section?.payload as { clarifications?: unknown } | undefined;
   const held: unknown = payload?.clarifications;
   const fromSection: readonly unknown[] = Array.isArray(held) ? (held as readonly unknown[]) : [];
   const seen = new Set<string>();
   const found: CaseClarification[] = [];
-  for (const raw of [...fromSection, ...panel.clarifications]) {
+  for (const raw of fromSection) {
     const clarification = readClarification(raw);
     if (clarification === null || seen.has(clarification.clarificationId)) continue;
     seen.add(clarification.clarificationId);

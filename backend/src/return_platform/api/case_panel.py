@@ -102,17 +102,15 @@ async def compose_case_panel(request: Request, case_id: str) -> CasePanelView:
         execution=execution,
         reviews=tuple(_review_view(review, flagged) for review in _visible(reviews)),
         return_records=records,
-        # `support_digest`, `clarifications` and `parked_messages` are declared
-        # here and left empty **by ownership, not by omission**. The thread
-        # digest and the parked count are the ingress surface's (V2) and the
-        # clarifications are the resolver's (V3); each arrives through
-        # `register_panel_section` in its own slice's file, which is what the
-        # section seam is for. The fields stay on the frozen DTO so the shapes
-        # are settled before those slices need them.
-        support_digest=(),
-        clarifications=(),
+        # The thread digest, the clarifications and the parked count used to be
+        # three top-level fields hardcoded empty here, with a comment saying
+        # they were "left empty by ownership, not by omission" and would arrive
+        # through `register_panel_section`. The intent was right and the
+        # sentence was not: a contributor returns a `PanelSectionView | None`
+        # and cannot write a top-level field, so no slice could ever have
+        # filled them. AMENDMENT-6 retired all three; they arrive in `sections`
+        # like everything else a contributing slice shows.
         timers=timers,
-        parked_messages=0,
         accepted_commands=commands,
         sections=sections,
     )

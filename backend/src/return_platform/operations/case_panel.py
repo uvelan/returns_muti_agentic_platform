@@ -196,16 +196,29 @@ class CasePanelView(_Panel):
 
     **Frozen at merge.** Anything V2 or V3 wants to show goes in `sections`
     through the registry.
+
+    That sentence used to be false for three fields. `support_digest`,
+    `clarifications` and `parked_messages` were declared here as top-level
+    placeholders for contributing slices to fill -- but a contributor satisfies
+    `PanelSectionContributor`, which returns a `PanelSectionView | None` into
+    `sections`, and **has no way to write a top-level field**. So the composer
+    hardcoded all three empty and no contributor could ever change that. V3
+    built a clarifications section against `panel.clarifications`; it would have
+    drawn nothing on every real panel while a suite full of hand-built panel
+    objects stayed green. AMENDMENT-6 retired them, and this is where that
+    lands.
+
+    **Do not re-add a top-level field for a contributing slice.** If a section
+    needs to say something, it says it in its own `PanelSectionView.payload`.
+    A second parallel path that the seam cannot reach is the defect, not the
+    absence of one.
     """
 
     case_id: str
     execution: PanelExecutionView
     reviews: tuple[ReviewPanelView, ...] = ()
     return_records: tuple[dict[str, Any], ...] = ()
-    support_digest: tuple[dict[str, Any], ...] = ()
-    clarifications: tuple[dict[str, Any], ...] = ()
     timers: PanelTimersView = Field(default_factory=PanelTimersView)
-    parked_messages: int = 0
     accepted_commands: tuple[AcceptedCommandView, ...] = ()
     #: Contributed sections, **sorted by `section_id`**. Sorted rather than
     #: registration-ordered because registration order depends on import order,
