@@ -254,3 +254,45 @@ $ ./.venv/Scripts/python.exe -m pytest tests/operations/test_artifact_binding.py
 ..........................................                               [100%]
 42 passed in 3.99s
 ```
+
+---
+
+## step:03 — a red test on the merge tip, and it is ACC-2's predicted class
+
+Both whole-suite runs in step:02 carried a second failure, present with `src/`
+clean and with no injection applied:
+
+```
+$ git status --porcelain
+(empty, src/)
+$ ./.venv/Scripts/python.exe -m pytest tests/test_cumulative_support_outcomes.py -q
+FAILED tests/test_cumulative_support_outcomes.py::test_a_rejected_return_still_opens_no_work_item
+1 failed, 50 passed in 1.58s
+```
+
+```
+    async def _open_support(self, timings: ReturnCaseTimings) -> None:
+>           if workflow.patched(_PATCH_STRUCTURED_SUPPORT_DRAFT):
+E           AttributeError: '_Runtime' object has no attribute 'patched'
+src\return_platform\workflows\return_case_workflow.py:2247: AttributeError
+```
+
+`tests/test_cumulative_support_outcomes.py:1311`'s `_Runtime` substitutes the
+`temporalio.workflow` module functions the run loop calls, and it **does not
+define `patched`** — production grew a `workflow.patched` call (the structured
+support-draft patch branch) and the double did not follow. Production is
+correct; the harness is stale.
+
+This is **the same class ACC-2 handed to its owner and predicted would recur**
+(STATUS "Findings handed to their owners" 1 and 2: stale workflow doubles, and a
+registration guard that reads `worker.py` but not the workers the *tests*
+construct). Here it is again, in a different file, and this time not silent —
+it is red on the merge tip that ACC-2 recorded as `PASS`.
+
+**Not repaired** (ACC does not edit another slice's harness, and the audit rule
+forbids touching a failing test). Reported. Consequence: one of the two branches
+of item 20's deploy-replay pair is unexercised in this module, and any full-suite
+run on this branch is red before an auditor starts.
+
+Only 1 of the 51 tests in the file reaches `_open_support`, which is why it
+presents as a single failure rather than a wedged module.
