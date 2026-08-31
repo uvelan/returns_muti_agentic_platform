@@ -88,8 +88,10 @@ from return_platform.workflows.return_case_workflow import (
     ReturnCaseWorkflow,
     ReturnCaseWorkflowInput,
     SupportOutcomeReceipt,
+    SupportRequestDraft,
     SupportResponseNotice,
     SupportReturnRecord,
+    TemplateReviewDraftSet,
     TerminalCommandName,
 )
 
@@ -2045,6 +2047,194 @@ async def test_a_rejected_return_still_opens_no_work_item(
     # `workflow.patched` calls on this path, so an empty marker log is the
     # positional guarantee restated: nothing past the gate ran at all.
     assert harness.runtime.patch_ids == []
+
+
+# ---------------------------------------------------------------------------
+# The two patch gates inside `_open_support`, both limbs of each
+#
+# `_Runtime` had no `patched` until this branch, so *every* test above stopped
+# short of `_open_support` and neither gate had ever been evaluated from this
+# module -- two gates, four limbs, no coverage. A `patched` that merely stopped
+# raising would have made the two patched limbs reachable and left the two
+# un-patched ones exactly as dark, so both sides of both are taken here.
+#
+# The ids are read off production rather than restated, so a renamed marker
+# fails these tests instead of quietly answering a string nobody consults.
+# ---------------------------------------------------------------------------
+
+_DRAFT_MARKER = workflow_module._PATCH_STRUCTURED_SUPPORT_DRAFT
+_REVIEW_MARKER = workflow_module._PATCH_SUPPORT_TEMPLATE_REVIEW_GATE
+
+
+def _option_for(harness: _WorkflowHarness, activity: str) -> dict[str, Any]:
+    """The keyword options `_open_support` passed with one activity call."""
+    matches = [options for name, options in harness.runtime.options if name == activity]
+    assert len(matches) == 1, f"expected exactly one {activity} call, saw {len(matches)}"
+    return matches[0]
+
+
+async def _unreachable_template_draft(_request: Any) -> TemplateReviewDraftSet:
+    """A gate activity that is present so its *absence from the log* means something."""
+    return TemplateReviewDraftSet(drafts=(), template_available=False)
+
+
+async def test_a_new_execution_asks_the_draft_activity_for_the_typed_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_PATCH_STRUCTURED_SUPPORT_DRAFT`, patched limb (workflow line 2247).
+
+    A new execution writes the marker and pins `result_type=SupportRequestDraft`,
+    so the payload converter types the result and the structured payload reaches
+    the opening message. The pin is the entire difference between the two limbs
+    -- same activity, same input -- which is why the assertion is on the options
+    and not on the call list.
+    """
+    harness = _harness(monkeypatch, patches={_DRAFT_MARKER: True, _REVIEW_MARKER: False})
+    # The review marker is pinned off only to keep this test about the draft
+    # gate. The stub means a review marker answered wrongly degrades to the
+    # composed path rather than exploding, so the assertion that fires below
+    # stays legible as "the draft gate took the wrong limb" and is never
+    # replaced by a `KeyError` from a neighbouring gate.
+    harness.runtime._activities["record_template_draft"] = _unreachable_template_draft
+
+    outcome = await _run(harness, work_item_id=None)
+
+    assert harness.runtime.patch_ids == [_DRAFT_MARKER, _REVIEW_MARKER]
+    assert _option_for(harness, "draft_support_request")["result_type"] is SupportRequestDraft
+    # And the typed draft is what Support was handed.
+    assert outcome.work_item_id is not None
+    opened = harness.fixture.support.work_items[outcome.work_item_id]
+    assert opened["draft"], "the typed branch opened a thread with no request in it"
+
+
+async def test_an_unmarked_history_decodes_the_bare_string_the_activity_used_to_return(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_PATCH_STRUCTURED_SUPPORT_DRAFT`, un-patched limb (workflow line 2247).
+
+    The limb that wedged cases `return-case-7b216e58` and `return-case-2328a586`.
+    A history recorded before the marker existed holds prose where the typed
+    branch expects a dataclass, so this limb pins no `result_type` at all and
+    hands whatever came back to `_coerce_support_draft`.
+
+    The string is what a pre-`eaed61c` execution recorded, and the assertion is
+    that it *arrives at Support unchanged* -- the failure this guards against is
+    not an exception, it is a thread opened with the wrong words in it. The
+    payload is empty because a string carries none, and inventing one would put
+    facts on the message that nothing observed.
+    """
+    harness = _harness(monkeypatch, patches={_DRAFT_MARKER: False, _REVIEW_MARKER: False})
+    legacy_text = "RETURN SUPPORT REQUEST\n\nCase:\n- Case ID: case-phase-4\n"
+
+    async def _prose(_request: Any) -> Any:
+        return legacy_text
+
+    harness.runtime._activities["draft_support_request"] = _prose
+    # Same reason as the test above: the neighbouring gate must not be able to
+    # supply this test's failure.
+    harness.runtime._activities["record_template_draft"] = _unreachable_template_draft
+
+    outcome = await _run(harness, work_item_id=None)
+
+    assert harness.runtime.patch_ids == [_DRAFT_MARKER, _REVIEW_MARKER]
+    assert "result_type" not in _option_for(harness, "draft_support_request"), (
+        "the legacy limb pinned a result type, which is the wedge it exists to avoid"
+    )
+    assert outcome.work_item_id is not None
+    opened = harness.fixture.support.work_items[outcome.work_item_id]
+    assert opened["draft"] == legacy_text
+    assert workflow_module._coerce_support_draft(legacy_text).payload == {}
+
+
+async def test_a_new_execution_consults_the_review_gate_before_it_sends(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE`, patched limb (workflow line 2294).
+
+    The marker is present, so `_template_review_gate` runs and its first act is
+    `record_template_draft`. The release here has published no template, which is
+    one of the gate's two documented ways of handing the outcome back
+    (`template_available=False`), and the case then takes the composed path and
+    opens the thread as it always did.
+
+    That shape is chosen deliberately: it proves the gate was *entered* -- the
+    activity call is the proof, and it cannot happen on the other limb -- without
+    rebuilding the reviewer machinery that `tests/test_support_template_review_gate.py`
+    already owns 1,200 lines of. What is new here is only which branch of
+    `_open_support` ran.
+    """
+    harness = _harness(monkeypatch, patches={_DRAFT_MARKER: True, _REVIEW_MARKER: True})
+
+    async def _no_template_published(_request: Any) -> TemplateReviewDraftSet:
+        return TemplateReviewDraftSet(drafts=(), template_available=False)
+
+    harness.runtime._activities["record_template_draft"] = _no_template_published
+
+    outcome = await _run(harness, work_item_id=None)
+
+    assert harness.runtime.patch_ids == [_DRAFT_MARKER, _REVIEW_MARKER]
+    assert "record_template_draft" in harness.runtime.calls, "the gate was skipped while marked"
+    assert harness.runtime.calls.index("record_template_draft") < harness.runtime.calls.index(
+        "open_support_work_item"
+    ), "the gate ran after the send it is supposed to gate"
+    # No template, so the composed path still runs and the case is not parked.
+    assert outcome.work_item_id is not None
+    assert outcome.status == ReturnCaseStatus.AWAITING_SUPPORT.value
+
+
+async def test_an_unmarked_history_never_reaches_the_review_gate_at_all(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE`, un-patched limb (workflow line 2294).
+
+    The population this marker exists for: an execution recorded before the gate
+    was written. Its history holds `open_support_work_item` where the gated path
+    would reach `record_template_draft`, so a replay that took the gate would
+    fail non-determinism on every workflow task -- the wedge on a much wider
+    population than the draft marker's.
+
+    So the claim is byte-for-byte the pre-gate behaviour, and it is asserted
+    negatively *and* positionally: `record_template_draft` is never called, and
+    the send is the statement immediately after the draft. The marker is still
+    consulted -- that is what distinguishes "the gate answered no" from "the gate
+    is not there any more", and the latter would silently pass a bare absence
+    check.
+    """
+    harness = _harness(monkeypatch, patches={_DRAFT_MARKER: True, _REVIEW_MARKER: False})
+    # Deliberately available. If the un-patched limb ever started consulting the
+    # gate, this would make it succeed quietly instead of raising, so the
+    # assertions below are the only thing standing between the two limbs.
+    harness.runtime._activities["record_template_draft"] = _unreachable_template_draft
+
+    outcome = await _run(harness, work_item_id=None)
+
+    assert harness.runtime.patch_ids == [_DRAFT_MARKER, _REVIEW_MARKER]
+    assert "record_template_draft" not in harness.runtime.calls
+    assert (
+        harness.runtime.calls.index("open_support_work_item")
+        == harness.runtime.calls.index("draft_support_request") + 1
+    ), "something ran between the draft and the send on the pre-gate path"
+    assert outcome.work_item_id is not None
+    assert outcome.status == ReturnCaseStatus.AWAITING_SUPPORT.value
+
+
+async def test_a_patch_marker_this_module_does_not_know_about_fails_loudly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The mapping refuses to answer for a marker the test did not pin.
+
+    Rule 13 applied to the double itself. `_open_support` grew from one
+    `workflow.patched` call to two; if it grows a third, the four tests above
+    must fail rather than answer the new marker at random and go on asserting a
+    branch nobody chose. A `KeyError` naming the unpinned id is that failure.
+    """
+    runtime = _Runtime({}, patches={_DRAFT_MARKER: True})
+
+    assert runtime.patched(_DRAFT_MARKER) is True
+    with pytest.raises(KeyError):
+        runtime.patched(_REVIEW_MARKER)
+    assert runtime.patch_ids == [_DRAFT_MARKER, _REVIEW_MARKER]
+    del monkeypatch
 
 
 async def test_a_resumed_case_holding_a_work_item_does_not_re_evaluate_the_policy(

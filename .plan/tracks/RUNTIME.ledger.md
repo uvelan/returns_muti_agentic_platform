@@ -251,3 +251,125 @@ $ PYTHONPATH=...\src ...python.exe -m pytest tests/test_cumulative_support_outco
 ```
 
 Next step: the coverage the fix unblocks.
+
+---
+
+## Step 4 — the coverage the fix unblocks: both limbs of both reachable gates
+
+Files touched: `backend/tests/test_cumulative_support_outcomes.py`.
+
+Five tests added. Four take the four limbs of the two gates `_open_support` holds;
+the fifth guards the double itself.
+
+| test | gate | limb |
+|---|---|---|
+| `test_a_new_execution_asks_the_draft_activity_for_the_typed_shape` | 2247 | patched |
+| `test_an_unmarked_history_decodes_the_bare_string_the_activity_used_to_return` | 2247 | un-patched |
+| `test_a_new_execution_consults_the_review_gate_before_it_sends` | 2294 | patched |
+| `test_an_unmarked_history_never_reaches_the_review_gate_at_all` | 2294 | un-patched |
+| `test_a_patch_marker_this_module_does_not_know_about_fails_loudly` | — | the mapping refuses an unpinned id |
+
+The marker ids are read off production (`workflow_module._PATCH_...`), never
+restated, so a renamed marker fails these tests instead of pinning a string nobody
+consults.
+
+Discriminators, chosen so each limb is distinguishable from its twin:
+
+- **2247** — the two limbs call the *same* activity with the *same* input and differ
+  only in whether `result_type` is pinned, so the assertion is on the recorded
+  options. The un-patched test also feeds the activity the bare string a
+  pre-`eaed61c` history holds and asserts it reaches Support unchanged: the failure
+  this limb guards against is not an exception, it is a thread opened with the wrong
+  words in it.
+- **2294** — `record_template_draft` in the call log, which cannot happen on the
+  un-patched limb. The gated run uses `template_available=False`, one of the gate's
+  two documented ways of handing the outcome back, which proves the gate was
+  *entered* without rebuilding the reviewer machinery
+  `tests/test_support_template_review_gate.py` already owns. The un-patched test
+  asserts positionally — the send is the statement immediately after the draft — and
+  registers the gate activity anyway, so its absence from the log is a fact rather
+  than an accident of the table.
+
+**Site 1672 is not covered from here, and is not forced.** It is inside the
+`clarification_answered` signal handler; this module sends no such signal and holds
+no V3 clarification vocabulary. Covered where it belongs
+(`tests/test_support_template_review_gate.py`,
+`tests/test_return_case_workflow_replay_compatibility.py`).
+
+```
+$ PYTHONPATH=...\src ...python.exe -m pytest tests/test_cumulative_support_outcomes.py -q
+........................................................                 [100%]
+56 passed in 1.39s
+```
+
+### Injection — the tests were flipped against, not just run
+
+Three mutations of `_Runtime.patched`, each applied to a green tree and reverted.
+
+**A. `return True` for every marker** (the "convenient double" the dispatch warns
+about — the one that stops the `AttributeError` and adds nothing):
+
+```
+E       AttributeError: 'str' object has no attribute 'text'
+E       AssertionError: assert 'record_template_draft' not in ['record_case_customer_identity', 'record_case_status', 'request_bay_assignment', 'evaluate_case_eligibility', 'draft_support_request', 'record_template_draft', ...]
+E       Failed: DID NOT RAISE KeyError
+FAILED tests/test_cumulative_support_outcomes.py::test_an_unmarked_history_decodes_the_bare_string_the_activity_used_to_return
+FAILED tests/test_cumulative_support_outcomes.py::test_an_unmarked_history_never_reaches_the_review_gate_at_all
+FAILED tests/test_cumulative_support_outcomes.py::test_a_patch_marker_this_module_does_not_know_about_fails_loudly
+3 failed, 53 passed in 1.86s
+```
+
+Exactly the two un-patched-limb tests, each on its own claim. The draft one fails
+with `'str' object has no attribute 'text'` — the typed branch taken against a bare
+string, which is the production wedge itself. The two patched-limb tests stay green,
+correctly: `True` is what they asked for. **This is the direct evidence that an
+always-True double would have been half a fix.**
+
+**B. `return False` for every marker:**
+
+```
+E       TypeError: draft_support_request returned SupportRequestDraft, which is not a shape this workflow has ever recorded
+E       AssertionError: assert False is True
+FAILED tests/test_cumulative_support_outcomes.py::test_a_new_execution_asks_the_draft_activity_for_the_typed_shape
+FAILED tests/test_cumulative_support_outcomes.py::test_a_new_execution_consults_the_review_gate_before_it_sends
+FAILED tests/test_cumulative_support_outcomes.py::test_an_unmarked_history_never_reaches_the_review_gate_at_all
+FAILED tests/test_cumulative_support_outcomes.py::test_a_patch_marker_this_module_does_not_know_about_fails_loudly
+4 failed, 52 passed in 2.60s
+```
+
+Both patched-limb tests redden. The un-patched *review* test reddens too, on the
+neighbouring draft gate that B also flipped — collateral, and reported as such; its
+own claim is what fires under A.
+
+**C. `return not ...` — every decision inverted:**
+
+```
+E       TypeError: draft_support_request returned SupportRequestDraft, which is not a shape this workflow has ever recorded
+E       AttributeError: 'str' object has no attribute 'text'
+E       AssertionError: assert False is True
+FAILED ...::test_a_new_execution_asks_the_draft_activity_for_the_typed_shape
+FAILED ...::test_an_unmarked_history_decodes_the_bare_string_the_activity_used_to_return
+FAILED ...::test_a_new_execution_consults_the_review_gate_before_it_sends
+FAILED ...::test_an_unmarked_history_never_reaches_the_review_gate_at_all
+FAILED ...::test_a_patch_marker_this_module_does_not_know_about_fails_loudly
+5 failed, 51 passed in 1.87s
+```
+
+All five new tests redden; **all 51 pre-existing tests stay green**, which is the
+same finding step 1 made by grep, now made by execution: not one of them depends on
+a patch answer, because not one of them reaches a gate.
+
+A note worth recording, found by injection rather than by reading. Under B and C the
+legacy draft limb fails with `TypeError: draft_support_request returned
+SupportRequestDraft, which is not a shape this workflow has ever recorded`. That is
+the harness, not a production defect: `SupportRequestDraft` is declared twice on
+purpose (workflow module and `return_case_activities`, "which the workflow sandbox
+may not import"), the payload converter bridges them on a real server, and this
+double has no converter. It is why the un-patched draft test feeds the activity a
+plain string — which is what a pre-`eaed61c` history actually holds — rather than
+relying on in-process object identity.
+
+Temporary probe file `tests/test_zz_probe.py`, used in steps 3–4, was deleted; the
+tree is clean apart from the test module.
+
+Next step: the allowlist.
