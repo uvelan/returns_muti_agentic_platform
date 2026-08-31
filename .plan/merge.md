@@ -23,7 +23,7 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | V3 backend | feat/v3-resolver-clarification | **MERGED** | 2 · CR (3d8715f) → PASS (c463872) | 270c223 |
 | V3 frontend | feat/v3-frontend | **MERGED** | 1 · PASS (cfcbe44) | 9952f2b |
 | V3 backend phase 2 (trigger) | feat/v3-resolver-trigger | **MERGED** | 1 · PASS (23b30f04) | 35e7c0f1 |
-| ACC-2 (scenarios) | feat/acc-scenarios | IN_PROGRESS | — | — |
+| ACC-2 (scenarios) | feat/acc-scenarios | **MERGED** | 3 · CR → CR → PASS (dd583e49) | 29f033b6 |
 | ACC-1 (harness) | feat/acc-harness | **MERGED** | 2 · CR → PASS (9cb3508) | c1c2b0f |
 | fabrication guard (AST) | feat/fabrication-guard-ternary | **MERGED** | 1 · PASS (fb221d8a) | 85dc4271 |
 | actorId fixtures | feat/actorid-required | **MERGED** — `tsc` now exits **0** on trunk | 1 · PASS (93ad88fa) | (merged) |
@@ -38,6 +38,14 @@ Remaining: the batched integration pass (in flight), the two frontend phases (in
 
 **V2 phase 1b review notes (PASS, zero findings).** RV verified the three historically fragile items by injection rather than reading: the route walker catches a real collision with a *different* parameter name (3 failed) and passes with the normalisation reduced to identity, so the normalisation is genuinely load-bearing and errs safe (it over-normalises the `:path` converter — false positive possible, missed collision not); removing the idempotency key's length prefixes fails 4, and **the separator test fails on its own merit** rather than via the pinned literal, varying two *adjacent* parts where one carries `|` — both conditions the three earlier attempts kept missing. RV recomputed the pinned uuid5 by hand so the test cannot pass by comparing the function with itself, and checked **AMENDMENT-4's four clauses one at a time against source** rather than trusting my wording: no such transaction exists, the order is as claimed, all three steps are genuine no-ops on repeat, and `ConcurrencyConflictError` is a `RuntimeError` so the outbox retries rather than dead-letters. It also verified the wider property I had not asked for: **170 endpoints across all mounted routers, zero collisions.**
 *Four observations, none findings:* the walker covers only `return_platform.api` (widening costs ~4 lines); `relay` still defaults to `None` — the same optional-port shape the omc gap was raised to close, live risk closed by the factory and its test; a pre-existing S1 stale-value re-merge on out-of-order redelivery, not amplified here; and an uncaught `DuplicateKeyError` on a concurrent upsert race that converges correctly but reports an error where a no-op would be truthful.
+
+**ACC-2 review notes (PASS on round 3, five findings across three rounds).** The substance was never in doubt; what took three rounds was the record catching up to the work. Two things from the final round are worth keeping.
+
+RV settled the scoping question — was `ruff check tests/acceptance tests/harness` a scope drawn honestly, or drawn to pass? — with a **decisive test rather than a judgement**: the file that carried the F401 was *inside* the claimed scope. A scope drawn to pass would have dropped `tests/harness` first; this one kept the path and fixed the error. The 14 remaining backend ruff errors live in six files, none of them the slice's, and the ledger states the whole-backend figure out loud rather than eliding it. That shape generalises: **when a scope boundary is contested, look for whether the boundary costs its author anything.**
+
+And it excluded the "dead import that isn't" empirically rather than by reading. `subprocess` appeared otherwise only inside a generated `parent.py` string whose own first line imports it — so the removal was safe only if the child scripts never relied on the parent's import. Re-running the signal proof under `python:3.13-slim`: exit 0, and critically **check 2 passes**, the one that spawns the generated parent and needs a grandchild heartbeat. That is exactly the check that would have gone red.
+
+*One observation recorded as not-a-finding, and it is the honest kind:* the remedy for the three unfalsifiable sentences — a table whose left column is a pasteable command — outruns the change at one point, since nothing structurally stops the next Commands block being written from memory. ACC was right not to build that gate: the only one available is a test that parses planning documents, which item 26 already ruled out and which would be circular. **The residue is inherent to a written record, not a shortfall in the fix.**
 
 ## Contract amendments (all in `.plan/contracts.md` §1a)
 
