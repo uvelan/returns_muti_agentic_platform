@@ -226,3 +226,91 @@ One pre-existing control needed a floor of its own rather than the standard one:
 `vanished.xml` deliberately drops a case, so judged against the shared floor it
 would answer 2 where that assertion wants 1. Each control now states the size it
 is measured against, which reads better than inheriting one anyway.
+
+---
+
+## step:02 — the defect reproduced live, and what it forced me to change
+
+I did not have to manufacture the first piece of evidence. The frontend suite
+was run for a baseline while the backend suite was running in another process on
+the same machine, and **the defect happened**:
+
+```
+$ cd frontend && npm test -- --reporter=default --reporter=junit --outputFile.junit=junit-frontend.xml
+...
+⎯⎯⎯⎯⎯⎯ Unhandled Error ⎯⎯⎯⎯⎯⎯⎯
+Error: [vitest-pool]: Failed to start forks worker for test files K:/Projects/Ret/rmap-suite-size-guard/frontend/src/domains/support/RmaTicketsPage.test.tsx.
+ ❯ node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:3465:94
+ ❯ Pool.schedule node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:3465:5
+
+Caused by: Error: [vitest-pool-runner]: Timeout waiting for worker to respond
+ ❯ Timeout.<anonymous> node_modules/vitest/dist/chunks/cli-api.BK8pd4xc.js:3041:58
+
+ Test Files  1 failed | 46 passed (47)
+      Tests  2 failed | 583 passed (585)
+     Errors  14 errors
+   Duration  229.48s
+JUNIT report written to K:/Projects/Ret/rmap-suite-size-guard/frontend/junit-frontend.xml
+```
+
+47 files where an unloaded machine reports 62; 585 tests where it reports 867.
+The JUnit report it wrote:
+
+```
+$ python -c "...count testcase elements and distinct classnames..."
+testcases: 585
+distinct classnames: 47
+failures: 2
+```
+
+**Two failures — and they are exactly the two allowlisted ones.** So this real
+artifact is the defect in its pure form, and the pre-change comparator was run
+against it to prove the point rather than assert it:
+
+```
+$ git show b7f07838:scripts/ci/assert_known_failures.py > /tmp/old_comparator.py
+$ python /tmp/old_comparator.py --suite frontend --report frontend/junit-frontend.xml \
+      --allowlist scripts/ci/known_test_failures.json
+577 tests ran, 2 failed, 2 allowlisted
+only the 2 known, still-failing tests failed
+EXIT=0
+```
+
+**Exit 0.** `frontend-tests` would have been green having lost 15 of 62 files
+and 282 of 867 tests. That is the whole defect, on trunk, in one command.
+
+The artifact is kept at
+`<scratchpad>/junit-frontend-TRUNCATED-real.xml` — it is gitignored
+(`.gitignore:103`) and is evidence rather than a fixture.
+
+### What this run changed in the design
+
+Look at the old comparator's line: `577 tests ran`, against a report holding
+**585** `<testcase>` elements. `ran` is a set of `classname::name` ids and this
+suite genuinely contains duplicated ids — 585 collapsing to 577.
+
+So `len(ran)` was the wrong thing to floor. Against distinct ids, one of a
+duplicated pair can stop running without moving the number, and the blind spot
+is the size of every duplicated name in the suite. `_read_report` now returns a
+COUNT of elements alongside the id set, and the floor uses the count.
+
+Two controls added for it: a report of 55 elements collapsing to 46 ids passes a
+floor of 55, and the same report with five of the duplicates removed fails.
+
+Gate 0 also caught my own error while adding them — I wrote the fixture's floor
+as 10 files when the duplicate block reuses a file `suite_of` already emits,
+making it 9:
+
+```
+  [FAIL] counts elements, not distinct ids (55 elements, 46 ids) -- ::error::THE SUITE SHRANK: 9 test files reported, but the recorded floor is 10 -- 1 did not report.
+```
+
+Which is the negative controls doing exactly the job they exist for, on the
+first day, against the person writing them. Corrected; all 31 controls pass:
+
+```
+$ python scripts/ci/test_assert_known_failures.py
+...
+all negative controls passed
+EXIT=0
+```

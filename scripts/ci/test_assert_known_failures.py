@@ -285,6 +285,28 @@ def main() -> int:
         code, out = run(empty_allowlist, write("size-one-short.xml", suite_of(9, 5)), floor=floor)
         check("rejects a run missing a single file", code == 2, out)
 
+        # The floor counts `<testcase>` ELEMENTS, not distinct ids. A real
+        # frontend report measured during this work held 585 elements collapsing
+        # to 577 distinct `classname::name` ids, so the two measures genuinely
+        # differ here. Against distinct ids, one of a duplicated pair could stop
+        # running without moving the number -- a blind spot the size of every
+        # duplicated name in the suite.
+        duplicated = write(
+            "size-duplicate-ids.xml",
+            [("src/f0.test.ts", "same name", None)] * 10 + suite_of(9, 5),
+        )
+        halved = write(
+            "size-duplicate-ids-halved.xml",
+            [("src/f0.test.ts", "same name", None)] * 5 + suite_of(9, 5),
+        )
+        # 9 files, not 10: the duplicate block reuses `src/f0.test.ts`, which
+        # `suite_of(9, ...)` also emits. 55 elements collapsing to 46 ids.
+        dup_floor = {"cases": 55, "files": 9}
+        code, out = run(empty_allowlist, duplicated, floor=dup_floor)
+        check("counts elements, not distinct ids (55 elements, 46 ids)", code == 0, out)
+        code, out = run(empty_allowlist, halved, floor=dup_floor)
+        check("catches five duplicate-named tests vanishing", code == 2, out)
+
         print("\nbut it is a FLOOR, not a pin -- growth is not a failure")
         code, out = run(empty_allowlist, write("size-grown.xml", suite_of(11, 5)), floor=floor)
         check("accepts a suite that grew (55 cases against a floor of 50)", code == 0, out)

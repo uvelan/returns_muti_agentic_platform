@@ -78,8 +78,15 @@ def _case_id(case: ET.Element) -> str:
     return f"{classname}::{name}" if classname else name
 
 
-def _read_report(path: Path) -> tuple[set[str], set[str], set[str]]:
-    """`(failed, ran, files)` from one JUnit XML file.
+def _read_report(path: Path) -> tuple[set[str], set[str], set[str], int]:
+    """`(failed, ran, files, cases)` from one JUnit XML file.
+
+    `cases` is a COUNT of `<testcase>` elements, not `len(ran)`. The two differ:
+    `ran` is a set of ids, and a real frontend report measured here held 585
+    elements collapsing to 577 distinct ids. The floor counts elements, because
+    the question it asks is "how many tests reported", and two tests that happen
+    to share a `classname::name` are still two tests -- against `len(ran)` one of
+    them could vanish without moving the number.
 
     `files` is the set of distinct `classname` values -- test FILES for vitest,
     test MODULES for pytest. It is measured alongside the case count because the
@@ -93,7 +100,9 @@ def _read_report(path: Path) -> tuple[set[str], set[str], set[str]]:
     failed: set[str] = set()
     ran: set[str] = set()
     files: set[str] = set()
+    cases = 0
     for case in root.iter("testcase"):
+        cases += 1
         identifier = _case_id(case)
         ran.add(identifier)
         classname = case.get("classname")
@@ -104,7 +113,7 @@ def _read_report(path: Path) -> tuple[set[str], set[str], set[str]]:
         # would wave through a collection error.
         if case.find("failure") is not None or case.find("error") is not None:
             failed.add(identifier)
-    return failed, ran, files
+    return failed, ran, files, cases
 
 
 # How far ABOVE the floor the suite may grow before the floor must be re-staked.
@@ -132,7 +141,7 @@ def _read_report(path: Path) -> tuple[set[str], set[str], set[str]]:
 RESTAKE_ALLOWANCE = 0.25
 
 
-def _check_size(suite: str, floor_path: Path, ran: set[str], files: set[str]) -> int:
+def _check_size(suite: str, floor_path: Path, cases: int, files: set[str]) -> int:
     """0 if the run is big enough to be believed, 2 if it is not.
 
     2 rather than 1 on purpose. 1 is this script's verdict about the tests, and
@@ -157,7 +166,7 @@ def _check_size(suite: str, floor_path: Path, ran: set[str], files: set[str]) ->
         )
         return 2
 
-    measured = {"cases": len(ran), "files": len(files)}
+    measured = {"cases": cases, "files": len(files)}
     failed = False
 
     for key, label in (("cases", "test cases"), ("files", "test files")):
@@ -238,14 +247,16 @@ def main() -> int:
     failed: set[str] = set()
     ran: set[str] = set()
     files: set[str] = set()
+    cases = 0
     for report in arguments.reports:
         if not report.exists():
             print(f"::error::no JUnit report at {report} -- the run did not produce one")
             return 2
-        report_failed, report_ran, report_files = _read_report(report)
+        report_failed, report_ran, report_files, report_cases = _read_report(report)
         failed |= report_failed
         ran |= report_ran
         files |= report_files
+        cases += report_cases
 
     if not ran:
         print("::error::the report contains no test cases; treating that as a failed run")
@@ -257,7 +268,7 @@ def main() -> int:
     # would be gated by the very condition it exists to doubt. It has to be able
     # to say "this run was too small to believe" about a red run just as readily
     # as about a green one.
-    size = _check_size(arguments.suite, arguments.floor, ran, files)
+    size = _check_size(arguments.suite, arguments.floor, cases, files)
 
     unexpected = sorted(failed - allowed)
     repaired = sorted(allowed & (ran - failed))
