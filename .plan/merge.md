@@ -135,6 +135,12 @@ RV's judgement: *"seven independent agents reading the ref instead of the number
 
 **Why it is dangerous rather than annoying:** an ancestor base **fails silently**. The work compiles, the suites pass, and the slice is simply missing everything merged since — there is no red to notice. Contracts §3 now makes ref-verification mandatory, which is a mitigation, not a fix. **The fix belongs where worktrees are provisioned.**
 
+## ⚠ Bears on the acceptance run — live-suite flakiness under load
+
+The harness repair recorded a residual it explicitly did **not** claim to have fixed: running just **two** real-infra files **in one process** is flaky — 1–2 failures per run, a **different test each time**, all passing in isolation. It attributes this to the load signature that file's own docstring diagnoses, and states it is pre-existing rather than caused by the repair.
+
+**Why it matters beyond that branch:** the sanctioned entry point (`run_real_infra_suite.sh`) runs **all 512 live tests in one process**, so the acceptance gate will meet this at far larger scale than two files reveal. A gate that fails a different test every run is indistinguishable from a gate that found something — which is precisely the ambiguity this run has spent itself eliminating. **RV is asked to rule whether "pre-existing" is established or assumed, and whether this blocks the acceptance run.**
+
 ## Open items surfaced but not yet dispatched
 
 - **`actorId` optionality — the diagnosis was WRONG, and the agent falsified it before spending on regeneration.** RV's diagnosis (schema non-required → optional TS type), which I passed on unverified, is **not in the causal path**. `frontend/src/api/cases.ts:51` defines `Served<T>` as `{ [K in keyof T]-?: Served<Exclude<T[K], undefined>> }`, which forces required-and-nullable **regardless of the document**. Probe A — hand-patching the `.d.ts` to exactly what a correct regeneration would emit — left **3 errors, same three files**, the `?` intact. Probe B — one line in one fixture — cleared that file: **2 errors**. The real cause: `actorId` postdates the three helpers and is the one field not written longhand, arriving only via a `Partial<>` spread, which TypeScript types optional.
