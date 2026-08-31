@@ -174,3 +174,183 @@ absorbed into it.
 
 Next: locate where each of the item 24–25 guarantees actually lives before
 trusting any suite with it (predecessor finding 1).
+
+---
+
+## step:02 — where the item 24–25 guarantees actually live, and six injections
+
+Predecessor finding 1 first: **check the suite before trusting it.** The map,
+built by reading rather than by guessing from filenames:
+
+| guarantee (plan line 279) | the file that pins it |
+| --- | --- |
+| conditional request is sent at all | `src/api/casePanel.test.ts` |
+| 304 answered with no body; ETag moves/holds | `src/mocks/handlers/casePanelHandlers.contract.test.ts` |
+| `private, no-cache` + `Vary` / `private, no-store` | `casePanelHandlers.contract.test.ts` (**not** `casePanel.test.ts`) |
+| degraded ≠ empty | `support/supportPanelPayloads.test.ts`, `support/supportSections.test.tsx` |
+| hash stability while a timer ticks | **nothing** |
+| principal independence (identical body **and** ETag) | **nothing** |
+| conflict presence: visible, blocking, cleared | **nothing** |
+
+`grep -rn "conflict_present: true" src/` returns **one comment and no fixture**.
+`grep -rni "principal" src/` over test files returns nine, none of them a panel
+test. Those two rows are empty because the guarantees are untested, not because
+the test is somewhere else.
+
+### The injections
+
+Every one applied to `frontend/src/`, the **whole** suite re-run at
+`--maxWorkers=2`, then reverted. Baseline is `2 failed | 858 passed (860)`; the
+2 are FE-DEFECT-2's pre-existing registry failures and are subtracted from every
+reading below rather than absorbed.
+
+**INJ-F2 — an unresolved conflict no longer blocks Send.**
+`TemplateReviewSection.tsx:143`, `gaps.length > 0 || review.conflict_present` →
+`gaps.length > 0`.
+
+```
+ Test Files  1 failed | 60 passed (61)
+      Tests  2 failed | 858 passed (860)
+```
+
+**Not caught. Zero new failures.**
+
+**INJ-F3 — the conflict banner never renders.**
+`TemplateReviewSection.tsx:252`, `{review.conflict_present ? (` → `{false ? (`.
+
+```
+ Test Files  1 failed | 60 passed (61)
+      Tests  2 failed | 858 passed (860)
+```
+
+**Not caught. Zero new failures.** Taken together with INJ-F2, the *entire*
+conflict-presence surface — the marker's effect on the send control, the banner,
+and the "Settle the other edit first." copy — is unpinned. Recorded as
+**FE-HOLE-1**.
+
+**INJ-F4 — the conditional request is never sent.**
+`casePanel.ts:158`, `if (etag) headers.set("If-None-Match", etag);` removed.
+
+```
+ FAIL  src/api/casePanel.test.ts > reading the panel > revalidates with the ETag it holds and answers from the cache on 304
+ Test Files  2 failed | 59 passed (61)
+      Tests  3 failed | 857 passed (860)
+```
+
+**Caught.** Verdict **A**.
+
+**INJ-F5 — `Vary: Authorization` dropped from `/panel`.**
+
+```
+ FAIL  src/mocks/handlers/casePanelHandlers.contract.test.ts > the panel mock serves the conditional read the contract is built on > declares the cache headers the contract fixes, on both surfaces
+ Test Files  2 failed | 59 passed (61)
+      Tests  3 failed | 857 passed (860)
+```
+
+**Caught.** Verdict **A**.
+
+**INJ-F6 — `isDegraded` returns `false` always.**
+`supportPanelPayloads.ts:584`.
+
+```
+ FAIL  src/domains/returns/panes/casePanel/support/supportPanelPayloads.test.ts > degradation, and the ids both registries key on > tells a section that could not be read from one with nothing to say
+ FAIL  src/domains/returns/panes/casePanel/support/supportSections.test.tsx > the return-record cards > tells a section it could not read from a case with nothing to say
+ Test Files  3 failed | 58 passed (61)
+      Tests  4 failed | 856 passed (860)
+```
+
+**Caught**, by two tests. Verdict **A** — "degraded is a display state, not an
+absence" holds.
+
+### INJ-F7, three attempts, and the finding is in the difference between them
+
+The guarantee is *two polls with no state change **while a timer ticks** produce
+an identical ETag*. Finding the line that **is** that mechanism took three tries,
+and the first two are recorded because the reasoning is the result.
+
+**INJ-F7a — add a computed countdown to the panel body.**
+`template_review_seconds_remaining: Math.floor((Date.parse(DEADLINE_ISO) - Date.now())/1000)`.
+
+```
+ FAIL  src/mocks/handlers/casePanelHandlers.contract.test.ts > every case-panel mock body conforms to the schema it claims > get /api/v1/cases/:caseId/panel
+```
+
+Red — but on **schema conformance**, because `CasePanelView` is
+`additionalProperties: false` and the key is undeclared. Neither ETag-stability
+test moved. **DISCARDED**: it measures the contract gate, not the hash.
+
+**INJ-F7b — put the wall clock on a field the schema already declares.**
+`template_review_reminders_sent: Math.floor(Date.now()/1000) % 4`.
+
+```
+ FAIL  src/domains/returns/panes/casePanel/CasePanel.test.tsx > what the associate sees > shows the draft, its provenance and the deadline
+```
+
+Red — but on a **fixture-value assertion** ("1 of 3 reminders"), which exists
+only because that number happens to be on screen. Both ETag-stability tests
+again stayed green. **DISCARDED**: caught incidentally, by a guard that would
+not exist for any field nobody renders.
+
+**INJ-F7c — hash the envelope instead of the data.**
+`etagFor(body.data)` → `etagFor(body)`; the envelope's `generated_at` is a
+wall-clock value.
+
+```
+ FAIL  src/mocks/handlers/casePanelHandlers.contract.test.ts > … > answers 304 with no body when the ETag still matches
+ FAIL  src/mocks/handlers/casePanelHandlers.contract.test.ts > … > moves the ETag when the panel moves, and holds it when nothing does
+ Test Files  2 failed | 59 passed (61)
+      Tests  4 failed | 856 passed (860)
+```
+
+**Caught**, by both stability tests. Verdict **A** — but a **bounded** A, and the
+bound is the finding:
+
+> `moves the ETag when the panel moves, and holds it when nothing does` issues
+> its two reads **back to back**. It therefore pins stability against a
+> *millisecond*-resolution clock leak and **cannot** pin it against a
+> second-or-coarser one — which is the only resolution a real 10-second poll
+> would ever expose. F7b is the proof: a value that changes once per second was
+> invisible to both stability tests and was caught by an unrelated fixture
+> assertion.
+
+The contract's own wording — *"two polls with no state change **while a timer
+ticks**"* — names the case the test omits. Recorded as **FE-HOLE-2**.
+
+### FE-DEFECT-3 — AMENDMENT-6 was ruled and never executed
+
+Found while mapping, not by injection. AMENDMENT-6 (`22e1aca6`) retires
+`support_digest`, `clarifications` and `parked_messages` from `CasePanelView`
+because a registered section cannot write a top-level field. All three are still
+there, in all four places:
+
+```
+$ node -e "const d=require('./openapi/return-platform.openapi.json');console.log(Object.keys(d.components.schemas.CasePanelView.properties))"
+[
+  'accepted_commands', 'case_id',   'clarifications',
+  'execution',         'parked_messages', 'return_records',
+  'reviews',           'sections',  'support_digest',
+  'timers'
+]
+$ grep -n "support_digest\|clarifications\|parked_messages" backend/src/return_platform/operations/case_panel.py
+205:    support_digest: tuple[dict[str, Any], ...] = ()
+206:    clarifications: tuple[dict[str, Any], ...] = ()
+208:    parked_messages: int = 0
+$ grep -n "support_digest\|parked_messages" frontend/src/mocks/handlers/casePanelHandlers.ts
+216:    support_digest: [],
+224:    parked_messages: 0,
+$ git log --oneline -S'support_digest' -- backend/src/return_platform/operations/case_panel.py
+32e92df5 (V1) step:15 the panel, the endpoints, and four ways the draft was silently broken
+```
+
+One commit ever touched them — the one that added them. **Nothing removed
+them**, and the V1 comment AMENDMENT-6 quotes as *"a connection that does not
+exist"* is still in `api/case_panel.py:105-111` word for word. Reported, not
+repaired: this is V1/V3's DTO and the T0 retirement is theirs to land.
+
+Tree clean after every revert:
+
+```
+$ git status --porcelain
+$ echo "TREE CLEAN"
+TREE CLEAN
+```
