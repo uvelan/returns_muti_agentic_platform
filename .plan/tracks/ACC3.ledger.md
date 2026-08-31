@@ -639,3 +639,94 @@ of "appended once"; that lives one layer down.
 Item 17's relay half → **A**, by the two tests together. The correction is to the
 pointer, not to the coverage: read literally, STATUS credits the guarantee to a
 test that survives the guarantee's removal.
+
+---
+
+## step:08 — items 9, 11–12, the resolver. Two guarantees pinned; the authz half was unguarded.
+
+Baselines: ladder + roundtrip `54 passed`; composition + gating + roundtrip +
+ladder `96 passed`; clarification route `18 passed`.
+
+### INJ-B18 — budget checked *after* the call (item 12)
+
+`resolution_ladder.py:439`, `>=` → `>`, an off-by-one that spends the invocation
+the budget existed to prevent.
+
+```
+E       AssertionError: the budget is checked before the call, not after
+E       assert 2 == 1
+FAILED tests/operations/test_support_resolution_ladder.py::test_budget_exhaustion_writes_the_fact_and_escalates
+1 failed, 53 passed in 1.94s
+```
+
+**CAUGHT**, by the assertion whose message *is* the property. Note this test is
+the shape phase 2's finding #4 was not: budget 1 against 2 queued answers, so the
+budget genuinely bites, plus a negative twin
+(`test_a_run_that_stays_within_budget_writes_no_exhaustion_fact`) that the
+docstring explains. **Item 12 → A.**
+
+### INJ-B19 — the disclosure line dropped (item 9)
+
+`outbound_composition.py:_with_disclosure`, returns the bare body while still
+reporting `discloses_agent=True` — an agent-authored message reaching Support
+with no disclosure and the platform believing it disclosed.
+
+```
+FAILED tests/operations/test_support_reply_gating.py::test_an_auto_reply_is_delivered_with_system_provenance_and_disclosure
+FAILED tests/operations/test_support_reply_gating.py::test_both_paths_compose_the_identical_message
+ … 12 failed, 84 passed in 1.90s
+```
+
+**CAUGHT**, by 12 tests across both the reviewed and auto paths. **Item 9 → A.**
+
+### INJ-B20 — the refusal is deferred until after the command is recorded (items 11–12)
+
+The endpoint's 404 paths (`api/case_clarifications.py:225-233`) moved *after*
+`store.record_command`, so the caller still gets the identical 404 and body while
+the answer sits durably in `case_command_records`.
+
+```
+--- the route's own suite ---
+18 passed, 1 warning in 3.08s
+--- the whole backend suite ---
+FAILED tests/test_cumulative_support_outcomes.py::test_a_rejected_return_still_opens_no_work_item
+1 failed, 5237 passed, 10 skipped, 514 deselected, 2 warnings in 266.81s (0:04:26)
+```
+
+The single failure is step:03's pre-existing red. **Nothing in 5,237 tests
+caught it.** The four sibling tests
+(`test_another_tenants_case_is_a_404_not_a_403`, `test_a_missing_case_is_the_same_404`,
+`test_an_answer_to_a_clarification_this_case_never_asked_is_a_404`, and the
+capability one) assert **status and error code only** — never that the refusal
+left nothing behind. The dispatch names the property as "403/404 **with no fact
+written**"; only the first half was under test.
+
+**Business consequence.** A principal who cannot see a case submits an answer;
+the API correctly says 404, and the answer is on file against that case, queued
+for delivery to Support under a clarification id the principal was never shown.
+The 404 that exists so a caller cannot learn the case exists would be paired with
+a durable write proving it does.
+
+**Production is correct** — both refusals precede `record_command`. Coverage
+finding only.
+
+### The strengthening
+
+`test_a_refused_answer_records_no_command`, parametrised over all three 404
+shapes (another tenant, missing case, clarification never asked), asserting the
+status **and** `case_command_records` empty.
+
+Clean tree: `3 passed, 18 deselected`. Injected against:
+
+```
+E       assert 1 == 0
+FAILED …test_a_refused_answer_records_no_command[another_tenant]
+FAILED …test_a_refused_answer_records_no_command[missing_case]
+FAILED …test_a_refused_answer_records_no_command[never_asked]
+3 failed, 18 passed, 1 warning in 3.82s
+```
+
+All three redden; the pre-existing 18 stay green, which is the measurement that
+the injection really is invisible to them.
+
+Reverted; `git diff -- backend/src/` empty; the five suites `117 passed`.
