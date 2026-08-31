@@ -27,6 +27,19 @@ A finding the author disputes must be answered with evidence, and you must expli
 
 On top: `engineering:code-review` standard dimensions — correctness/edge cases, error handling, concurrency on concurrent case writes, N+1/query cost, injection, resource cleanup, dead code.
 
+## Rule 13 — a guard with no gate is a comment
+
+**For every guard a branch adds, name the gate that runs it.** If nothing invokes it in CI or in a suite that CI invokes, that is a finding.
+
+This was added after a post-integration audit found four defects that looked independent and were one pattern: **the correct mechanism existed and was bypassed.**
+
+- A **bundle budget** nothing invoked — written specifically to stop size regressions being found by audit, and itself only findable by audit.
+- A **schema** the client silently overrode — `Served<T>` compensating locally for a document that under-declares nine always-populated fields.
+- A **gap-blocks-approval rule** that reached templates but not replies — the aggregate had the rejection path; the reply kind was never added to it.
+- A **contrast check that never reached the component** — axe catches contrast failures, and this one still arrived by audit.
+
+Grep for guards that exist but are not wired into a gate, alongside the twelve blocking rules. The question is not "is there a check?" but "what runs it, and would it have caught this?"
+
 ## Standing greps every round
 
 - Fact-name string literals outside `operations/fact_names.py`.
