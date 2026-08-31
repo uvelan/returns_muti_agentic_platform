@@ -222,6 +222,13 @@ describe("a payload sent in the wrong convention", () => {
     // The only assertion that separates the two is a behavioural one: hand the
     // reader the other convention and require that it yields nothing.
     //
+    // **Before deleting this as redundant, read this sentence.** Key-set
+    // observation cannot be repaired to cover it: tolerance implemented by
+    // normalising the payload's keys *before* any read is fully tolerant and
+    // still records exactly the camelCase set, so all three camelCase key-set
+    // assertions above go green and this is what fails instead. Measured, not
+    // argued -- built and run at step:10.
+    //
     // Whole-value equalities, not "does not contain": a reader that returned a
     // record with every field null would pass a containment check.
     expect(
