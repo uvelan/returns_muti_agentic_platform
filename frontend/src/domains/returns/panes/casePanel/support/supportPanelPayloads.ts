@@ -123,25 +123,50 @@ function isSnakeCase(key: string): boolean {
 }
 
 /**
+ * How many **object** levels down a contributed payload this looks.
+ *
+ * The readers descend two at their deepest: `records[]` is one, and
+ * `records[].artifacts[]` is two. Every other descent -- `unbound[]`,
+ * `messages[]`, `placement` -- stops at one. Four is that plus headroom, so a
+ * payload that grows a level does not silently fall out of the check.
+ *
+ * **Arrays do not consume a level.** A list is not a level of naming -- the
+ * keys live on the objects inside it -- and counting `records[]` and its
+ * elements as two would make this budget the shape of the container rather than
+ * the depth of the names. It is a cap rather than an open walk because this
+ * reads a document from a producer the console does not control; termination is
+ * guaranteed regardless, since JSON is a finite tree.
+ */
+const CASING_SCAN_DEPTH = 4;
+
+/**
  * Whether a contributed payload was written in the DTO's convention by mistake.
  *
- * Looks at the payload's own keys and one level into the objects it carries --
- * which is where the give-away lives: a payload can legitimately have only
- * single-word keys at the top (`records`, `messages`, `count`) and still be
- * entirely snake_case underneath.
+ * Looks at the payload's own keys and **recurses**, because the give-away is
+ * rarely at the top: a payload can be entirely single-word at the root
+ * (`records`, `messages`, `count`) and snake_case all the way down.
  *
- * Deliberately **not** used to read anything. It exists so the section can
- * report "this contributor sent the wrong shape" instead of drawing an empty
- * panel, which is the whole reason the dual-read was the wrong fix.
+ * **This stopped at one level and that was a real defect** (review V2p2-1, F1).
+ * The readers descend two for `records[].artifacts[]`, so a payload whose
+ * artifacts were snake_case was dropped correctly by the strict reader and
+ * reported by nothing -- the card drew with zero artifacts, which reads exactly
+ * like "Support has attached nothing to this return". That is the invisibility
+ * this function exists to prevent, sitting one level below where it looked. And
+ * it is the worst level to miss: the artifacts carry the type and the value.
+ *
+ * Deliberately **not** used to read anything. It exists so a section can report
+ * "this contributor sent the wrong shape" instead of drawing an absence, which
+ * is the whole reason accepting both spellings was the wrong fix.
  */
-export function mentionsSnakeCaseKeys(payload: unknown): boolean {
+export function mentionsSnakeCaseKeys(payload: unknown, depth = CASING_SCAN_DEPTH): boolean {
+  if (Array.isArray(payload)) {
+    // Same depth: see `CASING_SCAN_DEPTH`.
+    return payload.some((element) => mentionsSnakeCaseKeys(element, depth));
+  }
+  if (depth < 0) return false;
   if (!isRecord(payload)) return false;
-  const nested = Object.values(payload).flatMap((value) => {
-    if (isRecord(value)) return [value];
-    if (Array.isArray(value)) return value.filter(isRecord);
-    return [];
-  });
-  return [payload, ...nested].some((node) => Object.keys(node).some(isSnakeCase));
+  if (Object.keys(payload).some(isSnakeCase)) return true;
+  return Object.values(payload).some((value) => mentionsSnakeCaseKeys(value, depth - 1));
 }
 
 /**

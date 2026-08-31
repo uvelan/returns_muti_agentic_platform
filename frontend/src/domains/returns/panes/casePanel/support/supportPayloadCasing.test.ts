@@ -261,6 +261,40 @@ describe("a payload sent in the wrong convention", () => {
     ).toEqual({ count: 2, nlEnabled: null, oldestParkedAtIso: null, quota: null });
   });
 
+  it("is found at every depth the readers descend to", () => {
+    // **Review V2p2-1, F1.** This scanned the root and one level; the readers
+    // descend two, for `records[].artifacts[]`. Probed against the shipped
+    // detector, the ladder read:
+    //
+    //     depth0 (nl_enabled at root)            : detected
+    //     depth1 (return_record_id in records[]) : detected
+    //     depth2 (artifact_type in artifacts[])  : NOT detected
+    //     readerProducedArtifacts                : []
+    //
+    // So the strict reader dropped the artifact -- correctly -- and nothing
+    // said so, and the card drew with zero artifacts, which reads exactly like
+    // "Support has attached nothing to this return". The whole ladder is pinned
+    // here, not just the level that was broken: a fix that moved the blind spot
+    // from two to three would pass a test that only checked two.
+    const depth0 = { nl_enabled: false };
+    const depth1 = { records: [{ return_record_id: "rec-1", artifacts: [] }] };
+    const depth2 = {
+      records: [
+        { returnRecordId: "rec-1", artifacts: [{ artifact_type: "TRACKING", value: "a parcel" }] },
+      ],
+    };
+    expect([depth0, depth1, depth2].map((payload) => mentionsSnakeCaseKeys(payload))).toEqual([
+      true,
+      true,
+      true,
+    ]);
+
+    // And the half that makes it matter: the reader really does produce nothing
+    // from the depth-2 payload, so without the notice the card is an absence.
+    const read = readRecordsPayload(section(depth2, new Set<string>()), []);
+    expect(read.records[0]?.artifacts).toEqual([]);
+  });
+
   it("is reported rather than drawn as an absence", () => {
     // The whole argument for dropping the dual-read. A tolerant reader would
     // have rendered this perfectly; a strict silent one renders nothing, which
@@ -289,5 +323,19 @@ describe("a payload sent in the wrong convention", () => {
       false,
     );
     expect(mentionsSnakeCaseKeys({ records: [{ returnRecordId: "rec_1" }] })).toBe(false);
+    // A correct payload at the depth the detector now reaches. Widening a
+    // detector is exactly how false positives arrive, and a "your release is
+    // broken" notice on a working panel is worse than the thing it warns about.
+    expect(mentionsSnakeCaseKeys(RECORDS_PAYLOAD)).toBe(false);
+    expect(
+      mentionsSnakeCaseKeys({
+        records: [
+          {
+            returnRecordId: "rec-1",
+            artifacts: [{ artifactType: "TRACKING", value: "a parcel", evidenceSpan: "as_written" }],
+          },
+        ],
+      }),
+    ).toBe(false);
   });
 });

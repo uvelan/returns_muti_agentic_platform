@@ -265,6 +265,37 @@ describe("the return-record cards", () => {
     expect(screen.queryByText(/could not be loaded just now/)).toBeNull();
   });
 
+  it("says so when only the artifacts inside a record are wrong-cased", () => {
+    // Review V2p2-1's F1, on the screen. The record itself is camelCase and only
+    // its artifacts are not, so the reader drops the artifacts and keeps the
+    // card -- and before the fix the card drew with zero artifacts and no
+    // complaint, which reads exactly like "Support has attached nothing to this
+    // return". Nothing about that is visible to a test that only checks the card
+    // exists, which is why this asserts the notice *and* the absence of the
+    // value it would otherwise have quietly swallowed.
+    const wrong = section(SUPPORT_SECTION_IDS.records, {
+      records: [
+        {
+          returnRecordId: "rec-1",
+          artifacts: [{ artifact_type: "TRACKING", value: "a parcel" }],
+        },
+      ],
+    });
+    render(
+      <SupportRecordsSection
+        section={wrong}
+        panel={panelWith([wrong], { return_records: [RECORD_ONE] })}
+        caseId="case-1"
+      />,
+    );
+    expect(screen.getByText(/arrived in a shape this console cannot read/)).toBeVisible();
+    expect(screen.getByText(/fault in the release that composed the panel/)).toBeVisible();
+    expect(screen.queryByText("a parcel")).toBeNull();
+    // And it is not mistaken for the empty case: the card is not drawn at all,
+    // so nobody reads "no artifacts yet" off a payload we could not read.
+    expect(screen.queryByText("the first return")).toBeNull();
+  });
+
   it("tells a section it could not read from a case with nothing to say", () => {
     const degraded = section(SUPPORT_SECTION_IDS.records, {}, "degraded");
     render(
