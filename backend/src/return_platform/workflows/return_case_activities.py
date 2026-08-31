@@ -1985,6 +1985,18 @@ class ReturnCaseActivities:
         an operator's next action is the same for all of them: look at the
         review. The distinction that matters -- what refused -- is on the review
         and on the fact log, not in this return value.
+
+        **That sentence is true only while this path is TEMPLATE-only.** The
+        aggregate also refuses an empty `SUPPORT_REPLY` body
+        (`EmptyReplyBodyError`), and this activity is the sole caller of
+        `approve(allow_system=True)`. Reply auto-send does not exist today --
+        un-gated replies bypass the review entirely in
+        `return_support/reply_gating.py` -- so that error cannot be raised here
+        and is deliberately absent from the `except` tuple below rather than
+        caught unreachably. **If you are building reply auto-send: add
+        `EmptyReplyBodyError` to that tuple as you route replies through here,
+        or an empty reply fails the activity instead of parking the review, and
+        the claim above stops being true.**
         """
         review = await gate.review(case_id=request.case_id, review_id=request.review_id)
         state = str(review.get("state"))

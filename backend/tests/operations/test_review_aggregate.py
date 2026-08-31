@@ -31,7 +31,9 @@ from return_platform.operations.review_aggregate import (
     REVIEW_SCOPE_INDEX,
     SYSTEM_ACTOR,
     TERMINAL_REVIEW_STATES,
+    EMPTY_REPLY_BODY_GAP_REASON,
     ApprovedPayloadHashMismatchError,
+    EmptyReplyBodyError,
     PendingRevisionError,
     ReservedActorError,
     ReviewAggregateStore,
@@ -52,6 +54,17 @@ REQUEST_ID = "req-1"
 WORKFLOW_ID = "return-case-case-9100"
 DRAFT = {"subject": "Return 9100", "body": "Please issue an RMA."}
 EDITED = {"subject": "Return 9100", "body": "Please issue an RMA for two items."}
+#: A `SUPPORT_REPLY` draft as `reply_gating.py` writes it. Separate from `DRAFT`
+#: because the two kinds genuinely have different payload shapes -- a template
+#: renders `subject`/`sections`, a reply carries `messageText` -- and because
+#: approval now *refuses* a reply with no body, so a reply fixture borrowing the
+#: template's payload would be refused for a reason the test is not about.
+REPLY_DRAFT = {
+    "messageText": "Your RMA is RMA-9100. Please include it on the outside of the parcel.",
+    "disclosesAgent": True,
+    "supportEventId": "evt-1",
+    "intent": "rma_issued",
+}
 
 
 @pytest.fixture
@@ -94,12 +107,21 @@ async def _open_review(
     *,
     kind: ReviewKind = ReviewKind.TEMPLATE,
     request_id: str = REQUEST_ID,
+    draft_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """One open review.
+
+    `draft_payload` defaults to the payload shape its kind actually has, so a
+    reply fixture is a reply rather than a template wearing one. Passed
+    explicitly where the payload is the subject of the test.
+    """
+    if draft_payload is None:
+        draft_payload = REPLY_DRAFT if kind is ReviewKind.SUPPORT_REPLY else DRAFT
     return await store.create_review(
         case_id=CASE_ID,
         request_id=request_id,
         review_kind=kind,
-        draft_payload=DRAFT,
+        draft_payload=draft_payload,
     )
 
 
@@ -890,6 +912,178 @@ async def test_approval_refuses_an_unresolved_conflict(
 
     with pytest.raises(ReviewConflictError):
         await _approve(store, fresh)
+
+
+# --------------------------------------------------------------------------- #
+# An empty reply body is not approvable
+# --------------------------------------------------------------------------- #
+#
+# The defect was reported as two panes disagreeing about how to describe an
+# empty reply draft. The copy divergence is the symptom; the defect is that the
+# draft was approvable, so an associate could approve nothing, the send path
+# would post nothing, and Support would receive nothing -- with a delivery
+# receipt saying it went fine.
+#
+# The refusal lives on `OPEN -> APPROVING` because that is the one transition
+# both an associate's approval and `auto_send` (`actor=SYSTEM`) pass through,
+# and because sect. 6 already refuses unresolved conflicts and pending
+# revisions there for the same reason: a review that cannot be acted on must
+# not be approvable.
+
+
+@pytest.mark.parametrize(
+    ("body", "why"),
+    [
+        pytest.param("", "born empty", id="empty-string"),
+        pytest.param("   \n\t ", "whitespace only", id="whitespace"),
+        pytest.param(None, "explicitly null", id="null"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_approval_refuses_an_empty_reply_body(
+    store: ReviewAggregateStore,
+    commands: FakeCollection,
+    reviews: FakeCollection,
+    body: str | None,
+    why: str,
+) -> None:
+    """Every shape of "nothing to send" refuses, not only the empty string.
+
+    Whitespace counts because a blank message is delivered and read as an agent
+    with nothing to say, which is the outcome the refusal exists to prevent.
+    """
+    payload: dict[str, Any] = dict(REPLY_DRAFT)
+    payload["messageText"] = body
+    reply = await _open_review(
+        store,
+        kind=ReviewKind.SUPPORT_REPLY,
+        request_id="req-reply",
+        draft_payload=payload,
+    )
+
+    with pytest.raises(EmptyReplyBodyError) as raised:
+        await _approve(store, reply)
+
+    # The reason travels, so the 409 can say *why* rather than only "no".
+    assert raised.value.gap_reason == EMPTY_REPLY_BODY_GAP_REASON, why
+    # Nothing was written. A refusal that still planned a command would leave
+    # the workflow a signal to send the message this transition just refused.
+    assert commands.documents == {}
+    stored = reviews.documents[str(reply["_id"])]
+    assert stored["state"] == ReviewState.OPEN.value
+
+
+@pytest.mark.asyncio
+async def test_a_missing_message_text_key_refuses_too(store: ReviewAggregateStore) -> None:
+    """Absent and empty are the same answer here: neither can be delivered.
+
+    Distinguished from the parametrised cases above because a payload with no
+    `messageText` at all is the shape a *different* producer would write, and
+    an `isinstance` check that only handled `None` would let it through.
+    """
+    reply = await _open_review(
+        store,
+        kind=ReviewKind.SUPPORT_REPLY,
+        request_id="req-reply",
+        draft_payload={"supportEventId": "evt-1", "intent": "rma_issued"},
+    )
+
+    with pytest.raises(EmptyReplyBodyError):
+        await _approve(store, reply)
+
+
+@pytest.mark.asyncio
+async def test_a_non_empty_reply_still_approves(
+    store: ReviewAggregateStore, commands: FakeCollection
+) -> None:
+    """The other direction. A guard that refused everything would pass the test
+    above and break the feature, so the refusal has to be shown to be
+    conditional on the thing it claims to be conditional on."""
+    reply = await _open_review(store, kind=ReviewKind.SUPPORT_REPLY, request_id="req-reply")
+
+    approved, _ = await _approve(store, reply)
+
+    assert approved["state"] == ReviewState.APPROVING.value
+    command = next(iter(commands.documents.values()))
+    assert command["kind"] == CaseCommandKind.REPLY_APPROVED.value
+
+
+@pytest.mark.asyncio
+async def test_an_empty_template_body_still_approves(
+    store: ReviewAggregateStore, commands: FakeCollection
+) -> None:
+    """The refusal is reply-kind only, and that is deliberate rather than an
+    oversight. A `TEMPLATE` review's emptiness is already governed by
+    `TemplateGap` on the fields it is rendered from; `messageText` is not part
+    of its payload shape at all, so reading one here would refuse every
+    template ever approved."""
+    template = await _open_review(store, draft_payload={"subject": "Return 9100", "sections": []})
+
+    approved, _ = await _approve(store, template)
+
+    assert approved["state"] == ReviewState.APPROVING.value
+    command = next(iter(commands.documents.values()))
+    assert command["kind"] == CaseCommandKind.TEMPLATE_APPROVED.value
+
+
+@pytest.mark.asyncio
+async def test_a_canonical_edit_that_empties_the_body_refuses(
+    store: ReviewAggregateStore,
+) -> None:
+    """The check reads the *frozen* payload, not the draft.
+
+    This is the case a draft-only check would miss entirely, and it is the one
+    an associate can actually cause: the reply was composed with text, somebody
+    cleared the box, and the canonical edit -- which is what approval freezes
+    and sends -- is empty while `draftPayload` still reads fine.
+    """
+    reply = await _open_review(store, kind=ReviewKind.SUPPORT_REPLY, request_id="req-reply")
+    review_id = str(reply["_id"])
+    emptied = dict(REPLY_DRAFT)
+    emptied["messageText"] = ""
+    await store.upsert_draft_edit(
+        case_id=CASE_ID,
+        review_id=review_id,
+        actor_id="associate-1",
+        client_edit_id="c-1",
+        base_draft_version=1,
+        payload=emptied,
+    )
+    # An autosave is not a decision: `upsert_draft_edit` stores the row, and it
+    # is `submit_edit` that promotes a sole actor's edit to the canonical one.
+    # (Asserted below rather than assumed -- the first draft of this test
+    # skipped the submit and passed the *untouched* draft to approval, where it
+    # would have proved nothing.)
+    await store.submit_edit(case_id=CASE_ID, review_id=review_id, actor_id="associate-1")
+    fresh = await store.get_review(case_id=CASE_ID, review_id=review_id)
+    # Guard the guard: the canonical payload really is the emptied one, and the
+    # draft really is not, so the refusal below can only come from the frozen
+    # payload.
+    assert canonical_review_payload(fresh)["messageText"] == ""
+    assert fresh["draftPayload"]["messageText"] == REPLY_DRAFT["messageText"]
+
+    with pytest.raises(EmptyReplyBodyError):
+        await _approve(store, fresh)
+
+
+@pytest.mark.asyncio
+async def test_the_system_actor_is_refused_by_the_same_condition(
+    store: ReviewAggregateStore,
+) -> None:
+    """`auto_send` is this transition with `actor=SYSTEM`, and sect. 6 says it
+    is refused by exactly the same rejections. An empty body that held a person
+    and let the platform through would be the worst of both."""
+    payload = dict(REPLY_DRAFT)
+    payload["messageText"] = ""
+    reply = await _open_review(
+        store,
+        kind=ReviewKind.SUPPORT_REPLY,
+        request_id="req-reply",
+        draft_payload=payload,
+    )
+
+    with pytest.raises(EmptyReplyBodyError):
+        await _approve(store, reply, actor_id=SYSTEM_ACTOR, allow_system=True)
 
 
 @pytest.mark.asyncio

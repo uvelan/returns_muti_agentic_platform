@@ -8,7 +8,7 @@ import {
   type CasePanelView,
 } from "../../../../api/casePanel";
 import { COPILOT_TOKENS } from "../../copilotTokens";
-import { readSupportReplyDraft } from "./sections/supportReplyDraft";
+import { EMPTY_REPLY_NOTICE, readSupportReplyDraft } from "./sections/supportReplyDraft";
 import { StatusTimersSection } from "./StatusTimersSection";
 import { TemplateReviewSection } from "./TemplateReviewSection";
 import { panelSectionRenderers, unrenderedSectionLabel } from "./panelSectionRegistry";
@@ -178,8 +178,18 @@ function ReadOnlyReview({ review }: { readonly review: CasePanelView["reviews"][
    * else. Somebody auditing a case needs to read the reply that went out at
    * least as much as they need to read the request that went out.
    *
-   * `whitespace-pre-wrap`: the paragraph breaks are the sender's own, and this
-   * is a record of what was sent rather than a question being quoted.
+   * `whitespace-pre-wrap`: the paragraph breaks are the composer's own rather
+   * than the browser's, and they are as much a part of the message as the
+   * words.
+   *
+   * **Read-only is not the same as sent.** This view draws fewer affordances
+   * than the editable one, and an earlier comment here called it "a record of
+   * what was sent" -- which is false for every review that has not been sent.
+   * `reviews[]` carries `OPEN`, `APPROVING`, `DELIVERY_FAILED` and
+   * `HELD_FOR_OPERATIONS` (contracts.md sect. 9), so the draft below is
+   * usually still pending, and the heading says "Reply to Support" rather than
+   * naming a tense for exactly that reason. `approved_by` above is the only
+   * thing on this card that asserts anything happened.
    */
   const reply = readSupportReplyDraft(review);
   return (
@@ -195,7 +205,7 @@ function ReadOnlyReview({ review }: { readonly review: CasePanelView["reviews"][
       ) : null}
       {reply === null ? null : (
         <p className={`${COPILOT_TOKENS.review.field.value} whitespace-pre-wrap`}>
-          {reply.messageText === "" ? "This reply was empty." : reply.messageText}
+          {reply.messageText === "" ? EMPTY_REPLY_NOTICE : reply.messageText}
         </p>
       )}
       <ul className="space-y-0.5">

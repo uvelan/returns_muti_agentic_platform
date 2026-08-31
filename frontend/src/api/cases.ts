@@ -47,6 +47,33 @@ import { APIError, apiClient } from "./client";
  *
  * Applied at every level rather than only the top, so that a block read off the
  * projection and the same block named in a component's props are the same type.
+ *
+ * **Still load-bearing, and measured rather than assumed.** `CaseFactProjection`
+ * no longer needs it -- its Python model dropped every default, so the published
+ * document declares all eleven of its properties required and the generated type
+ * arrives with no `?` at all. Every *other* alias below still does. Measured
+ * against the published document, properties declared but not required:
+ * `PolicyEvaluationProjection` 11, `WarehouseProjection` 11, `CaseProjection` 11,
+ * `ReturnArtifactProjection` 8, `SupportProjection` 9, `PickupProjection` 8,
+ * `ShipmentProjection` 7, `ReturnRecordProjection` 7, `ConfirmedOrderProjection` 7,
+ * `ApprovedItemProjection` 5, `SelectedItemProjection` 5, `CustomerProjection` 4,
+ * `SettlementProjection` 3, `CaseSummary` 2. Fourteen of fifteen consumers, so
+ * this stays.
+ *
+ * It is kept over `CaseFactProjection` too, deliberately: removing it from that
+ * one alias would buy nothing (the mapped type is now the identity there) while
+ * making the fact projection the odd one out, and a reader would have to work
+ * out why. The honest end state is that the *document* stops under-declaring for
+ * the rest, at which point this alias is deleted outright rather than eroded
+ * one type at a time -- a mapping type that is load-bearing for some of its
+ * consumers and vestigial for others is the worst of both.
+ *
+ * Note this alias cannot be a verification instrument for that work: it strips
+ * `?` regardless of what the document says, so an assertion written against it
+ * passes whether the schema was fixed or not. The guard that actually holds the
+ * required set is a data assertion over the generated document --
+ * `frontend/scripts/check-served-fields.js`, run by `npm run contracts:check`,
+ * which CI's `contract drift` job runs.
  */
 type Served<T> = T extends readonly (infer Element)[]
   ? readonly Served<Element>[]

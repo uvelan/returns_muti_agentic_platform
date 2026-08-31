@@ -61,6 +61,7 @@ from return_platform.operations.case_panel import PanelExecutionView, PanelTimer
 from return_platform.operations.repository import resolve_operational_repository
 from return_platform.operations.review_aggregate import (
     ApprovedPayloadHashMismatchError,
+    EmptyReplyBodyError,
     PendingRevisionError,
     ReservedActorError,
     ReviewAggregateStore,
@@ -379,13 +380,17 @@ def _decision_kinds(review: dict[str, Any]) -> tuple[CaseCommandKind, CaseComman
 # 409, with the transition in it
 # --------------------------------------------------------------------------- #
 
-#: S2's six, plus the command store's stale-version error. Every one of them is
-#: "the store's truth moved under you", which is one HTTP answer.
+#: S2's seven, plus the command store's stale-version error. Every one of them
+#: is "this review cannot be approved as it stands", which is one HTTP answer.
+#: `EmptyReplyBodyError` is the newest: unlike the others it is not a race, but
+#: the UI's handling is the same shape -- refuse, name the reason, and let the
+#: pane say what to do about it -- and `code` carries the distinction.
 _CONFLICTS: tuple[type[Exception], ...] = (
     ReviewStateError,
     ReviewVersionMismatchError,
     ReviewConflictError,
     PendingRevisionError,
+    EmptyReplyBodyError,
     ApprovedPayloadHashMismatchError,
     ReservedActorError,
     StaleReviewVersionError,
@@ -410,7 +415,10 @@ def _conflict(error: Exception) -> HTTPException:
     state = getattr(error, "state", None)
     if state is not None:
         detail["state"] = getattr(state, "value", str(state))
-    for field in ("field", "expected", "actual", "review_id"):
+    # `gap_reason` rides here so a blocked reply arrives in the same vocabulary
+    # the panel already uses for a blocked template -- the UI has one way to
+    # render "this review is held, and here is why", not two.
+    for field in ("field", "expected", "actual", "review_id", "gap_reason"):
         value = getattr(error, field, None)
         if value is not None:
             detail[field] = value
