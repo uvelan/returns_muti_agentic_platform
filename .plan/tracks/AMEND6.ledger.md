@@ -280,3 +280,211 @@ mentions `clarifications`).
 So there is exactly **one** breaking consumer, and it is the one V3's own review
 (`.plan/reviews/V3f-1.md:316`) said to fix in the same commit as the DTO change.
 
+---
+
+## Step 5 — the change, and what it deliberately is not
+
+Removed:
+
+- `operations/case_panel.py` — the three field declarations.
+- `api/case_panel.py` — the three literals and the V1 comment AMENDMENT-6
+  quotes.
+- `mocks/handlers/casePanelHandlers.ts` — the three mock keys.
+- five test files — the three fixture keys each. Fixture keys only; none was
+  ever asserted on.
+
+Migrated, not removed:
+
+- `sections/clarificationModel.ts` — `[...fromSection, ...panel.clarifications]`
+  becomes `fromSection`. The de-duplication and the order guarantee stay; they
+  now describe one payload naming an id twice rather than two vehicles
+  disagreeing.
+
+**Not removed, and this is the part that needed the check:** nothing. All three
+fields were verified unwritable in step 4 before any of this. Had one acquired a
+producer it would have stayed and been reported instead.
+
+**No test was deleted, skipped, xfailed or weakened.** Three tests in
+`clarificationModel.test.ts` had the retired vehicle as their subject. They are
+re-pointed:
+
+| before | after |
+| --- | --- |
+| "still reads the DTO field, in case the integration pass wires that instead" | "draws nothing from a top-level clarifications field, retired by AMENDMENT-6" — the assertion is **inverted**, against a panel body that still carries the retired key |
+| "draws one card when both vehicles carry the same clarification" | "draws one card when the section names the same clarification twice" |
+| "keeps the section's order and appends what only the field holds" | "keeps the section's own order, and the first mention fixes an id's place" |
+
+The first is the reason `panel` stays in `readClarifications`' signature unread:
+drop the parameter and that assertion becomes unwritable, leaving the amendment
+with no watcher on the console side.
+
+---
+
+## Step 6 — verification
+
+### `cd frontend && npm run typecheck`
+
+```
+
+> return-platform-console@0.1.0 typecheck
+> tsc -b --pretty false
+
+```
+
+*exit 0*
+
+### `cd frontend && npm run lint`
+
+```
+
+> return-platform-console@0.1.0 lint
+> eslint . --max-warnings=0
+
+```
+
+*exit 0*
+
+### `cd frontend && RETURN_PLATFORM_PYTHON="K:\Projects\Ret\returns_muti_agentic_platform\backend\.venv\Scripts\python.exe" PYTHONPATH="K:\Projects\Ret\rmap-amend6\backend\src" npm run contracts:check 2>&1 | tail -6`
+
+```
+🚀 openapi/return-platform.openapi.json → src/api/generated/return-platform.d.ts [490.9ms]
+
+> return-platform-console@0.1.0 contracts:served
+> node scripts/check-served-fields.js
+
+Fully-required schemas verified against the published document: CaseFactProjection (11)
+```
+
+*exit 0*
+
+### `PYTHONPATH="K:\Projects\Ret\rmap-amend6\backend\src" "K:\Projects\Ret\returns_muti_agentic_platform\backend\.venv\Scripts\python.exe" scripts/check_openapi_drift.py 2>&1 | tail -12`
+
+```
+  "finished_at": "2026-08-31T15:50:31.310354+00:00",
+  "openapi_sha256": "14c757333aa29438a9fb2b7868bc3a5756c9386412033f72f309bb786be424f9",
+  "snapshots": [
+    "openapi/return-platform.openapi.json",
+    "backend/openapi/return-platform.openapi.json",
+    "frontend/openapi/return-platform.openapi.json",
+    "openapi.json"
+  ],
+  "diffs": [],
+  "status": "PASS",
+  "exit_code": 0
+}
+```
+
+*exit 0*
+
+`contracts:check` regenerates from the live FastAPI app and then
+`git diff --exit-code`s the document and the generated types: exit 0 means the
+committed artifacts *are* what this backend serves. `check_openapi_drift.py`
+confirms all four published copies are the same bytes.
+
+### The suites, after the change
+
+### `tail -1 backend/pytest-after.log`
+
+```
+1 failed, 5240 passed, 10 skipped, 514 deselected, 2 warnings in 270.90s (0:04:30)
+```
+
+*exit 0*
+
+### `cd backend && python ../scripts/ci/assert_known_failures.py --suite backend --report junit-backend.xml`
+
+```
+suite size held: 441 test files/modules, 5251 test cases (floor 441 / 5251)
+5251 tests ran, 1 failed, 1 allowlisted
+only the 1 known, still-failing tests failed
+```
+
+*exit 0*
+
+### `cd frontend && python ../scripts/ci/assert_known_failures.py --suite frontend --report junit-frontend.xml`
+
+```
+suite size held: 62 test files/modules, 867 test cases (floor 61 / 860)
+858 tests ran, 2 failed, 2 allowlisted
+only the 2 known, still-failing tests failed
+```
+
+*exit 0*
+
+### `cd frontend && npm test -- --maxWorkers=2 --reporter=default 2>&1 | grep -E "^ *(Test Files|Tests) "`
+
+```
+ Test Files  1 failed | 61 passed (62)
+      Tests  2 failed | 865 passed (867)
+```
+
+*exit 1*
+
+### Before / after
+
+| suite | before | after | floor |
+| --- | --- | --- | --- |
+| backend | 5251 collected; 5240 passed, 1 failed, 10 skipped | 5251 collected; 5240 passed, 1 failed, 10 skipped | 441 files / 5251 cases — **held exactly** |
+| frontend | 62 files / 867 cases; 865 passed, 2 failed | 62 files / 867 cases; 865 passed, 2 failed | 61 files / 860 cases — held |
+
+Both failures are the pre-existing allowlisted ones and neither is touched by
+this change: backend
+`tests.test_cumulative_support_outcomes::test_a_rejected_return_still_opens_no_work_item`
+(`'_Runtime' object has no attribute 'patched'`) and the frontend
+`registry.test.ts` `/shipments` pair. `assert_known_failures.py` reports
+"only the N known, still-failing tests failed" on both suites.
+
+**The size floor is not restaked, deliberately.** Collected counts are identical
+before and after on both suites, because no test was removed — the three tests
+whose subject was the retired vehicle were re-pointed at the surviving one. A
+floor edit here would be a change with nothing behind it. `_check_size` prints
+`suite size held` on both, and the frontend's 867 against a floor of 860 is well
+inside `RESTAKE_ALLOWANCE = 0.25`, so no re-stake is due on growth either.
+
+### Gates that run what this change adds (rule 13)
+
+| added | gate |
+| --- | --- |
+| the retirement guard in `clarificationModel.test.ts` | `frontend-tests` job, `checks.yml:559` |
+| the migrated `readClarifications` | `frontend-static` (lint + typecheck) |
+| the regenerated document and types | `contracts` job, `checks.yml:630` (`npm run contracts:check`) |
+| the mock body losing three keys | `contracts` — `schemaConformance`'s `additionalProperties: false` on `CasePanelView` makes re-adding one a red test |
+
+`scripts/dev/ledger_capture.sh` is a ledger-writing helper, not a guard, and
+gates nothing by design.
+
+---
+
+## Step 7 — the records that asserted the old state
+
+`.plan/merge.md:107` and `.plan/acceptance/STATUS.md` finding 5 both stated, in
+the present tense, that the three fields are still on the DTO and in the
+published document. That is now false, and a tracking record that is false in
+the direction of "unfinished work remains" is how the amendment got lost the
+first time. Both are marked executed/closed, with the writer check and the
+suite figures recorded inline so the next reader does not have to take it on
+trust.
+
+Left alone deliberately: `.plan/handoffs/V1-phase2.md:91-92` and
+`.plan/handoffs/V3-frontend.md:15-18`, which contain the original (wrong) claim
+that the fields "arrive through the section registry". Those are historical
+handoff documents describing what was believed at the time; AMENDMENT-6 in
+`contracts.md` §1a is the governing record and already contradicts them.
+Rewriting history there would erase the evidence of how the defect happened.
+
+`.plan/contracts.md` §9 (line 111) already reads "per AMENDMENT-6,
+`support_digest`, `clarifications` and `parked_messages` are retired" — the
+contract was correct all along; only the code lagged. No contract edit was
+needed and none was made.
+
+## Open / not closed
+
+- **`.plan/reviews/ACC4-1.md` does not exist at trunk.** It is reachable only as
+  `git show 9b1901fc:.plan/reviews/ACC4-1.md`, on a commit not in
+  `refactor/unified-return-platform`. The review was read from there. Whoever
+  owns the review record should land it on trunk; this branch did not, because
+  RV owns `.plan/reviews/` and E1 was escalated rather than assigned to a slice.
+- **E2 (FE-DEFECT-5, the axe sweep no workflow runs)** is untouched. Different
+  owner (`checks.yml`), different finding.
+- The two pre-existing allowlisted failures are untouched and remain owned
+  elsewhere.
