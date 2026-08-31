@@ -128,23 +128,46 @@ jobs:
       # at configure time, exited 3, and the discriminator below reported
       # "the run failed, not the tests" -- correctly, and about itself.
       #
-      # Every "green on this commit" this file claimed was therefore
-      # replicated locally on a workstation that happened to have a `.env`,
-      # never observed in the pipeline. The gate existed, named itself, and
+      # So the BACKEND job's greens were replicated locally, on a workstation
+      # that happened to have a `.env`, and never observed in the pipeline.
+      # (Only that job: the other "green on this commit" notes in this file
+      # belong to `frontend-static` and `contracts`, neither of which reads
+      # `.env`, and they are unaffected.) The gate existed, named itself, and
       # could not execute: the same defect it was written to prevent.
       #
-      # `.env.example` is tracked, `ensure_runtime_env_keys.py` maintains it
-      # as the authoritative key set so it cannot silently rot, and this is
-      # not an invented command line -- `scripts/bootstrap_host.sh:17` and
+      # `.env.example` is tracked, and this is not an invented command line --
+      # `scripts/bootstrap_host.sh:17` and
       # `scripts/linux/reset_docker_environment.sh:85` already run exactly
       # this copy, and two further scripts instruct developers to.
       #
       # Measured rather than assumed, with the red observed first: absent
       # `.env` gives INTERNALERROR and exit 3; `.env.example` gives
-      # `1 failed, 5232 passed, 11 skipped, 514 deselected` -- byte-identical
-      # to a real `.env`, the sole failure being the allowlisted one. The
-      # placeholders satisfy `Settings`, and the default run deselects
-      # `live_infra`, so nothing here dials a real service.
+      # `1 failed, 5232 passed, 11 skipped, 514 deselected`, exit 1, the sole
+      # failure being the allowlisted one -- which the allowlist step then
+      # passes. The placeholders satisfy `Settings`, and the default run
+      # deselects `live_infra`, so nothing here dials a real service.
+      #
+      # The two files are NOT interchangeable in content and this does not
+      # claim they are: a developer `.env` carries ~11 extra live-infra and
+      # host-port keys. What was measured is that the normal suite's OUTCOME
+      # is the same either way, which is all CI needs, since CI only ever
+      # sees `.env.example`.
+      #
+      # What stops this rotting (rule 13, and the honest answer is that the
+      # gate is mostly this job itself):
+      #   * delete `.env.example` and the `cp` fails loudly, here;
+      #   * drop a key and `Settings` (`frontend_cors_origin`, `mongo_dsn`)
+      #     or `conftest`'s `_required_environment_variable` fails BY NAME;
+      #   * drift its content and `tests/test_ai_gateway_routing.py:194`
+      #     fails -- it reads the tracked `.env.example` and asserts over it;
+      #   * `ensure_runtime_env_keys.py` is itself gated, by
+      #     `tests/test_runtime_env_key_sync.py`.
+      # Every one of those is a backend-suite test, so every one of them was
+      # also unreachable in CI until this step existed. An earlier draft of
+      # this comment credited `ensure_runtime_env_keys.py` with maintaining
+      # `.env.example`; it does not -- its `update()` flows example -> env,
+      # one way, and never inspects the example. The real protections are the
+      # four above, and they are stronger than the one that was claimed.
       #
       # NOT a committed `.env.ci`: `.gitignore:31` ignores `.env.*`, and the
       # comment above that rule records why -- a backup file once carried a
