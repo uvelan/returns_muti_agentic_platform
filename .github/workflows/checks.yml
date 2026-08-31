@@ -159,22 +159,26 @@ jobs:
       # deselects `live_infra`, so nothing here dials a real service.
       #
       # The two files are NOT interchangeable in content and this does not
-      # claim they are: a developer `.env` carries ~11 extra live-infra and
-      # host-port keys. What was measured is that the normal suite's OUTCOME
-      # is the same either way, which is all CI needs, since CI only ever
-      # sees `.env.example`.
+      # claim they are: a developer `.env` carries exactly 11 keys the example
+      # does not, most of them live-infra and host-port settings. The example
+      # has none the developer file lacks -- it is a strict subset, which is
+      # why copying it suffices. What was measured is that the normal suite's
+      # OUTCOME is the same either way, which is all CI needs, since CI only
+      # ever sees `.env.example`.
       #
       # What stops this rotting (rule 13, and the honest answer is that the
       # gate is mostly this job itself):
-      #   * delete `.env.example` and the `cp` fails loudly, here;
+      #   * delete `.env.example` and the `cp` right here fails loudly -- a
+      #     `run` step is `bash -e`, and the failing step names itself;
       #   * drop a key and `Settings` (`frontend_cors_origin`, `mongo_dsn`)
       #     or `conftest`'s `_required_environment_variable` fails BY NAME;
       #   * drift its content and `tests/test_ai_gateway_routing.py:194`
       #     fails -- it reads the tracked `.env.example` and asserts over it;
       #   * `ensure_runtime_env_keys.py` is itself gated, by
-      #     `tests/test_runtime_env_key_sync.py`.
-      # Every one of those is a backend-suite test, so every one of them was
-      # also unreachable in CI until this step existed. An earlier draft of
+      #     `tests/test_runtime_env_key_sync.py`, which `runpy`s the real
+      #     script rather than re-implementing it.
+      # The last three are backend-suite tests, so all three were equally
+      # unreachable in CI until this step existed. (The first is this step.) An earlier draft of
       # this comment credited `ensure_runtime_env_keys.py` with maintaining
       # `.env.example`; it does not -- its `update()` flows example -> env,
       # one way, and never inspects the example. The real protections are the
