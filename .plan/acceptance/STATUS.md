@@ -40,8 +40,12 @@ acceptance module ACC has written is in the default suite and therefore gated.**
 | **19** | a wait spanning a closed weekend fires no retroactive burst | `items-13-19-business-time.md` |
 | **17** (omc half) | eventually once, **never** atomically — the crash gap observed as a gap, then closed by redelivery | `amendment-4-eventually-once.md` |
 | **7** (ingress half) | AMENDMENT-3: three surfaces coexist in all four published documents, by handler | `amendment-3-coexistence.md` |
-| **18** (inbound half) | chain + drain audited by injection; **the chain/drain separability measured** — dispatch condition 3 | `item-18-causal-ordering.md` |
-| **18** (cross-stream half) | **not implemented**; asserted checkably absent, ruling owed | `item-18-causal-ordering.md` |
+| **18** (ordered-drain half) | chain + drain audited by injection; **the chain/drain separability measured** — dispatch condition 3, and the deciding evidence for AMENDMENT-9 | `item-18-causal-ordering.md` |
+| **18** (outbound-ordering half) | **DEFERRED per AMENDMENT-9**, checkably — asserted absent, and the assertion is the deferral's guard | `item-18-causal-ordering.md` |
+| **14** (workflow half) | `execution_state` queryable and correct after a worker kill; the panel's HTTP composition is **not** exercised | `items-14-17-review-across-a-kill.md` |
+| **15** | kill mid-review, live: draft, edit rows and remaining timeout survive; the resumed worker does not re-draft | `items-14-17-review-across-a-kill.md` |
+| **16** | one approval, one message, one delivery identity — across a restart, and under a genuine second delivery | `items-14-17-review-across-a-kill.md` |
+| **20** | both patch branches audited by flipping the decision each way | `items-14-17-review-across-a-kill.md` |
 | **21** | byte-identical across two interpreters with different hash seeds, including under eviction | `items-21-22-context-and-pinning.md` |
 | **22** | compaction clauses audited; the release pin across a promotion, covered by nothing before | `items-21-22-context-and-pinning.md` |
 | **26** | every merged branch has a recorded `PASS`; the calibration bait was caught | below |
@@ -49,13 +53,13 @@ acceptance module ACC has written is in the default suite and therefore gated.**
 
 ## Injection tally
 
-**Twenty landed.** **Four discarded for being red — or green — for the wrong
-reason:** an invalid released binding that failed schema validation before any
+**Twenty-six landed.** **Seven discarded or recorded as misses** for being red —
+or green — for the wrong reason: an invalid released binding that failed schema validation before any
 assertion ran; a `$set` upsert the Mongo double refuses; disabling
 `pin_routing_decision`'s early return, which is not the mechanism; and a wake
 scenario whose wake could not wake.
 
-**Five defects found in ACC's own instruments**, all one family — *green because
+**Seven defects found in ACC's own instruments**, all one family — *green because
 the inputs could not exercise the property*:
 
 1. a wake that left the predicate false, so the harness could not tell it from a
@@ -69,8 +73,22 @@ the inputs could not exercise the property*:
    finding claims*;
 4. a squeezed-budget test at a budget that omitted nothing, the projection alone
    accounting for the drop;
-5. (INJ-22a, above) an injection aimed at the branch that reads like the guard
-   rather than the CAS filter that is one.
+5. (INJ-22a) an injection aimed at the branch that reads like the guard rather
+   than the CAS filter that is one;
+6. an item-16 scenario that counted one send after requesting one send — and
+   whose second form, signalling twice, stayed green **even with both guards
+   removed together**, because by then the gate has closed and no wait exists to
+   wake. Only calling `deliver_approved` again put a real duplicate in front of
+   the guard that owns the guarantee;
+7. two latent races in the live module — `reached()` fires when an activity
+   *starts*, and the review deadline is set *after* the draft activity returns —
+   where fixing the first exposed the second it had been masking.
+
+**One injection miss recorded as a limit rather than smoothed over:** ignoring
+the resumed deadline changes nothing across a *worker kill*, because the
+replacement worker replays history. For a kill, most of item 15's claims hold by
+Temporal rather than by the platform, and the scenario claims only what INJ-15b
+proves — that the deployment's wiring is right and the state is there.
 
 **One production finding of the same shape, in `src/`:** `pin_routing_decision`'s
 early return carries the docstring about keeping the first pin and enforces
@@ -114,8 +132,8 @@ make the application suite fail on a planning document.
 | 3–6 beyond AMENDMENT-5's exit assertion | time. Reachable in the normal suite. |
 | 8 (multi-RMA cross-assignment, prompt-injection fixture) | time. |
 | 9, 11–12 (resolver disclosure line, budget, authz) | time. The fact rung and the clarification path are reachable; only item 10's tool rung is deliberately absent. |
-| **14–17 (kill/restart durability)** | **not attempted.** Needs a live-infra build driving a real `ReturnCaseWorkflow` through the **template review gate** against Temporal. `tests/test_return_case_workflow_real_infra.py` proves the *Support* wait survives a restart and contains **zero** review-gate coverage (no occurrence of `review` in the file). The stack is up, so this is time rather than capability — but note the rule-13 finding above: **CI would not run it.** |
-| 20 (deploy replay, both patch branches) | time. The replay suite exists (category B) and was not audited. |
+| **14 (panel HTTP composition)** | not attempted. The workflow half is verified; composing `GET /panel` after a reload needs the API surface up as well as a worker. |
+| **17 (relay half)** | not attempted. The omc half is verified (`amendment-4-eventually-once.md`); "relayed once" through the transcript is covered in-slice (category B) and was not audited. |
 | 24–25 (frontend) | **outside this dispatch's scope as written** — "backend tests only". Needs the frontend suite (`npm test`, `contracts:check`, MSW conformance) and a widened brief or a different owner. |
 
 Nothing in C is claimed as green.
@@ -145,3 +163,26 @@ as fully green until this is ruled.**
 
 No defect found in `backend/src` behaviour. `git diff` against the merge base
 touches nothing outside `backend/tests/` and `.plan/`.
+
+
+## Findings handed to their owners (reported, not repaired)
+
+1. **`tests/test_return_case_workflow_real_infra.py` is broken against live
+   infrastructure — 12 of 13 tests.** Its `_Probe` predates V1's review gate and
+   lacks the five gate activities `workflows/worker.py` registers. Production is
+   correct; the harness is stale, and has been since V1 phase 2 merged. **The
+   same file was fixed for the same class of defect on 2026-08-23**
+   (`5b7d60f6 fix(tests): stale workflow doubles wedged the live-infra suite,
+   silently`) and rotted again, because nothing runs it. One edit fixes it.
+   **"All 26 items green against live infra" cannot be asserted from a live
+   suite in this state.**
+2. **The guard for exactly that defect exists, is gated, and does not reach it.**
+   `test_every_activity_the_workflow_calls_is_registered_on_the_worker` derives
+   the called set from the workflow and the registered set from `worker.py`, and
+   passes because `worker.py` is right. It does not read the workers the *tests*
+   construct. Extending it over every `Worker(..., activities=…)` under `tests/`
+   closes the class — and is **red on arrival** against the stale probe, so it
+   belongs with the repair, in one change, owned by that probe's slice.
+3. **`pin_routing_decision`'s early return enforces nothing** — the
+   `{… field: None}` CAS filter does. Behaviour correct; the branch a reader
+   would cite is inert.
