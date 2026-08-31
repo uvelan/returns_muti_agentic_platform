@@ -1197,6 +1197,61 @@ code, and the exact start-of-activity primitive behind both races this module
 had to close. Replaced by a comment saying why there is no such helper, so the
 next author meets the reason rather than the tool.
 
-**Commands:** acceptance default → **34 passed, 2 deselected**; acceptance live
-→ **2 passed**; full backend suite → see below. `ruff check` / `ruff format`
-clean.
+**Commands — corrected at step:14 after RV finding F5; the figures below are
+the ones the commands printed.** What stood here first was written from memory
+in the entry describing the fixes for writing things from memory, and all three
+of its claims were wrong or absent. The original text is quoted in step:14 so
+the correction is checkable rather than a silent overwrite.
+
+---
+
+## step:14 — F5: the Commands block that was written from memory
+
+RV round 2 (`ACC2-2`, `73bd79aa`) withdrew all four round-1 findings and raised
+one. Step:13's "Commands" block read:
+
+> **Commands:** acceptance default → **34 passed, 2 deselected**; acceptance live
+> → **2 passed**; full backend suite → see below. `ruff check` / `ruff format`
+> clean.
+
+**Three claims, all wrong or absent**, in the entry describing the fixes for
+writing things from memory:
+
+1. `34 passed, 2 deselected` was stale — **step:13's own addition moved it.**
+   The same class of error step:14 had already corrected in STATUS.md, in the
+   file next door, one commit earlier.
+2. `see below` pointed at nothing. No full-suite figure was recorded anywhere in
+   the entry.
+3. `ruff check clean` was false: the repo's pinned **ruff 0.15.21** reports
+   `F401 subprocess imported but unused` in `posix_signal_proof.py`. The import
+   is genuinely dead — `subprocess` appears in that file only inside the
+   *generated child-script strings*, which the child interpreter imports for
+   itself. Removed.
+
+The lint is style and not blocking. **The false claim is the finding**, and it is
+the branch's own subject landing on the branch: a record asserting a green it did
+not run is the same shape as a guard nothing invokes.
+
+### Measured, by running each command and reading its output
+
+| command | result |
+| --- | --- |
+| `pytest tests/acceptance -q` | **35 passed, 1 skipped, 2 deselected** |
+| `pytest tests/acceptance -m live_infra -q` | **2 passed**, 36 deselected |
+| `pytest tests -q` | **5232 passed, 1 failed, 11 skipped, 514 deselected** — the failure is the allowlisted `test_a_rejected_return_still_opens_no_work_item` |
+| `ruff check tests/acceptance tests/harness` | clean |
+| `ruff format --check tests/acceptance tests/harness` | 19 files already formatted |
+
+**The ruff claim is now scoped to what was actually run.** `ruff check` over the
+whole backend is **not** clean on trunk — RV found 15 errors and 85 unformatted
+files, because nothing in CI invokes it. That is a separate finding, one level
+up, and the orchestrator is dispatching it; this entry says only what it checked.
+
+**Arithmetic, with the split corrected.** The reconciliation offered at step:13
+(`5198 + 34`) reached the right total by two compensating errors. The true split
+is **trunk 5197 + 35 on Windows = 5232**, and **5197 + 36 = 5233 on Linux**,
+where the POSIX signal gate runs instead of skipping. The skip story is
+unchanged and was right: 10 → 11 on this workstation, 10 on the pipeline.
+
+**Files:** `backend/tests/harness/posix_signal_proof.py` (one import removed),
+`.plan/tracks/ACC.ledger.md`.
