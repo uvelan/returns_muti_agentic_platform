@@ -4,6 +4,7 @@ import { COPILOT_TOKENS } from "../../../copilotTokens";
 import type { DraftEditor } from "../useDraftEditor";
 import {
   confidencePercent,
+  EMPTY_REPLY_NOTICE,
   rungWords,
   type SupportReplyDraft,
 } from "./supportReplyDraft";
@@ -91,9 +92,7 @@ export function SupportReplyBody({
             id={`${fieldId}-reply`}
             className={`${COPILOT_TOKENS.review.field.value} mt-1 whitespace-pre-wrap`}
           >
-            {draft.messageText === ""
-              ? "This reply is empty. Rebuild it before sending — Support would receive nothing."
-              : draft.messageText}
+            {draft.messageText === "" ? EMPTY_REPLY_NOTICE : draft.messageText}
           </p>
         )}
         <p id={`${fieldId}-reply-hint`} className={`${COPILOT_TOKENS.typography.caption} mt-1`}>
