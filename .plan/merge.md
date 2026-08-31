@@ -27,14 +27,22 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | ACC-1 (harness) | feat/acc-harness | **MERGED** | 2 · CR → PASS (9cb3508) | c1c2b0f |
 | fabrication guard (AST) | feat/fabrication-guard-ternary | **MERGED** | 1 · PASS (fb221d8a) | 85dc4271 |
 | actorId fixtures | feat/actorid-required | **MERGED** — `tsc` now exits **0** on trunk | 1 · PASS (93ad88fa) | (merged) |
-| ACC-3 (category B audit) | feat/acc-audit-b | IN_PROGRESS | — | — |
-| CI backend lint | feat/ci-backend-lint | AWAITING RV (`a9165b76`) | — | — |
-| live-harness registration | feat/live-harness-registration | AWAITING RV (`00471116`) | — | — |
+| ACC-3 (category B audit) | feat/acc-audit-b | **MERGED** | 3 · CR → CR → PASS (ACC3-3) | d6a08097 |
+| CI backend lint | feat/ci-backend-lint | **MERGED** | 2 · CR → PASS (CI-LINT-2) | a683f648 |
+| CI `.env` (backend job could never run) | feat/ci-env-file | **MERGED** | 4 · CR → PASS → CR → PASS (CI-ENV-4) | 02f8d45e |
+| ACC-4 (frontend 24–25) | feat/acc-frontend | AWAITING RV (`f4d9743a`) | in flight | — |
+| `_Runtime` patch double | feat/runtime-patch-double | AWAITING RV (`54b269fa`) | — | — |
+| live-harness registration | feat/live-harness-registration | CHANGES_REQUIRED, in progress (`d1313348`) | 1 · CR (HARNESS-1) | — |
+| suite-size guard | feat/suite-size-guard | IN_PROGRESS | — | — |
 | RV calibration | rv-calibration/seeded-hardcoding | bait CAUGHT as blocking | 1 (d59e017) | never merges |
 
-**All nine backend slices merged:** S1, S1b, ACC-1, V1 phase 1, S2, V2 phase 1, V2 phase 1b, V3, V1 phase 2. Trunk suite: **5121 passed, 1 failed** — the single known pre-existing `test_a_rejected_return_still_opens_no_work_item`.
+**All nine backend slices merged:** S1, S1b, ACC-1, V1 phase 1, S2, V2 phase 1, V2 phase 1b, V3, V1 phase 2.
 
-Remaining: the batched integration pass (in flight), the two frontend phases (in flight), then ACC-2 and the acceptance gate.
+~~Trunk suite: **5121 passed, 1 failed** — the single known pre-existing `test_a_rejected_return_still_opens_no_work_item`.~~ **Superseded, and dated snapshots are the reason to write the date rather than the word "current".** Measured on trunk `b7f07838`: **5,239 passed / 1 failed / 11 skipped / 514 deselected**, plus `ruff check` clean and `ruff format --check` clean on 1,159 files. The one failure is still the allowlisted one — **but it is fixed on an unmerged branch**, `feat/runtime-patch-double`, which takes trunk to **5,245 passed / 0 failed** and empties the allowlist. Frontend: 62 files / 867 tests / 865 passed, the two allowlisted `registry.test.ts` failures remaining.
+
+*Why that allowlisted failure survived so long is itself the finding:* it was **two** defects, and the first hid the second. The `_Runtime` double lacked `patched`, so the test raised before reaching `_open_support`. Give it `patched` and the test runs *into* the place it must never reach — the shipped release disables policy evaluation, `SKIPPED_BY_CONFIGURATION` clears the gate, and the "rejected return" was never rejected. **The test's name had been false for as long as it had been red.**
+
+Remaining: the acceptance gate, blocked on the live suite (see the ruling below), and the frontend items under review.
 
 **V1 phase 2 review notes.** Round 3 closed AMENDMENT-5's implementation. Two things worth keeping: the shared execution-liveness classifier is asserted **by identity** across both surfaces (`case_panel.classify_execution_failure is case_reviews.classify_execution_failure`) rather than by comparing outcomes, which makes divergence *unrepresentable* rather than merely detected on whichever statuses someone enumerated — RV noted the boundary is that identity catches a second *copy*, not a *wrapper*, so a future third surface must be held to "finer, never different". And the `signal_id` asymmetry the slice defended — deterministic where a repeat means *again*, random where it means *somebody else*, since a deterministic approval id would collide with the frozen CAS and hand a second actor a receipt saying they succeeded when someone else's approval went out — was judged better than RV's own advisory, which it withdrew.
 *One item carried to the acceptance gate, blocking nothing:* permissive `**fact` doubles still exist in other slices' suites; worth one sweep onto `scoped_fact_double.py` now that it exists.
