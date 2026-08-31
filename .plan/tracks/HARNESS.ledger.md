@@ -1421,3 +1421,210 @@ Three changes, smallest first:
 1. Sect. 1's prediction is unresolved until the run prints its summary.
 2. Everything in step:11 sect. 4 and 5 remains unexecuted.
 3. The marker fix is designed and blocked.
+
+---
+
+## step:12 â€” run 1 complete, and what the message said
+
+Run 1 reached all **71 modules**. It is the first time the live suite has been
+run to completion in this repository.
+
+### The aggregate, derived from the log
+
+**The script's own summary block never printed.** That is step:11.3's predicted
+hazard arriving as fact rather than as a caveat: the mid-run edit shifted the
+byte offsets bash re-reads for top-level commands after the loop, and the summary
+was never emitted. The per-module lines are intact â€” each is pytest's own output,
+written by its own process before any edit â€” so the aggregate below is computed
+from the log, and **run 1 does not serve as the proof of the aggregate property.**
+That proof rests on step:08's and step:10's injections, which ran against files
+nobody was editing.
+
+    modules started        : 71
+    modules reporting      : 69
+    modules with no result : 2   (both hung and were killed -- see below)
+
+    passed  : 421
+    failed  :   3
+    errors  :   0
+    skipped :  54
+    -------------------
+    sum     : 478
+
+**Reconciliation, which is the check that makes the number readable:** collection
+reported **512**. The two killed modules hold 33 and 1 tests respectively.
+478 + 34 = **512**. Nothing is unaccounted for.
+
+**54 skipped live tests** is worth stating rather than absorbing â€” two modules are
+skipped in their entirety (`test_source_inspection_postgresql_docker.py`, 10;
+`test_order_agent_rest.py`, 40). An acceptance record that reports "the live suite
+passed" over 54 silent skips is making the same category-B claim this branch was
+written about. Not investigated here; flagged.
+
+### The two failing modules, verbatim
+
+**1. `tests/operations/test_integration_outbox_index_plans_real_infra.py` â€” `2 failed, 5 passed in 33.53s`**
+
+    E  Left contains 2 more items:
+    E  {'case_stream_event_id_unique': [('eventId', 1)],
+    E   'case_stream_sequence_unique': [('aggregateId', 1), ('stream', 1), ('streamSequence', 1)]}
+    E  AssertionError: assert 9 == 7
+
+Deterministic. S2 step:02 added two named ordering indexes to `outbox.py`; the
+live test pinning the index set has not been touched since before that commit.
+Not mine to fix â€” `backend/src` is off-limits and the test is S2's.
+
+**2. `tests/test_return_case_workflow_real_infra.py` â€” `1 failed, 12 passed in 133.67s`**
+
+`test_a_bay_failure_does_not_stop_the_return`, and **the message is the finding**:
+
+    >           await probe.reached("open_support_work_item")
+    tests\test_return_case_workflow_real_infra.py:528
+
+    name = 'open_support_work_item', within_seconds = 30.0
+    >           raise AssertionError(f"{name} did not run within {within_seconds}s")
+    E           AssertionError: open_support_work_item did not run within 30.0s
+    tests\test_return_case_workflow_real_infra.py:333: AssertionError
+
+    ------------------------------ Captured log call ------------------------------
+    WARNING  temporalio.activity: Completing activity as failed
+      ({'activity_type': 'request_bay_assignment', 'attempt': 1, ...})
+    RuntimeError: warehouse service unavailable
+
+**Line 333. `did not run within 30.0s`. The default budget, not a tightened
+20s call site.** This is the field fourteen prior runs discarded, and it changes
+the diagnosis.
+
+The captured log shows the mechanism rather than merely the symptom. The test
+*deliberately* injects a bay failure (`probe.bay_should_fail = True`, raising
+`RuntimeError("warehouse service unavailable")` at line 163) and then waits for
+the workflow to carry on to `open_support_work_item`. Temporal is retrying
+`request_bay_assignment` â€” `attempt: 1` is logged â€” and the workflow proceeds only
+once that retry sequence resolves. **So the test is a race between a fixed 30s
+client-side budget and a server-side retry schedule.** Any added latency
+lengthens the retries; the budget does not move.
+
+That is not accumulated state, and no process boundary addresses it. It matches
+the August diagnosis in `docs/execution-context/remediation/LEDGER.md:445` â€” *"a
+fixed wall-clock budget is the mechanism; contention is the cause"* â€” and it
+explains the property step:09 misread as arbitrariness: the failing set is not
+random, it is **the subset of the 12 `reached()` call sites whose race happened
+to lose that run.**
+
+**Step:09's causal claim is therefore withdrawn as under-determined.** Its
+observation stands â€” a fresh process is no remedy for shared state â€” but "the
+mechanism is accumulated Temporal server state" outran its evidence, and the
+evidence that would have corrected it was a message I copied into the ledger
+without reading. Step:09 records `test_return_case_workflow_real_infra.py:333:
+AssertionError` verbatim. Line 333 is the `did not run within Ns` raise. **I had
+the answer in my own transcript for two steps and read only the test name.**
+That is precisely the gap: *a flake investigation that records names and not
+messages is not an investigation.*
+
+### Contention â€” three sources, and the run cannot discriminate
+
+Recorded because ambient load is invisible unless someone writes it down, and
+today it was invisible to the person generating it:
+
+1. Another agent's backend suite â€” **17:00:28 to an unobserved point before 17:35**.
+2. An orchestrator `git merge` attempt â€” two minutes, start time unrecorded,
+   somewhere near module 64's start at 17:39:33.
+3. An orchestrator background recursive `find` over the repository including
+   **seventeen worktrees** â€” start and end not precisely recorded, bounded only by
+   message ordering, and the largest by duration.
+
+**Module 64's slowness cannot be attributed to any one of these.** All three are
+candidates, a genuine module defect is a fourth, and this run cannot tell them
+apart. Recorded as undiscriminated rather than tidied.
+
+Module 69 ran 17:50:46â€“17:52:59, after source 1 closed and around source 3's
+reported completion. **Whether it was contended is unestablished.** So its failure
+is consistent with the wall-clock hypothesis and does not establish it â€” the same
+restraint applied to the green case, applied to the red one.
+
+### Two hangs, and who killed them
+
+- **Module 30** `test_order_line_reservations_real_infra.py` â€” 30 of 33 tests, then
+  blocked at 6s CPU for 28 minutes. **Killed by the orchestrator**, from outside
+  this session. That is what released the loop.
+- **Module 64** `test_case_confirmation_starts_workflow_real_infra.py` â€” collected
+  **1 item**, zero progress in 9.5 minutes, CPU creeping 3.8s â†’ 7.31s (a poll or
+  retry loop, not a clean block), 18â€“22 threads, 201MB steady. **Killed by me at
+  17:49:03**, on the diagnostics, because reaching module 69 was worth more than
+  preserving an undiagnosed hang.
+
+Shared shape worth naming and **not** worth diagnosing from two instances: both
+wait on Temporal, both produced no result, and neither had a ceiling because run 1
+executes the pre-step:10 loop body. Named as a pattern to investigate.
+
+### Wall clock
+
+    sum of pytest's own per-module times : 3578s  (59.6 min)
+    wall clock, launch to last module    : ~142 min
+    of which, the two hangs              : ~37.5 min
+
+Leaving **~45 min of process overhead across 71 modules, ~38s per module** â€”
+consistent with the 29-module figure in step:09, and roughly as much again as the
+tests themselves cost.
+
+### Fixes shipped in this step
+
+`scripts/dev/run_real_infra_suite.sh`, three changes, all verified by execution:
+
+1. **`PYTHONPATH` pinned to this checkout.** Without it the runner tests whichever
+   `return_platform` the interpreter resolves â€” in a worktree with no `.venv`, the
+   **main** checkout's, via the shared venv's `return_platform_backend.pth`. There
+   is no `pythonpath` in `pyproject.toml` and no `sys.path` shim in `conftest.py`.
+   A suite runner that silently tests whatever the main worktree is checked out on
+   is a stale-base incident with no branch to blame.
+
+       $ env -u PYTHONPATH bash scripts/dev/run_real_infra_suite.sh tests/test_return_case_policy_gate_real_infra.py
+       source tree: /k/.../worktrees/agent-af79f912fcfd95e05/backend/src
+       8 passed in 25.25s
+
+       # and the control, showing what it was doing before:
+       $ env -u PYTHONPATH python -c "import return_platform; print(return_platform.__file__)"
+       K:\Projects\Ret\returns_muti_agentic_platform\backend\src\return_platform\__init__.py
+
+   **Run 1 itself was not affected** â€” I exported `PYTHONPATH` in the parent shell
+   and env vars are inherited, corroborated by run 1's clean
+   `512/5711 tests collected` where the main tree gives `512/5550` plus a
+   collection error. The defect was real for every *other* caller.
+
+2. **A per-module start timestamp.** One line, and its absence cost an afternoon:
+   a runner that records no wall-clock time produces durations that are
+   measurable and not *placeable*, so no module can be correlated with another
+   process's load, a container restart, or a deploy. Combined with the
+   orchestrator having no record of its own I/O, **the correlation we spent the
+   afternoon attempting was never available to either side.**
+
+       === [ 2/ 3] tests/test_return_workflow_concurrency.py  started 2026-08-31T17:56:34+05:30
+
+3. **`skipped` counted.** An all-skipped module reports `10 skipped in 6.37s` with
+   no other number, so it read as counts-unreadable and dragged the run toward
+   "cannot report what it ran". Two modules did exactly that in run 1. Now counted
+   and surfaced:
+
+       the live-infrastructure suite PASSED: 3 modules, 5 tests (10 skipped).
+
+   Totals reconcile against the collected line: 5 + 10 = 15 = `15/2571 collected`.
+
+### What remains open
+
+1. **RV's ruling is still undischarged.** Per-module was the wrong remedy â€” but the
+   reason is now better than step:09's. The state is not (only) accumulated; the
+   binding constraint is a **fixed client-side wall-clock budget racing a
+   server-side retry schedule**. Neither quarantine nor a process boundary
+   addresses that. The candidates that would are: raising or removing the fixed
+   budgets in favour of a condition, or reducing what the budget must wait for.
+   That is a change to `test_return_case_workflow_real_infra.py`'s helper and it
+   is a design decision, not a cleanup â€” **orchestrator's call, and RV should see
+   it**, since a budget raised to make a test pass is rule 10 territory unless the
+   reasoning is on the record.
+2. **`test_integration_outbox_index_plans_real_infra.py`** â€” S2's stale index pin.
+3. **The two hangs** â€” bounded by step:10's ceiling, not diagnosed.
+4. **54 silently skipped live tests.**
+5. **A clean run has still never been observed** â€” run 1 was contended by three
+   sources and its summary block was corrupted by my own edit. A controlled run on
+   a quiet machine, with the step:10 ceiling and the step:12 timestamps in force,
+   would be the first trustworthy one.

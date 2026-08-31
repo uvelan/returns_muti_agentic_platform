@@ -83,6 +83,24 @@ else
   exit 1
 fi
 
+# Pin the source tree to *this* checkout. Without this the suite tests whichever
+# `return_platform` the interpreter happens to resolve, and in a worktree with no
+# `.venv` of its own that is the **main** checkout's `backend/src`, via the
+# `return_platform_backend.pth` that the shared venv carries. There is no
+# `pythonpath` in `pyproject.toml` and no `sys.path` shim in `conftest.py`, so
+# nothing else closes this.
+#
+# The failure is silent and total: the run reports on tests from one branch
+# against production code from another, passes or fails confidently, and says
+# nothing about which tree it read. It is a stale-base incident with no branch to
+# blame. Measured here: with the main checkout on a different branch, 42 files
+# differed under `backend/src`.
+#
+# Prepended rather than assigned, so a caller who has deliberately set
+# PYTHONPATH keeps it -- but this repo's own source always wins.
+export PYTHONPATH="$ROOT/backend/src${PYTHONPATH:+:$PYTHONPATH}"
+echo "source tree: $ROOT/backend/src"
+
 # Preflight, and the reason it is here: these tests open real drivers. Without
 # this check a stopped stack produces hundreds of connection errors that look
 # like the code is broken, and the one line that matters -- "the database is not
@@ -224,6 +242,7 @@ passed_count=0
 total_passed=0
 total_failed=0
 counts_unparsed=()
+total_skipped=0
 log_dir="$(mktemp -d)"
 # One trap, both temporaries: a second `trap ... EXIT` would silently replace the
 # first and leak the collection file.
@@ -232,7 +251,16 @@ trap 'rm -f "$collect_out"; rm -rf "$log_dir"' EXIT
 index=0
 for module in "${modules[@]}"; do
   index=$(( index + 1 ))
-  printf '=== [%2d/%2d] %s\n' "$index" "${#modules[@]}" "$module"
+  # The timestamp is the cheapest line in this file and the one whose absence
+  # cost the most. A per-module runner that records no wall-clock time produces
+  # durations that are measurable and not *placeable*: when a module runs slow,
+  # nothing can correlate it with another process's load, a container restart or
+  # a deploy, because there is no time to correlate against. An entire afternoon
+  # went into trying to align module slowness with three known contention
+  # sources, and the attempt was never available to either side -- one had no
+  # timestamps and the other had no record of its own I/O.
+  printf '=== [%2d/%2d] %s  started %s\n' \
+    "$index" "${#modules[@]}" "$module" "$(date -Is 2>/dev/null || date)"
 
   log="$log_dir/$(printf '%s' "$module" | tr '/' '_').log"
   rc=0
@@ -279,7 +307,15 @@ for module in "${modules[@]}"; do
     n_passed="$(printf '%s' "$padded" | sed -n 's/.*[^0-9]\([0-9]\+\) passed.*/\1/p')"
     n_failed="$(printf '%s' "$padded" | sed -n 's/.*[^0-9]\([0-9]\+\) failed.*/\1/p')"
     n_errors="$(printf '%s' "$padded" | sed -n 's/.*[^0-9]\([0-9]\+\) error.*/\1/p')"
-    if [[ -z "$n_passed$n_failed$n_errors" ]]; then
+    # `skipped` counts too, and not only for the totals: an all-skipped module
+    # reports `10 skipped in 6.37s` with no other number in the line, so without
+    # this it read as counts-unreadable and dragged the whole run into "cannot
+    # report what it ran". Two modules in the first full run did exactly that.
+    # It is also worth surfacing on its own -- 54 live tests skipped silently is
+    # a fact an acceptance record should state, not absorb.
+    n_skipped="$(printf '%s' "$padded" | sed -n 's/.*[^0-9]\([0-9]\+\) skipped.*/\1/p')"
+    total_skipped=$(( total_skipped + ${n_skipped:-0} ))
+    if [[ -z "$n_passed$n_failed$n_errors$n_skipped" ]]; then
       # Unreadable is not zero. Say so, and let it count against the run.
       counts_unparsed+=("$module")
     fi
@@ -341,4 +377,4 @@ if (( ${#counts_unparsed[@]} > 0 )); then
 fi
 
 echo
-echo "the live-infrastructure suite PASSED: ${#modules[@]} modules, $total_passed tests."
+echo "the live-infrastructure suite PASSED: ${#modules[@]} modules, $total_passed tests ($total_skipped skipped)."
