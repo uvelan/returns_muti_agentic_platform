@@ -64,8 +64,11 @@ from return_platform.workflows.return_case_workflow import (
     BayResultNotice,
     CancelCaseCommand,
     CaseEligibilityOutcome,
+    ClarificationAnswerResult,
+    ClarificationRelayView,
     DraftSupportRequestInput,
     EvaluateCaseEligibilityInput,
+    HoldUnsettledReviewsResult,
     OpenSupportWorkItemInput,
     PolicyDecisionName,
     PolicyGateState,
@@ -84,7 +87,11 @@ from return_platform.workflows.return_case_workflow import (
     SupportResponseNotice,
     SupportReturnRecord,
     SynchronizeReturnRecordsInput,
+    TemplateDeliveryResult,
+    TemplateReviewDraftResult,
+    TemplateReviewDraftSet,
 )
+from tests.activity_probe import declared_activities
 from tests.workflow_result import result_within
 
 #: Module-scoped loop, so one client can serve every test in the file.
@@ -128,6 +135,12 @@ class _Probe:
             decision=PolicyDecisionName.APPROVE.value,
         )
         self.evaluations: list[EvaluateCaseEligibilityInput] = []
+        #: What the template review gate answers. False by default, so the case
+        #: takes the composed path -- see the gate activities below.
+        self.template_available = False
+        #: What `case_has_return_details` answers. Only polled when
+        #: `timings.return_details_required` is on, which no scenario here sets.
+        self.return_details_present = True
 
     @activity.defn(name="record_case_status")
     async def record_case_status(self, request: RecordCaseStatusInput) -> None:
@@ -225,6 +238,79 @@ class _Probe:
             raise RuntimeError("the graph refused the write")
         return self.graph_generation_id
 
+    # -- The template review gate (contracts.md sect. 6) ---------------------
+    #
+    # Every case in this file passes through `_open_support`, which now opens
+    # the gate before composing anything. These scenarios are about the Support
+    # wait and its durability -- the gate's own branching is the subject of
+    # `test_support_template_review_gate.py` -- so the gate answers "no template
+    # is published" and the case takes the composed path, which is exactly what
+    # these tests exercised before the gate existed.
+    #
+    # `template_available=False` is a released deployment state, not a fiction:
+    # `TemplateReviewDraftSet`'s own docstring names it as the answer for a
+    # release that has published no template.
+
+    @activity.defn(name="record_template_draft")
+    async def record_template_draft(self, request: Any) -> TemplateReviewDraftSet:
+        del request
+        self._record("record_template_draft")
+        return TemplateReviewDraftSet(drafts=(), template_available=self.template_available)
+
+    @activity.defn(name="rerender_template_draft")
+    async def rerender_template_draft(self, request: Any) -> TemplateReviewDraftResult:
+        self._record("rerender_template_draft")
+        return TemplateReviewDraftResult(
+            request_id=request.request_id, review_id=request.review_id, state="DRAFT"
+        )
+
+    @activity.defn(name="record_template_revision")
+    async def record_template_revision(self, request: Any) -> None:
+        del request
+        self._record("record_template_revision")
+
+    @activity.defn(name="hold_unsettled_reviews")
+    async def hold_unsettled_reviews(self, request: Any) -> HoldUnsettledReviewsResult:
+        del request
+        self._record("hold_unsettled_reviews")
+        return HoldUnsettledReviewsResult(held_review_ids=())
+
+    @activity.defn(name="snapshot_sent_template")
+    async def snapshot_sent_template(self, request: Any) -> TemplateDeliveryResult:
+        self._record("snapshot_sent_template")
+        return TemplateDeliveryResult(
+            review_id=request.review_id, state="SENT", work_item_id=f"wi-{request.case_id}"
+        )
+
+    # -- The clarification round-trip (contracts.md sect. 9, 10) -------------
+    #
+    # Unreached by every scenario here -- nothing in this file signals a
+    # clarification -- and registered anyway, on `worker.py`'s own stated
+    # reasoning: a worker that has not registered an activity leaves a case that
+    # legitimately reaches it stopped, with no exception and no log. A probe
+    # that registers only what its own scenarios happen to call is the shape of
+    # the defect this file just had.
+
+    @activity.defn(name="record_clarification_answer")
+    async def record_clarification_answer(self, request: Any) -> ClarificationAnswerResult:
+        del request
+        self._record("record_clarification_answer")
+        return ClarificationAnswerResult(recorded=True)
+
+    @activity.defn(name="relay_clarification_to_support")
+    async def relay_clarification_to_support(self, request: Any) -> ClarificationRelayView:
+        self._record("relay_clarification_to_support")
+        return ClarificationRelayView(
+            delivery_id=f"dlv-{request.clarification_id}",
+            message_id=f"msg-{request.clarification_id}",
+        )
+
+    @activity.defn(name="case_has_return_details")
+    async def case_has_return_details(self, request: Any) -> bool:
+        del request
+        self._record("case_has_return_details")
+        return self.return_details_present
+
     def _record(self, name: str) -> None:
         self.calls.append(name)
         self._reached.setdefault(name, asyncio.Event()).set()
@@ -245,18 +331,14 @@ class _Probe:
             raise AssertionError(f"{name} did not run within {within_seconds}s") from None
 
     def all(self) -> tuple[Any, ...]:
-        return (
-            self.record_case_status,
-            self.record_case_customer_identity,
-            self.resolve_business_deadline,
-            self.request_bay_assignment,
-            self.evaluate_case_eligibility,
-            self.draft_support_request,
-            self.open_support_work_item,
-            self.send_support_reminder,
-            self.record_support_outcome,
-            self.synchronize_return_records,
-        )
+        """Every activity this probe declares, derived rather than listed.
+
+        This was a hand-written tuple of ten, and it went stale twice -- once at
+        `5b7d60f6`, and again the day V1 phase 2's review gate merged, because a
+        list re-synced by hand rots again. See `tests/activity_probe.py` for why
+        the derivation is the fix and what it still cannot cover.
+        """
+        return declared_activities(self)
 
 
 def _timings(**overrides: Any) -> ReturnCaseTimings:
@@ -466,6 +548,11 @@ async def test_a_bay_result_arriving_before_the_wait_is_kept(client: Client) -> 
             ReturnCaseWorkflow.bay_result,
             BayResultNotice(warehouse_reference="WH-1", bay_reference="BAY-7"),
         )
+        # This 20 is an ASSERTION, not a liveness net. `bay_wait_seconds` is 30
+        # and this is 20: the ceiling being *below* the bay wait is what proves
+        # the case did not sit the wait out. Raising it would delete the
+        # assertion and leave a green test behind. Do not "fix" it along with a
+        # budget that is only there to stop a hang.
         await probe.reached("open_support_work_item", within_seconds=20)
         await handle.signal(
             ReturnCaseWorkflow.support_response,
@@ -506,6 +593,10 @@ async def test_the_bay_activity_answers_and_no_signal_is_needed(client: Client) 
     async with Worker(
         client, task_queue=queue, workflows=(ReturnCaseWorkflow,), activities=probe.all()
     ):
+        # An ASSERTION, per the docstring above: 30s of `bay_wait_seconds` and a
+        # test that does not take 30 seconds is the whole point. Note
+        # `state.bay_resolved` two lines down -- the same claim is available as a
+        # state fact, which is the better long-term shape for this check.
         await probe.reached("open_support_work_item", within_seconds=20)
         state = await handle.query(ReturnCaseWorkflow.execution_state)
         assert state.bay_resolved is True
@@ -541,6 +632,9 @@ async def test_a_signal_that_won_the_race_is_not_overwritten_by_the_activity(
     async with Worker(
         client, task_queue=queue, workflows=(ReturnCaseWorkflow,), activities=probe.all()
     ):
+        # An ASSERTION, same as the two sites above: `bay_wait_seconds=30`
+        # against a 20s ceiling, so the ceiling is the evidence that the
+        # activity answered rather than the wait expiring.
         await probe.reached("open_support_work_item", within_seconds=20)
         await handle.signal(
             ReturnCaseWorkflow.support_response,

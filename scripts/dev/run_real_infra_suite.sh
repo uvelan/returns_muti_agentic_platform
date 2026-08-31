@@ -15,12 +15,54 @@
 #     without the number it passed out of -- a marker typo that collects zero
 #     tests exits 0 and looks identical to success;
 #   * passes through extra arguments, so a single test can be run the same way
-#     CI runs the whole file.
+#     CI runs the whole file;
+#   * runs each module in its own process -- see below.
+#
+# ---------------------------------------------------------------------------
+# Why a process per module (RV, `.plan/reviews/HARNESS-1.md`, "Ruling")
+# ---------------------------------------------------------------------------
+#
+# This script used to run all 512 live tests in one pytest process, and on that
+# basis RV ruled its output could not be read as an acceptance result.
+#
+# The measured mechanism is accumulated Temporal server state. The same single
+# module, alone in its own process, goes from `13 passed` on a fresh server to 5,
+# 4 and 1 spurious failures on a loaded one, with a *different* test failing each
+# run. A 512-test single-process run creates strictly more of that state than any
+# measurement taken, so it would return a non-empty, non-repeating failure set
+# essentially every time -- and every entry in it would be indistinguishable from
+# a real regression without individual adjudication.
+#
+# The asymmetry is what makes it urgent rather than untidy: a flaky gate does not
+# only produce false alarms, it produces a standing incentive to re-run until
+# green, and a green bought that way is indistinguishable from one that means
+# something.
+#
+# RV named two sufficient fixes. Quarantining the unstable module was rejected
+# deliberately: it removes coverage to make a number look clean. **Per-module
+# execution keeps every test and changes only the execution model** -- a fresh
+# interpreter and a fresh Temporal client per file, so state cannot cross a
+# module boundary.
+#
+# The cost of that choice is that one exit code became seventy-three, and an
+# aggregate over many exit codes is exactly where a runner learns to lie. So:
+#
+#   * the loop never stops on failure and never overwrites its verdict -- a
+#     single sticky `failures` list decides the exit code, not the last module;
+#   * the summary names every failing module and its counts, so "the live suite
+#     failed" is never a bare number;
+#   * a module whose summary line cannot be parsed is reported as unparsed and
+#     counted as a failure, rather than contributing a silent zero. An aggregate
+#     that drops what it cannot read is the same defect one level up.
 #
 # Usage:
-#   scripts/dev/run_real_infra_suite.sh
+#   scripts/dev/run_real_infra_suite.sh                       # per module
 #   scripts/dev/run_real_infra_suite.sh tests/operations/test_case_aggregate_real_infra.py
 #   scripts/dev/run_real_infra_suite.sh -k reservations -x
+#
+# Naming a file or a `-k` selection runs one process directly: fanning out over a
+# set the caller already narrowed to one thing buys nothing and costs a
+# collection pass.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -40,6 +82,24 @@ else
   echo "error: no Python interpreter found (looked for backend/.venv, then PATH)" >&2
   exit 1
 fi
+
+# Pin the source tree to *this* checkout. Without this the suite tests whichever
+# `return_platform` the interpreter happens to resolve, and in a worktree with no
+# `.venv` of its own that is the **main** checkout's `backend/src`, via the
+# `return_platform_backend.pth` that the shared venv carries. There is no
+# `pythonpath` in `pyproject.toml` and no `sys.path` shim in `conftest.py`, so
+# nothing else closes this.
+#
+# The failure is silent and total: the run reports on tests from one branch
+# against production code from another, passes or fails confidently, and says
+# nothing about which tree it read. It is a stale-base incident with no branch to
+# blame. Measured here: with the main checkout on a different branch, 42 files
+# differed under `backend/src`.
+#
+# Prepended rather than assigned, so a caller who has deliberately set
+# PYTHONPATH keeps it -- but this repo's own source always wins.
+export PYTHONPATH="$ROOT/backend/src${PYTHONPATH:+:$PYTHONPATH}"
+echo "source tree: $ROOT/backend/src"
 
 # Preflight, and the reason it is here: these tests open real drivers. Without
 # this check a stopped stack produces hundreds of connection errors that look
@@ -97,8 +157,251 @@ fi
 # command line is parsed after addopts, which is precisely how this suite
 # selects itself back in. See the comment on `addopts` in pyproject.toml.
 echo "live-infrastructure suite: all five datastores reachable"
-collected="$("$PYTHON" -m pytest -m live_infra --collect-only -q "$@" 2>/dev/null | tail -1 || true)"
+
+# One collection pass, read twice: once for the total this script has always
+# reported, once for the module list the fan-out below walks. Collecting twice
+# would cost a second pass and, worse, would let the reported total and the
+# executed set disagree.
+collect_out="$(mktemp)"
+trap 'rm -f "$collect_out"' EXIT
+"$PYTHON" -m pytest -m live_infra --collect-only -q "$@" >"$collect_out" 2>/dev/null || true
+
+# Anchored on pytest's count line rather than on `tail -1`. This used to be
+# `tail -1`, and it was wrong whenever pytest emitted a warnings summary -- the
+# last line is then the capture-warnings docs URL, so the whole-suite run
+# reported `collection: -- Docs: https://docs.pytest.org/...` in place of its
+# total. Not a cosmetic bug: the total is here precisely because a marker typo
+# that collects zero tests exits 0 and looks like success, and a report that
+# prints a URL instead of a number cannot show that.
+collected="$(grep -E '^([0-9]+/)?[0-9]+ tests? collected|^no tests (collected|ran)' "$collect_out" | tail -1 || true)"
 echo "collection: ${collected:-unknown}"
 echo
 
-exec "$PYTHON" -m pytest -m live_infra "$@"
+# Did the caller already narrow the selection? A positional path or a `-k`
+# expression means they asked for one thing; fanning out is pointless there.
+narrowed=0
+skip_next=0
+for arg in "$@"; do
+  if (( skip_next )); then skip_next=0; continue; fi
+  case "$arg" in
+    -k|--deselect) narrowed=1; skip_next=1 ;;
+    -k*)           narrowed=1 ;;
+    -*)            ;;   # -x, -q, --lf and friends narrow nothing by file
+    *)             [[ -e "${arg%%::*}" ]] && narrowed=1 ;;
+  esac
+done
+
+if (( narrowed )); then
+  echo "arguments name a specific selection -- running it in one process"
+  echo
+  # `exec` replaces this shell, so the EXIT trap never fires. Clean up first.
+  rm -f "$collect_out"
+  trap - EXIT
+  exec "$PYTHON" -m pytest -m live_infra "$@"
+fi
+
+# Discover the modules from pytest's own collection rather than from a glob, so
+# the fan-out covers exactly what `-m live_infra` selects. A glob over
+# `*_real_infra.py` would miss the twenty-odd live modules that are not named
+# that way -- and missing them silently is the shape of defect this whole branch
+# is about.
+modules=()
+while IFS= read -r line; do
+  [[ -n "$line" ]] && modules+=("$line")
+done < <(sed -n 's/^\([^ ]*\.py\)::.*/\1/p' "$collect_out" | sort -u)
+
+if (( ${#modules[@]} == 0 )); then
+  echo "error: collection found no live-infrastructure modules." >&2
+  echo "A run over zero modules exits 0 and looks identical to success, so it" >&2
+  echo "is refused here. Check the marker and the collection line above." >&2
+  exit 1
+fi
+
+# The per-module ceiling. 900s is chosen against measurement, not taste: the
+# slowest module observed finishing took 277s, so this is a little over three
+# times the worst honest case -- loose enough that a slow module is never cut
+# short, tight enough that a hang costs fifteen minutes instead of the run.
+# Override for a deliberately slow selection:  LIVE_MODULE_TIMEOUT=1800 ...
+LIVE_MODULE_TIMEOUT="${LIVE_MODULE_TIMEOUT:-900}"
+TIMEOUT_CMD="$(command -v timeout || true)"
+# Emptiness is not the only way this can be the wrong `timeout`. On Windows,
+# `C:\WINDOWS\system32\timeout.exe` is a pause utility that takes `/T` and
+# rejects the arguments below, and it sits on `PATH` in any shell that has not
+# put Git's `/usr/bin` first -- so a name check alone would hand every module to
+# a program that exits 1 without ever running pytest. Ask the binary what it is.
+if [[ -n "$TIMEOUT_CMD" ]] && ! "$TIMEOUT_CMD" --version 2>/dev/null | grep -qi coreutils; then
+  echo "warning: '$TIMEOUT_CMD' is on PATH but is not coreutils 'timeout'" >&2
+  echo "         (likely Windows timeout.exe). Ignoring it; modules run" >&2
+  echo "         without a ceiling." >&2
+  TIMEOUT_CMD=""
+fi
+if [[ -z "$TIMEOUT_CMD" ]]; then
+  # Said out loud rather than degraded quietly: without `timeout` a hanging
+  # module still hangs the run, and the operator should know which of the two
+  # runners they are holding.
+  echo "warning: coreutils 'timeout' not found -- modules run without a ceiling," >&2
+  echo "         so a hanging module will hang this run indefinitely." >&2
+fi
+
+# On stdout, not only stderr. The operator reads the log file; a run that was
+# holding the ceiling-less runner used to say so only on a terminal nobody kept.
+if [[ -n "$TIMEOUT_CMD" ]]; then
+  echo "running ${#modules[@]} modules, one process each (ceiling ${LIVE_MODULE_TIMEOUT}s per module)"
+else
+  echo "running ${#modules[@]} modules, one process each (NO CEILING -- 'timeout' unavailable)"
+fi
+echo
+
+suite_started=$SECONDS
+failed_modules=()
+failed_summaries=()
+passed_count=0
+total_passed=0
+total_failed=0
+counts_unparsed=()
+total_skipped=0
+log_dir="$(mktemp -d)"
+# One trap, both temporaries: a second `trap ... EXIT` would silently replace the
+# first and leak the collection file.
+trap 'rm -f "$collect_out"; rm -rf "$log_dir"' EXIT
+
+index=0
+for module in "${modules[@]}"; do
+  index=$(( index + 1 ))
+  # The timestamp is the cheapest line in this file and the one whose absence
+  # cost the most. A per-module runner that records no wall-clock time produces
+  # durations that are measurable and not *placeable*: when a module runs slow,
+  # nothing can correlate it with another process's load, a container restart or
+  # a deploy, because there is no time to correlate against. An entire afternoon
+  # went into trying to align module slowness with three known contention
+  # sources, and the attempt was never available to either side -- one had no
+  # timestamps and the other had no record of its own I/O.
+  printf '=== [%2d/%2d] %s  started %s\n' \
+    "$index" "${#modules[@]}" "$module" "$(date -Is 2>/dev/null || date)"
+
+  log="$log_dir/$(printf '%s' "$module" | tr '/' '_').log"
+  rc=0
+  # `|| rc=$?` rather than `set +e`: the loop must survive every failure, and it
+  # must survive it the same way each time.
+  #
+  # The timeout is not belt-and-braces. `test_order_line_reservations_real_infra`
+  # was observed stopping dead after 30 of its 33 tests -- blocked, 6s of CPU and
+  # no growth -- and with no ceiling it took the whole gate with it. An
+  # acceptance gate that never returns is worse than one that returns a wrong
+  # number: a wrong number gets adjudicated, an unterminated run gets re-run
+  # until somebody gives up. Silence is the one failure mode the aggregate
+  # argument above does not otherwise cover.
+  if [[ -n "$TIMEOUT_CMD" ]]; then
+    "$TIMEOUT_CMD" --kill-after=30s "${LIVE_MODULE_TIMEOUT}s" \
+      "$PYTHON" -m pytest -m live_infra "$module" 2>&1 | tee "$log" || rc=${PIPESTATUS[0]}
+  else
+    "$PYTHON" -m pytest -m live_infra "$module" 2>&1 | tee "$log" || rc=${PIPESTATUS[0]}
+  fi
+
+  # 124 is `timeout`'s own code for the deadline; 137 is SIGKILL, which is what
+  # `--kill-after` sends when the module ignores the first signal. Handled before
+  # the summary is parsed, because a killed pytest leaves a partial log whose last
+  # line is a row of progress dots -- parsing that would invent counts for a
+  # module that produced no result. A timeout is reported as its own state rather
+  # than folded into the generic failure line: a module that hangs and a module
+  # that fails need different people looking at them.
+  if (( rc == 124 || rc == 137 )); then
+    summary="TIMED OUT after ${LIVE_MODULE_TIMEOUT}s -- no result; the module did not finish"
+    counts_unparsed+=("$module")
+    echo "!!! $module $summary"
+  else
+    # pytest's last non-empty line is its own summary; take it verbatim rather
+    # than recomposing one.
+    summary="$(grep -v '^[[:space:]]*$' "$log" | tail -1 | sed 's/^=*[[:space:]]*//; s/[[:space:]]*=*$//')"
+    [[ -n "$summary" ]] || summary="(no output)"
+
+    # The leading space matters. `[^0-9]` before the digits needs something to
+    # match, and `8 passed in 24.51s` begins with the digit -- so without it every
+    # all-green module parsed as unreadable and every `N failed` that opened a
+    # summary line was dropped. Caught by the deliberate-failure proof, which
+    # reported `tests failed: 0` next to a failing module.
+    padded=" $summary"
+    n_passed="$(printf '%s' "$padded" | sed -n 's/.*[^0-9]\([0-9]\+\) passed.*/\1/p')"
+    n_failed="$(printf '%s' "$padded" | sed -n 's/.*[^0-9]\([0-9]\+\) failed.*/\1/p')"
+    n_errors="$(printf '%s' "$padded" | sed -n 's/.*[^0-9]\([0-9]\+\) error.*/\1/p')"
+    # `skipped` counts too, and not only for the totals: an all-skipped module
+    # reports `10 skipped in 6.37s` with no other number in the line, so without
+    # this it read as counts-unreadable and dragged the whole run into "cannot
+    # report what it ran". Two modules in the first full run did exactly that.
+    # It is also worth surfacing on its own -- 54 live tests skipped silently is
+    # a fact an acceptance record should state, not absorb.
+    n_skipped="$(printf '%s' "$padded" | sed -n 's/.*[^0-9]\([0-9]\+\) skipped.*/\1/p')"
+    total_skipped=$(( total_skipped + ${n_skipped:-0} ))
+    if [[ -z "$n_passed$n_failed$n_errors$n_skipped" ]]; then
+      # Unreadable is not zero. Say so, and let it count against the run.
+      counts_unparsed+=("$module")
+      # And say it *inline*, where the operator is actually reading. The ceiling
+      # is not the only way a module ends without a summary, and the summary
+      # block at the bottom is not where anyone looks first. In run 1,
+      # `test_order_line_reservations_real_infra.py` was stopped by something
+      # that was not this script, so `rc` was neither 124 nor 137, the `!!!`
+      # line above never fired, and the log carried a row of progress dots
+      # followed by the next module's header with no explanation anywhere.
+      # A gate that cannot lie has to cover the case where the module was
+      # stopped by something that was not the gate.
+      echo "!!! $module produced no readable summary (exit $rc) -- no counts; the module did not finish"
+    fi
+    total_passed=$(( total_passed + ${n_passed:-0} ))
+    total_failed=$(( total_failed + ${n_failed:-0} + ${n_errors:-0} ))
+  fi
+
+  if (( rc == 0 )); then
+    passed_count=$(( passed_count + 1 ))
+  else
+    # Exit 5 is "no tests collected". It cannot happen for a module this loop
+    # derived from collection -- which is exactly why it is worth failing on
+    # rather than tolerating: it means collection and execution disagree.
+    failed_modules+=("$module")
+    failed_summaries+=("exit $rc -- $summary")
+  fi
+  echo
+done
+
+elapsed=$(( SECONDS - suite_started ))
+
+echo "================== live-infrastructure suite: summary =================="
+printf 'modules run     : %d\n' "${#modules[@]}"
+printf 'modules passed  : %d\n' "$passed_count"
+printf 'modules failed  : %d\n' "${#failed_modules[@]}"
+printf 'tests passed    : %d\n' "$total_passed"
+printf 'tests failed    : %d\n' "$total_failed"
+printf 'wall time       : %dm %02ds (one process per module)\n' "$(( elapsed / 60 ))" "$(( elapsed % 60 ))"
+
+if (( ${#counts_unparsed[@]} > 0 )); then
+  echo
+  echo "counts could not be read for ${#counts_unparsed[@]} module(s); the totals above are"
+  echo "incomplete and must not be quoted as the suite's result:"
+  for module in "${counts_unparsed[@]}"; do
+    echo "  ? $module"
+  done
+fi
+
+if (( ${#failed_modules[@]} > 0 )); then
+  echo
+  echo "FAILED modules:"
+  for i in "${!failed_modules[@]}"; do
+    printf '  x %s\n' "${failed_modules[$i]}"
+    printf '      %s\n' "${failed_summaries[$i]}"
+  done
+  echo
+  echo "the live-infrastructure suite FAILED (${#failed_modules[@]} of ${#modules[@]} modules)."
+  echo "Logs were per module; re-run one with:"
+  echo "  scripts/dev/run_real_infra_suite.sh ${failed_modules[0]}"
+  exit 1
+fi
+
+# Unparsed counts with every module green is still not a result anyone can read.
+if (( ${#counts_unparsed[@]} > 0 )); then
+  echo
+  echo "every module exited 0, but the suite cannot report what it ran. Refusing"
+  echo "to call that a pass."
+  exit 1
+fi
+
+echo
+echo "the live-infrastructure suite PASSED: ${#modules[@]} modules, $total_passed tests ($total_skipped skipped)."
