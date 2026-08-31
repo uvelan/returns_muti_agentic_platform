@@ -161,8 +161,7 @@ def apply_graph_runtime_configuration(
             # keys are restored here for the providers whose release entry
             # declares them environment-held.
             if any(
-                item.bootstrap_managed and not item.vault_reference
-                for item in provider.credentials
+                item.bootstrap_managed and not item.vault_reference for item in provider.credentials
             ):
                 updates[f"{key}_api_keys"] = getattr(settings, f"{key}_api_keys")
                 updates[f"{key}_api_key"] = getattr(settings, f"{key}_api_key")

@@ -97,7 +97,13 @@ class CaseCustomerIdentity:
     def empty(self) -> bool:
         return all(
             value is None
-            for value in (self.customer_name, self.customer_id, self.account, self.phone, self.email)
+            for value in (
+                self.customer_name,
+                self.customer_id,
+                self.account,
+                self.phone,
+                self.email,
+            )
         )
 
 

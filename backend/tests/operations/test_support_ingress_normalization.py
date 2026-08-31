@@ -113,8 +113,9 @@ def test_the_canonical_form_still_separates_events_that_say_different_things() -
         != baseline
     )
     assert (
-        _structured(records=[{**STRUCTURED_RECORD, "returnReference": "RMA-2"}])
-        .canonical_business_form()
+        _structured(
+            records=[{**STRUCTURED_RECORD, "returnReference": "RMA-2"}]
+        ).canonical_business_form()
         != baseline
     )
     assert _structured(records=[]).canonical_business_form() != baseline
@@ -176,9 +177,7 @@ def test_blank_strings_are_read_as_silence_not_as_erasure() -> None:
 
 
 def test_the_internal_id_is_derived_from_the_contracts_three_part_identity() -> None:
-    base = derive_support_event_id(
-        case_id=CASE, transport_id="email", external_message_id="m-1"
-    )
+    base = derive_support_event_id(case_id=CASE, transport_id="email", external_message_id="m-1")
     assert base == derive_support_event_id(
         case_id=CASE, transport_id="email", external_message_id="m-1"
     )
@@ -209,9 +208,7 @@ def test_the_derivation_cannot_be_confused_by_a_shifted_separator() -> None:
     """
     assert derive_support_event_id(
         case_id=CASE, transport_id="a|b", external_message_id="c"
-    ) != derive_support_event_id(
-        case_id=CASE, transport_id="a", external_message_id="b|c"
-    ), (
+    ) != derive_support_event_id(case_id=CASE, transport_id="a", external_message_id="b|c"), (
         "a part containing the separator forged a boundary: the length prefixes "
         "are what stop it, and this is the only input shape that shows it"
     )
@@ -322,9 +319,7 @@ def test_a_group_without_a_return_reference_is_not_a_group() -> None:
             ]
         }
     )
-    assert bindings == (
-        ReturnRecordBinding(return_reference="RMA-1", tracking_reference="1Z"),
-    )
+    assert bindings == (ReturnRecordBinding(return_reference="RMA-1", tracking_reference="1Z"),)
 
 
 def test_an_extraction_with_no_lists_at_all_yields_nothing() -> None:
@@ -404,10 +399,6 @@ def test_a_binding_at_the_ceiling_is_still_carried() -> None:
     """The boundary itself, so the comparison cannot quietly become `>=`."""
     reference = "R" * MAX_ARTIFACT_BINDING_CHARS
     (artifact,) = extracted_artifacts(
-        {
-            "artifacts": [
-                {"artifactType": "TRACKING", "value": "1Z-AAA", "binding": reference}
-            ]
-        }
+        {"artifacts": [{"artifactType": "TRACKING", "value": "1Z-AAA", "binding": reference}]}
     )
     assert artifact.binding == reference

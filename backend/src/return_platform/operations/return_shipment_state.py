@@ -355,7 +355,6 @@ class ReturnShipmentStateService:
                 carrier=_reference(row.get("carrier_code")),
             )
 
-
     async def _append_once(self, **fact) -> None:
         """Append one derived-id fact, absorbing the already-recorded case.
 

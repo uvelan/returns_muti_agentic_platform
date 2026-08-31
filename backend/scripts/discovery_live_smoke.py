@@ -91,9 +91,9 @@ async def _agent_id(client: httpx.AsyncClient) -> str | None:
     if response.status_code != 200:
         return None
     payload = response.json().get("data") or {}
-    configured = (
-        (payload.get("configuration") or {}).get("copilot") or {}
-    ).get("order_discovery_agent_id")
+    configured = ((payload.get("configuration") or {}).get("copilot") or {}).get(
+        "order_discovery_agent_id"
+    )
     return str(configured) if isinstance(configured, str) else None
 
 

@@ -131,6 +131,5 @@ def test_the_model_route_cases_report_their_gap(case: MatrixCase) -> None:
     """Skips naming the missing route, so the gap is countable in the report."""
     _require_model_route()
     pytest.fail(
-        f"{case.id} has a model route available and no implementation. "
-        f"It proves: {case.proves}"
+        f"{case.id} has a model route available and no implementation. It proves: {case.proves}"
     )

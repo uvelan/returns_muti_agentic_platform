@@ -47,9 +47,7 @@ class TestTheWireContract:
             ReturnOutcomeRecord(returnReference="RMA-1")
 
     def test_one_line_is_enough(self) -> None:
-        record = ReturnOutcomeRecord(
-            returnReference="RMA-1", orderLineReferences=("LINE-1",)
-        )
+        record = ReturnOutcomeRecord(returnReference="RMA-1", orderLineReferences=("LINE-1",))
         assert record.orderLineReferences == ("LINE-1",)
 
     def test_the_upper_bound_still_holds(self) -> None:

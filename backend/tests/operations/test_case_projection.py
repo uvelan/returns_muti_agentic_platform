@@ -71,6 +71,7 @@ from return_platform.operations.case_projection import (
     StageRegressionReason,
     SupportProjection,
     WarehouseProjection,
+    assembly,
     classify_stage_transition,
     derive_copilot_stage,
     effective_decision,
@@ -81,7 +82,6 @@ from return_platform.operations.case_projection import (
     resolve_method_requirements,
     stage_rank,
 )
-from return_platform.operations.case_projection import assembly
 from return_platform.operations.case_projection import contract as contract_module
 from return_platform.operations.case_projection.completion import ROUTE_VERIFICATION_DIMENSIONS
 from return_platform.policy import EligibilityDecision, PolicyReasonCode, PolicyRoute

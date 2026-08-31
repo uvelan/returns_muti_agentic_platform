@@ -338,9 +338,7 @@ def support_template_snapshot(
         ORDER_CONFIRMATION: "Confirmed" if order_confirmed else "Not confirmed",
         REQUIRED_RETURN_INFORMATION: "Complete" if required_details_complete else "Incomplete",
         POLICY_EVALUATION_RENDERED: policy.rendered(),
-        BAY_ASSIGNMENT_STATUS: (
-            "RECOMMENDED" if bay.recommended else (bay.status or "UNRESOLVED")
-        ),
+        BAY_ASSIGNMENT_STATUS: ("RECOMMENDED" if bay.recommended else (bay.status or "UNRESOLVED")),
     }
 
     # Present-or-absent, with the template's `fallback` covering the absence
@@ -353,8 +351,10 @@ def support_template_snapshot(
     # The contact block: whichever arm applies, all three of its lines, with
     # `Not available` spelled out where the composed path spells it. The other
     # arm's keys are absent, which is what omits its lines.
-    if _safe(customer.contact_name) or _safe(customer.contact_email) or _safe(
-        customer.contact_phone
+    if (
+        _safe(customer.contact_name)
+        or _safe(customer.contact_email)
+        or _safe(customer.contact_phone)
     ):
         snapshot[CONTACT_ASSOCIATE_NAME] = _safe(customer.contact_name) or UNAVAILABLE
         snapshot[CONTACT_ASSOCIATE_EMAIL] = _safe(customer.contact_email) or UNAVAILABLE
@@ -372,9 +372,7 @@ def support_template_snapshot(
         )
 
     if not bay.recommended:
-        snapshot[BAY_UNRESOLVED_REASON] = (
-            _clean(bay.unresolved_reason or bay.status) or UNAVAILABLE
-        )
+        snapshot[BAY_UNRESOLVED_REASON] = _clean(bay.unresolved_reason or bay.status) or UNAVAILABLE
         snapshot[MANUAL_BAY_ACTION_LINE] = MANUAL_BAY_ACTION
 
     if not support_state_known:
@@ -437,10 +435,7 @@ def draft_facts(**case: Any) -> dict[tuple[str | None, str], dict[str, Any]]:
     Production merges the real scoped facts (which carry their ids) with
     `support_template_snapshot`; it does not call this.
     """
-    facts = {
-        (None, name): {"value": value}
-        for name, value in fact_log_projection(**case).items()
-    }
+    facts = {(None, name): {"value": value} for name, value in fact_log_projection(**case).items()}
     facts.update(snapshot_as_facts(support_template_snapshot(**case)))
     return facts
 

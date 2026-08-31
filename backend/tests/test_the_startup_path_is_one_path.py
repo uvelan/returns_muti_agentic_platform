@@ -63,11 +63,7 @@ def test_no_file_declares_the_other_entrypoint(path: Path) -> None:
 
 def test_the_launch_configuration_starts_the_one_entrypoint() -> None:
     configuration = json.loads((_ROOT / ".claude" / "launch.json").read_text(encoding="utf-8"))
-    backend = next(
-        entry
-        for entry in configuration["configurations"]
-        if entry["name"] == "backend"
-    )
+    backend = next(entry for entry in configuration["configurations"] if entry["name"] == "backend")
     assert ENTRYPOINT in backend["runtimeArgs"]
     # `--factory` belongs to the other form. Left behind it would be passed to
     # uvicorn alongside a module that is already an app.

@@ -519,9 +519,7 @@ class SupportQuestionResolver:
 #: `SUB_THRESHOLD` on a console tells a branch associate nothing, and the three
 #: cases call for three different actions from them.
 _WHY: Final[Mapping[str, str]] = {
-    "SUB_THRESHOLD": (
-        "the platform found an answer but was not confident enough in it to send it"
-    ),
+    "SUB_THRESHOLD": ("the platform found an answer but was not confident enough in it to send it"),
     "CONFLICTING_SOURCES": (
         "two of the platform's own sources gave different answers, so neither was sent"
     ),

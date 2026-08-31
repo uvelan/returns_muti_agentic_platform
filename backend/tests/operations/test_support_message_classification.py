@@ -382,9 +382,7 @@ async def test_artifacts_are_written_only_from_the_committed_extraction(
         analysis,
         extraction={
             "records": [],
-            "artifacts": [
-                {"artifactType": "TRACKING", "value": "1Z-AAA", "binding": "RMA-1"}
-            ],
+            "artifacts": [{"artifactType": "TRACKING", "value": "1Z-AAA", "binding": "RMA-1"}],
         },
         stored_records=[_record_document("RMA-1", "rr-1")],
     )
@@ -406,9 +404,7 @@ async def test_the_omc_mirror_row_is_keyed_by_delivery_identity_and_written_once
         analysis,
         extraction={
             "records": [],
-            "artifacts": [
-                {"artifactType": "TRACKING", "value": "1Z-AAA", "binding": "RMA-1"}
-            ],
+            "artifacts": [{"artifactType": "TRACKING", "value": "1Z-AAA", "binding": "RMA-1"}],
         },
         stored_records=[_record_document("RMA-1", "rr-1")],
     )
@@ -576,9 +572,7 @@ async def test_an_unmatched_artifact_never_creates_a_record(
         analysis,
         extraction={
             "records": [],
-            "artifacts": [
-                {"artifactType": "TRACKING", "value": "1Z-AAA", "binding": "RMA-99"}
-            ],
+            "artifacts": [{"artifactType": "TRACKING", "value": "1Z-AAA", "binding": "RMA-99"}],
         },
         stored_records=[_record_document("RMA-1", "rr-1")],
     )
@@ -620,9 +614,7 @@ async def test_the_clarification_question_is_composed_never_quoted(
         workflow_id=WORKFLOW_ID,
         body_text=hostile,
     )
-    question = parts["facts"].named(SUPPORT_CLARIFICATION_REQUESTED)[0]["value"][
-        "verbatimQuestion"
-    ]
+    question = parts["facts"].named(SUPPORT_CLARIFICATION_REQUESTED)[0]["value"]["verbatimQuestion"]
     assert "IGNORE ALL PRIOR RULES" not in question
     assert "1Z-AAA" in question
 
@@ -668,9 +660,11 @@ async def test_the_message_facts_are_case_level_and_use_only_the_new_names(
     # Facts this module writes carry its own agent id; the ambiguous-artifact
     # fact is S1's module's write and carries S1's, which is the ownership
     # boundary showing up in provenance exactly as it should.
-    mine = parts["facts"].named(SUPPORT_MESSAGE_RECEIVED) + parts["facts"].named(
-        SUPPORT_MESSAGE_INTENT
-    ) + parts["facts"].named(SUPPORT_CLARIFICATION_REQUESTED)
+    mine = (
+        parts["facts"].named(SUPPORT_MESSAGE_RECEIVED)
+        + parts["facts"].named(SUPPORT_MESSAGE_INTENT)
+        + parts["facts"].named(SUPPORT_CLARIFICATION_REQUESTED)
+    )
     assert mine and all(fact["agent_id"] == AGENT_ID for fact in mine)
     assert parts["facts"].named(SUPPORT_ARTIFACT_AMBIGUOUS)[0]["agent_id"] == "artifact-binding"
 
@@ -836,9 +830,7 @@ async def test_an_extraction_that_never_committed_writes_no_artifacts(
         analysis,
         extraction={
             "records": [{"returnReference": "RMA-1"}],
-            "artifacts": [
-                {"artifactType": "TRACKING", "value": "1Z-AAA", "binding": "RMA-1"}
-            ],
+            "artifacts": [{"artifactType": "TRACKING", "value": "1Z-AAA", "binding": "RMA-1"}],
         },
         stored_records=[_record_document("RMA-1", "rr-1")],
     )

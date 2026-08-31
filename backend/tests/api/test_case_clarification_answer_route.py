@@ -66,7 +66,9 @@ def _clarification_fact(clarification_id: str = CLARIFICATION_ID) -> dict[str, A
 
 
 class _StubRepository:
-    def __init__(self, case: dict[str, Any] | None, facts: list[dict[str, Any]] | None = None) -> None:
+    def __init__(
+        self, case: dict[str, Any] | None, facts: list[dict[str, Any]] | None = None
+    ) -> None:
         self._case = case
         self._facts = [_clarification_fact()] if facts is None else facts
 

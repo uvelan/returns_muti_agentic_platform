@@ -80,9 +80,7 @@ def mongo() -> FakeClient:
 
 
 @pytest_asyncio.fixture
-async def store(
-    mongo: FakeClient, test_settings: Settings
-) -> DurableSupportIngressStore:
+async def store(mongo: FakeClient, test_settings: Settings) -> DurableSupportIngressStore:
     built = DurableSupportIngressStore(
         cast(Any, mongo), test_settings, SupportIngressConfiguration()
     )
@@ -304,9 +302,7 @@ def test_another_tenants_case_is_a_404_and_not_a_403(
     monkeypatch: pytest.MonkeyPatch, store: DurableSupportIngressStore
 ) -> None:
     """A 403 would confirm the case exists to somebody who should not know."""
-    for client in _client(
-        monkeypatch, store, case=_case_document(tenant_id="tenant-b")
-    ):
+    for client in _client(monkeypatch, store, case=_case_document(tenant_id="tenant-b")):
         response = _post(client)
         assert response.status_code == 404, response.text
         assert response.json()["detail"]["code"] == "SUPPORT_WORK_ITEM_NOT_FOUND"

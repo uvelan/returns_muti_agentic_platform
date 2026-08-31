@@ -71,9 +71,7 @@ async def seed_release_from_file(
     touching it, whether or not the file has since changed.
     """
     schema = load_active_schema(path)
-    release_id = seeded_release_id(
-        schema.configuration_release_id, schema.configuration_checksum
-    )
+    release_id = seeded_release_id(schema.configuration_release_id, schema.configuration_checksum)
 
     active = await releases.active()
     if active is not None:
@@ -87,8 +85,7 @@ async def seed_release_from_file(
             "OPERATOR_RELEASE_ACTIVE",
             active.configuration_release_id,
             detail=(
-                "an activated release is already serving; the schema file was not "
-                "seeded over it"
+                "an activated release is already serving; the schema file was not seeded over it"
             ),
         )
 

@@ -52,6 +52,22 @@ name: checks
 #      could be any of five things and requires opening the log to tell which.
 #
 # So the bundle ratchet is its own step, independent of `npm run build`.
+#
+# ---------------------------------------------------------------------------
+# The backend's linter, which was configured and never called
+# ---------------------------------------------------------------------------
+#
+# The same defect as the bundle budget, one language over. `ruff` is declared
+# in `backend/pyproject.toml`, configured there with an eight-rule `select`,
+# and pinned in `poetry.lock` -- and the first version of this file gated the
+# frontend's `lint` while never writing the backend's. Fourteen lint errors and
+# ninety-four unformatted files had accumulated behind the gap, findable only
+# by audit.
+#
+# `backend-static` below closes it. Unlike the suites, it needs no allowlist:
+# the violations were fixed rather than baselined, because they were fixable in
+# two mechanical commits, and a hard gate with nothing to maintain beats a
+# ratchet whose baseline file can rot.
 
 on:
   push:
@@ -148,6 +164,123 @@ jobs:
           path: backend/junit-backend.xml
           if-no-files-found: ignore
           retention-days: 14
+
+  # ---------------------------------------------------------------------
+  # The backend's static checks, in their own job for the same reason
+  # `frontend-static` is separate from `frontend-tests`: a lint error and a
+  # failing test are different events with different owners, and lint should
+  # not wait 45 minutes behind a suite to report a misplaced import.
+  #
+  # This job is the gate rule 13 was written for. `ruff` was declared in
+  # `backend/pyproject.toml`, configured there under `[tool.ruff]`, pinned to
+  # 0.15.21 in `poetry.lock` -- and invoked by nothing. The frontend's `lint`
+  # was gated from the day this file landed; the backend's equivalent simply
+  # was never written, and 14 lint errors plus 94 unformatted files accumulated
+  # behind the gap. A configured linter nothing runs is a comment.
+  #
+  # Both steps are green on this commit. The violations were not baselined:
+  # they were fixed, in two commits of their own that precede this one, which
+  # is why these are plain hard gates with no allowlist file. There is no
+  # `known_lint_failures.json` and deliberately so -- baselining is the right
+  # instrument when the debt is expensive to pay (as with the `workflow.patched`
+  # failure that `known_test_failures.json` exists for), and this debt was 14
+  # import sorts and one `ruff format` run.
+  # ---------------------------------------------------------------------
+  backend-static:
+    name: backend lint and format
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # Same source as the `backend` job: backend/pyproject.toml's
+          # requires-python, and backend/Dockerfile's python:3.13-slim.
+          python-version: "3.13"
+
+      - name: Install the backend toolchain
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          # --no-root as everywhere else here. The ruff that runs is
+          # poetry.lock's pinned 0.15.21, never `latest`: a linter whose
+          # version floats is a gate whose verdict changes without a commit.
+          poetry install --with dev --no-root
+
+      # `ruff check` and `ruff format --check` are two steps, not one, for the
+      # reason this file already gives about `npm run check`: a combined step
+      # short-circuits, so a lint error would hide an unformatted file until
+      # the first was fixed, and the summary line would name neither.
+      #
+      # They are also genuinely different questions. On the commit that
+      # motivated this job the two sets barely overlapped -- 6 files carried
+      # lint errors, 94 were unformatted, 2 were both -- and a contributor
+      # fixing one is not fixing the other.
+      - name: ruff check
+        working-directory: backend
+        run: |
+          set +e
+          poetry run ruff check .
+          status=$?
+          # 0 = clean, 1 = violations, which is a verdict about the code.
+          # 2 is ruff failing to run -- unreadable file, unparseable config --
+          # which is not a verdict about the code and must not read as one.
+          if [ "$status" -gt 1 ]; then
+            echo "::error::ruff check exited $status -- the linter failed to run, not the code"
+            exit "$status"
+          fi
+          exit "$status"
+
+      - name: ruff format --check
+        working-directory: backend
+        run: |
+          set +e
+          poetry run ruff format --check .
+          status=$?
+          if [ "$status" -gt 1 ]; then
+            echo "::error::ruff format exited $status -- the formatter failed to run, not the code"
+            exit "$status"
+          fi
+          exit "$status"
+
+      # The backend's ruff surface is not `backend/`. The repository's own
+      # definition of backend quality is `scripts/linux/03_run_backend_quality.sh`,
+      # and it runs ruff over `backend/` AND over three paths at the root:
+      # `scripts/probe_configured_ai_models.py`, `scripts/linux/validate_env.py`
+      # and `scripts/tests`. There is no root pyproject.toml, so those resolve
+      # to backend/pyproject.toml's config -- one lint domain, not two.
+      #
+      # Gating only `backend/` would have left them exactly as ruff itself was:
+      # covered by a script, run by nothing. Two of the three were unformatted
+      # when this job was written, which is what a gap like that produces.
+      #
+      # Kept as its own step rather than folded into the paths above, because
+      # `backend/` and the root scripts have different owners and a failure
+      # should say which one moved.
+      #
+      # `check` and `format` share this step, unlike above, and that is not a
+      # relapse into the short-circuiting this file warns about: both run
+      # unconditionally and both exit codes are collected before either is
+      # allowed to fail the step, so neither can hide the other. The rule is
+      # "nothing goes unmeasured", not "one command per step".
+      - name: ruff over the root script paths
+        run: |
+          set +e
+          cd backend
+          paths="../scripts/probe_configured_ai_models.py ../scripts/linux/validate_env.py ../scripts/tests"
+          poetry run ruff check $paths
+          check=$?
+          poetry run ruff format --check $paths
+          format=$?
+          for status in "$check" "$format"; do
+            if [ "$status" -gt 1 ]; then
+              echo "::error::ruff exited $status -- it failed to run, not the code"
+              exit "$status"
+            fi
+          done
+          [ "$check" -eq 0 ] && [ "$format" -eq 0 ]
 
   # ---------------------------------------------------------------------
   # The frontend's static checks: the repository's own `lint`, `typecheck`,

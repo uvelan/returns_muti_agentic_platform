@@ -49,9 +49,7 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
-logger = logging.getLogger(
-    "return_platform.dynamic_knowledge.order_agent.facts"
-)
+logger = logging.getLogger("return_platform.dynamic_knowledge.order_agent.facts")
 
 
 class FactStatus(StrEnum):
@@ -336,11 +334,7 @@ class FactCatalogue:
         Only values the search actually used are demoted. A fact stated in the
         same breath but never sent to the graph did not fail to match anything.
         """
-        used = {
-            text
-            for value in _flatten(searched)
-            if (text := str(value).strip().casefold())
-        }
+        used = {text for value in _flatten(searched) if (text := str(value).strip().casefold())}
         if not used:
             return tuple(facts)
         demoted: list[CapturedFact] = []

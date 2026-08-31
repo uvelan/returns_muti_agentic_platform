@@ -614,6 +614,4 @@ def test_a_conversation_document_from_an_older_release_reports_nothing_broken() 
 
     assert _committed_facts({}) == ()
     assert _committed_facts({"observed_facts": "not a list"}) == ()
-    assert (
-        _committed_facts({"observed_facts": [{"value": "orphan"}, {"name": ""}, "junk"]}) == ()
-    )
+    assert _committed_facts({"observed_facts": [{"value": "orphan"}, {"name": ""}, "junk"]}) == ()

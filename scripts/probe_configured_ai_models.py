@@ -50,9 +50,7 @@ async def _google(settings: Settings) -> dict[str, Any]:
                 "Content-Type": "application/json",
             }
             try:
-                response = await client.get(
-                    f"{settings.google_base_url}/models", headers=headers
-                )
+                response = await client.get(f"{settings.google_base_url}/models", headers=headers)
                 status: int | str = response.status_code
             except httpx.HTTPError:
                 status = "HTTP_ERROR"
@@ -64,9 +62,7 @@ async def _google(settings: Settings) -> dict[str, Any]:
                 catalog_payload = response.json()
                 selected_headers = headers
 
-        all_credentials_working = all(
-            item["catalogStatus"] == 200 for item in credential_results
-        )
+        all_credentials_working = all(item["catalogStatus"] == 200 for item in credential_results)
         if catalog_payload is None or selected_headers is None:
             return {
                 "configured": True,
@@ -132,9 +128,7 @@ async def _google(settings: Settings) -> dict[str, Any]:
             "catalogModelCount": len(catalog_models),
             "configuredModelCount": len(configured),
             "duplicateConfiguredModels": duplicates,
-            "allConfiguredModelsWorking": (
-                not duplicates and len(working) == len(configured)
-            ),
+            "allConfiguredModelsWorking": (not duplicates and len(working) == len(configured)),
             "modelResults": results,
             "workingModels": working,
         }
@@ -154,9 +148,7 @@ async def _nvidia(settings: Settings) -> dict[str, Any]:
                 "Content-Type": "application/json",
             }
             try:
-                response = await client.get(
-                    f"{settings.nvidia_base_url}/models", headers=headers
-                )
+                response = await client.get(f"{settings.nvidia_base_url}/models", headers=headers)
                 status: int | str = response.status_code
             except httpx.HTTPError:
                 status = "HTTP_ERROR"
@@ -168,9 +160,7 @@ async def _nvidia(settings: Settings) -> dict[str, Any]:
                 catalog_payload = response.json()
                 selected_headers = headers
 
-        all_credentials_working = all(
-            item["catalogStatus"] == 200 for item in credential_results
-        )
+        all_credentials_working = all(item["catalogStatus"] == 200 for item in credential_results)
         if catalog_payload is None or selected_headers is None:
             return {
                 "configured": True,
@@ -181,9 +171,7 @@ async def _nvidia(settings: Settings) -> dict[str, Any]:
                 "workingModels": [],
             }
         catalog_models = [
-            str(item.get("id", ""))
-            for item in catalog_payload.get("data", [])
-            if item.get("id")
+            str(item.get("id", "")) for item in catalog_payload.get("data", []) if item.get("id")
         ]
         configured, duplicates = _configured_models(
             settings.nvidia_lightweight_models,
@@ -235,9 +223,7 @@ async def _nvidia(settings: Settings) -> dict[str, Any]:
             "catalogModelCount": len(catalog_models),
             "configuredModelCount": len(configured),
             "duplicateConfiguredModels": duplicates,
-            "allConfiguredModelsWorking": (
-                not duplicates and len(working) == len(configured)
-            ),
+            "allConfiguredModelsWorking": (not duplicates and len(working) == len(configured)),
             "modelResults": results,
             "workingModels": working,
         }

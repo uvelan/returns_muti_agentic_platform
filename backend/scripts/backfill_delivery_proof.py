@@ -77,8 +77,18 @@ DELIVERY_SHIP_VIA: tuple[str, str] = ("OT", "OUR TRUCK")
 DEFAULT_DELIVERED_TARGET = 15
 
 _MONTHS = (
-    "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
-    "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+    "JAN",
+    "FEB",
+    "MAR",
+    "APR",
+    "MAY",
+    "JUN",
+    "JUL",
+    "AUG",
+    "SEP",
+    "OCT",
+    "NOV",
+    "DEC",
 )
 
 
@@ -260,9 +270,7 @@ def main() -> int:
         # The fixture's own serialization, byte for byte: one-space indent,
         # escaped non-ASCII, trailing newline. A reformat would bury four
         # fields per order in a 2 MB diff nobody can review.
-        arguments.dataset.write_text(
-            json.dumps(orders, indent=1) + "\n", encoding="utf-8"
-        )
+        arguments.dataset.write_text(json.dumps(orders, indent=1) + "\n", encoding="utf-8")
         print(f"written {arguments.dataset}")
     return 0
 

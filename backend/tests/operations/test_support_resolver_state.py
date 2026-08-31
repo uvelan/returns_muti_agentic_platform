@@ -131,9 +131,7 @@ def test_the_thread_id_has_no_attempt_component() -> None:
         ("case-1", "support-response-agent:wi-7"),
     ],
 )
-def test_a_component_carrying_the_separator_is_refused(
-    case_id: str, support_event_id: str
-) -> None:
+def test_a_component_carrying_the_separator_is_refused(case_id: str, support_event_id: str) -> None:
     """The inputs contain the separator, which is what makes this test able to fail.
 
     A collision test over inputs with no `:` in them proves only that two
@@ -154,9 +152,7 @@ def test_no_two_legal_component_pairs_can_mint_the_same_thread_id() -> None:
     and not merely on the pairs someone thought to try.
     """
     for case_id, support_event_id in (("case-1", "evt-9"), ("case-1-evt", "9"), ("c", "e")):
-        thread_id = support_resolver_thread_id(
-            case_id=case_id, support_event_id=support_event_id
-        )
+        thread_id = support_resolver_thread_id(case_id=case_id, support_event_id=support_event_id)
         prefix, recovered_case, recovered_event = thread_id.split(":")
         assert (prefix, recovered_case, recovered_event) == (
             "support-resolver",

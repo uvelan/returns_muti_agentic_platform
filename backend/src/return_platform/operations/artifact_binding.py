@@ -258,9 +258,7 @@ async def _merge_bound_artifact(
             None,
         )
         if stored is None:
-            raise LookupError(
-                f"bound record {decision.return_record_id!r} not on case {case_id!r}"
-            )
+            raise LookupError(f"bound record {decision.return_record_id!r} not on case {case_id!r}")
         if stored.get(stored_key) == value:
             # A redelivery, or a notice repeating what the record already says.
             return False

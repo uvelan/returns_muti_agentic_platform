@@ -87,8 +87,7 @@ class TestTheVocabularyIsSingleSourced:
         """
         source = _DRAFT_ACTIVITY.read_text(encoding="utf-8")
         assert f'_stated(facts, "{name}")' in source, (
-            f"{name} is declared as a fact-log binding but draft_support_request "
-            f"does not read it"
+            f"{name} is declared as a fact-log binding but draft_support_request does not read it"
         )
 
 

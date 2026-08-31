@@ -493,9 +493,7 @@ class TestWhatTheTerminalBecomes:
 
     async def test_a_resolver_and_an_artifact_clarification_cannot_share_an_id(self) -> None:
         """Different namespace, so the same support event mints two distinct ids."""
-        artifact_id = str(
-            uuid.uuid5(uuid.NAMESPACE_URL, "support-clarification:case-1:evt-1")
-        )
+        artifact_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "support-clarification:case-1:evt-1"))
         assert resolver_clarification_id(case_id="case-1", support_event_id="evt-1") != artifact_id
 
 
@@ -537,9 +535,13 @@ class TestARetryResumesRatherThanRestarts:
         assert second.disposition == ResolutionDisposition.ANSWERED
 
         state = await first._ladder.aget_state(  # noqa: SLF001 - the counter is the point
-            {"configurable": {"thread_id": support_resolver_thread_id(
-                case_id="case-1", support_event_id="evt-1"
-            )}}
+            {
+                "configurable": {
+                    "thread_id": support_resolver_thread_id(
+                        case_id="case-1", support_event_id="evt-1"
+                    )
+                }
+            }
         )
         assert state.values["llm_invocations_used"] == 1
 

@@ -39,9 +39,7 @@ _BATCH_SEPARATOR = re.compile(r"^\s*GO\s*$", re.IGNORECASE | re.MULTILINE)
 def all_migrations() -> tuple[str, ...]:
     """Every migration filename, in the order they must be applied."""
     directory = files("return_platform").joinpath(_MIGRATION_PACKAGE)
-    return tuple(
-        sorted(entry.name for entry in directory.iterdir() if entry.name.endswith(".sql"))
-    )
+    return tuple(sorted(entry.name for entry in directory.iterdir() if entry.name.endswith(".sql")))
 
 
 def migration_batches(migrations: tuple[str, ...] | None = None) -> tuple[str, ...]:
@@ -55,6 +53,8 @@ def migration_batches(migrations: tuple[str, ...] | None = None) -> tuple[str, .
             .read_text(encoding="utf-8")
         )
         batches.extend(
-            batch.strip() for batch in _BATCH_SEPARATOR.split(_USE_STATEMENT.sub("", text)) if batch.strip()
+            batch.strip()
+            for batch in _BATCH_SEPARATOR.split(_USE_STATEMENT.sub("", text))
+            if batch.strip()
         )
     return tuple(batches)

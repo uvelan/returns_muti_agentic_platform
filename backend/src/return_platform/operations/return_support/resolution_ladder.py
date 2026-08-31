@@ -773,9 +773,7 @@ def _escalation_reason(state: SupportResolverState) -> EscalationReason:
     refusal = state.get("tool_refusal")
     if refusal is not None:
         mapped = {
-            RefusalReason.MISSING_REQUIRED_ENTITY.value: (
-                EscalationReason.MISSING_REQUIRED_ENTITY
-            ),
+            RefusalReason.MISSING_REQUIRED_ENTITY.value: (EscalationReason.MISSING_REQUIRED_ENTITY),
             RefusalReason.NO_ELIGIBLE_BINDING.value: EscalationReason.NO_ELIGIBLE_TOOL,
             RefusalReason.CAPABILITY_UNAVAILABLE.value: EscalationReason.TOOL_UNAVAILABLE,
             RefusalReason.NOT_AUTHORIZED.value: EscalationReason.TOOL_UNAVAILABLE,
@@ -927,9 +925,7 @@ def build_resolution_ladder(
     graph.add_conditional_edges("resolve_from_facts", make_route_after_facts(deps), after_facts)
     if deps.graph_rung_available:
         graph.add_edge("sync_graph", "resolve_from_graph")
-        graph.add_conditional_edges(
-            "resolve_from_graph", make_route_after_graph(deps), after_graph
-        )
+        graph.add_conditional_edges("resolve_from_graph", make_route_after_graph(deps), after_graph)
     if deps.tool_rung_available:
         graph.add_conditional_edges("route_tool", make_route_after_tool(deps), _AFTER_TOOL_TARGETS)
     graph.add_edge("finalize", END)

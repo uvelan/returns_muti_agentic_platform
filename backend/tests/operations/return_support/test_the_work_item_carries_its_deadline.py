@@ -52,9 +52,7 @@ class _Collection:
 
 
 class _Session:
-    async def with_transaction(
-        self, callback: Callable[[Any], Coroutine[Any, Any, Any]]
-    ) -> Any:
+    async def with_transaction(self, callback: Callable[[Any], Coroutine[Any, Any, Any]]) -> Any:
         return await callback(self)
 
 

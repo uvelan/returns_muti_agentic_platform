@@ -377,9 +377,7 @@ def plan_tool_invocation(
 class AuthorizationPort(Protocol):
     """Whether this principal may use this capability on this case."""
 
-    async def authorize(
-        self, *, principal_id: str, capability: str, case_id: str
-    ) -> bool: ...
+    async def authorize(self, *, principal_id: str, capability: str, case_id: str) -> bool: ...
 
 
 class ToolPortLike(Protocol):

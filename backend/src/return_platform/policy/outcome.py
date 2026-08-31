@@ -223,9 +223,7 @@ class PolicyOutcome(StrictModel):
                 "recorded as one taken on it"
             )
         if marked and not self.unevaluated_checks:
-            raise ValueError(
-                "CONDITION_FACTS_NOT_EVALUATED must name the checks it skipped"
-            )
+            raise ValueError("CONDITION_FACTS_NOT_EVALUATED must name the checks it skipped")
         if len(set(self.unevaluated_checks)) != len(self.unevaluated_checks):
             raise ValueError("outcome unevaluated checks must be unique")
 

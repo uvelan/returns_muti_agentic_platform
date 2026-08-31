@@ -71,7 +71,7 @@ class SupportResponseAgent:
         items: tuple | None = None,
     ) -> str:
         lines: list[str] = []
-        for item in (items if items is not None else request.items):
+        for item in items if items is not None else request.items:
             product = item.productName or item.sku or item.lineReference
             quantity = f"{item.quantity} x " if item.quantity else ""
             condition = (item.condition or "").strip().upper()
@@ -167,19 +167,23 @@ class SupportResponseAgent:
                 group_requires = requires
             seed = request.caseId if len(ordered) == 1 else f"{request.caseId}-{index + 1}"
             rma = _reference("RMA", seed)
-            plans.append(SupportRmaPlan(
-                returnReference=rma,
-                trackingReference=_reference("TRK", rma) if "TRACKING" in group_requires else None,
-                labelReference=_reference("LBL", rma) if "LABEL" in group_requires else None,
-                returnLocation=return_location,
-                shippingInstructionReference=(
-                    _reference("SHIP", rma) if group_requires != ("RMA",) else None
-                ),
-                returnMethod=method or None,
-                carrier=_PARCEL_CARRIER.get(method),
-                orderLineReferences=tuple(item.lineReference for item in group_items),
-                instructions=self._instructions(request, group_requires, tuple(group_items)),
-            ))
+            plans.append(
+                SupportRmaPlan(
+                    returnReference=rma,
+                    trackingReference=_reference("TRK", rma)
+                    if "TRACKING" in group_requires
+                    else None,
+                    labelReference=_reference("LBL", rma) if "LABEL" in group_requires else None,
+                    returnLocation=return_location,
+                    shippingInstructionReference=(
+                        _reference("SHIP", rma) if group_requires != ("RMA",) else None
+                    ),
+                    returnMethod=method or None,
+                    carrier=_PARCEL_CARRIER.get(method),
+                    orderLineReferences=tuple(item.lineReference for item in group_items),
+                    instructions=self._instructions(request, group_requires, tuple(group_items)),
+                )
+            )
 
         summary = "; ".join(
             ", ".join(

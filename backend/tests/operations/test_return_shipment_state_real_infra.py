@@ -39,6 +39,7 @@ from tests.sql_migrations import migration_batches
 _CONNECT_DEADLINE_SECONDS = 30
 SHIPMENT_DATABASE = "return_shipment_probe"
 
+
 #: `dbo.return_tracking` is created by 002 and extended by 006. Both are applied
 #: here, in order, so this suite proves the migration chain rather than a
 #: hand-copied table definition.

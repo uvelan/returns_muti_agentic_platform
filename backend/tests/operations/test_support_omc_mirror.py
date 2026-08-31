@@ -64,9 +64,9 @@ def test_production_still_declares_the_uniqueness_this_relies_on() -> None:
     """
     source = Path(repository_module.__file__).read_text(encoding="utf-8")
     for field in ("commandId", "idempotencyKey"):
-        assert (
-            f'await self.omc_command_records.create_index("{field}", unique=True)' in source
-        ), field
+        assert f'await self.omc_command_records.create_index("{field}", unique=True)' in source, (
+            field
+        )
 
 
 def _mirror(repository: OperationalRepository) -> DurableOmcMirror:
@@ -249,9 +249,7 @@ async def test_the_same_delivery_identity_mirrors_once_however_often_it_is_retri
     assert len(await repository.list_integration_commands(CASE_ID)) == 1
     stored = [
         document
-        async for document in repository.omc_command_records.find(
-            {"idempotencyKey": delivery_id}
-        )
+        async for document in repository.omc_command_records.find({"idempotencyKey": delivery_id})
     ]
     assert len(stored) == 1
     # And the row is the *first* one: a retry must not reset an in-flight

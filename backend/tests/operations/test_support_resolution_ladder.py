@@ -107,9 +107,7 @@ class StubFacts:
         self.log_calls += 1
         return list(self.log)
 
-    async def trusted_entities(
-        self, case_id: str
-    ) -> tuple[Mapping[str, Any], Mapping[str, str]]:
+    async def trusted_entities(self, case_id: str) -> tuple[Mapping[str, Any], Mapping[str, str]]:
         self.entity_calls += 1
         return dict(self.entities), dict(self.ids)
 
@@ -433,9 +431,7 @@ async def test_a_confident_graph_answer_that_contradicts_the_facts_escalates() -
 async def test_agreement_left_unstated_is_not_treated_as_a_conflict() -> None:
     """`None` is not `False`. A rung that did not answer the agreement question
     must not be read as having disagreed, or every silent response escalates."""
-    resolver = StubResolver(
-        answers=[dict(UNSURE), {**CONFIDENT, "agreesWithPrior": None}]
-    )
+    resolver = StubResolver(answers=[dict(UNSURE), {**CONFIDENT, "agreesWithPrior": None}])
     deps = build_deps(resolver=resolver)
 
     final = await run(deps, initial_state())

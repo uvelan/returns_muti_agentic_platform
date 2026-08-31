@@ -87,9 +87,7 @@ def test_the_extract_holds_delivered_orders_at_all(orders: list[dict[str, Any]])
     and that is the state the extract was in: `fleetwiseStatus` did not exist on
     any document. `scripts/backfill_delivery_proof.py` is what keeps this true.
     """
-    dated = [
-        order for order in orders if delivery_date_from_confirmed_order(order, proof=PROOF)
-    ]
+    dated = [order for order in orders if delivery_date_from_confirmed_order(order, proof=PROOF)]
     assert dated
     assert len(dated) < len(orders)
 
@@ -107,7 +105,9 @@ def test_a_counter_signature_is_not_a_delivery(orders: list[dict[str, Any]]) -> 
         and _shipping(order).get("podSigTd") is not None
     ]
     assert collected, "the extract no longer holds a signed pick-up to guard against"
-    assert all(delivery_date_from_confirmed_order(order, proof=PROOF) is None for order in collected)
+    assert all(
+        delivery_date_from_confirmed_order(order, proof=PROOF) is None for order in collected
+    )
 
 
 def test_a_route_still_running_is_not_a_delivery(orders: list[dict[str, Any]]) -> None:
@@ -125,7 +125,7 @@ def test_an_order_still_working_is_not_a_delivery(orders: list[dict[str, Any]]) 
 
 
 def test_an_unparseable_signature_is_refused_rather_than_coerced(
-    orders: list[dict[str, Any]]
+    orders: list[dict[str, Any]],
 ) -> None:
     """A deadline computed from a string nobody could read is worse than none."""
     order = json.loads(json.dumps(_delivered(orders)))
@@ -136,7 +136,10 @@ def test_an_unparseable_signature_is_refused_rather_than_coerced(
 
 def test_an_unbound_deployment_answers_nothing(orders: list[dict[str, Any]]) -> None:
     """Absent bindings mean no delivery date -- not "not delivered"."""
-    assert delivery_date_from_confirmed_order(_delivered(orders), proof=DeliveryProofConfiguration()) is None
+    assert (
+        delivery_date_from_confirmed_order(_delivered(orders), proof=DeliveryProofConfiguration())
+        is None
+    )
 
 
 # ---------------------------------------------------------------------------

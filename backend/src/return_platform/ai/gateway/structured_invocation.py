@@ -532,9 +532,7 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         # A `HUMAN_RESPONSE` with no value is a request still awaiting an answer,
         # or one whose answer failed validation, and falls through to the refusal
         # below exactly as before.
-        answered = (
-            outcome.decision is DispatchDecision.HUMAN_RESPONSE and outcome.value is not None
-        )
+        answered = outcome.decision is DispatchDecision.HUMAN_RESPONSE and outcome.value is not None
         if outcome.decision is not DispatchDecision.ALLOW_PROVIDER and not answered:
             # A reasoning loop must not be handed a fabricated answer, so a
             # policy refusal raises like every other unavailability rather than

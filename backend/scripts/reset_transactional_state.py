@@ -49,9 +49,7 @@ def _drop_sql_database(settings: Settings, apply: bool) -> str:
     )
     try:
         with connection.cursor(as_dict=True) as cursor:
-            cursor.execute(
-                "SELECT COUNT(*) AS n FROM sys.databases WHERE name = %s", (database,)
-            )
+            cursor.execute("SELECT COUNT(*) AS n FROM sys.databases WHERE name = %s", (database,))
             row = cursor.fetchone()
             if not row or not row["n"]:
                 return f"{database}: already absent"
@@ -59,9 +57,7 @@ def _drop_sql_database(settings: Settings, apply: bool) -> str:
                 return f"{database}: would be dropped and recreated empty"
             # Single-user first: an open session from a worker that has not quite
             # died yet is enough to make DROP hang indefinitely.
-            cursor.execute(
-                f"ALTER DATABASE [{database}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE"
-            )
+            cursor.execute(f"ALTER DATABASE [{database}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE")
             cursor.execute(f"DROP DATABASE [{database}]")
             # Recreated here rather than left to `sqlserver-init`. That container
             # is a one-shot with `restart: "no"`, so whether a later `up` re-runs
@@ -80,8 +76,7 @@ async def _terminate_workflows(settings: Settings, apply: bool) -> str:
         namespace=getattr(settings, "temporal_namespace", "default"),
     )
     running = [
-        description
-        async for description in client.list_workflows('ExecutionStatus="Running"')
+        description async for description in client.list_workflows('ExecutionStatus="Running"')
     ]
     if not running:
         return "temporal: nothing running"

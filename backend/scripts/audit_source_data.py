@@ -142,9 +142,10 @@ async def _audit_entity(
             total_records += 1
             # A comment line is not a product line, and the required-field check
             # only means anything against the lines a return can name.
-            product_line = entity_id != "order_line" or str(
-                _resolve(record, LINE_TYPE_PATH) or ""
-            ).upper() in PRODUCT_LINE_TYPES
+            product_line = (
+                entity_id != "order_line"
+                or str(_resolve(record, LINE_TYPE_PATH) or "").upper() in PRODUCT_LINE_TYPES
+            )
             if product_line:
                 required_records += 1
             for field_id, field in entity.fields.items():
@@ -235,8 +236,7 @@ def _join_report(
     findings.append(
         f"  shipment -> order       {len(joined)}/{len(shipment_orders)} resolve"
         + (
-            f"  MISSING {len(shipment_orders) - len(joined)} "
-            "-- these shipments attach to no order"
+            f"  MISSING {len(shipment_orders) - len(joined)} -- these shipments attach to no order"
             if len(joined) < len(shipment_orders)
             else ""
         )
@@ -252,10 +252,12 @@ def _delivery_report(orders: list[dict[str, Any]]) -> list[str]:
         return ((order.get("salesHdr") or {}).get("salesHdrData") or {}).get("shipping") or {}
 
     conditions = {
-        "orderCode IO/ID": lambda o: (o.get("salesHdrEventData") or {}).get("orderCode")
-        in {"IO", "ID"},
-        "trilogieFile ORDER": lambda o: (o.get("salesHdrEventData") or {}).get("trilogieFile")
-        == "ORDER",
+        "orderCode IO/ID": lambda o: (
+            (o.get("salesHdrEventData") or {}).get("orderCode") in {"IO", "ID"}
+        ),
+        "trilogieFile ORDER": lambda o: (
+            (o.get("salesHdrEventData") or {}).get("trilogieFile") == "ORDER"
+        ),
         "shipVia not pickup": lambda o: shipping(o).get("shipViaCode") not in pickup,
         "fleetwise Completed": lambda o: shipping(o).get("fleetwiseStatus") == "Completed",
         "podSigTd present": lambda o: shipping(o).get("podSigTd") is not None,
@@ -264,9 +266,7 @@ def _delivery_report(orders: list[dict[str, Any]]) -> list[str]:
         f"  {name:<22} {sum(1 for order in orders if test(order))}/{len(orders)}"
         for name, test in conditions.items()
     ]
-    delivered = sum(
-        1 for order in orders if all(test(order) for test in conditions.values())
-    )
+    delivered = sum(1 for order in orders if all(test(order) for test in conditions.values()))
     findings.append(f"  {'DELIVERED (all five)':<22} {delivered}/{len(orders)}")
     return findings
 
@@ -293,9 +293,7 @@ async def main() -> int:
     for asset, collection in COLLECTIONS.items():
         print(f"  {collection:<22} {len(loaded[asset])} documents")
     non_orders = [
-        str(document.get("_id"))
-        for document in loaded["source_sales"]
-        if not _is_order(document)
+        str(document.get("_id")) for document in loaded["source_sales"] if not _is_order(document)
     ]
     if non_orders:
         print(

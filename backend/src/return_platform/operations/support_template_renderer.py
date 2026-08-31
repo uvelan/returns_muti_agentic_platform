@@ -217,9 +217,7 @@ def _rule_matches(rule: TemplateRuleConfiguration, context: TemplateRenderContex
     return True
 
 
-def _visible(
-    rule: TemplateRuleConfiguration | None, context: TemplateRenderContext
-) -> bool:
+def _visible(rule: TemplateRuleConfiguration | None, context: TemplateRenderContext) -> bool:
     """No rule means always visible; a rule means it must match."""
     return rule is None or _rule_matches(rule, context)
 
@@ -229,9 +227,7 @@ def select_variant(
 ) -> TemplateVariantConfiguration:
     """First matching selector wins, else the default variant."""
     if not template.variants:
-        raise TemplateNotConfiguredError(
-            f"template {template.template_id!r} releases no variants"
-        )
+        raise TemplateNotConfiguredError(f"template {template.template_id!r} releases no variants")
     for variant in template.variants:
         if _rule_matches(variant.selector, context):
             return variant
@@ -291,9 +287,7 @@ class _Resolution:
         return self.failure is not None
 
 
-def _resolve_case_fact(
-    draft: TemplateDraftInput, name: str, scope: str | None
-) -> _Resolution:
+def _resolve_case_fact(draft: TemplateDraftInput, name: str, scope: str | None) -> _Resolution:
     entry = draft.facts.get((scope, name))
     if entry is None:
         where = f"record {scope}" if scope is not None else "the case"
@@ -307,9 +301,7 @@ def _resolve_case_fact(
 
 def _resolve_return_record(record: Any, attribute: str) -> _Resolution:
     if record is None:
-        return _Resolution(
-            None, failure=f"return_record:{attribute} outside a per-record section"
-        )
+        return _Resolution(None, failure=f"return_record:{attribute} outside a per-record section")
     value = _record_attribute(record, attribute)
     if value is None:
         return _Resolution(None, failure=f"return_record:{attribute} absent")
@@ -431,9 +423,7 @@ def _formatted(
     return None, None
 
 
-def _render_subject(
-    subject_template: str, values: Mapping[str, str]
-) -> str:
+def _render_subject(subject_template: str, values: Mapping[str, str]) -> str:
     """`{field_id}` interpolation with `{{`/`}}` escapes, nothing else."""
     parts: list[str] = []
     index = 0

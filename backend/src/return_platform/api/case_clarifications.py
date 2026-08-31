@@ -236,9 +236,7 @@ async def answer_clarification(
         raise _not_found()
 
     store = _command_store(request)
-    signal_id = clarification_answer_signal_id(
-        case_id=case_id, clarification_id=clarification_id
-    )
+    signal_id = clarification_answer_signal_id(case_id=case_id, clarification_id=clarification_id)
     try:
         receipt = await store.record_command(
             case_id=case_id,

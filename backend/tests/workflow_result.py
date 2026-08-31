@@ -44,9 +44,7 @@ async def _diagnose(handle: WorkflowHandle[Any, Any], seconds: int) -> str:
         lines.append(f"  status            : {description.status}")
         lines.append(f"  pendingActivities : {len(raw.pending_activities)}")
         for pending in raw.pending_activities:
-            lines.append(
-                f"      {pending.activity_type.name} attempt={pending.attempt}"
-            )
+            lines.append(f"      {pending.activity_type.name} attempt={pending.attempt}")
             if pending.last_failure.message:
                 lines.append(f"        last failure: {pending.last_failure.message[:300]}")
 

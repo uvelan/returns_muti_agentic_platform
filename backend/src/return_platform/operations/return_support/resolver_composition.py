@@ -389,9 +389,7 @@ def build_resolving_classify_dispatcher(
         analysis=analysis,
         resolver=resolver,
         records=SupportAnalysisRecordStore(mongo, settings),
-        inbound=DurableSupportIngressStore(
-            mongo, settings, return_configuration.support_ingress
-        ),
+        inbound=DurableSupportIngressStore(mongo, settings, return_configuration.support_ingress),
         ingress_configuration=return_configuration.support_ingress,
         trigger_intents=return_configuration.support_resolver.trigger_intents,
     )
