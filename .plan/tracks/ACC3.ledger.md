@@ -494,3 +494,88 @@ The assertion output *is* the business failure: Support reading "REJECTED — do
 not refund" on a review whose approved text said the opposite.
 
 Reverted; `git diff -- backend/src/` empty; the four gate files 177 passed.
+
+---
+
+## step:06 — items 1–2, config-only rendering. Zero-hardcoding holds; AMENDMENT-2's test could not fail.
+
+Baseline (renderer + draft + gate): `110 passed in 6.38s`.
+
+### INJ-B12 — the renderer resolves facts by `field_id`, ignoring `source_binding`
+
+The sharpest expression of "hardcoded field name": `support_template_renderer.py:540`,
+`_resolve_case_fact(draft, path, …)` → `_resolve_case_fact(draft, field_configuration.field_id, …)`.
+Production config makes these genuinely different (`field_id: customer_reference`
+→ `case_fact:customer_id`; `workflow_status` → `case_fact:workflow_status_at_handoff`),
+and so does the suite's own `_minimal_template` (`order_number` →
+`case_fact:confirmed_order_reference`).
+
+```
+FAILED …TestComposedEquivalenceMatrix::test_the_default_variant_reproduces_the_composed_text[straight_through]
+ … (23 failures across all 17 matrix scenarios and the binding tests)
+23 failed, 87 passed in 7.08s
+```
+
+**CAUGHT**, loudly. The suite does **not** only render the default config — it
+renders non-default bindings throughout (`return_record:returnReference`,
+`case_fact:tracking_number`, `graph:<path>`, `literal:`), so a hardcoded field
+name cannot survive it. **Non-negotiable #1 (zero hardcoding) → A.**
+
+### INJ-B13 — DISCARDED. Aimed at the second layer while the first held.
+
+`support_template_renderer.py:263`, AMENDMENT-2's allowlist in
+`_record_attribute` deleted.
+
+```
+110 passed in 6.76s
+```
+
+Green — and reading the source says why: the **real** AMENDMENT-2 guard is
+upstream, in `configuration/support_template_configuration.py:93`
+(`binding_source`), which refuses `return_record:<undeclared>` at release
+validation. `_record_attribute`'s allowlist is a documented second line of
+defence, and its own docstring says so. **Discarded: the injection removed the
+belt while the braces held** — the INJ-B4 shape again, and phase 2's
+"a branch that reads like the guard".
+
+### INJ-B14 — layer 1 (release validation) alone
+
+```
+FAILED tests/configuration/test_support_template_configuration.py::TestRecordAttributeReach::test_a_dunder_is_refused_at_release_validation
+FAILED tests/configuration/test_support_template_configuration.py::TestRecordAttributeReach::test_a_method_on_the_projection_is_refused
+FAILED tests/configuration/test_support_template_configuration.py::TestRecordAttributeReach::test_an_undeclared_attribute_is_refused
+3 failed, 350 passed, 1 warning in 19.94s
+```
+
+**CAUGHT**, individually — in `tests/configuration/`, a **third** file the
+category-B row for items 1–2 ("V1's template/renderer suites") does not name.
+
+### The finding: `test_an_undeclared_attribute_degrades_rather_than_reaching` could not fail
+
+The render-side AMENDMENT-2 test passed a **dict** as the return record.
+`_record_attribute` branches on `isinstance(record, Mapping)`, and
+`{...}.get("__class__")` is `None` **whether or not either guard exists**. The
+`getattr` limb — the one AMENDMENT-2 was written against ("resolving it through
+unconstrained `getattr` is forbidden") — was never reached, and
+`ReturnRecordProjection` is a pydantic model, **not** a Mapping, so the shape
+production actually renders is the shape the test omitted.
+
+Parametrised over both shapes, and **INJ-B15 (both guards removed at once)** is
+the injection that justifies it:
+
+```
+E       assert 16 == -1
+E        +      where "Record:\n- RMA: <class 'return_platform.operations.case_projection.contract.ReturnRecordProjection'>\n" = RenderedTemplate(...).text
+FAILED …TestPerRecordSections::test_an_undeclared_attribute_degrades_rather_than_reaching[projection]
+1 failed, 1 passed, 58 deselected in 1.31s
+```
+
+`[projection]` reddens; **`[mapping]` stays green with AMENDMENT-2 removed
+entirely.** The pre-existing test could not have detected the collapse of the
+guarantee under any injection — the textbook category-B family, now closed. The
+class repr reaching `.text` is the business failure: internal type names on the
+message a Support-desk person reads.
+
+**Production is correct and defended twice.** This is a coverage finding only.
+
+Reverted; `git diff -- backend/src/` empty; renderer + configuration `332 passed`.
