@@ -170,11 +170,21 @@ This is precisely rule 13's shape and I wrote it: **a gate whose green nobody ha
 | the real `.env` | 1 failed, **5197 passed**, 10 skipped, 512 deselected |
 | **`.env.example`** | 1 failed, **5197 passed**, 10 skipped, 512 deselected |
 
+*Those two rows were measured on an earlier trunk and are kept as the original evidence. Re-measured on the merged trunk, and independently reproduced by RV: absent `.env` → INTERNALERROR, exit **3**; `.env.example` → **`1 failed, 5232 passed, 11 skipped, 514 deselected`**, exit 1.*
+
+**One precision the comparison does not support, and the record should not imply it:** the two files are **not** interchangeable in content — a developer `.env` carries ~11 extra live-infra and host-port keys. What is established is that the **normal suite's outcome** is the same either way, which is all CI needs, since CI only ever sees `.env.example`.
+
 Byte-identical, down to the single allowlisted failure and the exit code the allowlist step then passes. `Settings` accepts the placeholders, and the normal suite has live-infra deselected so nothing dials a real service.
 
 **Both alternatives I proposed were rejected on evidence, and the first rejection is the one worth keeping.** A committed `.env.ci` is ignored by `.gitignore:31`'s `.env.*` rule — and the comment above that rule records *why it exists*: `backend/.env.vault-backup` once carried a live provider key into git history and was caught by push protection. Adding `!.env.ci` would **punch a hole in a guard installed after a real credential incident, to solve a problem a tracked file already solves.** A degrading conftest was rejected too: the raise is a deliberate guard making a missing `.env` loud rather than letting tests run against silent defaults, so copying satisfies it honestly while degrading weakens it — rule 13 in spirit.
 
-And it is not an invented command line, which is `checks.yml`'s own stated principle: `scripts/bootstrap_host.sh:17` and `reset_docker_environment.sh:85` already run exactly that copy, two further scripts instruct developers to, and `ensure_runtime_env_keys.py` maintains `.env.example` as the authoritative key set so it cannot silently rot.
+And it is not an invented command line, which is `checks.yml`'s own stated principle: `scripts/bootstrap_host.sh:17` and `reset_docker_environment.sh:85` already run exactly that copy, and two further scripts instruct developers to.
+
+~~`ensure_runtime_env_keys.py` maintains `.env.example` as the authoritative key set so it cannot silently rot.~~ **Struck: it does not.** Its `update(path, example_path)` reads the example and writes into `.env` — one way — and never inspects the example. I wrote this into the fix's own rule-13 answer, which is the worst place for it: *a claim about what stops a thing rotting, that names a mechanism which is not doing that job.* RV caught it; I confirmed the direction in the source rather than accepting the correction.
+
+**The real protections, all four stronger than the one claimed:** deleting `.env.example` fails the `cp` in the job; dropping a key fails `Settings` (`frontend_cors_origin`, `mongo_dsn`) or `conftest`'s `_required_environment_variable` **by name**; drifting its content fails `tests/test_ai_gateway_routing.py:194`, which reads the tracked example and asserts over it; and `ensure_runtime_env_keys.py` is itself gated, by `tests/test_runtime_env_key_sync.py`. **Every one is a backend-suite test — so every one was equally unreachable in CI until this step existed.**
+
+*And the thing worth keeping:* `test_ai_gateway_routing.py`'s own comment says it *"used to pass or fail on a file nobody reviews and CI never sees."* Somebody hit this exact defect class before, wrote it down, and fixed it in one test — while the job that would have caught it everywhere sat unable to start.
 
 **Two conditions on whoever implements it:** `contracts` is likely exposed the same way since it imports the app — verify it too. And **prove the fix by watching the job fail first**; a fix for a gate that has never run is exactly the claim that needs its red observed before its green.
 
