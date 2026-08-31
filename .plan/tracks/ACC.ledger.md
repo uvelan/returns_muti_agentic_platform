@@ -902,3 +902,75 @@ document fixture reading two files while reporting four).
 `compose.yaml:192` and `.env:94` both say `11433`, so the sanctioned live-infra
 entry point refuses a stack that is up. No defect found in `backend/src`;
 `git diff a75f3eeb..HEAD` touches nothing outside `backend/tests/` and `.plan/`.
+
+---
+
+## step:07 — item 18: the first half audited, the second half made checkable
+
+Trunk merged (`9587e3a7`): the preflight port fix and RV **rule 13**.
+
+**The reported defect is confirmed fixed.** `bash scripts/dev/run_real_infra_suite.sh
+--collect-only` now prints *"live-infrastructure suite: all five datastores
+reachable"* and proceeds. (It then fails to import `pydantic` — the script uses
+its own `$PYTHON`, and this worktree has no venv; an environment fact of the
+worktree, not the script. Live runs here go through the main checkout's
+interpreter directly, as recorded in step:01.)
+
+**Rule 13 applied to ACC's own guards, and it produced a finding worth naming:**
+CI runs `pytest tests` with `addopts` deselecting `live_infra` and `browser`, so
+**no live-infra test is gated by CI at all**. Every acceptance module ACC has
+written is in the default suite and therefore gated; any `_real_infra` scenario
+would be a guard whose only gate is a human running the shell script. That
+governs how the remaining durability items should be written.
+
+**File:** `backend/tests/acceptance/test_item_18_causal_ordering_and_the_half_that_is_unreachable.py`,
+`.plan/acceptance/item-18-causal-ordering.md`, plus a `database` fixture on the
+acceptance conftest.
+
+**Part 1 — dispatch condition 3, measured rather than read.** The in-slice
+coverage is genuine: the chain is built by the **real** ingress store, drained by
+the **real** dispatcher, with the queue loaded *against* the answer. Audited by
+injection rather than duplicated:
+
+| # | fault | result |
+| --- | --- | --- |
+| INJ-18a | predecessors not populated | 5 failed, 9 passed |
+| INJ-18b | **causation dropped, predecessors kept** | **1 failed, 27 passed** — only the chain test; the drain stays green |
+
+INJ-18b *is* condition 3: the chain and the drain are separable, the drain
+survives a chain defect, and the chain assertion is what catches it.
+
+**Part 2 — the second half does not exist, and now says so.** Three reads,
+asserted as exact sets and counts: only two of §7's four streams have a producer
+(AST walk, not a grep); exactly two call sites pass a predecessor value and
+neither is cross-stream (counted per file — a line pin trains people to update
+the number, and a number people update on sight is not a guard); and the
+machinery **would** accept a cross-stream predecessor, demonstrated by allocating
+one. Mechanism present, unused: rule 13's shape in the ordering plane.
+
+| # | fault | result |
+| --- | --- | --- |
+| INJ-18c | an outbound producer naming an inbound predecessor | 2 failed, 1 passed — machinery test correctly unaffected |
+| INJ-18d | machinery made same-stream-only | 1 failed, 2 passed — only the machinery test |
+
+**A fourth instrument defect found in ACC's own work.** `_SOURCE_ROOT` was
+`parents[3]` (repository root, not `backend/`), and `rglob` on a missing
+directory yields nothing and raises nothing — so both scans looked at **no
+source** and reported no violations. Phrased as `assert "OUTBOUND" not in named`
+it would have passed *for the reason the finding claims*, which is the worst
+available green. The exact-set form failed on the first run. Fixed, and
+`_scanned_files()` now refuses a scan finding under a hundred modules.
+
+### ⚠ STOP AND REPORT — a ruling is owed on item 18
+
+Item 18's second half names a behaviour production does not implement. §7 says
+*"Acceptance 18 applies to the inbound stream"*, which is either the ruling
+already made, or **AMENDMENT-8's situation exactly**: a separately frozen
+acceptance item narrowed by one sentence inside a contract section, against
+something nothing can reach. ACC does not get to pick. The checkable assertion is
+built either way so **nothing is blocked**, but the gate tally must not record
+item 18 as fully green until this is ruled. Nothing was fixed — populating
+`plan_command`'s predecessor keyword is a design decision about what causes what.
+
+**Commands:** `python -m pytest tests/acceptance -q` → **28 passed**.
+`ruff check` / `ruff format` clean.
