@@ -50,6 +50,29 @@ And it excluded the "dead import that isn't" empirically rather than by reading.
 
 *One observation recorded as not-a-finding, and it is the honest kind:* the remedy for the three unfalsifiable sentences — a table whose left column is a pasteable command — outruns the change at one point, since nothing structurally stops the next Commands block being written from memory. ACC was right not to build that gate: the only one available is a test that parses planning documents, which item 26 already ruled out and which would be circular. **The residue is inherent to a written record, not a shortfall in the fix.**
 
+## ACC phase 3 — the category-B audit, and a failure shape worse than a blind test
+
+Phase 2 left a category B: *"tests exist, found by name, bodies never read, never injected against."* Phase 3 audited it with fault injection — 20 injections, 2 discarded, 7 tests added. **No blocking defect against a non-negotiable:** DR-11 holds under three injections including one that makes an UNMATCHED artifact genuinely create a record through the outcome signal, and zero-hardcoding holds — resolving facts by `field_id` instead of the configured binding reddens 23 tests.
+
+### The dominant finding is not blind tests. It is mis-pointed rows.
+
+**Six guarantees are pinned by tests in files the category-B rows never name.** Read literally, the status record credits `canonical_edit_version` and autosave-after-`APPROVING` to 93 named review-gate tests that stay **96/96 green** when either check is deleted; and credits *"the transcript entry is appended once"* to a test that stays green when the append-once guard is deleted, because it drives a double with its own dedupe — the double supplies the very guarantee under test.
+
+**Why this is worse than a blind test, in phase 3's own words:** coverage is real; the map is wrong — *"a future auditor deletes the guard, sees the named suite green, and concludes the guard was dead."* A blind test fails to catch a defect. A mis-pointed row actively argues for removing a working guard. **The remedy is not more tests but a corrected map**, and the audit's value was mostly in producing one.
+
+### Two real holes — production correct in both, coverage defective in both
+
+1. **Sent ≠ frozen payload.** Every delivery test approves a review that has **no canonical edit**, so the frozen payload and the raw draft are byte-identical and the choice between them is unobservable. An injection sending the raw draft left **5,235 tests green**. *Business consequence:* an associate's edit is hash-verified at approval and **the original draft is sent to Support behind a valid receipt** — the precise failure F2's frozen-payload rule exists to prevent, invisible to the entire suite.
+2. **A refused request could write a durable command.** The four 404 tests assert **status only**. Deferring the 404 until after `record_command` left **5,237 green**. *Business consequence:* a principal who cannot see a case receives a correct 404 **while their answer sits on file, queued for delivery to Support.**
+
+The seven added tests are each injected against, and the sent-payload one **asserts its own premise** — that the canonical edit and the draft actually differ — so it cannot decay back into vacuity. That is the right shape for a test closing a hole of this kind: it fails if the *conditions that make it meaningful* stop holding, not only if the guarantee breaks.
+
+### Handed to the gate's owner
+
+`test_a_rejected_return_still_opens_no_work_item` is red on the merge tip: its `_Runtime` double never grew a `patched` method when production grew a `workflow.patched` call. Production correct, harness stale — **ACC-2's handed-off finding recurring in a third file.** The consequence nobody had stated: **one branch of item 20's deploy-replay pair is unexercised in that module**, because the call raises before the branch can be taken. Item 20's "both patch branches audited" holds for the branches phase 2 flipped directly, not for this module's coverage of them.
+
+*Not reached, and recorded as unexecuted rather than green:* AMENDMENT-5's four retry-409 tests, item 20's replay suite, item 8's prompt-injection fixture (read, never injected against), `graph:`/`literal:` bindings, ~85 other review-gate tests, and 20 further ladder scenarios.
+
 ## Contract amendments (all in `.plan/contracts.md` §1a)
 
 Five so far. **Four of the five are T0 errors — things I froze that did not survive contact with implementation**, and every one was caught by someone trying to build or wire the thing rather than read about it.
