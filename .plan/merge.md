@@ -108,7 +108,17 @@ The other two are textbook vacuity. **Hash stability was pinned against the wron
 
 All three retired panel fields (`support_digest`, `clarifications`, `parked_messages`) are **still on the DTO, still in the published OpenAPI, and still in the mock.** And because `contracts:check` regenerates from the live FastAPI app and passes its `git diff --exit-code`, that is **a measured fact about the running backend, not a stale document.**
 
-I authored that amendment — retiring three fields a registered section cannot write — recorded it in §1a, and never tracked it to execution. **A ruling with no follow-through is indistinguishable from a ruling never made**, which is the same shape as rule 13's guard with no gate, one level up in the process rather than in the code. RV is ruling on severity.
+I authored that amendment — retiring three fields a registered section cannot write — recorded it in §1a, and never tracked it to execution. **A ruling with no follow-through is indistinguishable from a ruling never made**, which is the same shape as rule 13's guard with no gate, one level up in the process rather than in the code.
+
+**RULED: sustained, BLOCKING, rule 2 (contract drift).** RV verified it by reading source rather than the audit's report of it — all three fields on the DTO at `operations/case_panel.py:205-208`, hardcoded empty in the composer at `api/case_panel.py:112-115`, present in `CasePanelView.properties` in the published OpenAPI, and in the mock. **The V1 comment the amendment quotes as describing "a connection that does not exist" is still there word for word.**
+
+*Method note worth keeping:* RV tried `contracts:check` independently, and killed it after it blew a five-minute budget in the Python export. It then observed that **reading the DTO is the stronger evidence anyway** — the published document cannot be stale relative to its own generator input, so checking the source the generator reads beats checking the generated artefact. A blocked verification route replaced by a better one, rather than by a weaker one plus an apology.
+
+**Owned by V1/V3 for the code, and by me for the tracking failure.** Queued as the next dispatch; it went unnoticed until someone tried to use the thing.
+
+### Rule 13 again — the accessibility sweep no workflow runs
+
+Confirmed by RV: no `playwright`, `test:e2e` or `axe` reference anywhere in `.github/workflows/*.yml`, and vitest's `src/**` include cannot reach `tests/*.spec.ts`. **The repository's only accessibility sweep is invoked by nothing.** Not ACC-4's — it authored neither the spec nor the workflows. **It belongs to whoever owns `checks.yml`, which is me.** Queued.
 
 ### ⚠ A gate can report green having not run
 
