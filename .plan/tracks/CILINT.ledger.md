@@ -90,6 +90,21 @@ own, before the wiring commit**, each one tool-generated and separately reviewab
 neither mixed into the workflow change. Semantic neutrality is proven by the suite, not
 asserted: same one known failure before and after.
 
+## The surface was wider than `backend/` — found mid-task
+
+`scripts/linux/03_run_backend_quality.sh` is the repository's own definition of
+backend quality, and it runs ruff over `backend/` **and** three root paths:
+`scripts/probe_configured_ai_models.py`, `scripts/linux/validate_env.py`,
+`scripts/tests`. There is no root `pyproject.toml`, so those resolve to
+`backend/pyproject.toml`'s config — one lint domain, not two.
+
+**Nothing in CI runs that script.** Gating only `backend/` would have reproduced
+the exact defect one level down. Two of the three paths were unformatted, which
+is what such a gap reliably produces.
+
+Real totals, therefore: **14 lint errors** and **96 unformatted files** (94 in
+`backend/`, 2 under `scripts/`).
+
 ## Gate shape
 
 Two steps, not one, following the file's existing decomposition rule — `&&`
@@ -108,5 +123,47 @@ verdict about the code.
 - Lint fixed (14 → 0). Suite re-run: unchanged.
 - Formatted (94 → 0). Suite re-run: unchanged. `known_test_failures.json` needs no
   edit — the set of failing tests did not move.
-- Gate wired into `checks.yml`.
-- Gate proven to fail on a *new* violation, then reverted.
+- Gate wired into `checks.yml` as `backend-static`, then widened to the root
+  script paths once the quality script showed the surface was larger.
+- Gate proven to fail on a *new* violation, then reverted (below).
+
+## Proof the gate fails on a new violation
+
+Run by replicating each step's shell logic verbatim against the pinned
+`ruff 0.15.21`, so the exit codes below are the ones the GitHub steps produce.
+
+| Probe | `ruff check` | `ruff format --check` |
+| --- | --- | --- |
+| clean merge candidate | 0 GREEN | 0 GREEN |
+| new file, unused `os` import | **1 RED** | 0 GREEN |
+| new file, bad spacing only | 0 GREEN | **1 RED** |
+| after revert | 0 GREEN | 0 GREEN |
+
+The two middle rows are the point: each violation reds **only** its own step.
+That is the decomposition earning its keep — a single combined step would have
+reported one and hidden the other. The root-script step was probed the same way
+(`check=1 format=1` on a file violating both) and, because it collects both
+exit codes before failing, it reported both rather than stopping at the first.
+
+Exit-code discrimination checked rather than assumed: `ruff check` with an
+unparseable config exits **2**, which the step reports as `::error::` "failed to
+run, not the code" instead of as a verdict.
+
+**One honest limitation.** A *missing path* makes ruff exit 1, not 2 — so a
+mistyped path in this workflow would read as a violation rather than as a broken
+run. The discrimination protects against a broken config, not a typo'd path.
+Recorded rather than papered over.
+
+## Reported, not acted on
+
+**`mypy` is the next instance of the same pattern.** It is pinned in
+`backend/pyproject.toml`, configured `strict = true`, and run by
+`scripts/linux/03_run_backend_quality.sh` and `scripts/dev/run_changed_gate.py`
+— neither of which CI invokes. No workflow runs mypy. It was left alone because
+this track's scope is lint and a strict-mypy debt is a different size of
+question, but by rule 13 it is a guard with no gate and it should get its own
+dispatch.
+
+Related: `scripts/linux/03_run_backend_quality.sh` also runs `poetry check`
+(lockfile against pyproject) and `pytest scripts/tests`, neither gated. The
+script as a whole is a guard nothing runs.
