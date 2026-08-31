@@ -3480,3 +3480,170 @@ covered, which is the opposite of what scoping would have done.
 
 `scripts/linux/03_run_backend_quality.sh:24` and `.github/workflows/checks.yml:129`
 — the default backend `pytest` run, which collects this module unmarked.
+
+---
+
+## step:27 — F7: the defect the guard finds once it works, and an ownership line crossed on purpose
+
+**Verified independently before fixing, in my own tree.** RV found this in a
+scratch copy; the brief asked me to reproduce rather than accept it, and the
+report below is not transcribed from the review. Merge tree + F5 + F6, every
+worker site enumerated by the guard's own helpers:
+
+    workflow calls: 18
+      4 sites  test_items_15_16_review_survives_a_kill_real_infra.py  (_GateProbe)
+               declared 15 of 18
+               missing=['case_has_return_details', 'record_clarification_answer',
+                        'relay_clarification_to_support']
+      8 sites  test_return_case_policy_gate_real_infra.py  (_Probe)   declared 18 of 18  missing=None
+     14 sites  test_return_case_workflow_real_infra.py     (_Probe)   declared 18 of 18  missing=None
+    total sites: 26
+
+Exactly the shape RV reported, at the four sites RV named (566, 599, 658, 666),
+and the other 22 clean.
+
+**The unreachability claim, checked against the code rather than accepted.**
+This is the part that decides whether the three are a genuine gap or a
+deliberate omission:
+
+- `case_has_return_details` — one call site,
+  `return_case_workflow.py:2214`, behind the guard at `:2147`
+  (`if not timings.return_details_required or self._state.return_details_recorded: return`).
+  `ReturnCaseTimings.return_details_required: bool = False` at `:428`.
+  `grep -n return_details` over the acceptance module: **no matches**, so it is
+  never overridden.
+- `record_clarification_answer` (`:1700`) and `relay_clarification_to_support`
+  (`:1718`) — both called only from inside
+  `@workflow.signal(name="clarification_answered")` at `:1639-1640`.
+  `grep -ci clarification` over the acceptance module: **0**.
+
+So all three are genuinely unreachable by this module's scenarios today. That is
+not a defence of the omission, it is the diagnosis: **the file is green because
+its inputs cannot exercise the property, not because the property holds.**
+Category B — the identical shape this branch diagnosed about the sibling
+policy-gate probe, and the reason
+`test_return_case_workflow_real_infra.py:287-294` registers the clarification
+pair it likewise never signals, in its own words: *"A probe that registers only
+what its own scenarios happen to call is the shape of the defect this file just
+had."*
+
+It matters more here than there. This module **kills the worker mid-run**, and a
+restart is precisely where a case can take a path the happy scenarios do not.
+
+**The fix.** Three `@activity.defn` methods on `_GateProbe`, copied in form from
+the sibling probe, three entries appended to `all()`, two imports
+(`ClarificationAnswerResult`, `ClarificationRelayView`). No scenario, fixture or
+assertion in that file is touched.
+
+`all()` in this file is a hand-written tuple rather than `declared_activities(self)`,
+so the decorators alone would have turned the guard green while leaving the
+worker still not registering them — the guard reads declarations, `Worker` reads
+`all()`. Both were updated, and I checked the two now agree rather than assuming:
+
+    all() registers 18 ; declared 18
+    all() == declared: True
+
+I deliberately did **not** convert `all()` to the derived form. That is the right
+change and it is ACC's to make.
+
+### Ownership — stated, not buried
+
+`backend/tests/acceptance/` is **ACC's area, not the harness track's.** I am
+crossing that line deliberately. HARNESS-2 flagged this as needing orchestrator
+sequencing — either ACC adds the stubs first or the two land together — and this
+is the "land together" arm, taken because the alternative is worse in a specific
+way: the only other route to green is scoping the guard away from
+`tests/acceptance/`, which HARNESS-2 Judgement 2 rules out and which step:26
+records as the thing this branch must not do. **A guard that cannot go green
+without a change in another track's file is not a reason to weaken the guard.**
+
+The change is kept minimal, obvious and **separately committed** (`f75df769`) so
+ACC can review it as a single diff without reading the harness work around it,
+or revert it independently if ACC prefers to land its own version.
+
+### Result
+
+    pytest tests/test_return_case_workflow_replay_compatibility.py
+    17 passed in 4.33s
+
+and all 26 worker sites now enumerate 18 of 18, missing none.
+
+### Gate (rule 13)
+
+Two gates, and they are different ones, which is the point of this file's
+existence. The `_GateProbe` change itself is only *executed* by the live-infra
+acceptance run (`pytest.mark.live_infra`, deselected from the default suite) —
+`scripts/dev/run_real_infra_suite.sh`, which is manual. But it is **statically
+checked on every default run** by
+`test_every_test_worker_registers_every_activity_the_workflow_calls`, via
+`scripts/linux/03_run_backend_quality.sh:24` and
+`.github/workflows/checks.yml:129`. That is the whole design: the registration
+rot is caught by a check CI runs, not by a live suite nobody starts.
+
+---
+
+## step:28 — the merge tree, green, measured rather than predicted
+
+**The deliverable is the merge tree, so the merge is a real commit and the suite
+was run against it.** `4ed01b4f` merges `refactor/unified-return-platform` into
+`feat/live-harness-registration` as a **three-way merge** — not a rebase, not a
+squash. HARNESS-2 section 6 makes that a condition: the branch's ruff-format
+state resolves only under a three-way merge. It was also structurally necessary
+here, because `tests/acceptance/test_items_15_16_review_survives_a_kill_real_infra.py`
+exists on trunk and not on the branch, so F7 could not be expressed at all until
+the merge existed.
+
+The merge was clean, as `git merge-tree --write-tree` predicted at step:24.
+
+**Head:** `f75df769`.
+
+**Full default backend suite, on the merged tree, PYTHONPATH pinned to it:**
+
+    cd backend
+    PYTHONPATH=<worktree>/backend/src python -m pytest tests -q
+    ...
+    5247 passed, 11 skipped, 514 deselected, 2 warnings in 281.56s (0:04:41)
+
+Against HARNESS-2's measurement of the unfixed merge —
+`2 failed, 5245 passed, 11 skipped, 514 deselected` — the two failures are gone,
+the two tests are now passing (5245 + 2 = 5247), and **nothing else moved**:
+skips and deselections are identical, so no test was skipped, xfailed, weakened
+or deleted to get here. Rule 10 clean; the diff adds assertions and registrations
+and removes none.
+
+**The other gates in `03_run_backend_quality.sh`, on the same tree:**
+
+    ruff format --check .   ->  1160 files already formatted
+    ruff check .            ->  All checks passed!
+    pytest scripts/tests    ->  4 passed in 0.10s
+
+`ruff format` clean on the merged tree confirms HARNESS-2 section 6's ruling from
+the other direction: the branch's 94-file format delta was a stale base, and it
+disappears on merge. **No file under `backend/src/` was touched by any step in
+this round** — the whole change is four test-side hunks in two files, plus this
+ledger.
+
+### What each fix is worth, in one line each
+
+- **F5** — the pin no longer breaks unrelated merges, and still catches a
+  drop-out two independent ways (step:25 injections a and b, the second isolated
+  from the floor so the assertion answers on its own).
+- **F6** — the guard now covers `backend/tests/`' subpackages instead of
+  crashing on them, and detection there is real, not nominal: injecting a
+  single-activity drop into the subdirectory probe is reported (step:26 inj-b),
+  where the old code produced `ModuleNotFoundError` and no finding at all.
+- **F7** — a real under-registration on trunk is closed, found only because F6
+  was fixed rather than scoped.
+
+### Open
+
+1. `_GateProbe.all()` is still a hand-written tuple where
+   `declared_activities(self)` exists. Deliberately left: ACC's file, ACC's call.
+   The guard now covers the gap either way.
+2. Everything still open at step:23 remains open — the storage-fix/flakiness
+   link is unproven, signatures (b) and (d) uncharacterised, module 64 and
+   `test_order_line_reservations_real_infra.py` undiagnosed. Item 4 of that list
+   (the ruff format failure) is **closed** by the merge, as measured above.
+3. The residual F5 accepts — a newly-added worker file is unprotected until
+   somebody names it — is live by design, stated in the test's own comment, with
+   the `>= 20` floor as the second net. Raise the floor when the named set grows.
