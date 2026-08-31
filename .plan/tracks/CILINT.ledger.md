@@ -51,14 +51,68 @@ Every one is mechanical. None encodes a design question.
 
 ### Collision with in-flight work — measured, not assumed
 
-Five branches are unmerged into trunk (`feat/acc-scenarios`,
+**Corrected after RV finding F-1. The first version of this paragraph said
+"five unmerged branches touch zero affected files". The count was wrong: there
+were six, and one of them does touch files this branch reformatted.**
+
+`git branch --no-merged 73bd79aa` returns **six**: `feat/acc-scenarios`,
 `feat/teams-bots-windows-first`, `task/teams-gateway`,
-`task/teams-platform-integration`, `task/teams-rma-saga`).
+`task/teams-platform-integration`, `task/teams-rma-saga`, and
+**`feat/live-harness-registration`** — the one the original count missed.
 
-Files they touch that also appear in the 94 unformatted set: **0**.
-Files they touch that also appear in the 6 lint-error set: **0**.
+It touches two files in the 94-file reformatted set:
+`backend/tests/test_return_case_policy_gate_real_infra.py` and
+`backend/tests/test_return_case_workflow_real_infra.py`.
 
-They are overwhelmingly *adding* files, and new files are already format-clean.
+So the honest statement is: **five of the six touch zero affected files; the
+sixth touches two.**
+
+### Why the omission happened, and why option 1 still holds
+
+The branch was not overlooked — at measurement time it did not exist in the
+form that would have listed. Its tip `00471116` was committed at
+`2026-08-31T11:47:51`; the commit recording the original measurement,
+`9b665a98`, landed at `11:47:17`. **Thirty-four seconds.** Until then the branch
+pointed at `7a898cf9`, which `git merge-base --is-ancestor 7a898cf9 73bd79aa`
+confirms was an ancestor of this branch's base — so `--no-merged` correctly
+omitted it.
+
+That explains the number without excusing it. A point-in-time enumeration of
+sibling branches is a *perishable* measurement, and this ledger leaned on one as
+if it were durable. The conclusion is now carried by the three checks below,
+each of which is a property of the content rather than of the moment it was
+taken. RV supplied these; they are re-verified here independently, because
+another agent's evidence is not automatically this ledger's.
+
+1. **The merge is conflict-free.** `git merge-tree --write-tree HEAD
+   feat/live-harness-registration` exits 0 (tree `c05a8b1a`).
+2. **The only unformatted region in either file is the hunk this branch already
+   fixed.** `ruff format --diff` on the branch's own versions reports exactly one
+   hunk per file — the `draft_support_request` signature — and it is
+   byte-identical to what `git diff 73bd79aa..HEAD` shows this branch changed
+   there. That branch's own additions are format-clean.
+3. **The merged tree passes the gate.** The two files extracted from tree
+   `c05a8b1a` come back "2 files already formatted".
+
+**Two false positives caught while checking, recorded so the method is not
+trusted further than it earns.** Both came from running extracted files in a
+scratch directory instead of in the repo:
+
+- `ruff format --diff` there initially reported dozens of wrapped-signature
+  hunks. Cause: files outside `backend/` do not pick up
+  `backend/pyproject.toml`, so ruff used its **default line-length 88** instead
+  of the configured **100**. Re-run with `--config` pointed at the real file, it
+  collapses to the single hunk above.
+- `ruff check` there reported `I001` on both merged files. Cause: outside the
+  repo, ruff cannot infer `return_platform` and `tests` as first-party, so it
+  wants a different import order. Controlled for by running the *same isolated
+  check* on this branch's own copy of one file, which is known clean in-repo:
+  it reports the identical `I001` in isolation and `All checks passed!` in
+  place. Artifact of the method, not a finding.
+
+The remaining substance is unchanged: the other five branches intersect zero
+affected files, they are overwhelmingly *adding* files, and new files were
+already format-clean. Option 1 stands.
 
 ## The decision — option 1, fix them all now
 
@@ -126,6 +180,13 @@ verdict about the code.
 - Gate wired into `checks.yml` as `backend-static`, then widened to the root
   script paths once the quality script showed the surface was larger.
 - Gate proven to fail on a *new* violation, then reverted (below).
+- **RV round 1: `CHANGES_REQUIRED`, one finding (F-1), against the record and
+  not the code** (`.plan/reviews/CI-LINT-1.md`). The unmerged-branch count was
+  five and should have been six; `feat/live-harness-registration` touches two
+  reformatted files. Ledger corrected above — the number is stated as six, the
+  intersecting branch is named, and the conclusion is re-grounded on three
+  content checks rather than on a branch count taken at one instant. No code
+  changed; the gate and the suite are untouched by this correction.
 
 ## Proof the gate fails on a new violation
 
