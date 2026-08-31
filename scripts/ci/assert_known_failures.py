@@ -21,6 +21,39 @@ failing tests against `known_test_failures.json`:
 
 Exit code 0 means: everything that failed was already failing, everything that
 was already failing still fails, and the suite actually ran.
+
+-- The size floor -------------------------------------------------------------
+
+Everything above reasons about the failures IN the report, and that is a hole
+wide enough to drive a green CI run through: **neither check can see a test that
+never ran.**
+
+The hole is not theoretical. Under memory pressure `npm test` was observed
+reporting
+
+    Test Files  40 passed (40)
+
+while 21 of the suite's 61 files never started. Read that line again -- it does
+not say "21 failed". vitest *believed there were forty files*. The headline is
+internally consistent, entirely green, and describes two thirds of a suite. On
+an unloaded machine the same commit reports 62 files and 867 tests, so this is a
+behaviour under load, not a miscount that would show up in review. The backend
+has the same exposure in principle: pytest writes a JUnit report of what it ran,
+and a comparator that reads only that report cannot miss what is not in it.
+
+So this script also measures the suite and refuses a run that came back smaller
+than the recorded floor in `suite_size_floor.json`.
+
+The distinction it is built around: a suite that ran fewer tests because
+somebody deleted some is a CODE CHANGE, and it arrives with a diff to review. A
+suite that ran fewer because a worker died is an INFRASTRUCTURE FAILURE
+reporting green. The floor makes the second impossible and leaves the first a
+one-line, deliberate, reviewable edit -- which is why lowering the floor is a
+separate visible act rather than something a shrinking suite does to itself.
+
+Exit code 2, not 1, when the floor is breached: 1 is this script's verdict about
+the TESTS, and `checks.yml` reads anything above 1 as the run itself having
+failed. A suite that did not run is the second thing, not the first.
 """
 
 from __future__ import annotations
@@ -45,21 +78,130 @@ def _case_id(case: ET.Element) -> str:
     return f"{classname}::{name}" if classname else name
 
 
-def _read_report(path: Path) -> tuple[set[str], set[str]]:
-    """`(failed, ran)` from one JUnit XML file."""
+def _read_report(path: Path) -> tuple[set[str], set[str], set[str]]:
+    """`(failed, ran, files)` from one JUnit XML file.
+
+    `files` is the set of distinct `classname` values -- test FILES for vitest,
+    test MODULES for pytest. It is measured alongside the case count because the
+    two answer different questions about a short run. A dead worker takes whole
+    files with it, so the file count is the number that moves first and moves
+    most; the case count is the one that notices a single parametrised family
+    quietly failing to expand.
+    """
 
     root = ET.parse(path).getroot()
     failed: set[str] = set()
     ran: set[str] = set()
+    files: set[str] = set()
     for case in root.iter("testcase"):
         identifier = _case_id(case)
         ran.add(identifier)
+        classname = case.get("classname")
+        if classname:
+            files.add(classname)
         # `failure` is an assertion; `error` is a crash on the way to one. Both
         # mean the test did not pass, and a gate that watched only the first
         # would wave through a collection error.
         if case.find("failure") is not None or case.find("error") is not None:
             failed.add(identifier)
-    return failed, ran
+    return failed, ran, files
+
+
+# How far ABOVE the floor the suite may grow before the floor must be re-staked.
+#
+# The floor is a floor, not a pin: adding tests never fails this check, and that
+# is the whole point -- a recorded expected total would be wrong within a day and
+# would train people to edit the number without reading it, which is how the
+# allowlist would have rotted had it not been built to self-prune.
+#
+# But a floor that is never re-staked decays into a floor at zero. Record 867
+# today, let the suite reach 2,000 over a year, and a run that executes 900 tests
+# -- a collapse worse than the one that motivated this file -- sails through. So
+# this borrows `frontend/scripts/check-bundle.js`'s SHRINK_ALLOWANCE exactly: the
+# baseline that can only ever move one way is the baseline that rots, so a large
+# enough move in the good direction fails too, and prints the number to write.
+#
+# 25% is deliberately loose. The growth allowance in the bundle ratchet is 0.5%
+# because it is absorbing zlib noise; there is no noise here (these are integer
+# counts, and collection is platform-stable in this repository -- every skipif in
+# `backend/tests` is a RUNTIME skip, so a skipped test is still collected and
+# still writes a `<testcase>`). This number is not absorbing measurement error,
+# it is choosing how often a human is asked to look. A quarter of the suite is
+# rare enough to be a real event and small enough that the floor never trails the
+# suite by the factor that would make it meaningless.
+RESTAKE_ALLOWANCE = 0.25
+
+
+def _check_size(suite: str, floor_path: Path, ran: set[str], files: set[str]) -> int:
+    """0 if the run is big enough to be believed, 2 if it is not.
+
+    2 rather than 1 on purpose. 1 is this script's verdict about the tests, and
+    `checks.yml` discriminates on exactly that boundary -- "anything else is the
+    run itself breaking, and no allowlist covers that". A suite two thirds of
+    which never started is the run breaking.
+    """
+
+    if not floor_path.exists():
+        print(
+            f"::error::no size floor at {floor_path} -- there is nothing to measure "
+            "this run against. A suite check with no recorded floor is not a check."
+        )
+        return 2
+
+    document = json.loads(floor_path.read_text(encoding="utf-8"))
+    recorded = document.get("suites", {}).get(suite)
+    if recorded is None:
+        print(
+            f"::error::no suite named {suite!r} in {floor_path} -- record a floor for it "
+            "before gating it, or the job cannot tell a full run from a collapsed one."
+        )
+        return 2
+
+    measured = {"cases": len(ran), "files": len(files)}
+    failed = False
+
+    for key, label in (("cases", "test cases"), ("files", "test files")):
+        baseline = recorded.get(key)
+        # Not a truthiness test: 0 is falsy and would read as "absent", and a
+        # floor of 0 is a floor that cannot fail and must be rejected out loud.
+        if not isinstance(baseline, int) or isinstance(baseline, bool) or baseline <= 0:
+            print(f"::error::{floor_path} has no usable {suite}.{key} floor")
+            failed = True
+            continue
+
+        count = measured[key]
+        if count < baseline:
+            print(
+                f"::error::THE SUITE SHRANK: {count} {label} reported, "
+                f"but the recorded floor is {baseline} -- {baseline - count} did not report.\n"
+                "   Nothing in this report says they FAILED. They are simply absent, and a\n"
+                "   report cannot fail a test it does not contain, which is why this check\n"
+                "   exists and why the exit code is not 1.\n"
+                "   If a worker died or the runner ran out of memory, this is an\n"
+                "   infrastructure failure that was about to report green: re-run it.\n"
+                "   If tests were deliberately removed, lower the floor in the SAME commit\n"
+                f"   that removes them, in scripts/ci/suite_size_floor.json:  \"{key}\": {count}"
+            )
+            failed = True
+        elif count > baseline * (1 + RESTAKE_ALLOWANCE):
+            print(
+                f"::error::the floor has fallen behind: {count} {label} ran against a "
+                f"recorded floor of {baseline}.\n"
+                "   This is not a complaint about the suite -- it grew, which is good. It is\n"
+                "   that a floor this far below the suite no longer catches anything: a run\n"
+                f"   could lose {count - baseline} {label} and still clear it. Re-stake it:\n"
+                f"     \"{key}\": {count}"
+            )
+            failed = True
+
+    if failed:
+        return 2
+
+    print(
+        f"suite size held: {measured['files']} test files, {measured['cases']} test cases "
+        f"(floor {recorded['files']} / {recorded['cases']})"
+    )
+    return 0
 
 
 def main() -> int:
@@ -78,6 +220,12 @@ def main() -> int:
         type=Path,
         default=Path(__file__).with_name("known_test_failures.json"),
     )
+    parser.add_argument(
+        "--floor",
+        type=Path,
+        default=Path(__file__).with_name("suite_size_floor.json"),
+        help="recorded minimum size of this suite; see that file's $comment",
+    )
     arguments = parser.parse_args()
 
     document = json.loads(arguments.allowlist.read_text(encoding="utf-8"))
@@ -89,17 +237,27 @@ def main() -> int:
 
     failed: set[str] = set()
     ran: set[str] = set()
+    files: set[str] = set()
     for report in arguments.reports:
         if not report.exists():
             print(f"::error::no JUnit report at {report} -- the run did not produce one")
             return 2
-        report_failed, report_ran = _read_report(report)
+        report_failed, report_ran, report_files = _read_report(report)
         failed |= report_failed
         ran |= report_ran
+        files |= report_files
 
     if not ran:
         print("::error::the report contains no test cases; treating that as a failed run")
         return 2
+
+    # Deliberately BEFORE the allowlist verdict and independent of it. The
+    # frontend suite exits non-zero on a correct run -- two allowlisted failures
+    # in src/domains/registry.test.ts -- so a size check that only ran on success
+    # would be gated by the very condition it exists to doubt. It has to be able
+    # to say "this run was too small to believe" about a red run just as readily
+    # as about a green one.
+    size = _check_size(arguments.suite, arguments.floor, ran, files)
 
     unexpected = sorted(failed - allowed)
     repaired = sorted(allowed & (ran - failed))
@@ -121,6 +279,12 @@ def main() -> int:
             "::error::allowlisted test was not collected (renamed or removed?) -- "
             f"update scripts/ci/known_test_failures.json: {identifier}"
         )
+
+    # A short run outranks a clean verdict about what it happened to contain: if
+    # the suite did not run, the allowlist's opinion of it is not evidence. So 2
+    # wins over 1, and over 0.
+    if size != 0:
+        return size
 
     if unexpected or repaired or missing:
         return 1
