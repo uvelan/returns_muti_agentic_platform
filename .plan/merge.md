@@ -19,7 +19,7 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | V1 phase 2 | feat/v1-phase2 | **MERGED** | 3 · CR → CR → PASS (8bcce23) | b542524 |
 | V2 phase 1 | feat/v2-ingress-relay | **MERGED** | 2 · CR → PASS (02da231) | 97bca1e |
 | V2 phase 1b | feat/v2-ingress-relay | **MERGED** | 1 · PASS (a51c9b4) | 95b5672 |
-| V2 phase 2 (frontend) | feat/v2-frontend | IN_PROGRESS · off V1p2 candidate 594bb05 | — | — |
+| V2 phase 2 (frontend) | feat/v2-frontend | UNDER_RV_REVIEW · candidate b05a0bb1 | 1 open | — |
 | V3 backend | feat/v3-resolver-clarification | **MERGED** | 2 · CR (3d8715f) → PASS (c463872) | 270c223 |
 | V3 frontend | feat/v3-frontend | **MERGED** | 1 · PASS (cfcbe44) | 9952f2b |
 | V3 backend phase 2 (trigger) | feat/v3-resolver-trigger | IN_PROGRESS · the resolver has no production invocation site | — | — |
@@ -69,6 +69,7 @@ Every slice has shipped at least one green-but-blind test. The shapes found so f
 - **The documented reason is not the operative one** — V3's neutralise-then-bound ordering was safe because of a *space* in the truncation joiner; swapping the documented order changed nothing.
 - **A negative assertion** — "does not contain" passes for the wrong reasons; pin the whole composed output as an equality.
 - **Skipped on the platform that runs it** — ACC's behavioural stop/kill pin is Windows-skipped, so a structural pin was added beside it.
+- **A test that proves the right thing is *asked for*, not that the wrong thing is *refused*.** V2's AMENDMENT-7 enforcement used a recording proxy to assert the exact key set each reader requested — and with the tolerant dual-read reinstated **all 169 tests stayed green**, because a tolerant reader asks the camelCase name first and finds it, so the observed sets are identical either way. Closed only by a **behavioural** guard: a wrong-cased payload must read as *nothing*, pinned as whole-value equalities (a record with every field null would pass "does not contain"). Observation cannot prove refusal.
 - **An *injection* red for the wrong reason** — the newest shape, and the same defect wearing the reviewer's clothes. V1 phase 2's first two ordering injections used `str.index` anchors that matched a *different* endpoint and silently **deleted** the liveness block instead of reordering it; both produced plausible red (6 tests) that were nearly recorded as evidence. The tell was that the parked-review test *passed*, which is impossible if liveness runs first. **Fault injection needs its own verification: confirm the injection did what it claims, not merely that something went red.**
 
 ## Integration debt (orchestrator applies at merge)
