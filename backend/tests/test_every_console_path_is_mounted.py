@@ -240,8 +240,7 @@ def test_configuration_release_writes_are_guarded(
         required = CONFIGURATION_CAPABILITY_ROUTES.get((method, path))
         if required is None:
             assert "require_write_roles" in dependency_names, (
-                f"{method.upper()} {path} does not require write roles: "
-                f"{sorted(dependency_names)}"
+                f"{method.upper()} {path} does not require write roles: {sorted(dependency_names)}"
             )
             continue
         # The guard is a closure, so its identity is checked by asking it what
@@ -252,8 +251,7 @@ def test_configuration_release_writes_are_guarded(
             if dependant.call is not None and getattr(dependant.call, "capability", None)
         ]
         assert required in [getattr(guard, "capability", None) for guard in guards], (
-            f"{method.upper()} {path} does not require {required}: "
-            f"{sorted(dependency_names)}"
+            f"{method.upper()} {path} does not require {required}: {sorted(dependency_names)}"
         )
 
 

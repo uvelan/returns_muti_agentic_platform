@@ -63,9 +63,7 @@ class _Deps:
 
 @pytest.fixture(scope="module")
 def deps() -> _Deps:
-    schema = load_active_schema(
-        CONFIG / "dynamic_knowledge" / "active-schema.return-order.yaml"
-    )
+    schema = load_active_schema(CONFIG / "dynamic_knowledge" / "active-schema.return-order.yaml")
     discovery = load_return_configuration(
         CONFIG / "returns" / "production.yaml"
     ).configuration.discovery

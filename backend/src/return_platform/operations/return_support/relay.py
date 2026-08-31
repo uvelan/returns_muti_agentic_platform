@@ -57,9 +57,7 @@ class ConversationDocumentStorePort(Protocol):
     its second edge.
     """
 
-    async def read(
-        self, conversation_id: str, *, scope: Any
-    ) -> dict[str, Any] | None: ...
+    async def read(self, conversation_id: str, *, scope: Any) -> dict[str, Any] | None: ...
 
     async def compare_and_set(
         self,

@@ -82,7 +82,9 @@ async def resolve_product_colours(
     the description: a product description containing the word "WHIT" is not a
     statement that the product is white.
     """
-    references = {str(reference).strip() for reference in product_references if str(reference).strip()}
+    references = {
+        str(reference).strip() for reference in product_references if str(reference).strip()
+    }
     if not references or not colour_paths:
         return {}
 

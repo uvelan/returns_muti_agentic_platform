@@ -47,9 +47,7 @@ async def main() -> int:
 
     settings = Settings()  # type: ignore[call-arg]
     schema = load_active_schema(settings.dynamic_knowledge_schema_path)
-    release_id = seeded_release_id(
-        schema.configuration_release_id, schema.configuration_checksum
-    )
+    release_id = seeded_release_id(schema.configuration_release_id, schema.configuration_checksum)
 
     client: AsyncMongoClient[dict[str, object]] = AsyncMongoClient(
         settings.mongo_dsn.get_secret_value()
@@ -69,7 +67,10 @@ async def main() -> int:
             return 0
 
         try:
-            await releases.publish(schema.model_copy(update={"configuration_release_id": release_id}), published_by="reseed")
+            await releases.publish(
+                schema.model_copy(update={"configuration_release_id": release_id}),
+                published_by="reseed",
+            )
         except ReleaseAlreadyPublished:
             # This exact content was published before and then superseded.
             # Activating it is still what was asked for.

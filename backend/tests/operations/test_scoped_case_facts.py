@@ -78,9 +78,7 @@ class TestAcquisitionMethodAdditions:
 
     def test_a_stored_fact_with_the_new_methods_validates(self) -> None:
         for method in (FactAcquisition.ASSOCIATE_EDIT, FactAcquisition.CONTEXT_SUMMARY):
-            validated = CaseFactView.model_validate(
-                _stored_fact(acquisitionMethod=method.value)
-            )
+            validated = CaseFactView.model_validate(_stored_fact(acquisitionMethod=method.value))
             assert validated.acquisitionMethod is method
 
     def test_the_original_four_are_untouched(self) -> None:
@@ -212,20 +210,14 @@ class TestScopedAppendOnce:
         assert len(documents) == 2
         assert documents[0]["factId"] != documents[1]["factId"]
         assert {held["record_scope"] for held in documents} == {"record-1", "record-2"}
-        assert all(
-            held["identity_version"] == SCOPED_FACT_IDENTITY_VERSION for held in documents
-        )
+        assert all(held["identity_version"] == SCOPED_FACT_IDENTITY_VERSION for held in documents)
         # The stored shape is the contract's: every scoped document validates.
         for held in documents:
             assert CaseFactView.model_validate(held).record_scope in {"record-1", "record-2"}
 
-    async def test_a_scoped_retry_is_absorbed_not_duplicated(
-        self, repository: _Repository
-    ) -> None:
+    async def test_a_scoped_retry_is_absorbed_not_duplicated(self, repository: _Repository) -> None:
         activities = _activities(repository)
-        assert await activities.append_scoped_fact_once(
-            record_scope="record-1", **_fact_kwargs()
-        )
+        assert await activities.append_scoped_fact_once(record_scope="record-1", **_fact_kwargs())
         assert not await activities.append_scoped_fact_once(
             record_scope="record-1", **_fact_kwargs()
         )
@@ -242,9 +234,7 @@ class TestScopedAppendOnce:
         """
         activities = _activities(repository)
         assert await activities._append_fact_once(**_fact_kwargs())  # noqa: SLF001 - the shipped legacy path is the fixture
-        assert not await activities.append_scoped_fact_once(
-            record_scope=None, **_fact_kwargs()
-        )
+        assert not await activities.append_scoped_fact_once(record_scope=None, **_fact_kwargs())
 
         documents = repository.case_facts.documents
         assert len(documents) == 1
@@ -252,9 +242,7 @@ class TestScopedAppendOnce:
         assert "record_scope" not in documents[0]
         assert "identity_version" not in documents[0]
 
-    async def test_the_scoped_write_moves_the_case_revision(
-        self, repository: _Repository
-    ) -> None:
+    async def test_the_scoped_write_moves_the_case_revision(self, repository: _Repository) -> None:
         """Plan sect. 6.5 holds on the new path: child write, same-transaction bump."""
         await _activities(repository).append_scoped_fact_once(
             record_scope="record-1", **_fact_kwargs()

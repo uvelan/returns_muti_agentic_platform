@@ -233,9 +233,7 @@ def build_support_message_classify_dispatcher(
         recorder=recorder,
         source_mongo=source_mongo,
     )
-    ingress: Any = DurableSupportIngressStore(
-        mongo, settings, return_configuration.support_ingress
-    )
+    ingress: Any = DurableSupportIngressStore(mongo, settings, return_configuration.support_ingress)
     return SUPPORT_MESSAGE_CLASSIFY_TOPIC, SupportMessageClassifyDispatcher(
         analyser=analyser, ingress=ingress
     )

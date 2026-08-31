@@ -231,7 +231,9 @@ class TemplateSectionConfiguration(StrictConfigModel):
 
     @property
     def per_record(self) -> bool:
-        return any(_declared_source(field.source_binding) == "return_record" for field in self.fields)
+        return any(
+            _declared_source(field.source_binding) == "return_record" for field in self.fields
+        )
 
 
 class TemplateVariantConfiguration(StrictConfigModel):
@@ -249,9 +251,7 @@ class TemplateVariantConfiguration(StrictConfigModel):
                 f"variant {self.variant_id!r} repeats section ids: "
                 f"{', '.join(sorted(duplicate_sections))}"
             )
-        field_ids = [
-            field.field_id for section in self.sections for field in section.fields
-        ]
+        field_ids = [field.field_id for section in self.sections for field in section.fields]
         duplicate_fields = {f for f in field_ids if field_ids.count(f) > 1}
         if duplicate_fields:
             raise ValueError(
@@ -270,18 +270,14 @@ class TemplateVariantConfiguration(StrictConfigModel):
             for field in section.fields
         }
         placeholders = subject_placeholders(self.subject_template)
-        unknown = [
-            placeholder for placeholder in placeholders if placeholder not in set(field_ids)
-        ]
+        unknown = [placeholder for placeholder in placeholders if placeholder not in set(field_ids)]
         if unknown:
             raise ValueError(
                 f"variant {self.variant_id!r} subject interpolates unknown field ids: "
                 f"{', '.join(unknown)}"
             )
         per_record = [
-            placeholder
-            for placeholder in placeholders
-            if placeholder not in case_level_ids
+            placeholder for placeholder in placeholders if placeholder not in case_level_ids
         ]
         if per_record:
             raise ValueError(
@@ -311,9 +307,7 @@ class SupportTemplateConfiguration(StrictConfigModel):
         if duplicates:
             raise ValueError(f"duplicate variant ids: {', '.join(sorted(duplicates))}")
         if self.default_variant_id not in set(variant_ids):
-            raise ValueError(
-                f"default_variant_id {self.default_variant_id!r} names no variant"
-            )
+            raise ValueError(f"default_variant_id {self.default_variant_id!r} names no variant")
         return self
 
     def default_variant(self) -> TemplateVariantConfiguration | None:

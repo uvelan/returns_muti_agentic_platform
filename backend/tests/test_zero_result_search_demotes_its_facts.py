@@ -56,9 +56,7 @@ def as_of() -> datetime:
     return datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
 
 
-def _after_failed_search(
-    catalogue: FactCatalogue, as_of: datetime, name: str = "TAYLOR"
-):
+def _after_failed_search(catalogue: FactCatalogue, as_of: datetime, name: str = "TAYLOR"):
     captured, _ = catalogue.capture(
         (), (_Stated("customer_name", name),), turn_id="turn-1", as_of=as_of
     )

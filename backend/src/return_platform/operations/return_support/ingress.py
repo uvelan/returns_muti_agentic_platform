@@ -91,9 +91,7 @@ class SupportEventStatus:
     PARKED: Final = "PARKED"
 
 
-def derive_support_event_id(
-    *, case_id: str, transport_id: str, external_message_id: str
-) -> str:
+def derive_support_event_id(*, case_id: str, transport_id: str, external_message_id: str) -> str:
     """The internal id for one inbound message, derived from its identity.
 
     Derived rather than minted, because the contract's dedupe key is
@@ -326,12 +324,12 @@ def normalize_return_outcome(
             tracking_reference=_optional(record.get("trackingReference")),
             label_reference=_optional(record.get("labelReference")),
             return_location=_optional(record.get("returnLocation")),
-            shipping_instruction_reference=_optional(
-                record.get("shippingInstructionReference")
-            ),
+            shipping_instruction_reference=_optional(record.get("shippingInstructionReference")),
             return_method=_optional(record.get("returnMethod")),
             carrier=_optional(record.get("carrier")),
-            order_line_references=tuple(str(line) for line in record.get("orderLineReferences", ())),
+            order_line_references=tuple(
+                str(line) for line in record.get("orderLineReferences", ())
+            ),
         )
         for record in records
     )
@@ -373,9 +371,7 @@ def normalize_inbound_message(
         ),
         transport_id=message.channel_hint,
         external_message_id=message.external_message_id,
-        sender=SupportSender(
-            sender_id=message.sender, display_name=message.sender_display_name
-        ),
+        sender=SupportSender(sender_id=message.sender, display_name=message.sender_display_name),
         body_text=message.body_text,
     )
 
@@ -492,9 +488,7 @@ def record_bindings_from_extraction(
                 tracking_reference=_optional(item.get("trackingReference")),
                 label_reference=_optional(item.get("labelReference")),
                 return_location=_optional(item.get("returnLocation")),
-                shipping_instruction_reference=_optional(
-                    item.get("shippingInstructionReference")
-                ),
+                shipping_instruction_reference=_optional(item.get("shippingInstructionReference")),
                 return_method=_optional(item.get("returnMethod")),
                 carrier=_optional(item.get("carrier")),
                 order_line_references=tuple(

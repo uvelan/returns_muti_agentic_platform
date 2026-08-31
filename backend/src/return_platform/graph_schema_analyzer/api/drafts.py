@@ -493,8 +493,7 @@ async def get_revision_diff(
 
 @router.post("/drafts/{draft_id}/reanalysis", response_model=ReanalysisProposal)
 async def reanalyze_draft(
-    author: _Writer,
-    draft_id: str, persistence: _Persistence, sources: _Sources
+    author: _Writer, draft_id: str, persistence: _Persistence, sources: _Sources
 ) -> ReanalysisProposal:
     """Re-read the sources and say what the draft would have to change.
 

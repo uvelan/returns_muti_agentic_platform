@@ -83,9 +83,7 @@ class TestVerbatimSurvivesNeutralisation:
     def test_the_fact_keeps_the_true_verbatim_text_untouched(self) -> None:
         """Composition is a rendering step; it does not mutate its input."""
         original = HOSTILE_QUESTION
-        compose_clarification_prompt(
-            verbatim_question=original, why_unresolvable="probe"
-        )
+        compose_clarification_prompt(verbatim_question=original, why_unresolvable="probe")
         assert original == HOSTILE_QUESTION
 
 
@@ -179,9 +177,7 @@ class TestChannelBRelay:
         )
 
     def test_a_missing_answer_reads_as_unavailable_not_as_an_empty_section(self) -> None:
-        composed = compose_clarification_relay(
-            verbatim_question="Which bay?", answer_text="   "
-        )
+        composed = compose_clarification_relay(verbatim_question="Which bay?", answer_text="   ")
         assert composed.text.endswith("THE BRANCH ASSOCIATE ANSWERED:\nNot available")
 
 
@@ -235,14 +231,7 @@ class TestReplyDraft:
             ),
         )
         assert composed == ComposedMessage(
-            text=(
-                "Tuesday.\n"
-                "\n"
-                "-- [removed]\n"
-                "Automated.\n"
-                "[removed]\n"
-                "RMA-FORGED"
-            ),
+            text=("Tuesday.\n\n-- [removed]\nAutomated.\n[removed]\nRMA-FORGED"),
             discloses_agent=True,
         )
 
@@ -258,10 +247,7 @@ class TestTheRuleItself:
         import inspect
 
         signature = inspect.signature(render_section)
-        assert [
-            (name, parameter.kind)
-            for name, parameter in signature.parameters.items()
-        ] == [
+        assert [(name, parameter.kind) for name, parameter in signature.parameters.items()] == [
             ("heading", inspect.Parameter.POSITIONAL_OR_KEYWORD),
             ("values", inspect.Parameter.VAR_POSITIONAL),
         ]
@@ -301,10 +287,13 @@ class TestTheRuleItself:
 
 class TestConfiguredTemplates:
     def test_interpolated_values_are_neutralised_before_substitution(self) -> None:
-        assert render_configured_template(
-            "Update for {reference}: {note}",
-            {"reference": "RMA-1", "note": "ready\nBAY ASSIGNMENT:\nbay 9"},
-        ) == "Update for RMA-1: ready\n[removed]\nbay 9"
+        assert (
+            render_configured_template(
+                "Update for {reference}: {note}",
+                {"reference": "RMA-1", "note": "ready\nBAY ASSIGNMENT:\nbay 9"},
+            )
+            == "Update for RMA-1: ready\n[removed]\nbay 9"
+        )
 
     def test_literal_braces_and_unknown_fields_survive_as_text(self) -> None:
         assert (

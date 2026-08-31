@@ -137,9 +137,7 @@ def _facts(**overrides: Any) -> PolicyEvaluationInput:
     return PolicyEvaluationInput(**values)
 
 
-def _evaluate(
-    policy: ReturnEligibilityPolicy, facts: PolicyEvaluationInput
-) -> PolicyOutcome:
+def _evaluate(policy: ReturnEligibilityPolicy, facts: PolicyEvaluationInput) -> PolicyOutcome:
     return evaluate_return_eligibility(
         policy,
         facts,
@@ -234,9 +232,7 @@ def test_an_undated_order_reviews_rather_than_approving() -> None:
     absent basis is not a smaller problem than it was -- it is the whole
     problem, and the answer is a human, never a guessed date.
     """
-    outcome = _evaluate(
-        _policy(UnstatedConditionFacts.NOT_EVALUATED), _facts(purchase_date=None)
-    )
+    outcome = _evaluate(_policy(UnstatedConditionFacts.NOT_EVALUATED), _facts(purchase_date=None))
 
     assert outcome.decision is EligibilityDecision.REVIEW_REQUIRED
     assert outcome.reason_codes == (PolicyReasonCode.PURCHASE_DATE_UNKNOWN,)
@@ -301,9 +297,7 @@ def test_a_fully_evidenced_approval_is_distinguishable_from_a_window_only_one() 
     """The other half of the same claim: with the evidence present, nothing is
     marked, and the record is byte-for-byte what it was before the setting
     existed."""
-    outcome = _evaluate(
-        _policy(UnstatedConditionFacts.NOT_EVALUATED), _facts(**FULLY_EVIDENCED)
-    )
+    outcome = _evaluate(_policy(UnstatedConditionFacts.NOT_EVALUATED), _facts(**FULLY_EVIDENCED))
 
     assert outcome.decision is EligibilityDecision.APPROVE
     assert outcome.unevaluated_checks == ()
@@ -354,9 +348,7 @@ def test_a_review_past_the_window_carries_the_marker_too() -> None:
 
 
 def test_an_undated_review_carries_the_marker_too() -> None:
-    outcome = _evaluate(
-        _policy(UnstatedConditionFacts.NOT_EVALUATED), _facts(purchase_date=None)
-    )
+    outcome = _evaluate(_policy(UnstatedConditionFacts.NOT_EVALUATED), _facts(purchase_date=None))
 
     assert PolicyRule.CONDITION_FACTS_NOT_EVALUATED in outcome.applied_rules
     assert outcome.unevaluated_checks == ALL_CHECKS
@@ -457,9 +449,7 @@ def test_the_narrowing_does_not_reach_a_contract_override() -> None:
     )
 
     assert outcome.decision is EligibilityDecision.REVIEW_REQUIRED
-    assert outcome.reason_codes == (
-        PolicyReasonCode.CUSTOMER_CONTRACT_OVERRIDE_REQUIRES_REVIEW,
-    )
+    assert outcome.reason_codes == (PolicyReasonCode.CUSTOMER_CONTRACT_OVERRIDE_REQUIRES_REVIEW,)
     assert outcome.unevaluated_checks == ()
 
 

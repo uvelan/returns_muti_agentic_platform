@@ -90,9 +90,7 @@ def test_the_invoice_date_is_not_the_purchase_date(orders: list[dict[str, Any]])
         purchase_date_from_confirmed_order(order, paths=ORDER_DATE_PATHS) for order in orders
     ]
     invoice_dates = [
-        purchase_date_from_confirmed_order(
-            order, paths=("salesHdr.salesHdrData.invoiceDate",)
-        )
+        purchase_date_from_confirmed_order(order, paths=("salesHdr.salesHdrData.invoiceDate",))
         for order in orders
     ]
 

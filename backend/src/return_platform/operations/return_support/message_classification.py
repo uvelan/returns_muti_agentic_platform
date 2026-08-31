@@ -273,9 +273,7 @@ class SupportMessageAnalyser:
                 # Blocks the record durably and raises for the dispatcher to
                 # classify as permanent. Never falls back to an empty result,
                 # which downstream would read as "the message said nothing".
-                await self._records.block_exhausted(
-                    support_event_id=support_event_id, stage=stage
-                )
+                await self._records.block_exhausted(support_event_id=support_event_id, stage=stage)
             try:
                 result = await invoker.invoke(route_id=route, payload=payload)
             except RouteUnavailableError as error:
@@ -330,9 +328,7 @@ class SupportMessageAnalyser:
             invoker=self._classifier,
             payload={"bodyText": body_text, "intents": list(self._configuration.intents)},
         )
-        intent = coerce_intent(
-            _optional_str(classification.get("intent")), self._configuration
-        )
+        intent = coerce_intent(_optional_str(classification.get("intent")), self._configuration)
 
         # The stage's own answer is deliberately discarded. It is *not* the
         # source of anything durable -- `require_accepted_extraction` below is,
@@ -608,9 +604,7 @@ class SupportMessageAnalyser:
         preformatted text** where a newline could restructure the view.
         """
         clarification_id = str(
-            uuid.uuid5(
-                uuid.NAMESPACE_URL, f"support-clarification:{case_id}:{dedupe_key}"
-            )
+            uuid.uuid5(uuid.NAMESPACE_URL, f"support-clarification:{case_id}:{dedupe_key}")
         )
         candidates = list(decision.candidate_record_ids)
         artifact = decision.artifact

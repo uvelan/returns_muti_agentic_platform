@@ -934,9 +934,7 @@ async def lifespan(
                     # gated by the same setting the Order Agent honours.
                     analyzer_recorder = RepositoryAIAttemptRecorder(
                         operational_repository,
-                        trace_sink=(
-                            operational_repository if settings.ai_trace_payloads else None
-                        ),
+                        trace_sink=(operational_repository if settings.ai_trace_payloads else None),
                     )
                     app.state.graph_schema_analyzer_reasoning = build_analyzer_ai_adapter(
                         settings=settings,

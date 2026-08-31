@@ -222,15 +222,17 @@ async def append_shipment_event(
         service = await _shipment_state_service(request)
         event_at = (payload.eventAt or datetime.now(UTC)).astimezone(UTC).replace(tzinfo=None)
         try:
-            await service.record_update(ShipmentUpdate(
-                return_reference=rma,
-                tracking_reference=tracking,
-                shipment_status=payload.status,
-                status_at=event_at,
-                tracking_type="BOL" if mode == "freight" else "PPL",
-                carrier_code=(str(updated.get(f("carrier")) or "") or None),
-                shipment_details=payload.note,
-            ))
+            await service.record_update(
+                ShipmentUpdate(
+                    return_reference=rma,
+                    tracking_reference=tracking,
+                    shipment_status=payload.status,
+                    status_at=event_at,
+                    tracking_type="BOL" if mode == "freight" else "PPL",
+                    carrier_code=(str(updated.get(f("carrier")) or "") or None),
+                    shipment_details=payload.note,
+                )
+            )
         except ShipmentStateSyncFailed as sync_failed:
             logger.warning(
                 "shipment_console_graph_sync_failed",

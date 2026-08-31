@@ -45,9 +45,7 @@ def _record(record_id: str, reference: str | None, **fields: Any) -> dict[str, A
 
 
 def _tracking(value: str = "TRK-1", binding: str | None = None) -> ExtractedArtifact:
-    return ExtractedArtifact(
-        artifact_type=ArtifactType.TRACKING, value=value, binding=binding
-    )
+    return ExtractedArtifact(artifact_type=ArtifactType.TRACKING, value=value, binding=binding)
 
 
 # ---------------------------------------------------------------------------
@@ -72,9 +70,7 @@ class TestBindingRules:
         assert decision.return_record_id == "rec-1"
 
     def test_an_unknown_reference_is_unmatched_and_never_a_new_record(self) -> None:
-        decision = bind_artifact(
-            _tracking(binding="RMA-9"), [_record("rec-1", "RMA-1")]
-        )
+        decision = bind_artifact(_tracking(binding="RMA-9"), [_record("rec-1", "RMA-1")])
         assert decision.status is BindingStatus.UNMATCHED
         assert decision.return_record_id is None
         assert "RMA-9" in (decision.reason or "")
@@ -98,17 +94,13 @@ class TestBindingRules:
         assert decision.status is BindingStatus.UNMATCHED
 
     def test_a_blank_binding_claim_is_no_reference(self) -> None:
-        decision = bind_artifact(
-            _tracking(binding="  "), [_record("rec-1", "RMA-1")]
-        )
+        decision = bind_artifact(_tracking(binding="  "), [_record("rec-1", "RMA-1")])
         assert decision.status is BindingStatus.BOUND
         assert decision.return_record_id == "rec-1"
 
     def test_bind_artifacts_decides_each_against_one_read(self) -> None:
         records = [_record("rec-1", "RMA-1"), _record("rec-2", "RMA-2")]
-        decisions = bind_artifacts(
-            [_tracking(binding="RMA-1"), _tracking("TRK-2")], records
-        )
+        decisions = bind_artifacts([_tracking(binding="RMA-1"), _tracking("TRK-2")], records)
         assert [decision.status for decision in decisions] == [
             BindingStatus.BOUND,
             BindingStatus.AMBIGUOUS,
@@ -275,7 +267,5 @@ class TestUnboundPersistence:
         appender = _FactAppender()
         decision = bind_artifact(_tracking("TRK-9"), records)
         assert await _persist(decision, _RecordStore(records), appender, dedupe_key="evt-7-0")
-        assert not await _persist(
-            decision, _RecordStore(records), appender, dedupe_key="evt-7-0"
-        )
+        assert not await _persist(decision, _RecordStore(records), appender, dedupe_key="evt-7-0")
         assert len(appender.appended) == 1

@@ -420,7 +420,9 @@ async def test_an_unrelated_name_returns_nothing_rather_than_the_nearest_row(
     """
     driver, _, generation = corpus
 
-    result, store = await _run_order_search(production_schema, driver, "Zephyrine Okonkwo", generation)
+    result, store = await _run_order_search(
+        production_schema, driver, "Zephyrine Okonkwo", generation
+    )
 
     assert _candidates(result, store) == []
 

@@ -239,9 +239,7 @@ class _GraphPort:
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
 
-    async def invoke(
-        self, *, arguments: Any, credential_binding_id: str | None
-    ) -> dict[str, Any]:
+    async def invoke(self, *, arguments: Any, credential_binding_id: str | None) -> dict[str, Any]:
         self.calls.append(
             {"arguments": dict(arguments), "credential_binding_id": credential_binding_id}
         )
@@ -373,9 +371,7 @@ class TestExecution:
     async def test_a_contract_name_this_build_does_not_implement_refuses(self) -> None:
         """A released string cannot name an arbitrary type for the registry."""
         port, authorization = _GraphPort(), _Authorization()
-        plan = plan_tool_invocation(
-            _intent(), [_binding(contract="AnythingIWant")], _trusted()
-        )
+        plan = plan_tool_invocation(_intent(), [_binding(contract="AnythingIWant")], _trusted())
         assert isinstance(plan, ToolInvocationPlan)
         outcome = await _executor(port, authorization).execute(
             plan, principal_id="a", case_id="case-REAL"

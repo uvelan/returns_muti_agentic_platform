@@ -113,9 +113,7 @@ def clarification_relay_identity(*, case_id: str, clarification_id: str) -> tupl
     second thing to keep in step.
     """
     logical_operation_id = f"{_RELAY_OPERATION_PREFIX}:{case_id}:{clarification_id}"
-    return logical_operation_id, str(
-        uuid.uuid5(REPLY_DELIVERY_NAMESPACE, logical_operation_id)
-    )
+    return logical_operation_id, str(uuid.uuid5(REPLY_DELIVERY_NAMESPACE, logical_operation_id))
 
 
 def deadline_after_clarification(

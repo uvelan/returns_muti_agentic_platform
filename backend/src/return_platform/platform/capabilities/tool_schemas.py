@@ -180,8 +180,7 @@ _SHIPMENT_STATUS_LOOKUP = ToolInputSchema(
 )
 
 TOOL_INPUT_SCHEMAS: Final[Mapping[str, ToolInputSchema]] = {
-    schema.schema_ref: schema
-    for schema in (_RETURN_RECORD_LOOKUP, _SHIPMENT_STATUS_LOOKUP)
+    schema.schema_ref: schema for schema in (_RETURN_RECORD_LOOKUP, _SHIPMENT_STATUS_LOOKUP)
 }
 
 

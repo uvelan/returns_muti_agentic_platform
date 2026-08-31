@@ -92,7 +92,11 @@ async def _survey(client: Client) -> list[dict[str, Any]]:
 def _digest(targets: list[dict[str, Any]]) -> str:
     payload = json.dumps(
         [
-            {"workflowId": t["workflowId"], "runId": t["runId"], "resetToEventId": t["resetToEventId"]}
+            {
+                "workflowId": t["workflowId"],
+                "runId": t["runId"],
+                "resetToEventId": t["resetToEventId"],
+            }
             for t in targets
         ],
         sort_keys=True,

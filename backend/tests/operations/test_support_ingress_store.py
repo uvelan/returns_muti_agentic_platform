@@ -274,12 +274,8 @@ async def test_draining_twice_releases_nothing_the_second_time(
 ) -> None:
     """Check-then-act, safely re-runnable (contracts §3)."""
     await _record(store, _event(), nl_enabled=False)
-    first = await store.drain_parked(
-        case_id=CASE_ID, workflow_id=WORKFLOW_ID, actor_id=ACTOR
-    )
-    second = await store.drain_parked(
-        case_id=CASE_ID, workflow_id=WORKFLOW_ID, actor_id=ACTOR
-    )
+    first = await store.drain_parked(case_id=CASE_ID, workflow_id=WORKFLOW_ID, actor_id=ACTOR)
+    second = await store.drain_parked(case_id=CASE_ID, workflow_id=WORKFLOW_ID, actor_id=ACTOR)
     assert len(first) == 1
     assert second == []
     assert (
@@ -330,14 +326,8 @@ async def test_the_parking_alert_is_deduped_per_window(
     """
     now = datetime(2026, 8, 30, 12, 0, tzinfo=UTC)
     assert store.alert_should_fire(last_alerted_at=None, now=now) is True
-    assert (
-        store.alert_should_fire(last_alerted_at=now - timedelta(seconds=899), now=now)
-        is False
-    )
-    assert (
-        store.alert_should_fire(last_alerted_at=now - timedelta(seconds=900), now=now)
-        is True
-    )
+    assert store.alert_should_fire(last_alerted_at=now - timedelta(seconds=899), now=now) is False
+    assert store.alert_should_fire(last_alerted_at=now - timedelta(seconds=900), now=now) is True
 
 
 # --------------------------------------------------------------------------- #
@@ -408,9 +398,7 @@ async def test_the_dispatcher_drains_the_inbound_stream_in_order(
         receipt = await _record(store, _event(external_message_id=identifier))
         ids.append(receipt.support_event_id)
 
-    by_event = {
-        str(document["eventId"]): document for document in outbox.documents.values()
-    }
+    by_event = {str(document["eventId"]): document for document in outbox.documents.values()}
     base = datetime.now(UTC)
     for offset, event_id in enumerate(reversed(ids)):
         # m-3 due longest ago, m-1 most recently: the worst case for ordering.

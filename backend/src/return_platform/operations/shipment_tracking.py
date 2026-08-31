@@ -217,7 +217,6 @@ class ShipmentTrackingStore:
             return None
         return document
 
-
     def _to_logical(self, document: dict[str, Any]) -> dict[str, Any]:
         """The document under its logical names, whatever the release maps.
 
@@ -255,10 +254,7 @@ class ShipmentTrackingStore:
                 )
             ]
         documents = (
-            await self._collection()
-            .find(query)
-            .sort(f("updated_at"), -1)
-            .to_list(length=limit)
+            await self._collection().find(query).sort(f("updated_at"), -1).to_list(length=limit)
         )
         for index, document in enumerate(documents):
             document.pop("_id", None)

@@ -354,16 +354,16 @@ def compose_support_handoff(
     # none was. Never both, and always labelled as whichever it is: a desk that
     # rings "the contact" needs to know whether it is reaching Ferguson or the
     # person who bought the goods.
-    if _safe(customer.contact_name) or _safe(customer.contact_email) or _safe(
-        customer.contact_phone
+    if (
+        _safe(customer.contact_name)
+        or _safe(customer.contact_email)
+        or _safe(customer.contact_phone)
     ):
         sections.append(_line("Branch Associate", _safe(customer.contact_name)))
         sections.append(_line("Branch Associate Email", _safe(customer.contact_email)))
         sections.append(_line("Branch Associate Phone", _safe(customer.contact_phone)))
     else:
-        sections.append(
-            _line("Branch Associate", "Not recorded -- customer contact below")
-        )
+        sections.append(_line("Branch Associate", "Not recorded -- customer contact below"))
         sections.append(_line("Customer Phone", customer.customer_phone))
         sections.append(_line("Customer Email", customer.customer_email))
     sections.append("")
@@ -384,7 +384,9 @@ def compose_support_handoff(
 
     sections.append("Bay Assignment:")
     sections.append(
-        _line("Assignment Status", "RECOMMENDED" if bay.recommended else (bay.status or "UNRESOLVED"))
+        _line(
+            "Assignment Status", "RECOMMENDED" if bay.recommended else (bay.status or "UNRESOLVED")
+        )
     )
     sections.append(_line("Recommended Bay", bay.bay_reference))
     sections.append(_line("Warehouse/Branch", bay.warehouse_reference))
@@ -395,7 +397,9 @@ def compose_support_handoff(
     sections.append("")
 
     sections.append("Verification:")
-    sections.append(_line("Order Confirmation", "Confirmed" if order_confirmed else "Not confirmed"))
+    sections.append(
+        _line("Order Confirmation", "Confirmed" if order_confirmed else "Not confirmed")
+    )
     sections.append(
         _line(
             "Required Return Information",
@@ -423,9 +427,7 @@ def compose_support_handoff(
     if not support_state_known:
         sections.append(_line("Awaiting From Support", "UNKNOWN -- case state could not be read"))
     elif outstanding_support_dimensions:
-        sections.append(
-            _line("Awaiting From Support", ", ".join(outstanding_support_dimensions))
-        )
+        sections.append(_line("Awaiting From Support", ", ".join(outstanding_support_dimensions)))
     sections.append(_line("Policy Evaluation", policy.rendered()))
     sections.append(_line("Bay Assignment Source", "Bay Assignment Agent"))
     sections.append("")
@@ -468,7 +470,9 @@ def compose_support_handoff(
             "warehouseReference": _clean(bay.warehouse_reference),
             "returnLocation": _clean(bay.return_location),
             "handlingInstructions": _clean(bay.handling_instructions),
-            "unresolvedReason": None if bay.recommended else _clean(bay.unresolved_reason or bay.status),
+            "unresolvedReason": None
+            if bay.recommended
+            else _clean(bay.unresolved_reason or bay.status),
             "source": "BAY_ASSIGNMENT_AGENT",
         },
         "verification": {

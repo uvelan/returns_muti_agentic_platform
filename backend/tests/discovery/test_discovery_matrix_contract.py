@@ -84,9 +84,7 @@ def test_the_identification_field_case_is_derived_rather_than_listed() -> None:
     the moment an operator adds one, and the tenth field would go untested while
     the suite stayed green.
     """
-    field_case = next(
-        case for case in MATRIX if case.id == "every-configured-identification-field"
-    )
+    field_case = next(case for case in MATRIX if case.id == "every-configured-identification-field")
     assert field_case.evidence is Evidence.CONFIGURATION
     assert "read from" in field_case.proves or "at test time" in field_case.proves
 

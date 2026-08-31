@@ -428,9 +428,7 @@ def _confirmed_line_references(facts: Mapping[str, Mapping[str, Any]]) -> tuple[
     value = record.get("value")
     if not isinstance(value, list):
         return ()
-    return tuple(
-        item.strip() for item in value if isinstance(item, str) and item.strip()
-    )
+    return tuple(item.strip() for item in value if isinstance(item, str) and item.strip())
 
 
 def _active_release(request: Request) -> ReturnPlatformConfiguration:

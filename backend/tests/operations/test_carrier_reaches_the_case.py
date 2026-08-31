@@ -392,10 +392,18 @@ async def test_two_rmas_on_one_reply_keep_their_own_carriers(
         _URL,
         json={
             "records": [
-                {"returnReference": "RMA-1", "carrier": "UPS", "trackingReference": "1Z-1",
-                 "orderLineReferences": ["LINE-1"]},
-                {"returnReference": "RMA-2", "carrier": "FEDEX", "trackingReference": "1Z-2",
-                 "orderLineReferences": ["LINE-2"]},
+                {
+                    "returnReference": "RMA-1",
+                    "carrier": "UPS",
+                    "trackingReference": "1Z-1",
+                    "orderLineReferences": ["LINE-1"],
+                },
+                {
+                    "returnReference": "RMA-2",
+                    "carrier": "FEDEX",
+                    "trackingReference": "1Z-2",
+                    "orderLineReferences": ["LINE-2"],
+                },
             ],
             "rejected": False,
             "supportEventId": "evt-split",

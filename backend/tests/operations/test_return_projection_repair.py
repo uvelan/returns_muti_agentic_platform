@@ -30,9 +30,7 @@ class _Projections:
         self.writes: list[tuple[str, str]] = []
 
     async def find_issued(self) -> list[dict[str, Any]]:
-        return [
-            document for document in self.documents if document.get("status") == "ISSUED"
-        ]
+        return [document for document in self.documents if document.get("status") == "ISSUED"]
 
     async def reclassify(
         self, return_record_id: str, *, status: str, marker: dict[str, Any]
@@ -138,9 +136,7 @@ async def test_it_refuses_a_manifest_it_was_not_approved_for() -> None:
 async def test_the_digest_changes_when_the_targets_change() -> None:
     """Otherwise approving one plan would approve any later one."""
     first = await plan_repair(_Projections([_document("a")]), _Authoritative())
-    second = await plan_repair(
-        _Projections([_document("a"), _document("b")]), _Authoritative()
-    )
+    second = await plan_repair(_Projections([_document("a"), _document("b")]), _Authoritative())
 
     assert first.digest != second.digest
 

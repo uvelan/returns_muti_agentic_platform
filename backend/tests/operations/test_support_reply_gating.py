@@ -180,9 +180,7 @@ EXPECTED_MESSAGE = (
 async def test_a_gated_reply_opens_a_support_reply_review() -> None:
     reviews, threads, writer = StubReviews(), StubThreads(), StubFactWriter()
 
-    gated = await run_gate(
-        configuration=REVIEWED, reviews=reviews, threads=threads, writer=writer
-    )
+    gated = await run_gate(configuration=REVIEWED, reviews=reviews, threads=threads, writer=writer)
 
     assert gated.outcome == ReplyGateOutcome.REVIEW_OPENED
     assert gated.review_id == "review-1"

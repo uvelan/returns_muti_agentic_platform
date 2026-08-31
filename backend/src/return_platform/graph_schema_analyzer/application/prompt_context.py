@@ -237,9 +237,7 @@ def _render_metadata(source_metadata: Sequence[Mapping[str, Any]]) -> str:
         for relationship in dataset.get("declared_relationships", ()) or ():
             lines.append(
                 "    relationship: "
-                + neutralize_delimiters(
-                    json.dumps(dict(relationship), sort_keys=True, default=str)
-                )
+                + neutralize_delimiters(json.dumps(dict(relationship), sort_keys=True, default=str))
             )
     return "\n".join(lines)
 

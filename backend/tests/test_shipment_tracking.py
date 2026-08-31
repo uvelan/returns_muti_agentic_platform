@@ -31,23 +31,40 @@ def _catalog(**overrides: Any) -> ShipmentTrackingConfiguration:
         fields={},
         statuses=(
             ShipmentStatusConfiguration(
-                code="label_created", label="Label created", ladder="parcel", ordinal=0,
-                allowed_next=("picked_up",)),
+                code="label_created",
+                label="Label created",
+                ladder="parcel",
+                ordinal=0,
+                allowed_next=("picked_up",),
+            ),
             ShipmentStatusConfiguration(
-                code="picked_up", label="Picked up", ladder="parcel", ordinal=1,
-                allowed_next=("delivered", "exception")),
+                code="picked_up",
+                label="Picked up",
+                ladder="parcel",
+                ordinal=1,
+                allowed_next=("delivered", "exception"),
+            ),
             ShipmentStatusConfiguration(
-                code="delivered", label="Delivered", ladder="parcel", ordinal=2,
-                terminal=True),
+                code="delivered", label="Delivered", ladder="parcel", ordinal=2, terminal=True
+            ),
             ShipmentStatusConfiguration(
-                code="exception", label="Exception", ladder="parcel", ordinal=1,
-                exception_state=True, allowed_next=("picked_up",)),
+                code="exception",
+                label="Exception",
+                ladder="parcel",
+                ordinal=1,
+                exception_state=True,
+                allowed_next=("picked_up",),
+            ),
             ShipmentStatusConfiguration(
-                code="bol_created", label="BOL created", ladder="freight", ordinal=0,
-                allowed_next=("delivered",)),
+                code="bol_created",
+                label="BOL created",
+                ladder="freight",
+                ordinal=0,
+                allowed_next=("delivered",),
+            ),
             ShipmentStatusConfiguration(
-                code="delivered", label="Delivered", ladder="freight", ordinal=1,
-                terminal=True),
+                code="delivered", label="Delivered", ladder="freight", ordinal=1, terminal=True
+            ),
         ),
     )
     base.update(overrides)
@@ -69,8 +86,8 @@ class _FakeCollection:
             actual = document.get(key)
             if isinstance(expected, dict) and "$regex" in expected:
                 import re
-                if not isinstance(actual, str) or not re.search(
-                        expected["$regex"], actual, re.I):
+
+                if not isinstance(actual, str) or not re.search(expected["$regex"], actual, re.I):
                     return False
             elif actual != expected:
                 return False
@@ -79,6 +96,7 @@ class _FakeCollection:
     async def update_one(self, query, update, upsert=False):
         class Result:
             upserted_id = None
+
         result = Result()
         for document in self.documents:
             if self._matches(document, query):
@@ -153,8 +171,14 @@ async def test_the_ladder_and_initial_status_follow_the_method() -> None:
     await store.seed(_seed())
     assert collection.documents[0]["mode"] == "parcel"
     assert collection.documents[0]["current_status"] == "label_created"
-    await store.seed(_seed(return_record_id="rec-2", tracking_reference="PRO-9",
-                           return_method="BRANCH_LTL", bol_reference="BOL-9"))
+    await store.seed(
+        _seed(
+            return_record_id="rec-2",
+            tracking_reference="PRO-9",
+            return_method="BRANCH_LTL",
+            bol_reference="BOL-9",
+        )
+    )
     freight = collection.documents[1]
     assert freight["mode"] == "freight"
     assert freight["current_status"] == "bol_created"
@@ -193,8 +217,12 @@ async def test_terminal_status_refuses_updates_without_override() -> None:
     with pytest.raises(TransitionRejected):
         await store.append_event(shipment_id, status="picked_up", actor="tester")
     reopened = await store.append_event(
-        shipment_id, status="picked_up", actor="tester",
-        override=True, override_reason="reopen for test")
+        shipment_id,
+        status="picked_up",
+        actor="tester",
+        override=True,
+        override_reason="reopen for test",
+    )
     assert reopened["current_status"] == "picked_up"
     assert reopened["events"][-1]["override"] is True
     assert reopened["events"][-1]["override_reason"] == "reopen for test"
@@ -202,8 +230,7 @@ async def test_terminal_status_refuses_updates_without_override() -> None:
 
 @pytest.mark.asyncio
 async def test_field_mapping_renames_the_stored_keys() -> None:
-    catalog = _catalog(fields={"tracking_reference": "trackingNo",
-                               "current_status": "statusCode"})
+    catalog = _catalog(fields={"tracking_reference": "trackingNo", "current_status": "statusCode"})
     store, collection = _store(catalog)
     await store.seed(_seed())
     document = collection.documents[0]
@@ -217,32 +244,59 @@ async def test_field_mapping_renames_the_stored_keys() -> None:
 @pytest.mark.asyncio
 async def test_lookup_by_every_identifier() -> None:
     store, _collection = _store()
-    await store.seed(_seed(return_method="BRANCH_LTL", tracking_reference="PRO-7",
-                           bol_reference="BOL-7", rma_reference="RMA-7",
-                           case_id="case-7", return_record_id="rec-7"))
+    await store.seed(
+        _seed(
+            return_method="BRANCH_LTL",
+            tracking_reference="PRO-7",
+            bol_reference="BOL-7",
+            rma_reference="RMA-7",
+            case_id="case-7",
+            return_record_id="rec-7",
+        )
+    )
     for identifier in ("PRO-7", "BOL-7", "RMA-7", "case-7"):
         assert await store.find(identifier) is not None, identifier
 
 
 def test_the_catalog_refuses_terminal_rungs_with_next_codes() -> None:
     with pytest.raises(ValueError):
-        _catalog(statuses=(
-            ShipmentStatusConfiguration(
-                code="delivered", label="Delivered", ladder="parcel", ordinal=0,
-                terminal=True, allowed_next=("picked_up",)),
-            ShipmentStatusConfiguration(
-                code="picked_up", label="Picked", ladder="parcel", ordinal=1),
-            ShipmentStatusConfiguration(
-                code="bol_created", label="B", ladder="freight", ordinal=0),
-        ), initial_status_parcel="delivered", initial_status_freight="bol_created")
+        _catalog(
+            statuses=(
+                ShipmentStatusConfiguration(
+                    code="delivered",
+                    label="Delivered",
+                    ladder="parcel",
+                    ordinal=0,
+                    terminal=True,
+                    allowed_next=("picked_up",),
+                ),
+                ShipmentStatusConfiguration(
+                    code="picked_up", label="Picked", ladder="parcel", ordinal=1
+                ),
+                ShipmentStatusConfiguration(
+                    code="bol_created", label="B", ladder="freight", ordinal=0
+                ),
+            ),
+            initial_status_parcel="delivered",
+            initial_status_freight="bol_created",
+        )
 
 
 def test_the_catalog_refuses_cross_ladder_transitions() -> None:
     with pytest.raises(ValueError):
-        _catalog(statuses=(
-            ShipmentStatusConfiguration(
-                code="label_created", label="L", ladder="parcel", ordinal=0,
-                allowed_next=("bol_created",)),
-            ShipmentStatusConfiguration(
-                code="bol_created", label="B", ladder="freight", ordinal=0),
-        ), initial_status_parcel="label_created", initial_status_freight="bol_created")
+        _catalog(
+            statuses=(
+                ShipmentStatusConfiguration(
+                    code="label_created",
+                    label="L",
+                    ladder="parcel",
+                    ordinal=0,
+                    allowed_next=("bol_created",),
+                ),
+                ShipmentStatusConfiguration(
+                    code="bol_created", label="B", ladder="freight", ordinal=0
+                ),
+            ),
+            initial_status_parcel="label_created",
+            initial_status_freight="bol_created",
+        )

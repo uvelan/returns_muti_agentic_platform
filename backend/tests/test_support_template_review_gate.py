@@ -1158,7 +1158,9 @@ class TestTheClarificationRoundTripV3Implemented:
         has been told something the case cannot show it ever decided, and a test
         that only asserted both ran would pass for exactly that.
         """
-        instance, runtime, _ = self._wired(monkeypatch, configuration, gate_open=False, resumed=None)
+        instance, runtime, _ = self._wired(
+            monkeypatch, configuration, gate_open=False, resumed=None
+        )
         await instance.clarification_answered(self._notice())
 
         ordered = [
@@ -1193,7 +1195,9 @@ class TestTheClarificationRoundTripV3Implemented:
         self, monkeypatch: pytest.MonkeyPatch, configuration: ReturnPlatformConfiguration
     ) -> None:
         """The transport is at-least-once, so the second delivery *will* happen."""
-        instance, runtime, _ = self._wired(monkeypatch, configuration, gate_open=False, resumed=None)
+        instance, runtime, _ = self._wired(
+            monkeypatch, configuration, gate_open=False, resumed=None
+        )
         notice = self._notice()
         await instance.clarification_answered(notice)
         await instance.clarification_answered(notice)
@@ -1210,7 +1214,9 @@ class TestTheClarificationRoundTripV3Implemented:
         The fact and the relay are still owed; a deadline is not, and resolving
         one would invent a wait nobody is in.
         """
-        instance, runtime, seen = self._wired(monkeypatch, configuration, gate_open=False, resumed=None)
+        instance, runtime, seen = self._wired(
+            monkeypatch, configuration, gate_open=False, resumed=None
+        )
         await instance.clarification_answered(self._notice())
 
         assert "resolve_business_deadline" not in runtime.calls
