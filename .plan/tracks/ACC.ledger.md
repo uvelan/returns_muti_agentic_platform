@@ -614,3 +614,67 @@ was invoked with `pytest -m live_infra` directly, ports verified by hand.
 **Next step:** step:02 — merge trunk (`bc434f72` resolving dispatcher, `c6c15256`
 CI workflow + known-failure allowlist) into the branch, then AMENDMENT-8's
 unreachability assertion.
+
+---
+
+## step:02 — trunk merged; acceptance item 10's deferral made checkable
+
+**Merge:** `refactor/unified-return-platform` (`c5419fcf`) merged into
+`feat/acc-scenarios`, clean, 7 files. Brings V3's resolving dispatcher wired
+into the outbox worker (`bc434f72`) and the new CI workflow (`c6c15256`,
+`.github/workflows/checks.yml` + `scripts/ci/assert_known_failures.py` +
+`known_test_failures.json`). Noted and obeyed: CI now runs the full suites and
+fails on **any** failure not in the allowlist, and also on a named failure that
+starts passing — so every test this branch adds must be green.
+
+**Files:** `backend/tests/acceptance/__init__.py`,
+`backend/tests/acceptance/test_item_10_the_tool_rung_is_unreachable.py`,
+`.plan/acceptance/item-10-deferral.md` (all new).
+
+AMENDMENT-8 defers item 10 and rules the deferral must be checkable. The tool
+rung is **not exercised**; its absence is asserted across **three places that
+must agree** — the released `production.yaml` read from disk, the compiled
+graph's node set, and the **target map** of every conditional branch — plus a
+fourth test stating the agreement of six reads as one identity, because each
+place can be green while another disagrees.
+
+**The target map is the read nothing else in the suite performs.** LangGraph
+raises for a map naming an absent node and for a router returning a name absent
+from the map; neither fires for the thing item 10 turns on, which is a branch
+that *can route to* a rung. The node set says what exists; the map says what is
+reachable.
+
+V3's `test_support_resolver_composition.py` already covers places 1 and 2, so
+this file does not re-derive them: it builds through **the same production
+factory** (importing that module's `_built` rather than copying its doubles) and
+adds place 3 and the agreement.
+
+**Injections — three, mirror-imaged, each read back before running:**
+
+| # | fault | result |
+| --- | --- | --- |
+| INJ-10a | tool ports wired in `build_support_resolution_ladder` | 3 failed, 1 passed — config test correctly stays green |
+| INJ-10b | one valid `tool_bindings` entry released in `production.yaml` | 2 failed, 2 passed — topology tests correctly stay green |
+| INJ-10c | `tool_bindings` key deleted from the document | 1 failed, 3 passed — the presence assertion fires |
+
+The complementary asymmetry between 10a and 10b is the verification that each
+injection landed where it claims: a generic breakage would have taken all four
+tests down together.
+
+**An invalid injection was caught and discarded rather than recorded.**
+INJ-10b's first form used `input_schema_ref: shipment_status.v1`, which is not
+in this build's schema allowlist — the release failed Pydantic validation and
+all four tests **errored** instead of failing. No assertion ran, so the red said
+nothing about the test. Re-injected with a real allowlist entry
+(`graph.shipment_status.v1`) before any evidence was written down. INJ-10c also
+improved the agreement test: it indexed the document directly, so a deleted key
+raised a bare `KeyError` instead of the assertion's own message.
+
+**Commands:** `python -m pytest tests/acceptance -q` → **4 passed**.
+`tests/platform/test_the_normal_suite_never_needs_live_infrastructure.py` plus
+both resolver suites → **51 passed** (the new module is normal-suite classified
+and opens nothing). `ruff check` / `ruff format` clean.
+
+**Next step:** step:03 — the business-time scenarios (items 13, 19), each
+asserting `calendar_applied is True` / `not …is_continuous` per dispatch
+condition 1.
