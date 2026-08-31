@@ -88,6 +88,30 @@ That second point is the general lesson and it outlives this audit: **a map's ho
 
 *Not reached, and recorded as unexecuted rather than green:* AMENDMENT-5's four retry-409 tests, item 20's replay suite, item 8's prompt-injection fixture (read, never injected against), `graph:`/`literal:` bindings, ~85 other review-gate tests, and 20 further ladder scenarios.
 
+## ACC phase 4 — the frontend items, and a ruling of mine that was never executed
+
+Items 24–25 were recorded by phase 2 as *"outside this dispatch's scope as written — backend tests only"*, i.e. **not reached**, never green. Phase 4 audited them with the same instrument. Suite 61 files / 858 passed → 62 / 865. Seven tests added, each injected against, each asserting its own premise; two test files changed, **no production code**.
+
+**Three holes closed, and the first is the one that matters.** `conflict_present: true` appeared in **no fixture under `src/`** — so removing its effect on the Send control left all 858 tests green, and then removing the conflict banner *itself* also left all 858 green. Production is correct, the backend still refuses at the CAS, so nothing wrong is ever *sent*. What was unprotected is the associate **being warned instead of meeting a bare 409**.
+
+The other two are textbook vacuity. **Hash stability was pinned against the wrong clock** — the existing test reads back-to-back, so a per-second leak on a declared field was invisible to it. **Principal independence had nothing at all**, and the obvious test would have been vacuous, so the new one seeds an `accepted_commands` entry first — *giving the comparison something to be wrong about.* That phrase is the whole technique: two identical fixtures agreeing proves nothing.
+
+### ⚠ AMENDMENT-6 was ruled and never executed — my failure to track
+
+All three retired panel fields (`support_digest`, `clarifications`, `parked_messages`) are **still on the DTO, still in the published OpenAPI, and still in the mock.** And because `contracts:check` regenerates from the live FastAPI app and passes its `git diff --exit-code`, that is **a measured fact about the running backend, not a stale document.**
+
+I authored that amendment — retiring three fields a registered section cannot write — recorded it in §1a, and never tracked it to execution. **A ruling with no follow-through is indistinguishable from a ruling never made**, which is the same shape as rule 13's guard with no gate, one level up in the process rather than in the code. RV is ruling on severity.
+
+### ⚠ A gate can report green having not run
+
+Under load, `npm test` reported `Test Files 40 passed (40)` while **21 of 61 files never started.** Note the shape: not "21 failed" — vitest *believed there were forty*. The headline is internally consistent and green. On an unloaded machine I verified the same suite correctly reports 62 files / 867 tests, so this is behaviour under resource pressure rather than a permanent miscount.
+
+**Why it is not merely a curiosity:** `assert_known_failures.py` fails on any unnamed failure and on a named failure that started passing — but **neither check can see a test that never ran.** A runner under memory pressure could pass `frontend-tests` having executed two thirds of the suite. The backend job has the same exposure in principle. Dispatched as a ratchet in the established `bundle-budget.json` idiom, with the distinction that decides the design: **a suite that shrank because someone deleted tests is a diff to review; a suite that shrank because a worker died is an infrastructure failure reporting green.**
+
+*Also found, rule 13 again:* the repo's only axe accessibility sweep is Playwright-only and **run by no workflow**.
+
+*Not reached, stated as unexecuted rather than green:* everything above was measured against the **MSW contract surface, not the backend that implements it**; plus parked reprocessing in stream order, the two-viewer edit-store scenario, `conflict_present`'s participation in the hash as opposed to its rendering, a11y beyond the conflict surface, and the panel load test — so `copilot.case_poll_interval_ms = 10_000` remains **ungated by measurement**, exactly as the contract's cost posture warned.
+
 ## Contract amendments (all in `.plan/contracts.md` §1a)
 
 Five so far. **Four of the five are T0 errors — things I froze that did not survive contact with implementation**, and every one was caught by someone trying to build or wire the thing rather than read about it.
