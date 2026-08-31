@@ -197,3 +197,102 @@ and `npx tsc -b` (read, and tolerated at "3 known errors") rather than
 **So it is not that nothing gates typecheck; it is that the gate is red and
 nobody runs it.** A CI job running `npm run check` would have failed this merge.
 Not adding one — CI configuration is explicitly out of scope for this branch.
+
+---
+
+## step:03 — the fixtures land; the Python change stays reverted
+
+Both orchestrator rulings on step:02, applied.
+
+### Ruling 1 — patch the three fixtures. **Landed.**
+
+One `actorId: null` in each helper, written **longhand in the literal** rather
+than left to `overrides`, with a comment saying why (a field supplied only by
+the `Partial<>` spread is typed optional; the other ten fields are already
+longhand for the same reason, by accident of having predated the field).
+
+| File | Helper |
+|---|---|
+| `frontend/src/domains/operations/CaseOperationsPage.test.tsx` | `fact()` |
+| `frontend/src/domains/returns/ReturnSetupCapture.test.tsx` | `caseFact()` |
+| `frontend/src/domains/support/SupportConsolePage.test.tsx` | `fact()` |
+
+`null` is the honest value: these helpers build observations, and an observation
+has no actor. The doubles now *state* that instead of leaving a hole.
+
+### Evidence: 3 → 0
+
+`npx tsc -b --pretty false` → **exit 0, zero errors** (was exit 2, three errors).
+
+**The tell.** A green from `tsc -b` is the one result that can be right for the
+wrong reason: `-b` is incremental and reads `../.tmp/frontend-tsconfig.*.tsbuildinfo`,
+so a checker that short-circuited on stale build info would also print nothing.
+Observation cannot distinguish those two greens, so I did not rely on it.
+
+I removed each of the three lines **individually** and re-ran:
+
+```
+removed actorId from CaseOperationsPage.test.tsx -> exit=2, 1 error: CaseOperationsPage.test.tsx(80,3)
+removed actorId from ReturnSetupCapture.test.tsx -> exit=2, 1 error: ReturnSetupCapture.test.tsx(156,3)
+removed actorId from SupportConsolePage.test.tsx -> exit=2, 1 error: SupportConsolePage.test.tsx(131,3)
+all three restored                               -> exit=0, 0 errors
+```
+
+Three things this establishes that a bare `0` does not. The checker is **live**,
+not serving a cached green — it produces a fresh error on demand. Each line is
+**individually load-bearing** — one error per removal, never two, never zero.
+And the error that returns is **the same error**: `(80,3)`, `(156,3)`, `(131,3)`
+are the exact coordinates of the three baseline errors recorded in step:01, so
+the green comes from those three errors being fixed rather than from some other
+error having been displaced or a file having stopped being checked.
+
+### Suite
+
+`npm test` — **747 passed, 2 failed**, both in `src/domains/registry.test.ts`
+and both the known `/shipments` pair (`returns.session.read: /returns,
+/shipments, /support` against an expectation naming only `/returns, /support`).
+**Zero new failures.**
+
+**Backend not run, deliberately.** The backend is untouched by this step — the
+diff is three frontend test files, additions only, no deletions. Nothing on the
+Python side changed, so there is nothing there to regress.
+
+### Ruling 2 — the Python change stays reverted, and its reasoning is preserved
+
+`backend/src/return_platform/operations/case_projection/contract.py` is
+**unmodified**; it does not appear in this branch's diff against `85dc4271`.
+Recorded as a post-gate follow-up under **document honesty**:
+
+> `CaseFactProjection.actorId` should be required-and-nullable
+> (`actorId: Reference | None`, no default). The published document currently
+> says the key may be absent, while `append_scoped_case_fact` guarantees it is
+> always written, `None` included. A third-party client generated from that
+> document would type the field optional and write defensive code for a case
+> that cannot occur. That is a real contract inaccuracy, independent of any
+> typecheck.
+>
+> `models.CaseFactView.actorId` **keeps** its default and is not part of this.
+> That model validates *stored* documents, including ones written before the
+> field existed, and `tests/operations/test_case_fact_actor.py:101` pins its
+> required set against `LEGACY_STORED_KEYS` for exactly that reason. A stored
+> document may lack the key; a served response may not. The two models get
+> opposite answers because they answer different questions.
+>
+> **Cost:** five `CaseFactProjection(...)` construction sites in
+> `tests/operations/test_case_projection.py` (lines 800, 807, 990, 1757, 1829)
+> gain `actorId=None`, plus regeneration of all six pinned artifacts
+> (`npm run contracts:generate` for `frontend/openapi/…json` and the `.d.ts`;
+> `scripts/check_openapi_drift.py --write` for `openapi/`, `backend/openapi/`,
+> root `openapi.json` and the evidence receipt), with AMENDMENT-3's
+> endpoint-survival check in **all four** JSON snapshots.
+>
+> **Verification warning for whoever picks this up:** do **not** verify it with
+> `tsc`. Per probe A in step:02 the typecheck is invariant to this change, so a
+> `tsc` injection is unpassable and any red seen during one would be red for an
+> unrelated reason. Verify it where it actually bites — assert `"actorId"` is in
+> the published schema's `required` array for `CaseFactProjection`, and that
+> the generated `.d.ts` renders `actorId: string | null` without the `?`.
+>
+> The no-`default_factory` contract test
+> (`test_case_projection.py:481-484`) skips required fields, so it does not
+> obstruct this.

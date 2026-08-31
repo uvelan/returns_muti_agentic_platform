@@ -159,6 +159,11 @@ function caseFact(
     channel: "CHANNEL_A",
     acquisitionMethod: "STATED",
     agentId: "return-copilot",
+    // No actor: these are observations, not command-originated facts. Written
+    // longhand rather than left to `overrides`, because a field supplied only
+    // by the `Partial<>` spread is typed optional and `CaseFactProjection`
+    // requires it.
+    actorId: null,
     sourceSystem: null,
     observedAt: "2026-08-21T10:00:00Z",
     recordedAt: "2026-08-21T10:00:00Z",

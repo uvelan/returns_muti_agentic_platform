@@ -82,6 +82,11 @@ function fact(
     factName: name,
     value,
     agentId: "order-discovery-agent",
+    // No actor: these are observations, not command-originated facts. Written
+    // longhand rather than left to `overrides`, because a field supplied only
+    // by the `Partial<>` spread is typed optional and `CaseFactProjection`
+    // requires it.
+    actorId: null,
     channel: "CHANNEL_A",
     acquisitionMethod: "STATED",
     sourceSystem: "RETURN_PLATFORM",
