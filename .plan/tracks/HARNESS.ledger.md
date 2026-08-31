@@ -2632,3 +2632,110 @@ as the only datum, which is the single most misleading number in the whole set.
    `test_the_bay_activity_answers_and_no_signal_is_needed` and run 4's
    `test_a_signal_that_won_the_race_is_not_overwritten_by_the_activity` are two
    of those three, and both are **flakes, not passes**, in any record of this run.
+
+---
+
+## step:19 — reconciliation: an index to the duplicated step ids
+
+This file has three step ids that appear twice, written by two authors. This
+entry resolves each to a commit so a reader can look one up instead of guessing.
+**Nothing is renumbered, deleted or edited.** Renumbering would rewrite another
+author's append-only entry, which is the one edit this format exists to prevent,
+and doing it to tidy the record would be worse than the disorder it fixes.
+
+### 1. The cause, which is not carelessness by either author
+
+**The orchestrator resumed two agents onto one branch without either being told
+the other was active.** Both wrote in good faith into the file they had been
+pointed at, under the same git identity, so neither `git log` nor `git blame`
+distinguishes them. Each discovered the other only by noticing an artifact that
+did not match its own record — one a corrupted encoding, the other a block of
+script that had moved further than its own edit explained.
+
+Recording this because a future reader finding duplicate ids will otherwise
+assume whoever wrote them was careless. Neither was.
+
+**Both authors initially wrote the other's commits up as an intrusion. Both
+framings were wrong, symmetrically, and neither is preserved here** — not the
+other author's, which it has withdrawn, and not the mirror of it from my side.
+Neither of us could see that the other had been resumed onto the branch.
+
+### 2. The index
+
+Steps 07–10 are the other author's and predate the second author's arrival
+entirely; they are listed for completeness and do not collide.
+
+| step | sha | time | author | what it is |
+|---|---|---|---|---|
+| 07 | `b4c26396` | 15:36 | A | the three RV corrections — a count, a limit, an attribution |
+| 08 | `9c5cce57` | 15:47 | A | a process per module, and an aggregate that cannot lie |
+| 09 | `b71f4d9c` | 16:49 | A | per-module does not fix it |
+| 10 | `497c1ca7` | 16:53 | A | a ceiling per module |
+| **11** | `d1313348` | 17:03 | **A** | **three corrections to its own record** — that a late `kill -9` of its own stopped the hung reservations process (the orchestrator did); that run 1 had stopped at 29 modules (it was still running, concluded from a 0-byte launcher stdout and one of its own killed waiters); and that it edited the runner mid-execution having written in step:09 that it would not |
+| **11** | `c11c7db5` | 17:11 | **B** | **the stale outbox pin, and the wall-clock mechanism** — production right, test stale, pin 7→9 with four assertions added; and the `reached()` budget found in the August remediation ledger |
+| **12** | `472dd452` | 17:17 | **B** | **the ceiling did not fire** — retraction of the claim that step:10's timeout handled the module-30 hang; the fourteen-runs-no-messages rule |
+| **12** | `d4d35f4f` | 17:58 | **A** | **run 1 complete, and what the message said** — the 71-module aggregate derived from the log because the summary never printed; 421/3/54 reconciling to 512; module 69's verbatim message; withdrawal of step:09's accumulated-state claim; three runner fixes |
+| **13** | `c29da2bd` | 18:00 | **A** | **a second writer, a verified fix, and a corruption of mine** — the collision from its side; verification of B's outbox change on a quiet stack (7 passed); disproof of the hybrid-tree reading; its own `Add-Content` encoding defect, left unrepaired |
+| **13** | `5abc3028` | 18:07 | **B** | **the budget is smaller than one attempt's own ceiling** — `start_to_close_timeout` is per attempt |
+| 14 | `220778bf` | 18:22 | B | the bimodal reproduction on a quiet machine |
+| 15 | `fad67539` | 18:27 | B | three sites assert promptness; the derived number was too small |
+| 16 | `6138f74d` | 18:34 | B | `START_TO_CLOSE`; the ceiling derived in code |
+| 17 | `b989c16d` | 18:39 | B | a marker for the module the gate did not stop |
+| 18 | `7d7fc85e` | 19:14 | B | the remedy did NOT work; the ceiling was itself exceeded |
+
+Verified against the repository rather than transcribed:
+
+    $ git log --format="%h %ad %s" --date=format:"%H:%M:%S" b4c26396^..HEAD
+    $ grep -n "^## step:" HARNESS.ledger.md | ... | sort | uniq -d
+    -> step:11  step:12  step:13
+
+### 3. Going forward
+
+**One owner on this branch from now on, and it is author B.** Author A has stood
+down and confirms it has run, committed and edited nothing since `c29da2bd`. Its
+half of this map was relayed through the orchestrator rather than written into
+this file, so the duplication does not grow while being documented.
+
+Step ids from `step:14` onward are unambiguous. The three duplicated ids stay
+duplicated; this index is how they are resolved.
+
+### 4. Author A's work, assessed
+
+None of it is reverted, and three parts of it are better than what I had:
+
+- **The `PYTHONPATH` fix in the runner is better than my workaround.** I set the
+  variable per-command; A exported it from the script itself
+  (`export PYTHONPATH="$ROOT/backend/src${PYTHONPATH:+:$PYTHONPATH}"`, prepended
+  so a deliberate caller value survives), which fixes it for every invocation
+  rather than for the ones I remembered.
+- **The `n_skipped` parsing fix explains modules 59 and 66**, which my own log
+  parser also mis-flagged as resultless in step:13 sect. 2. An all-skipped module
+  reports `10 skipped in 6.37s` with no other number in the line, and without
+  that fix it dragged the whole run into "cannot report what it ran". A found and
+  fixed a defect I had only observed.
+- **The per-module timestamps close a gap I complained about without fixing.**
+  I noted in step:11 that no round had recorded machine load; A made the
+  durations placeable against it.
+
+Its step:12 verification of my outbox change also closed the explicit
+"not executed" caveat I had left on it, before my own step:18 re-verified the
+same thing independently. Both measurements agree: 7 passed.
+
+### 5. The honest state of the branch
+
+**Two authors' fixes, individually reasoned — and the joint verification is still
+missing, though less of it than when that phrase was coined.** Precisely:
+
+- **My ceiling change has now been exercised, and it failed** (step:18): four of
+  five runs of the workflow module still fail, and one exceeded the 180s ceiling
+  itself. It is not a fix.
+- **A's three runner fixes have never been exercised by a completed suite run.**
+  Run 1 predates them entirely and died on the mid-run edit; step:18's repetition
+  invoked `pytest` directly and bypassed `run_real_infra_suite.sh` altogether.
+- **My step:17 runner marker fix is likewise unexercised**, and it sits on top of
+  A's changes in the same file.
+
+So the runner as it now stands — A's step:12 plus my step:17 — **has never been
+run end to end by anyone.** The live suite has still never been run to completion
+with both authors' changes present, and no one should quote a live-suite result
+until it has.
