@@ -558,3 +558,59 @@ frontend/src backend/config scripts` returns nothing.
   that ACC duplicates) are unchanged and still not acted on, both being
   production edits owned elsewhere.
 - Advisory above — the forgotten-fixture gap — must reach the phase-2 brief.
+
+---
+
+# phase 2 — acceptance scenarios and the 26-item gate
+
+Branch `feat/acc-scenarios`, based on trunk `39fd7c08`.
+
+## step:01 — the two never-executed safety nets, executed and re-verified
+
+**Files:** `backend/tests/harness/posix_signal_proof.py` (new),
+`.plan/acceptance/safety-nets.md` (new).
+
+Dispatch condition 2: run the never-executed safety nets **first**, before
+anything is built on them. Both of the harness's guarantees were arguments
+rather than observations. Both are now observations.
+
+This step was written across a session break — an API session limit killed the
+run after the work existed in the working tree but before its commit landed. On
+resume the two files were read in full and **both nets were re-run from cold and
+re-injected with faults different from the recorded ones**, because a claim
+re-proved by repeating its own evidence is a claim compared with itself.
+
+**(a) `test_chaos_restart_smoke_real_infra.py` — first execution ever, then a
+second.** The real `run_return_workflow_worker.py` starts from the harness,
+survives the 20s settle window, is killed, and comes back with a different pid:
+**1 passed in 40.66s** against the live stack. Independent injection: an
+unreachable `PLATFORM_TEMPORAL_TARGET` overlaid on `RETURN_WORKFLOW_WORKER.env`
+— **proved to be a real fault first** by running the worker script directly with
+that env (`RuntimeError: Failed client connect … ConnectionRefused`) — takes the
+test to **1 failed in 7.93s**. The test is sighted.
+
+**(b) The SIGTERM link.** RV narrowed the single unproven link to whether
+`os.killpg(os.getpgid(pid), SIGTERM)` reaches the child through the session
+`start()` establishes. `posix_signal_proof.py` executes exactly that under
+`python:3.13-slim` in Docker (a script, not a `test_`, so the dev platform
+cannot silently skip it): **all four links proved**, exit 0. Independent
+injection: `_signal_tree`'s `SIGKILL if force else SIGTERM` reduced to `SIGKILL`
+— one line, confirmed the only occurrence by `git diff -U0` — takes check 3 to
+**FAIL** while checks 1, 2 and 4 stay **PASS**. That asymmetry is itself the
+verification that the injection did what it claims rather than breaking the file.
+
+Both injections reverted with `git checkout`; `git status` clean after each.
+Full evidence tables in `.plan/acceptance/safety-nets.md`.
+
+**Production defect found — reported, not fixed.**
+`scripts/dev/run_real_infra_suite.sh:56` preflights `"SQL Server:14330"` while
+`compose.yaml:192` publishes `${PLATFORM_SQLSERVER_PORT:-11433}` and `.env:94`
+sets `11433`. The only sanctioned entry point for the live-infra suite therefore
+**refuses to run against a stack that is fully up**, with the one message
+guaranteed not to lead anyone to the port number. One line, in `scripts/`, which
+is outside ACC's `backend/tests/`-only scope. Every live-infra run recorded here
+was invoked with `pytest -m live_infra` directly, ports verified by hand.
+
+**Next step:** step:02 — merge trunk (`bc434f72` resolving dispatcher, `c6c15256`
+CI workflow + known-failure allowlist) into the branch, then AMENDMENT-8's
+unreachability assertion.
