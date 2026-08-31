@@ -380,6 +380,32 @@ Across fourteen measured runs — RV's eleven and step:09's three — **no failu
 
 *Kept from the attempt:* twelve lines of comment marking the three promptness budgets as **assertions, not liveness nets** — placed at the call sites, because *a ledger entry is not what a future reader has open when they decide to finish the job on three budgets that look unfixed beside eleven others.*
 
+### ⚑ ROOT CAUSE — the storage layer, underneath everything this track tried
+
+**Temporal's Postgres cannot complete durable writes fast enough on this hardware.** `pg_test_fsync` on its volume: **30–406 ms per 8 kB durable write**, against a sub-millisecond expectation. The unsync'd path runs at **1,087,454 ops/sec** — so the data path is fine and it is *durability* that costs, which is what a database does on every commit and checkpoint.
+
+The chain, server-side throughout: `shard status unknown` arrived from `get_workflow_execution_history`, not from a test; Temporal's own logs over three hours carried **145** `Failed to start transaction`, **266** `context deadline exceeded`, **44** `shard status unknown` and **19** `Acquired shard`; and Postgres logged `checkpoint complete: wrote 1830 buffers; write=174.354 s` — 14 MB in 174 seconds.
+
+**Ruled out by measurement, not argument:** memory (166 MB of 1 GB), bind-mount overhead (it is a named volume), sequential throughput (53 MB/s) — and **accumulated state: the database is 38 MB with 916 executions.** *The hypothesis that opened this investigation, survived three rounds and drove two remedies, died to one query.*
+
+**It explains why every remedy here was doomed.** Per-module execution, namespace and task-queue isolation, and the derived ceiling all acted on the test process or the Temporal namespace. **The constraint is underneath both, and nothing in `backend/tests` can reach it.** It also retires the production escalation for a second independent reason: an activity accepted and never completed is what a worker looks like **when its completion cannot commit.**
+
+### The A/B — approved by the user, and decisive
+
+`fsync=off` + `synchronous_commit=off` on the test Postgres only (a shared `compose.yaml` outside this repo; before-state committed first, and the file is itself under version control so the original is recoverable independently of our ledger).
+
+| | baseline (`fsync=on`) | `fsync=off` |
+|---|---|---|
+| workflow runs clean | **3 of 5** | **5 of 5** |
+| run-time spread | 79–275 s | **39.5–42.0 s** |
+| persistence errors in window | 145 / 266 / 44 | **0 / 0 / 0** |
+
+**At the original, un-raised budgets.** That is the cleanest possible confirmation: *the remedy made the tests pass by removing the cause, not by relaxing what they check.* The reverted ceiling was the right call.
+
+**The variance collapse is the sharper signal than the pass count** — a 2.5-second band where there was a 200-second spread. The bimodality that first identified a timeout is simply gone, and five runs of pass/fail could never have shown that.
+
+**An unplanned internal control disposes of "the machine just got faster":** the outbox module is Mongo-only and never touches Temporal's Postgres. It did **not** speed up (20.1 s → 25.9 s) while every Temporal-dependent module ran 3–7× faster. The effect is specific to the storage path that changed. The named volume was re-attached rather than recreated, so **accumulated state was held constant across both arms** — the experiment could not confirm the storage fix by also wiping the data.
+
 ### The instrument was the defect, again
 
 `repeat.ps1` captured each run with `Select-Object -Last 12`, so three failures in one run compressed to a single partial traceback — **and signature (d), the only repeat offender, has a name and no message.** In the author's own words: *"I wrote the rule that a flake investigation recording names and not messages is not an investigation, and then built a harness that truncates messages. A rule stated in a ledger does not enforce itself; the harness has to."*
