@@ -325,14 +325,30 @@ touches nothing outside `backend/tests/` and `.plan/`.
    `npm run contracts:check` passes including its `git diff --exit-code`, so
    the committed document matches the live backend. Owned by V1/V3; reported,
    not repaired.
-6. **(ACC4) The frontend merge tip is red, and `npm test` under load reports
-   green while a third of it never runs.** `registry.test.ts` fails 2 tests at
-   the base commit — `14aa6915` registered a `/shipments` domain without
-   updating the test — so `frontend-tests` is red on trunk. Separately,
+6. **(ACC4) The frontend merge tip is red, and `frontend-tests` can report green
+   having run a third of the suite.** `registry.test.ts` fails 2 tests at the
+   base commit — `14aa6915` registered a `/shipments` domain without updating
+   the test — so `frontend-tests` is red on trunk. Separately,
    `vitest.config.ts` sets no `maxWorkers`; on a loaded machine 21 of 61 files
    failed to start while the summary read `40 passed (40)`, the denominator
-   being the files that started. Only the exit code catches it. Capping at 2
-   makes the suite complete **and 4× faster**.
+   being the files that started. Capping at 2 makes the suite complete **and 4×
+   faster**.
+   **The gate consequence, corrected after RV finding ACC4-1 F1** — an earlier
+   draft here said the exit code catches it, which is wrong and made the hole
+   look contained: `checks.yml:479-489` runs the suite under `set +e` and fails
+   only on `status -gt 1`, so **exit 1 is the tolerated path by design** (this
+   suite legitimately exits 1 on its allowlisted failures). The actual catch is
+   `assert_known_failures.py`'s `missing = allowed - ran` rule, and it fired
+   only because the dropped files happened to include `registry.test.ts`, which
+   carries **both** allowlist entries. Drop 21 files containing no allowlisted
+   test and the job exits 0. The only other floor is `if not ran`, which catches
+   a total collapse and nothing short of it. **An allowlist comparator can only
+   notice failures already on its list**; nothing asserts a floor on how much
+   was collected. Remedy the analysis supports: a **collected-count floor** in
+   the gate, alongside the `maxWorkers` cap. RV could not reproduce the
+   truncation (49.86 s unloaded, 85.86 s under 12 saturating jobs) — recorded as
+   **unreproduced, not refuted**; the gate hole is visible by reading the
+   workflow and does not depend on it.
 7. **(ACC4) The accessibility sweep items 24–25 ask for is gated by nothing.**
    The only axe run is `frontend/tests/canonical-routes.spec.ts`, a Playwright
    spec; `grep -rn "playwright\|test:e2e" .github/workflows/*.yml` returns

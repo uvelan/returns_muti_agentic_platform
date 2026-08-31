@@ -98,6 +98,13 @@ $ npm test >/dev/null 2>&1; echo "EXIT=$?"
 EXIT=1
 ```
 
+> **⚠ SUPERSEDED BY step:07 — the sentence above is wrong.** The command and its
+> output stand; the *inference* does not. CI tolerates exit 1 by design
+> (`checks.yml` runs the suite under `set +e` and fails only on `status -gt 1`),
+> so the exit code saves nothing. RV finding ACC4-1 F1. This entry is left in
+> place because the ledger is append-only and what the branch believed at
+> step:01 is part of the record; step:07 carries the correction.
+
 Recorded as **FE-DEFECT-1** (see `frontend-audit.md`). It is directly relevant to
 this dispatch: the machine is loaded precisely because another agent is running
 the live suite, which is the contention under investigation.
@@ -830,3 +837,129 @@ The 2 are FE-DEFECT-2's, present at the base commit and untouched.
 `git diff 2d0e3d65 -- frontend/src/` touches **two test files and no production
 code**. No test was deleted, skipped, or weakened; no `.skip` or `.only` was
 added; no backend test was run.
+
+---
+
+## step:07 — RV ACC4-1 F1: the safeguard I named does not exist
+
+Review at `.plan/reviews/ACC4-1.md` (`9b1901fc`, branch `rv/ACC4-1` — trunk was
+locked by another worktree). Verdict `CHANGES_REQUIRED`, one finding against
+this branch. **F1 is correct, and correcting it makes my own finding worse
+rather than better**, which is why it is worth the round.
+
+*(Housekeeping: the worktree had been switched to `rv/ACC4-1` while the review
+was written. `git checkout feat/acc-frontend` first; base confirmed
+`f4d9743a`, tree clean, before any edit.)*
+
+### What I claimed, and why it is wrong
+
+`frontend-audit.md`, `ACC4.ledger.md` step:01 and `STATUS.md` finding 6 all
+said the truncated-suite defect is contained because the run exits 1. Verified
+against the workflow rather than against RV's summary of it:
+
+```
+$ sed -n '476,489p' .github/workflows/checks.yml
+      - name: npm test
+        working-directory: frontend
+        run: |
+          # `set +e` for the same reason as the backend job.
+          set +e
+          npm test -- --reporter=default --reporter=junit --outputFile.junit=junit-frontend.xml
+          status=$?
+          if [ "$status" -gt 1 ]; then
+            echo "::error::vitest exited $status -- the run failed, not the tests"
+            exit "$status"
+          fi
+```
+
+`set +e`, and the step fails only when the status **exceeds 1**. Exit 1 is not
+merely tolerated by accident — it is the *designed* path, because this suite
+legitimately exits 1 on its allowlisted failures. **My safeguard does not
+operate in CI at all.**
+
+### What actually caught it, and why that is contingent
+
+```
+$ sed -n '104,107p' scripts/ci/assert_known_failures.py
+    unexpected = sorted(failed - allowed)
+    repaired = sorted(allowed & (ran - failed))
+    missing = sorted(allowed - ran)
+```
+
+Dropped files produce no failures and no passes, so `unexpected` and `repaired`
+are both empty. Only `missing` can fire. And the allowlist is two ids in one
+file:
+
+```
+$ node -e "console.log(require('./scripts/ci/known_test_failures.json').suites.frontend.known_failures.join('\n'))"
+src/domains/registry.test.ts::the domain registry > declares exactly the canonical domains
+src/domains/registry.test.ts::the domain registry > shares a visibility capability only where that is deliberate
+```
+
+(The allowlist is keyed `suites.frontend`; a first attempt at that command read
+the top level and raised `TypeError: Cannot read properties of undefined`. The
+working form is the one above — the ledger's commands are meant to be run, not
+admired.)
+
+`registry.test.ts` **happened** to be among the 21 dropped files. Had the pool
+dropped 21 files not containing it: `failed` ⊆ `allowed`, `repaired` = ∅,
+`missing` = ∅ → **exit 0, having run a third of the suite.** The only other
+floor is `if not ran` (line 100), which catches a total collapse and nothing
+short of it.
+
+The general property, which is what a fix has to answer: **an allowlist
+comparator can only notice failures already on its list.** Right instrument for
+"did anything new break", structurally wrong one for "did the suite actually
+run" — and nothing in `checks.yml` asserts a floor on what was collected.
+
+### Three passages corrected
+
+* **`frontend-audit.md` FE-DEFECT-1** — rewritten as three defects
+  (pool behaviour / reporter artifact / gate hole) with the workflow and
+  comparator quoted, the contingency named, and **the remedy the analysis
+  supports**: a *collected-count floor* in the gate — a minimum on files or
+  tests in the JUnit report, or the collected set compared against a committed
+  manifest — **alongside** the `maxWorkers` cap. The cap addresses (a) and not
+  (c); alone it would make truncation rarer without making it visible. Written
+  for the separate agent building the floor guard.
+* **`STATUS.md` finding 6** — corrected in place with the mechanism named
+  (`set +e`, `status -gt 1`, `missing = allowed - ran`) and the correction
+  marked as such rather than silently swapped.
+* **`ACC4.ledger.md` step:01** — the ledger is append-only, so the entry stands
+  and carries a `⚠ SUPERSEDED BY step:07` marker. The command and its output
+  were true; only the inference was wrong, and the distinction is stated there.
+
+### Reproduction, recorded as RV asked
+
+RV could not reproduce the truncation: **49.86 s** complete unloaded (62 files /
+867 tests), **85.86 s** complete under twelve CPU-saturating jobs. Recorded as
+**unreproduced, not refuted** — my capture at step:01 is verbatim and stands as
+an observation with an unknown trigger threshold. **The gate hole does not
+depend on it**: it is visible by reading `checks.yml` and
+`assert_known_failures.py`, which is why the corrected write-up leads with the
+reading and treats the observation as context.
+
+### Not charged to this branch, no action taken
+
+RV sustained **AMENDMENT-6** as blocking contract drift and escalated it (E1) —
+verified by reading source rather than by trusting my report: all three fields at
+`operations/case_panel.py:205-208`, hardcoded empty at `api/case_panel.py:112-115`,
+present in the published document and the mock, and V1's comment still there word
+for word. It belongs to V1/V3 and to the orchestrator. **FE-DEFECT-5** (the axe
+sweep no workflow runs) is sustained as a genuine rule-13 finding but belongs to
+whoever owns `checks.yml`. Both correctly raised and correctly not repaired;
+neither is mine to fix.
+
+### State
+
+**No code changed in this step — three planning documents only.**
+
+```
+$ git diff --name-only 2d0e3d65 -- frontend/src/
+frontend/src/domains/returns/panes/casePanel/TemplateReviewSection.test.tsx
+frontend/src/mocks/handlers/casePanelHandlers.contract.test.ts
+```
+
+Unchanged from step:06: two test files, no production source. Suite figures are
+untouched at **62 files / 867 tests / 865 passed / 2 failed**, and RV reproduced
+them exactly (`78.87s`).

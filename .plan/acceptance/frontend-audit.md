@@ -174,13 +174,96 @@ Caused by: Error: [vitest-pool-runner]: Timeout waiting for worker to respond
 ```
 
 **21 of 61 files never started**, and the headline reads `40 passed (40)` because
-the denominator is the files that *started*. The exit code is the only thing
-that saves it (`EXIT=1`). `vitest.config.ts` sets no `maxWorkers`; capping it at
-2 makes the suite both complete **and four times faster** (79 s).
+the denominator is the files that *started*.
 
-This is not incidental to this dispatch — the machine was loaded because another
-agent was running the live suite, which is the contention under investigation.
-A CI runner under load would produce the same shape.
+This is **three** defects wearing one coat, and an earlier draft of this
+document got the third badly wrong — it said *"the exit code is the only thing
+that saves it (`EXIT=1`)"*. That is false, and correcting it makes the finding
+**larger**. (RV finding ACC4-1 F1.)
+
+**(a) Vitest pool behaviour under resource pressure.** `vitest.config.ts` sets
+`pool: "forks"` and **no `maxWorkers`**, so it fans out to the default and
+worker start-up times out. Capping at 2 makes the suite both complete **and four
+times faster** (79 s vs 310 s).
+
+**(b) A reporter artifact.** `Test Files 40 passed (40)` takes its denominator
+from the files that *started*, so a truncated run reads green in its headline.
+Nothing in the summary says 21 files were expected and are absent. No remedy
+available in this repository; it is upstream cosmetics.
+
+**(c) A real gate hole — and the exit code is not a safeguard.**
+`.github/workflows/checks.yml:479-489` runs the suite under `set +e` and fails
+the step only when the status **exceeds 1**:
+
+```yaml
+          set +e
+          npm test -- --reporter=default --reporter=junit --outputFile.junit=junit-frontend.xml
+          status=$?
+          if [ "$status" -gt 1 ]; then
+            echo "::error::vitest exited $status -- the run failed, not the tests"
+            exit "$status"
+          fi
+```
+
+**Exit 1 is the tolerated path by design** — it has to be, because this suite
+legitimately exits 1 on its allowlisted failures (FE-DEFECT-2's two). A
+truncated run exits 1 and walks straight through. The safeguard the earlier
+draft named does not operate in CI at all.
+
+What actually caught the observed run is a **different and contingent**
+mechanism: `scripts/ci/assert_known_failures.py` computes three sets against the
+allowlist,
+
+```python
+unexpected = sorted(failed - allowed)
+repaired   = sorted(allowed & (ran - failed))
+missing    = sorted(allowed - ran)
+```
+
+and dropped files produce neither failures nor passes, so `unexpected` and
+`repaired` are both empty. The only rule that can fire is `missing` — *an
+allowlisted test was not collected*. The step runs
+`assert_known_failures.py --suite frontend`, and that suite's allowlist in
+`scripts/ci/known_test_failures.json` (`suites.frontend.known_failures`) holds
+exactly two entries, **both in the same file**:
+
+```
+src/domains/registry.test.ts::the domain registry > declares exactly the canonical domains
+src/domains/registry.test.ts::the domain registry > shares a visibility capability only where that is deliberate
+```
+
+`registry.test.ts` **happened** to be among the 21 dropped files, so its two ids
+landed in `missing` and the job would have failed. **That is luck about which
+files got dropped.** Drop 21 files containing no allowlisted test and:
+`failed` ⊆ `allowed`, `repaired` = ∅, `missing` = ∅ → **exit 0, having run a
+third of the suite.** The script's only other floor is `if not ran`, which
+catches a *total* collapse and nothing short of it.
+
+Stated as the general property, because that is what a fix has to answer:
+**a comparator built from an allowlist can only notice failures already on its
+list.** It is the right instrument for "did anything new break" and structurally
+the wrong one for "did the suite actually run" — and nothing in `checks.yml`
+asserts a floor on files or tests collected. Rule 13 in its own idiom: the guard
+exists, and the thing that would have caught this reaches it only by accident.
+
+*The remedy this analysis supports*, for whoever builds it: **a collected-count
+floor in the gate** — assert a minimum number of files/tests in the JUnit report,
+or compare the collected set against a committed manifest — **alongside** the
+`maxWorkers` cap, which addresses (a) but not (c). The cap alone would make the
+truncation rarer without making it visible.
+
+**Reproduction status: unreproduced, not refuted.** RV attempted it twice and
+could not: **49.86 s** complete when unloaded (62 files / 867 tests), and
+**85.86 s** complete under twelve concurrent CPU-saturating jobs. The capture
+above stands as the observation — it happened, verbatim, in
+`.plan/tracks/ACC4.ledger.md` step:01 — and its trigger threshold is unknown.
+**The gate hole stands independently of anyone reproducing the truncation**,
+because it is visible by *reading* `checks.yml` and `assert_known_failures.py`
+rather than by inducing the condition. That is the part that matters to whoever
+builds the floor guard.
+
+*Context, not causation:* the machine was loaded because another agent was
+running the live suite — the contention under investigation.
 
 ### FE-DEFECT-2 — the merge tip is red in the frontend suite
 
