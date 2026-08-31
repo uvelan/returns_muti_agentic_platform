@@ -106,7 +106,10 @@ jobs:
   # The backend suite. `[tool.pytest.ini_options]` already deselects the
   # `live_infra` and `browser` markers, so the default run is the normal
   # suite -- unit plus in-process integration, no MongoDB, no Temporal
-  # server, no browser. It needs nothing this runner does not have.
+  # server, no browser.
+  #
+  # It does need one thing this runner does not have, and that omission meant
+  # this job had never once completed a run. See the `.env` step below.
   # ---------------------------------------------------------------------
   backend:
     name: backend suite
@@ -115,6 +118,90 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------
+      # Without this, the job dies before collecting a single test.
+      #
+      # `backend/tests/conftest.py`'s `pytest_configure` raises when the
+      # repository-root `.env` is missing, and `.env` is gitignored
+      # (`.gitignore:25`) and untracked. So on a fresh runner pytest raised
+      # at configure time, exited 3, and the discriminator below reported
+      # "the run failed, not the tests" -- correctly, and about itself.
+      #
+      # So the BACKEND job's greens were replicated locally, on a workstation
+      # that happened to have a `.env`, and never observed in the pipeline.
+      # (Only that job: the other "green on this commit" notes in this file
+      # belong to `frontend-static` and `contracts`, neither of which reads
+      # `.env`, and they are unaffected.) The gate existed, named itself, and
+      # could not execute: the same defect it was written to prevent.
+      #
+      # `.env.example` is tracked, and this is not an invented command line:
+      # `scripts/bootstrap_host.sh:17` and
+      # `scripts/linux/reset_docker_environment.sh:85` run this same copy, and
+      # two further scripts instruct developers to.
+      #
+      # To be exact, since a comment that rounds off is how this file got into
+      # trouble in the first place: both of those wrap the copy in
+      # `if [[ ! -f .env ]]` and follow it with `chmod 600`. The `cp` line is
+      # identical; the two wrappers are dropped here deliberately. The guard
+      # protects a developer's filled-in `.env` from being overwritten, and
+      # after `actions/checkout` no such file can exist -- a guard against an
+      # impossible state reads as though the state were possible. And
+      # `chmod 600` narrows access on a shared workstation; a runner is
+      # single-tenant and discarded with the job, and the content is a tracked
+      # file already public in the repository.
+      #
+      # Measured rather than assumed, with the red observed first: absent
+      # `.env` gives INTERNALERROR and exit 3; `.env.example` gives
+      # `1 failed, 5232 passed, 11 skipped, 514 deselected`, exit 1, the sole
+      # failure being the allowlisted one -- which the allowlist step then
+      # passes. The placeholders satisfy `Settings`, and the default run
+      # deselects `live_infra`, so nothing here dials a real service.
+      #
+      # The two files are NOT interchangeable in content and this does not
+      # claim they are: a developer `.env` carries exactly 11 keys the example
+      # does not, most of them live-infra and host-port settings, and the
+      # example has none the developer file lacks.
+      #
+      # What establishes that the example is ENOUGH is the measured run above,
+      # not that containment -- a subset of a sufficient set is not itself
+      # sufficient, and the 11 missing keys are exactly what would make it
+      # insufficient if one of them were ever required without a default.
+      # That is the thing to re-measure when this file changes.
+      #
+      # What stops this rotting (rule 13, and the honest answer is that the
+      # gate is mostly this job itself):
+      #   * delete `.env.example` and the `cp` right here fails loudly -- a
+      #     `run` step is `bash -e`, and the failing step names itself;
+      #   * drop a key and `Settings` (`frontend_cors_origin`, `mongo_dsn`)
+      #     or `conftest`'s `_required_environment_variable` fails BY NAME;
+      #   * drift its content and `tests/test_ai_gateway_routing.py:194`
+      #     fails -- it reads the tracked `.env.example` and asserts over it;
+      #   * `ensure_runtime_env_keys.py` is itself gated, by
+      #     `tests/test_runtime_env_key_sync.py`, which `runpy`s the real
+      #     script rather than re-implementing it.
+      # The last three are backend-suite tests, so all three were equally
+      # unreachable in CI until this step existed. (The first is this step.) An earlier draft of
+      # this comment credited `ensure_runtime_env_keys.py` with maintaining
+      # `.env.example`; it does not -- its `update()` flows example -> env,
+      # one way, and never inspects the example. The real protections are the
+      # four above, and they are stronger than the one that was claimed.
+      #
+      # NOT a committed `.env.ci`: `.gitignore:31` ignores `.env.*`, and the
+      # comment above that rule records why -- a backup file once carried a
+      # live provider key into git history and was caught by push
+      # protection. Un-ignoring a file to satisfy CI would punch a hole in a
+      # guard installed after a real credential incident, to solve what a
+      # tracked file already solves. NOT a conftest that degrades when the
+      # file is absent, either: that raise is a guard making a missing `.env`
+      # loud instead of letting tests run against silent defaults. Copying
+      # satisfies it; degrading weakens it.
+      #
+      # The `contracts` job was checked for the same exposure and does not
+      # have it -- `backend/scripts/export_openapi.py` runs to exit 0 with no
+      # `.env` at all, so no copy is cargo-culted into that job.
+      - name: Provide the repository environment file
+        run: cp .env.example .env
 
       - uses: actions/setup-python@v5
         with:
