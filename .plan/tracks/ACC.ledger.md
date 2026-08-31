@@ -847,4 +847,58 @@ outbox-key form. Second refusal of a wrong-reason red on this run.
 deselected** (3:56) — the known pre-existing failure, **zero new**.
 `ruff check` / `ruff format` clean.
 
-**Next step:** the remaining scenario groups. See the scope note below.
+**Next step:** step:06 — item 26's audit and the honest scope statement.
+
+---
+
+## step:06 — item 26 audited, and what the gate actually stands at
+
+**File:** `.plan/acceptance/STATUS.md` (new).
+
+**Item 26 — verified.** `merge.md`'s slice table names a final `PASS` for every
+merged branch; checked one by one against `.plan/reviews/`. Twenty-four review
+documents, fifteen branches, **no merged branch without a `PASS`**, every round
+count matching the table, and the calibration bait recorded
+`CHANGES_REQUIRED` on a branch that never merges. One formatting note, not a
+finding: `V1p1-1.md` writes its verdict as a bullet where every other file uses
+a heading — which is also why the audit was done by reading rather than by a
+parser that would have to accept both spellings.
+
+**Not written as a test, deliberately.** A module under `backend/tests/` parsing
+`.plan/reviews/` would make the backend suite fail on a planning document and
+would run in CI against a directory unrelated to the application. The gate item
+asks to *verify against* `.plan/reviews/`; that is what this is.
+
+**The scope statement is the substance of this step.** `STATUS.md` places every
+one of the 26 items in exactly one of three categories, and nothing is promoted
+between them by inference:
+
+* **A — verified here with fault injection**: the two safety nets, items 10, 13,
+  19, 17's omc half, 7's ingress half, 26, and AMENDMENT-5's no-stranded-state
+  assertion on the business-time close path.
+* **B — in-slice coverage located, not audited**: named file by file so the next
+  agent starts from the file rather than a search. ACC has not read these bodies
+  and has not injected against them. Every slice on this run shipped at least one
+  green-but-blind test, so "a test exists" is not a finding.
+* **C — not reached**: with the reason stated, and **time distinguished from
+  capability**. The datastores were up throughout this run and the live-infra
+  smoke test passed, so items 14–18, 20 and 23 are writable against live infra
+  **today** — they are unwritten, not unexecutable. Items 24–25 are frontend and
+  fall outside this dispatch's "backend tests only" scope; they need the frontend
+  suite and a widened brief or a different owner.
+
+**Explicitly still open:** dispatch condition 3 — acceptance 18's "assert the
+causation chain, not just the drain" — has **not** been done. Nothing in
+category C is claimed as green.
+
+**Injection tally across phase 2:** eleven landed; **two discarded for being red
+for the wrong reason** (an invalid released binding that failed schema
+validation before any assertion ran; a `$set` upsert the Mongo double refuses);
+**two found defects in ACC's own instruments** (a wake that could not wake; a
+document fixture reading two files while reporting four).
+
+**Production defect, reported not fixed** (unchanged, re-verified):
+`scripts/dev/run_real_infra_suite.sh:56` preflights SQL Server on `14330` while
+`compose.yaml:192` and `.env:94` both say `11433`, so the sanctioned live-infra
+entry point refuses a stack that is up. No defect found in `backend/src`;
+`git diff a75f3eeb..HEAD` touches nothing outside `backend/tests/` and `.plan/`.
