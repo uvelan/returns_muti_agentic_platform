@@ -1756,3 +1756,202 @@ the wall-clock-budget mechanism stands as the better explanation. What changed i
 that one more unverified thing became verified, and three record-level defects —
 duplicate step ids, a disproven claim, and an encoding corruption — are now
 written down instead of waiting to be found.
+
+---
+
+## step:13 -- the budget is smaller than one attempt's own ceiling
+
+Diagnosis only. **Nothing was changed in this step**, per the orchestrator's
+instruction to report before remedying.
+
+### 1. Two corrections to my own record first
+
+**(a) The hybrid-tree claim (step:11 sect. 3) is WRONG.** Run 1 had `PYTHONPATH`
+exported by its environment. Verified by running the discriminator both ways
+rather than accepting the correction:
+
+    $ # PYTHONPATH unset -- main worktree src, feat/acc-frontend
+    ERROR tests/operations/test_case_projection.py - pydantic_core._pydantic_core...
+    !!! Interrupted: 1 error during collection !!!
+    512/5550 tests collected (5038 deselected), 1 error in 20.22s
+
+    $ # PYTHONPATH=<this worktree>\backend\src
+    512/5711 tests collected (5199 deselected) in 7.33s
+
+Run 1's own line is `512/5711 tests collected (5199 deselected) in 6.19s` -- the
+with-`PYTHONPATH` signature, and clean where the other has a collection error.
+**Run 1's greens are contended, not hybrid-tree.**
+
+The reasoning in step:11 was sound and the premise was not checked: I verified
+that *the runner* exports nothing and concluded *the run* had nothing, without
+testing the environment the runner was launched from. **A correctly-reasoned
+inference from an unchecked premise is still a wrong answer**, and it is a worse
+failure than a bad inference because it carries the confidence of good work. The
+discriminator above cost one command and existed the whole time.
+
+**(b) My step:12 prediction cannot be settled, because there is no summary.**
+Run 1 died at the end:
+
+    ============================== 3 passed in 6.52s ==============================
+    scripts/dev/run_real_infra_suite.sh: line 257: _infra: command not found
+    scripts/dev/run_real_infra_suite.sh: line 258: syntax error near unexpected token `else'
+
+All 71 modules executed; the script then resumed at a byte offset into rewritten
+bytes and died before printing its summary. **The edit-mid-run hazard landed
+exactly as recorded in step:11 sect. 6, on the run that was recording it.** So
+the question of whether module 30 exited 124 is now unanswerable from this run,
+and is recorded as unclosed rather than quietly dropped.
+
+### 2. The aggregate, reconstructed from the log rather than quoted from the run
+
+    modules with a header       : 71
+    modules with no result line : 2   (30, 64)   [59 and 66 are all-skipped, real results]
+    tests passed                : 421
+    tests failed                : 3
+    tests errored               : 0
+
+    x [29] test_integration_outbox_index_plans_real_infra.py -- 2 failed, 5 passed in 33.53s
+    x [69] test_return_case_workflow_real_infra.py           -- 1 failed, 12 passed in 133.67s
+
+**A second resultless module, not previously known.** Module 64,
+`tests/test_case_confirmation_starts_workflow_real_infra.py`, collected 1 item
+and then produced **nothing at all** -- not even a progress dot:
+
+    === [64/71] tests/test_case_confirmation_starts_workflow_real_infra.py
+    collected 1 item
+    tests\test_case_confirmation_starts_workflow_real_infra.py
+    === [65/71] ...
+
+This module is one of the four RV recorded as green in **every** execution of its
+review. It is a new observation, undiagnosed, and it is **not** the same shape as
+module 30 (which reached 30 of 33 tests before stopping). Recorded, not explained.
+
+**This total is not a suite result and must not be quoted as one.** One module
+hung, one produced nothing, and the run's own aggregate never printed.
+
+### 3. The retry schedule, established from source
+
+The orchestrator asked what the schedule for `request_bay_assignment` actually
+is, and whether it can exceed the budget by construction. It can, and by more
+than a factor of two.
+
+    return_case_workflow.py:1891   await workflow.execute_activity(
+                          :1892       "request_bay_assignment",
+                          :1897       start_to_close_timeout=_PERSIST_TIMEOUT,
+                          :1898       retry_policy=_BEST_EFFORT_RETRY,
+
+    :111   _PERSIST_TIMEOUT:    Final = timedelta(seconds=30)
+    :133   _BEST_EFFORT_RETRY:  Final = RetryPolicy(maximum_attempts=2)
+
+`RetryPolicy(maximum_attempts=2)` leaves interval and coefficient unset, so they
+take Temporal's defaults. The repository states its own arithmetic for that
+policy family at `:127-132`, and it is the authority I am using rather than my
+memory of Temporal's defaults:
+
+> Retrying it on the persistence policy meant **five attempts with exponential
+> backoff -- roughly fifteen seconds** added to the critical path
+
+1 + 2 + 4 + 8 = 15. So the initial interval is 1s and the coefficient is 2, and
+**two attempts means one retry after roughly 1 second.**
+
+**The decisive number is not the backoff. It is `start_to_close_timeout`, and it
+is per attempt.**
+
+| quantity | value |
+|---|---:|
+| `start_to_close_timeout`, **per attempt** | 30s |
+| attempts (`maximum_attempts`) | 2 |
+| backoff between them | ~1s |
+| **worst case for this one step, entirely within spec** | **~61s** |
+| the test's budget for the whole workflow to reach a *later* step | **30.0s** |
+
+**The test's total budget is equal to the ceiling of a single attempt of one of
+the steps it must wait through, and there are two such attempts.** The bay
+activity can take 61 seconds while behaving exactly as designed, and
+`open_support_work_item` is downstream of it -- `_await_bay` awaits the activity
+and only continues once it resolves or raises `ActivityError` (`:1900-1907`).
+
+So `test_a_bay_failure_does_not_stop_the_return` asserts a 30s bound on a
+sequence whose first component alone is allowed 61s. **It has been asserting on
+a timing coincidence -- that a failing attempt fails fast -- since it was
+written.** That is a defect in the test, established by construction and without
+needing a reproduction.
+
+**This displaces the "race against a retry backoff" reading.** The backoff is
+~1s and cannot account for a 30s overrun; it is the per-attempt ceiling that
+can. Worth separating, because the two suggest different remedies: a backoff
+race would be fixed by pinning the retry policy, and this is not.
+
+### 4. All 13 call sites, since the same question applies to each
+
+Every `reached()` site waits for a step that is downstream of at least one
+activity carrying `start_to_close_timeout=_PERSIST_TIMEOUT` (30s per attempt).
+
+    30.0s budget (default) : lines 427, 459, 528, 650, 683, 723, 752
+    20s budget (tightened) : lines 553, 593, 628, 772, 808
+
+**Every one of the thirteen budgets is <= the per-attempt ceiling of activities
+it must wait through, and five are tightened to two-thirds of it.** The mismatch
+is systemic, not specific to the bay test. The bay test is simply the one that
+injects a failure and therefore pays the retry, so it loses first and loses most
+often -- which is exactly why it is the name that recurs across rounds.
+
+### 5. Why the obvious remedy is unavailable, and what the options actually are
+
+**Pinning the schedule from the test is not possible without touching
+production.** `_PERSIST_TIMEOUT` and `_BEST_EFFORT_RETRY` are module-level
+constants, not parameters. `ReturnCaseTimings` -- the one thing the test does
+inject, via `_timings()` -- carries workflow-level waits (`bay_wait_seconds`,
+`support_response_wait_seconds`), **not activity timeouts or retry policies**. So
+"pin the retry policy in the test so the schedule is bounded and known", which
+would have been the best answer, requires a production change and is therefore
+out of scope under the standing rule. **Reported, not done.**
+
+That leaves three, and I am not choosing between them unilaterally:
+
+1. **Derive the budget from the production constants rather than restating it as
+   a number.** Compute the ceiling in the test as
+   `_PERSIST_TIMEOUT * maximum_attempts + backoff + margin` by importing the
+   constants, so the budget tracks the schedule by construction and cannot drift
+   from it again. This is a *larger* budget, but it is not a magic number and it
+   is not raised-until-green: it is the schedule's own worst case, and it
+   reddens if production ever tightens below it. Cost: the test imports two
+   private constants.
+2. **Wait on a state transition instead of a wall clock**, with a generous
+   ceiling that is a safety net rather than the assertion. `reached()` waits for
+   an activity to be *invoked*, which is an event, so this means restructuring
+   what the tests wait on -- the largest change, and the only one that removes
+   the wall clock from the assertion entirely.
+3. **Record as a known flake** under the discipline already identified, and
+   leave the budgets alone.
+
+My recommendation is **(1)**, because it is the only one that makes the test's
+bound a function of the production schedule rather than an opinion about it, and
+because it fails loudly in the right direction. But the orchestrator asked for
+the diagnosis before the change, and this is the diagnosis.
+
+### 6. One thing the failure message does not answer
+
+Across the entire run log there is exactly **one** retry record:
+
+    $ Select-String permodule_run1.log -Pattern "Completing activity as failed"
+    L1065: request_bay_assignment attempt=1
+
+**Attempt 2 appears nowhere.** With a ~1s backoff inside a 30s window it should
+have run and failed well before the budget expired. Either it was dispatched and
+its log was not captured in the `call` phase, or it was not dispatched for
+~29 seconds. The first is benign; the second would mean the delay is in
+dispatch rather than in the schedule, which sect. 3's arithmetic would then
+under-explain rather than explain.
+
+This does not change sect. 3 -- the budget is insufficient by construction
+either way -- but it is a real open question, and it is the one thing that would
+justify spending the stack on a reproduction. **Not run without direction.**
+
+### Open
+
+1. The remedy is not chosen. Sect. 5 options reported, nothing changed.
+2. Sect. 6's missing attempt 2 is unexplained.
+3. Module 64 is a new resultless module, undiagnosed.
+4. Module 30's exit code is now permanently unknowable from run 1 (sect. 1b).
+5. Pinning activity timeouts from tests needs a production change (sect. 5).
