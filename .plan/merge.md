@@ -22,7 +22,7 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | V2 phase 2 (frontend) | feat/v2-frontend | PASS · applying one advisory before merge | 2 · CR → PASS (1692242e) | — |
 | V3 backend | feat/v3-resolver-clarification | **MERGED** | 2 · CR (3d8715f) → PASS (c463872) | 270c223 |
 | V3 frontend | feat/v3-frontend | **MERGED** | 1 · PASS (cfcbe44) | 9952f2b |
-| V3 backend phase 2 (trigger) | feat/v3-resolver-trigger | IN_PROGRESS · the resolver has no production invocation site | — | — |
+| V3 backend phase 2 (trigger) | feat/v3-resolver-trigger | UNDER_RV_REVIEW · candidate 2d2b36f0 | 1 open | — |
 | ACC-1 (harness) | feat/acc-harness | **MERGED** | 2 · CR → PASS (9cb3508) | c1c2b0f |
 | ACC-2 (scenarios) | not yet cut | BLOCKED on V3 | — | — |
 | fabrication guard (AST) | feat/fabrication-guard-ternary | **MERGED** | 1 · PASS (fb221d8a) | 85dc4271 |
@@ -106,6 +106,14 @@ The `actorId` agent found something sharper than "typecheck is not gated":
 - `.github/workflows/` contains exactly one file: `secret-scan.yml`. **Nothing executes build, check, test, or the backend suite.**
 
 **The gate exists, is red, and nobody runs it.** That is how three typecheck errors survived a merge on a run where every slice was fault-injected — and it means the slice protocol's `npm test` plus a *tolerated* `npx tsc -b` has been standing in for a `check` that would have failed. Every green suite this run has been real, but the suites were chosen by the protocol rather than by the repo's own definition of "checked". **Decision owed by the orchestrator/user, not by a slice** — no agent has been permitted to add CI config.
+
+## ⚠ ACCEPTANCE-GATE EXPOSURE — item 10 may be unreachable as shipped
+
+V3's backend phase 2 reports that **§9's ladder is implemented but only its first rung (case facts) is reachable in this deployment** — visibly so, by three agreeing signals: `[]` in released config, absent from `compiled_rungs`, absent from the topology. The graph, trusted-entity, tool and authorization ports were **deliberately not wired**, each with a stated reason (no question-independent case-scoped read exists; nothing maps fact names to entity names, and that mapping decides what fills a tool argument; wiring `principal_id` would invent a credential path).
+
+Its design principle is right — *a `GraphReadPort` returning `{}` is worse than one that raises, because the model still answers confidently under the platform's name* — and an unserviceable rung being **absent** rather than stubbed is the honest posture.
+
+**But acceptance item 10** — "Support asks a question requiring a tool → agent resolves via the registry, credentials never surfaced" — **appears unreachable as shipped.** RV is asked to rule whether this is an honest deployment posture with the gate item deferred, or whether §9 requires the rung to be serviceable before the gate can pass. **Decision owed by me once RV reports.** ACC-2's brief must not assume item 10 is testable until this is settled.
 
 ## Open items surfaced but not yet dispatched
 
