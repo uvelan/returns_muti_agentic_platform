@@ -398,3 +398,99 @@ test but about a **mis-pointed category-B row**: one of the four guarantees is
 pinned by a single test in a file the row omits.
 
 Reverted after each; `git diff --stat -- src/` empty.
+
+---
+
+## step:05 — items 3–6 finished. One guarantee was unguarded by the entire backend suite.
+
+### INJ-B10 — an autosave after APPROVING is accepted
+
+`review_aggregate.upsert_draft_edit` line 520,
+`self._require_state(review, "edit", (ReviewState.OPEN,))` widened to
+`(ReviewState.OPEN, ReviewState.APPROVING)`.
+
+```
+--- the two files STATUS names, alone ---
+96 passed, 1 warning in 11.34s
+--- plus S2's own suite ---
+FAILED tests/operations/test_review_aggregate.py::test_autosave_after_approving_is_a_409_and_the_row_survives
+1 failed, 146 passed, 1 warning in 17.47s
+```
+
+**CAUGHT — but, exactly as with INJ-B7, only outside the files STATUS names.**
+Second of the four review-gate guarantees whose only pin is invisible to the
+category-B row.
+
+### INJ-B11 — delivery sends the raw draft instead of the frozen canonical edit
+
+`support_template_gate.py:709`, `payload = canonical_review_payload(review)`
+replaced with `payload = dict(review.get("draftPayload") or {})`. Approval is
+untouched: it still freezes and hash-verifies the canonical payload. Only the
+bytes that leave the platform change.
+
+```
+--- the two files STATUS names, alone ---
+96 passed, 1 warning in 11.43s
+--- plus S2's own suite ---
+147 passed, 1 warning in 17.30s
+```
+
+Green. So — a negative claim, therefore the whole suite:
+
+```
+$ ./.venv/Scripts/python.exe -m pytest tests -q -p no:randomly
+FAILED tests/test_cumulative_support_outcomes.py::test_a_rejected_return_still_opens_no_work_item
+1 failed, 5235 passed, 10 skipped, 514 deselected, 2 warnings in 315.27s (0:05:15)
+```
+
+The single failure is step:03's pre-existing red. **Nothing in 5,235 backend
+tests caught it.** This is the audit's most serious coverage finding.
+
+**Why it was blind, precisely.** `_approved_review`
+(`tests/operations/test_support_template_gate.py:364`) creates a review with a
+`draft_payload` and **never a canonical edit**. `canonical_review_payload` then
+returns the draft (line 264, the `else` limb), so the frozen payload and the
+draft are byte-identical in every delivery test in the file, and the choice
+between them is unobservable. Same shape as step:02's single-record store:
+*green because the inputs could not exercise the property.*
+
+**Business consequence, named.** An associate edits a drafted reply — corrects a
+refund amount, removes a commitment the case cannot honour — approval freezes
+and hash-verifies *that* text, and delivery sends the **original draft**. Support
+is told something no one approved, behind a valid approval receipt. The review
+gate's entire purpose is that what a human approved is what gets sent; that
+property had no test.
+
+**Production is correct.** Line 709 reads the canonical payload. This is a
+coverage defect, not a behaviour defect — but it is the class that lets a future
+edit here ship silently.
+
+### The strengthening
+
+`test_delivery_sends_the_frozen_canonical_edit_not_the_draft` added to
+`tests/operations/test_support_template_gate.py`: draft says
+`"REJECTED -- do not refund"`, a canonical edit resolved through
+`resolve_canonical_edit` says `"APPROVED -- refund issued"`, approval freezes the
+canonical one, and delivery must send it. The test **asserts its own premise**
+(`frozen != review["draftPayload"]`) so it cannot decay back into the shape it
+replaces if the fixture ever stops writing a canonical edit.
+
+Clean tree:
+
+```
+$ ./.venv/Scripts/python.exe -m pytest tests/operations/test_support_template_gate.py -q
+30 passed in 2.81s
+```
+
+Injected against, with INJ-B11 re-applied:
+
+```
+E       AssertionError: assert 'APPROVED -- refund issued' in 'RETURN DETAILS\nREJECTED -- do not refund\n'
+FAILED tests/operations/test_support_template_gate.py::test_delivery_sends_the_frozen_canonical_edit_not_the_draft
+1 failed, 29 passed in 3.06s
+```
+
+The assertion output *is* the business failure: Support reading "REJECTED — do
+not refund" on a review whose approved text said the opposite.
+
+Reverted; `git diff -- backend/src/` empty; the four gate files 177 passed.
