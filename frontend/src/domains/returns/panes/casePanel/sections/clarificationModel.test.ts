@@ -2,12 +2,16 @@
  * What a clarification is, decided without rendering anything.
  *
  * The test this file exists for is the first one: **the source**. The abandoned
- * first draft read `panel.clarifications`, which `api/case_panel.py` sets to
- * `()` as a literal and which no registered contributor can write, so the
- * section would have drawn nothing on every real panel while a suite full of
- * hand-built panel objects stayed green. That is the consumer-tested-against-a-
- * synthetic-producer shape, and the only assertion that catches it is one that
- * hands the reader a **section** and no top-level field.
+ * first draft read `panel.clarifications`, which `api/case_panel.py` set to `()`
+ * as a literal and which no registered contributor could write, so the section
+ * would have drawn nothing on every real panel while a suite full of hand-built
+ * panel objects stayed green. That is the consumer-tested-against-a-synthetic-
+ * producer shape, and the only assertion that catches it is one that hands the
+ * reader a **section** and no top-level field.
+ *
+ * AMENDMENT-6 has since retired that field from `CasePanelView` outright, so the
+ * second test no longer checks the other vehicle — it checks that there **is**
+ * no other vehicle, against a panel body that still carries the retired key.
  */
 
 import { describe, expect, it } from "vitest";
@@ -26,36 +30,56 @@ describe("where a clarification comes from", () => {
     // `register_panel_section`'s contributor returns `PanelSectionView | None`
     // and cannot write a top-level DTO field. A reader that only knew about
     // `panel.clarifications` would return [] here and nothing would render.
-    const found = readClarifications(panel([]), section([raw()]));
+    const found = readClarifications(panel(), section([raw()]));
     expect(found.map((entry) => entry.clarificationId)).toEqual(["clar-1"]);
   });
 
-  it("still reads the DTO field, in case the integration pass wires that instead", () => {
-    expect(readClarifications(panel([raw()]), undefined).map((e) => e.clarificationId)).toEqual([
-      "clar-1",
-    ]);
+  it("draws nothing from a top-level clarifications field, retired by AMENDMENT-6", () => {
+    // This test used to be "still reads the DTO field, in case the integration
+    // pass wires that instead". The integration pass went the other way:
+    // AMENDMENT-6 retired `CasePanelView.clarifications` rather than teaching
+    // the composer to fill it, because a contributor returns a
+    // `PanelSectionView | None` and can never write a top-level field.
+    //
+    // So the assertion is inverted rather than dropped, and it is a real one.
+    // The cast is the point: the field is gone from the generated type, so the
+    // only way to produce this input is a server that has not been redeployed —
+    // exactly the case where a re-added `...panel.clarifications` read would
+    // start drawing cards again and nobody would notice. If someone restores
+    // that read, this goes red.
+    const stale = { ...panel(), clarifications: [raw()] } as unknown as CasePanelView;
+    expect(readClarifications(stale, undefined)).toEqual([]);
+    expect(readClarifications(stale, section([]))).toEqual([]);
   });
 
-  it("draws one card when both vehicles carry the same clarification", () => {
-    // Not defensiveness against a hypothetical: §9 names both, V1's own handoff
-    // names both, and if the composer is ever taught to fill the field the
-    // section will not stop contributing on the same day.
-    const found = readClarifications(panel([raw()]), section([raw()]));
+  it("draws one card when the section names the same clarification twice", () => {
+    // The de-duplication predates the amendment, where it reconciled two
+    // vehicles. It still has a job with one: a contributor that appends a
+    // clarification it already listed must not double the card.
+    const found = readClarifications(panel(), section([raw(), raw()]));
     expect(found.map((entry) => entry.clarificationId)).toEqual(["clar-1"]);
   });
 
-  it("keeps the section's order and appends what only the field holds", () => {
+  it("keeps the section's own order, and the first mention fixes an id's place", () => {
     const found = readClarifications(
-      panel([raw({ clarificationId: "clar-3" }), raw({ clarificationId: "clar-1" })]),
-      section([raw({ clarificationId: "clar-1" }), raw({ clarificationId: "clar-2" })]),
+      panel(),
+      section([
+        raw({ clarificationId: "clar-1" }),
+        raw({ clarificationId: "clar-2" }),
+        raw({ clarificationId: "clar-1" }),
+        raw({ clarificationId: "clar-3" }),
+      ]),
     );
+    // `clar-1` keeps its first position rather than being moved to where the
+    // repeat appeared: skipping a duplicate must not reorder the list, or the
+    // cards would shuffle under an associate between two polls.
     expect(found.map((entry) => entry.clarificationId)).toEqual(["clar-1", "clar-2", "clar-3"]);
   });
 
   it("finds nothing when there is nothing, from either side", () => {
-    expect(readClarifications(panel([]), undefined)).toEqual([]);
-    expect(readClarifications(panel([]), section([]))).toEqual([]);
-    expect(readClarifications(panel([]), { section_id: "clarifications", status: "ok" } as never))
+    expect(readClarifications(panel(), undefined)).toEqual([]);
+    expect(readClarifications(panel(), section([]))).toEqual([]);
+    expect(readClarifications(panel(), { section_id: "clarifications", status: "ok" } as never))
       .toEqual([]);
   });
 });
@@ -90,7 +114,7 @@ describe("reading one entry", () => {
   });
 
   it("does not let a malformed entry hide the answerable ones beside it", () => {
-    const found = readClarifications(panel([]), section([{ nonsense: true }, raw(), null]));
+    const found = readClarifications(panel(), section([{ nonsense: true }, raw(), null]));
     expect(found.map((entry) => entry.clarificationId)).toEqual(["clar-1"]);
   });
 
@@ -104,7 +128,7 @@ describe("reading one entry", () => {
 
 describe("the candidates an associate picks between", () => {
   it("joins the ids to the records, in the order the clarification named them", () => {
-    expect(candidateRecords(mustRead(raw()), panel([]))).toEqual([
+    expect(candidateRecords(mustRead(raw()), panel())).toEqual([
       {
         returnRecordId: "rec-1",
         returnReference: "RMA-88120",
@@ -125,7 +149,7 @@ describe("the candidates an associate picks between", () => {
     // belong to, and a shorter list is one an associate answers confidently and
     // wrongly.
     const clarification = mustRead(raw({ candidateRecordIds: ["rec-1", "rec-ghost"] }));
-    expect(candidateRecords(clarification, panel([])).map((c) => c.returnRecordId)).toEqual([
+    expect(candidateRecords(clarification, panel()).map((c) => c.returnRecordId)).toEqual([
       "rec-1",
       "rec-ghost",
     ]);
@@ -196,9 +220,13 @@ function section(clarifications: unknown[]) {
   } as never;
 }
 
-function panel(clarifications: unknown[]): CasePanelView {
+/**
+ * A panel with no clarifications on it, because since AMENDMENT-6 there is no
+ * top-level field for them to sit in. The retirement guard above builds its
+ * stale-server input by spreading this and adding the retired key back.
+ */
+function panel(): CasePanelView {
   return {
-    clarifications,
     return_records: [
       {
         return_record_id: "rec-1",

@@ -6328,6 +6328,22 @@ export interface components {
          *
          *     **Frozen at merge.** Anything V2 or V3 wants to show goes in `sections`
          *     through the registry.
+         *
+         *     That sentence used to be false for three fields. `support_digest`,
+         *     `clarifications` and `parked_messages` were declared here as top-level
+         *     placeholders for contributing slices to fill -- but a contributor satisfies
+         *     `PanelSectionContributor`, which returns a `PanelSectionView | None` into
+         *     `sections`, and **has no way to write a top-level field**. So the composer
+         *     hardcoded all three empty and no contributor could ever change that. V3
+         *     built a clarifications section against `panel.clarifications`; it would have
+         *     drawn nothing on every real panel while a suite full of hand-built panel
+         *     objects stayed green. AMENDMENT-6 retired them, and this is where that
+         *     lands.
+         *
+         *     **Do not re-add a top-level field for a contributing slice.** If a section
+         *     needs to say something, it says it in its own `PanelSectionView.payload`.
+         *     A second parallel path that the seam cannot reach is the defect, not the
+         *     absence of one.
          */
         CasePanelView: {
             /**
@@ -6337,19 +6353,7 @@ export interface components {
             accepted_commands: components["schemas"]["AcceptedCommandView"][];
             /** Case Id */
             case_id: string;
-            /**
-             * Clarifications
-             * @default []
-             */
-            clarifications: {
-                [key: string]: unknown;
-            }[];
             execution: components["schemas"]["PanelExecutionView"];
-            /**
-             * Parked Messages
-             * @default 0
-             */
-            parked_messages: number;
             /**
              * Return Records
              * @default []
@@ -6367,13 +6371,6 @@ export interface components {
              * @default []
              */
             sections: components["schemas"]["PanelSectionView"][];
-            /**
-             * Support Digest
-             * @default []
-             */
-            support_digest: {
-                [key: string]: unknown;
-            }[];
             timers?: components["schemas"]["PanelTimersView"];
         };
         /**
