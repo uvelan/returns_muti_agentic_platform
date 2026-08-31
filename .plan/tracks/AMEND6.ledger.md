@@ -488,3 +488,98 @@ needed and none was made.
   owner (`checks.yml`), different finding.
 - The two pre-existing allowlisted failures are untouched and remain owned
   elsewhere.
+
+---
+
+## Step 8 — the tip moved mid-flight; rebased and re-measured
+
+Trunk advanced from `c8eac86d` to `72f37ba2` while this work was in progress
+(the RUNTIME slice: `_Runtime.patched`, and the defect it was hiding). Checked
+before rebasing rather than after: the nine new commits touch
+`.plan/reviews/RUNTIME-1.md`, `.plan/tracks/RUNTIME.ledger.md`,
+`backend/tests/test_cumulative_support_outcomes.py` and
+`scripts/ci/known_test_failures.json` — **no overlap with this branch's files**.
+Rebase was clean.
+
+It does change the backend baseline: RUNTIME fixed the failure this branch
+measured against and **deleted the backend allowlist entry**, so
+`known_test_failures.json`'s backend list is now empty and the backend suite is
+expected fully green. The floor is unchanged at 441 / 5251. Everything below is
+re-measured on the rebased head, not carried over.
+
+### `git log --oneline -1 && git merge-base HEAD refs/heads/refactor/unified-return-platform`
+
+```
+ef02764c docs(amend6): close the finding in the records that still assert the old state
+72f37ba2af8c681d2537391ebf24ab063d6a2e63
+```
+
+*exit 0*
+
+### `git diff --name-only c8eac86d..refs/heads/refactor/unified-return-platform`
+
+```
+.plan/reviews/RUNTIME-1.md
+.plan/tracks/RUNTIME.ledger.md
+backend/tests/test_cumulative_support_outcomes.py
+scripts/ci/known_test_failures.json
+```
+
+*exit 0*
+
+### Re-measured on the rebased head
+
+### `tail -1 backend/pytest-rebased.log`
+
+```
+5246 passed, 10 skipped, 514 deselected, 2 warnings in 271.60s (0:04:31)
+```
+
+*exit 0*
+
+### `cd backend && python ../scripts/ci/assert_known_failures.py --suite backend --report junit-backend.xml`
+
+```
+suite size held: 441 test files/modules, 5256 test cases (floor 441 / 5251)
+5256 tests ran, 0 failed, 0 allowlisted
+only the 0 known, still-failing tests failed
+```
+
+*exit 0*
+
+### `cd frontend && python ../scripts/ci/assert_known_failures.py --suite frontend --report junit-frontend.xml`
+
+```
+suite size held: 62 test files/modules, 867 test cases (floor 61 / 860)
+858 tests ran, 2 failed, 2 allowlisted
+only the 2 known, still-failing tests failed
+```
+
+*exit 0*
+
+### `cd frontend && RETURN_PLATFORM_PYTHON="K:\Projects\Ret\returns_muti_agentic_platform\backend\.venv\Scripts\python.exe" PYTHONPATH="K:\Projects\Ret\rmap-amend6\backend\src" npm run contracts:check 2>&1 | tail -3`
+
+```
+> node scripts/check-served-fields.js
+
+Fully-required schemas verified against the published document: CaseFactProjection (11)
+```
+
+*exit 0*
+
+**Final figures, on base `72f37ba2`:**
+
+| suite | collected | result | floor | gate |
+| --- | --- | --- | --- | --- |
+| backend | 5256 (441 modules) | 5246 passed, 10 skipped, **0 failed** | 441 / 5251 — held | exit 0 |
+| frontend | 867 (62 files) | 865 passed, **2 failed** (pre-existing allowlisted `registry.test.ts`) | 61 / 860 — held | exit 0 |
+
+Backend collection rose 5251 → 5256 because RUNTIME added five tests on trunk,
+not because of this branch; this branch's own delta is **zero on both suites**.
+5256 is inside the floor's `RESTAKE_ALLOWANCE`, so no restake is due from this
+branch either. Backend is now fully green — the failure this branch originally
+measured against was fixed on trunk mid-flight.
+
+**The floor was not touched.** The instruction was that a change altering
+collected counts must restake deliberately; this change does not alter them.
+
