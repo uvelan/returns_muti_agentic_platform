@@ -263,6 +263,27 @@ RV ran live tests throughout — eleven runs against a healthy stack — and the
 
 *Unverified and not claimed:* the remaining ~490 live tests. RV scoped its verdict to what it observed.
 
+### ✗ THAT REMEDY FAILED, and the evidence was in the brief I wrote
+
+**Per-module execution does not fix it.** Three isolated runs of the module gave `1 failed / 2 failed / 0 failed`, a different set each time, two of the names appearing in none of RV's eleven prior runs — the failure set is not converging on weak tests, it is drawn fresh.
+
+**The error was mine and it was avoidable.** Per-module execution *is* "one file, one fresh process" — precisely the condition RV had already measured six times at head and found failing in three (1f/3f/1f). I had that data in hand, wrote it into the dispatch, and chose a remedy it had already falsified. The agent's own verdict on the same miss: *"this was visible in the brief's own numbers before I wrote a line of script, and I didn't see it until the runs came back."*
+
+**The mechanism, now stated properly:** a fresh process resets *in-process* state — client, worker, event loop. The accumulation is on the **shared Temporal server every process talks to.** Isolating a client from itself does nothing about what it talks to. Any remedy must act on the shared server, not on process boundaries.
+
+**The per-module runner is kept anyway**, on what it did earn rather than on what it was built for: bounded per-module timeouts (one hanging module no longer hangs the gate forever), and an aggregate that cannot lie. That second property found a real defect on its first proof run — the count regexes required a non-digit before the number, and pytest's summary opens with one, so every all-green module parsed as unreadable and every leading `N failed` was dropped. It printed `tests failed: 0` beside a failing module. **Shipped on the theory, it would have reported no failures next to a red exit** — the guard that refuses to call unreadable counts a pass is what blocked the false green.
+
+*Also repaired in passing:* the collected-total report was already broken — `tail -1` was picking pytest's capture-warnings docs URL, so the whole-suite run printed a URL where its total belonged.
+
+**Remaining options, none yet chosen:** quarantine (rejected on coverage grounds, and that rejection now costs more); adjudicated re-runs recorded **as flakes, never as passes**; or isolation of the shared server state itself. The third is dispatched, with the hypothesis to be *established* by making the failures appear and vanish on demand rather than assumed.
+
+**Standing fact until proven otherwise: the live suite has never once been run to completion. No live-suite result may be quoted.**
+
+### Incidents from that attempt, kept because the rules generalise
+
+- **A running script is a live artifact, and editing it is editing a process.** Step:10's edits landed while bash was still interpreting the same file for a run in flight. Bash parses a compound statement whole — so the loop body kept executing the pre-edit version, which is *why* that run hung with no timeout — but re-reads by byte offset for top-level commands afterward, so that run's final summary block may be read from edited bytes. Per-module lines are pytest's own output and safe; **the aggregate is not, so that run cannot serve as the proof of the aggregate property even if its numbers come out fine.** The proof rests on injections that ran against files nobody was editing.
+- **An instrument pointed at the wrong artifact reports confidently, wrongly, and without error.** A run was declared terminated on the strength of a 0-byte launcher stdout — empty *by construction*, since the run redirects to its own log — plus a kill notice for one of the agent's own pollers. Neither instrument pointed at the run or its log. Third instance today, after the wrong-`src` worktree imports and the ruff-outside-the-repo false positives. **The common tell in every case was available and unchecked** (here, the log's mtime was current). What makes this family dangerous is that the reading carries nothing saying which artifact it came from.
+
 ## Open items surfaced but not yet dispatched
 
 - **`actorId` optionality — the diagnosis was WRONG, and the agent falsified it before spending on regeneration.** RV's diagnosis (schema non-required → optional TS type), which I passed on unverified, is **not in the causal path**. `frontend/src/api/cases.ts:51` defines `Served<T>` as `{ [K in keyof T]-?: Served<Exclude<T[K], undefined>> }`, which forces required-and-nullable **regardless of the document**. Probe A — hand-patching the `.d.ts` to exactly what a correct regeneration would emit — left **3 errors, same three files**, the `?` intact. Probe B — one line in one fixture — cleared that file: **2 errors**. The real cause: `actorId` postdates the three helpers and is the one field not written longhand, arriving only via a `Partial<>` spread, which TypeScript types optional.
