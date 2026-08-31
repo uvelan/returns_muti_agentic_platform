@@ -116,7 +116,7 @@ I authored that amendment — retiring three fields a registered section cannot 
 
 **Owned by V1/V3 for the code, and by me for the tracking failure.** Queued as the next dispatch; it went unnoticed until someone tried to use the thing.
 
-**EXECUTED** on branch `feat/amendment-6`, commit subject *"refactor(panel)!: execute AMENDMENT-6 — retire the three unfillable DTO fields"*. All three fields are off the DTO, off the composer, out of all four published OpenAPI copies, out of the generated types and out of the mock; the V1 comment is gone with them.
+**EXECUTED** on branch `feat/amendment-6`, commit subject *"refactor(panel)!: execute AMENDMENT-6 -- retire the three unfillable DTO fields"*. All three fields are off the DTO, off the composer, out of all four published OpenAPI copies, out of the generated types and out of the mock; the V1 comment is gone with them.
 
 *Cited by subject and branch rather than by sha, deliberately.* This block first named `dafd8a07` and then `b7e0a529`; both were orphaned by routine rebases onto a moving trunk inside a day, and `b7e0a529` was already unreachable by the time the review asking me to cite it was written. That is exactly the stranded-by-sha failure this file records three instances of today, so the pointer here is the one thing about the work that a rebase cannot move. After merge, `git log --grep` on the subject, or `.plan/tracks/AMEND6.ledger.md`, resolves it to a sha that is stable.
 

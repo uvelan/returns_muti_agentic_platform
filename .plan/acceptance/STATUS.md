@@ -326,7 +326,7 @@ touches nothing outside `backend/tests/` and `.plan/`.
    the committed document matches the live backend. Owned by V1/V3; reported,
    not repaired.
    **CLOSED** by branch `feat/amendment-6`, commit subject *"refactor(panel)!:
-   execute AMENDMENT-6 — retire the three unfillable DTO fields"*: all three
+   execute AMENDMENT-6 -- retire the three unfillable DTO fields"*: all three
    retired from the DTO, the composer, all four OpenAPI copies, the generated
    types and the mock, with the V1 comment. Verified first that none had
    acquired a writer — all nine `register_panel_section` calls are in one test
