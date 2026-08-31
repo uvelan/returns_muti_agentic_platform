@@ -558,3 +558,700 @@ frontend/src backend/config scripts` returns nothing.
   that ACC duplicates) are unchanged and still not acted on, both being
   production edits owned elsewhere.
 - Advisory above — the forgotten-fixture gap — must reach the phase-2 brief.
+
+---
+
+# phase 2 — acceptance scenarios and the 26-item gate
+
+Branch `feat/acc-scenarios`, based on trunk `39fd7c08`.
+
+## step:01 — the two never-executed safety nets, executed and re-verified
+
+**Files:** `backend/tests/harness/posix_signal_proof.py` (new),
+`.plan/acceptance/safety-nets.md` (new).
+
+Dispatch condition 2: run the never-executed safety nets **first**, before
+anything is built on them. Both of the harness's guarantees were arguments
+rather than observations. Both are now observations.
+
+This step was written across a session break — an API session limit killed the
+run after the work existed in the working tree but before its commit landed. On
+resume the two files were read in full and **both nets were re-run from cold and
+re-injected with faults different from the recorded ones**, because a claim
+re-proved by repeating its own evidence is a claim compared with itself.
+
+**(a) `test_chaos_restart_smoke_real_infra.py` — first execution ever, then a
+second.** The real `run_return_workflow_worker.py` starts from the harness,
+survives the 20s settle window, is killed, and comes back with a different pid:
+**1 passed in 40.66s** against the live stack. Independent injection: an
+unreachable `PLATFORM_TEMPORAL_TARGET` overlaid on `RETURN_WORKFLOW_WORKER.env`
+— **proved to be a real fault first** by running the worker script directly with
+that env (`RuntimeError: Failed client connect … ConnectionRefused`) — takes the
+test to **1 failed in 7.93s**. The test is sighted.
+
+**(b) The SIGTERM link.** RV narrowed the single unproven link to whether
+`os.killpg(os.getpgid(pid), SIGTERM)` reaches the child through the session
+`start()` establishes. `posix_signal_proof.py` executes exactly that under
+`python:3.13-slim` in Docker (a script, not a `test_`, so the dev platform
+cannot silently skip it): **all four links proved**, exit 0. Independent
+injection: `_signal_tree`'s `SIGKILL if force else SIGTERM` reduced to `SIGKILL`
+— one line, confirmed the only occurrence by `git diff -U0` — takes check 3 to
+**FAIL** while checks 1, 2 and 4 stay **PASS**. That asymmetry is itself the
+verification that the injection did what it claims rather than breaking the file.
+
+Both injections reverted with `git checkout`; `git status` clean after each.
+Full evidence tables in `.plan/acceptance/safety-nets.md`.
+
+**Production defect found — reported, not fixed.**
+`scripts/dev/run_real_infra_suite.sh:56` preflights `"SQL Server:14330"` while
+`compose.yaml:192` publishes `${PLATFORM_SQLSERVER_PORT:-11433}` and `.env:94`
+sets `11433`. The only sanctioned entry point for the live-infra suite therefore
+**refuses to run against a stack that is fully up**, with the one message
+guaranteed not to lead anyone to the port number. One line, in `scripts/`, which
+is outside ACC's `backend/tests/`-only scope. Every live-infra run recorded here
+was invoked with `pytest -m live_infra` directly, ports verified by hand.
+
+**Next step:** step:02 — merge trunk (`bc434f72` resolving dispatcher, `c6c15256`
+CI workflow + known-failure allowlist) into the branch, then AMENDMENT-8's
+unreachability assertion.
+
+---
+
+## step:02 — trunk merged; acceptance item 10's deferral made checkable
+
+**Merge:** `refactor/unified-return-platform` (`c5419fcf`) merged into
+`feat/acc-scenarios`, clean, 7 files. Brings V3's resolving dispatcher wired
+into the outbox worker (`bc434f72`) and the new CI workflow (`c6c15256`,
+`.github/workflows/checks.yml` + `scripts/ci/assert_known_failures.py` +
+`known_test_failures.json`). Noted and obeyed: CI now runs the full suites and
+fails on **any** failure not in the allowlist, and also on a named failure that
+starts passing — so every test this branch adds must be green.
+
+**Files:** `backend/tests/acceptance/__init__.py`,
+`backend/tests/acceptance/test_item_10_the_tool_rung_is_unreachable.py`,
+`.plan/acceptance/item-10-deferral.md` (all new).
+
+AMENDMENT-8 defers item 10 and rules the deferral must be checkable. The tool
+rung is **not exercised**; its absence is asserted across **three places that
+must agree** — the released `production.yaml` read from disk, the compiled
+graph's node set, and the **target map** of every conditional branch — plus a
+fourth test stating the agreement of six reads as one identity, because each
+place can be green while another disagrees.
+
+**The target map is the read nothing else in the suite performs.** LangGraph
+raises for a map naming an absent node and for a router returning a name absent
+from the map; neither fires for the thing item 10 turns on, which is a branch
+that *can route to* a rung. The node set says what exists; the map says what is
+reachable.
+
+V3's `test_support_resolver_composition.py` already covers places 1 and 2, so
+this file does not re-derive them: it builds through **the same production
+factory** (importing that module's `_built` rather than copying its doubles) and
+adds place 3 and the agreement.
+
+**Injections — three, mirror-imaged, each read back before running:**
+
+| # | fault | result |
+| --- | --- | --- |
+| INJ-10a | tool ports wired in `build_support_resolution_ladder` | 3 failed, 1 passed — config test correctly stays green |
+| INJ-10b | one valid `tool_bindings` entry released in `production.yaml` | 2 failed, 2 passed — topology tests correctly stay green |
+| INJ-10c | `tool_bindings` key deleted from the document | 1 failed, 3 passed — the presence assertion fires |
+
+The complementary asymmetry between 10a and 10b is the verification that each
+injection landed where it claims: a generic breakage would have taken all four
+tests down together.
+
+**An invalid injection was caught and discarded rather than recorded.**
+INJ-10b's first form used `input_schema_ref: shipment_status.v1`, which is not
+in this build's schema allowlist — the release failed Pydantic validation and
+all four tests **errored** instead of failing. No assertion ran, so the red said
+nothing about the test. Re-injected with a real allowlist entry
+(`graph.shipment_status.v1`) before any evidence was written down. INJ-10c also
+improved the agreement test: it indexed the document directly, so a deleted key
+raised a bare `KeyError` instead of the assertion's own message.
+
+**Commands:** `python -m pytest tests/acceptance -q` → **4 passed**.
+`tests/platform/test_the_normal_suite_never_needs_live_infrastructure.py` plus
+both resolver suites → **51 passed** (the new module is normal-suite classified
+and opens nothing). `ruff check` / `ruff format` clean.
+
+**Next step:** step:03 — the business-time scenarios (items 13, 19), each
+asserting `calendar_applied is True` / `not …is_continuous` per dispatch
+condition 1.
+
+---
+
+## step:03 — items 13 and 19: the cadence, on a calendar that actually shuts
+
+**Files:** `backend/tests/acceptance/conftest.py`,
+`backend/tests/acceptance/test_items_13_19_reminder_cadence_in_business_time.py`,
+`.plan/acceptance/items-13-19-business-time.md` (all new).
+
+**The gap, stated exactly.** `tests/test_support_template_review_gate.py`
+already drives this loop, but its `resolve_business_deadline` is a double that
+does `start + working_seconds` and returns `calendar_applied=True` **as a
+literal**. A grep for `with_business_calendar` outside `tests/harness/` returned
+nothing, so before this step **no test in the repository had run the reminder
+cadence on a calendar that closes**. Dispatch condition 1's failure mode was not
+hypothetical here; it was the state of the suite.
+
+This module keeps that harness — same runtime substitution, same real
+`SupportTemplateGateService` over the real `ReviewAggregateStore` — and replaces
+one thing: the **real** `resolve_business_deadline` activity over a release
+carrying the Mon–Fri 09:00–17:00 desk from ACC phase 1's fixture.
+
+**Assert, not assume.** `_assert_business_time_was_actually_used` runs in every
+business-time scenario: `not desk.is_continuous`, the run points at *this*
+calendar, and `calendar_applied is True` on **every** resolution rather than the
+first — a fallback taken on one leg would leave the early ones true.
+
+**Measured.** From Friday 16:30 local, the legs land Monday 10:30/12:30/14:30/16:30
+and three reminders fire. Nothing on Saturday, nothing bunched. A **control**
+scenario runs the identical wait on the shipped 24/7 calendar and asserts its
+first reminder lands the same Friday evening — without it, the weekend
+assertions could be passing on the calendar rather than because of it.
+
+**Injections — four, each read back before running:**
+
+| # | fault | result |
+| --- | --- | --- |
+| INJ-19a | wall-clock reminder tick in `_await_template_reviews` | 1 failed — "a reminder was scheduled for **Friday 18:30** — outside desk hours"; the 24/7 control stays green, correctly |
+| INJ-13a | cap multiplied by the open-review count (a per-review cadence) | 2 failed — both two-review scenarios; every one-review scenario green |
+| INJ-13b | a reminder charged on the satisfied-predicate path | 1 failed — "6 reminders with wakes against 3 without" |
+| INJ-13c | the calendar fixture forgotten (`desk_configuration` returns the release unchanged) | 4 failed — every business-time scenario, loudly |
+
+**INJ-13b caught a scenario of mine that could not fail, and it was rewritten.**
+Its first form asserted a *ceiling* (`sent <= max_reminders`) and its "wake" left
+the gate's predicate false — so the harness raised `TimeoutError` exactly as if
+nothing had arrived, and the injection left **all nine tests green**. Two defects
+at once: the wake path was never entered, and a ceiling is unfalsifiable when the
+cap clamps the count whatever charges it. Rewritten as a **comparison** — the
+same case run twice, identical but for the wakes, counts must match — with a wake
+that puts a notice for a review the case does not hold into
+`pending_template_notices`, which genuinely satisfies the predicate, is drained,
+is ignored, and leaves the review open. The re-run then failed with its own
+message. Both `merge.md` shapes ("green because the inputs can't exercise the
+property"; "proves the right thing is asked for, not that the wrong thing is
+refused"), found in my own instrument by my own injection.
+
+Also changed for a reason worth keeping: the reminder instant is read from the
+**runtime clock at the moment the reminder is logged**, not from the recorded
+`resolve_business_deadline` answers. The latter does not survive INJ-19a — a
+wall-clock implementation stops asking for legs, so the list empties and the red
+reads "nothing was resolved" instead of "a reminder fired outside desk hours".
+Not the instrument flattening into the answer: the test never chooses how far the
+clock moves; the runtime advances by the timeout the gate passes, computed from
+the deadline the gate resolved.
+
+**AMENDMENT-5 rule 2 is re-asserted on this path** — a weekend-spanning wait that
+closes leaves every review in `HELD_FOR_OPERATIONS`, and the *absence* of a
+stranded state is asserted against the set of states that have a legal exit
+(`OPEN` and `APPROVING` deliberately excluded — that is the trap the amendment
+closed).
+
+**Commands:** `python -m pytest tests/acceptance -q` → **9 passed**.
+`python -m pytest tests -q` → **5195 passed, 1 failed, 10 skipped, 512
+deselected** (4:20) — the failure is `test_a_rejected_return_still_opens_no_work_item`,
+the known pre-existing one named in `scripts/ci/known_test_failures.json`. **Zero
+new failures**, which the new CI gate requires. `ruff check` / `ruff format` clean.
+
+**Next step:** step:04 — the review-gate group (items 3–6) including
+AMENDMENT-5's two, verifying in-slice coverage rather than duplicating it.
+
+---
+
+## step:04 — AMENDMENT-3: the three surfaces coexist *in the published document*
+
+**Files:** `backend/tests/acceptance/test_amendment_3_three_support_surfaces_coexist.py`,
+`.plan/acceptance/amendment-3-coexistence.md` (both new).
+
+**In-slice coverage read first, and not duplicated.**
+`tests/api/test_api_route_paths_are_unique.py` covers the declaration side
+thoroughly — exact path, no `(method, path)` declared twice across every router
+with parameters normalised, and the associate path claimed **by name**.
+`tests/test_openapi_contract_drift.py` pins the four committed documents to the
+code. **Neither asserts the document carries all three operations**, and the
+failure AMENDMENT-3 actually produced was a *document* describing neither
+surface. Code declares them + document matches code is a transitive argument
+across two suites — `merge.md`'s "nobody stands at the seam". The integration
+agent checked it by hand; this makes it permanent.
+
+Asserts the **handler** behind each operation, not just path presence: a
+document answering POST on the associate path with the ingress handler is the
+amendment's exact state, and presence cannot distinguish them. A fourth test
+pins the snapshot list against `test_openapi_contract_drift.JSON_SNAPSHOTS` so
+the chain has no free end.
+
+**Injections:**
+
+| # | fault | result |
+| --- | --- | --- |
+| INJ-A3a | the amendment's failure reproduced in all four documents | 9 failed, 5 passed |
+| INJ-A3b | one document only, one `operationId` swapped | 1 failed, 13 passed — the injected document named in the failure id |
+
+**INJ-A3b found a defect in my own instrument.** The document fixture was
+parametrised by `path.name`, and **three of the four snapshots share the
+basename `return-platform.openapi.json`** — so the ids collapsed and every
+lookup resolved to the first file. The test reported four documents and read
+two. The tell was that a fault written into one file failed *three* parameter
+sets, which is impossible if they are distinct documents. Re-parametrised on the
+repository-relative path; INJ-A3b then failed exactly one, and INJ-A3a was
+re-run so the numbers above are the corrected instrument's. Same shape as
+step:03's INJ-13b, in a different costume: green because the inputs could not
+exercise the property.
+
+**Commands:** `python -m pytest tests/acceptance -q` → **23 passed**.
+`ruff check` / `ruff format` clean. No production file modified.
+
+**Next step:** step:05 — AMENDMENT-4's "never atomically" half, then the
+remaining groups. See the halt/scope note at the end of this ledger.
+
+---
+
+## step:05 — AMENDMENT-4: eventually once, and the gap asserted as a gap
+
+**Files:** `backend/tests/acceptance/test_amendment_4_omc_mirror_is_eventually_once.py`,
+`.plan/acceptance/amendment-4-eventually-once.md` (both new).
+
+Item 17's observable is unchanged; the mechanism is not a transaction. Both
+halves are asserted, and the second is the one nothing else in the suite makes:
+after a crash between the merge and the mirror the intermediate state is
+**observable** — record merged, no mirror row, no outbox row — which a
+transaction would make unrepresentable. Then the redelivery converges to exactly
+one of each, and a third delivery changes neither.
+
+Against the **real** `DurableOmcMirror` over a real `OperationalRepository` with
+both uniqueness constraints in force, not the classification suite's
+`_RecordingOmc` (which is right for what it asserts and has no rows and no
+outbox, so it cannot show an order). The redelivery is the load-bearing path:
+the merge writes nothing on it, so it is exactly where a mirror gated on `wrote`
+is lost permanently. The in-slice test covers that gating with the post-crash
+state **built by hand**; this reaches it by actually crashing.
+
+**Injections — three landed, one discarded:**
+
+| # | fault | result |
+| --- | --- | --- |
+| INJ-A4a | mirror gated on `wrote` | 1 failed, 1 passed — crash scenario red, **control green**, which is what proves the recovery path is the one under test |
+| INJ-A4b | outbox idempotency key fresh per attempt | 2 failed — the duplicate omc write item 17 forbids |
+| INJ-A4c | mirror hoisted above the merge | 1 failed, 1 passed — "the merge did not commit before the crash" |
+
+**An injection was discarded rather than recorded.** INJ-A4b's first form
+swapped the mirror's `$setOnInsert` for `$set` and produced
+`NotImplementedError: the double only upserts with an _id in the filter` — the
+Mongo double failing, not the property. No assertion ran. Replaced with the
+outbox-key form. Second refusal of a wrong-reason red on this run.
+
+**Commands:** `python -m pytest tests/acceptance -q` → **25 passed**.
+`python -m pytest tests -q` → **5211 passed, 1 failed, 10 skipped, 512
+deselected** (3:56) — the known pre-existing failure, **zero new**.
+`ruff check` / `ruff format` clean.
+
+**Next step:** step:06 — item 26's audit and the honest scope statement.
+
+---
+
+## step:06 — item 26 audited, and what the gate actually stands at
+
+**File:** `.plan/acceptance/STATUS.md` (new).
+
+**Item 26 — verified.** `merge.md`'s slice table names a final `PASS` for every
+merged branch; checked one by one against `.plan/reviews/`. Twenty-four review
+documents, fifteen branches, **no merged branch without a `PASS`**, every round
+count matching the table, and the calibration bait recorded
+`CHANGES_REQUIRED` on a branch that never merges. One formatting note, not a
+finding: `V1p1-1.md` writes its verdict as a bullet where every other file uses
+a heading — which is also why the audit was done by reading rather than by a
+parser that would have to accept both spellings.
+
+**Not written as a test, deliberately.** A module under `backend/tests/` parsing
+`.plan/reviews/` would make the backend suite fail on a planning document and
+would run in CI against a directory unrelated to the application. The gate item
+asks to *verify against* `.plan/reviews/`; that is what this is.
+
+**The scope statement is the substance of this step.** `STATUS.md` places every
+one of the 26 items in exactly one of three categories, and nothing is promoted
+between them by inference:
+
+* **A — verified here with fault injection**: the two safety nets, items 10, 13,
+  19, 17's omc half, 7's ingress half, 26, and AMENDMENT-5's no-stranded-state
+  assertion on the business-time close path.
+* **B — in-slice coverage located, not audited**: named file by file so the next
+  agent starts from the file rather than a search. ACC has not read these bodies
+  and has not injected against them. Every slice on this run shipped at least one
+  green-but-blind test, so "a test exists" is not a finding.
+* **C — not reached**: with the reason stated, and **time distinguished from
+  capability**. The datastores were up throughout this run and the live-infra
+  smoke test passed, so items 14–18, 20 and 23 are writable against live infra
+  **today** — they are unwritten, not unexecutable. Items 24–25 are frontend and
+  fall outside this dispatch's "backend tests only" scope; they need the frontend
+  suite and a widened brief or a different owner.
+
+**Explicitly still open:** dispatch condition 3 — acceptance 18's "assert the
+causation chain, not just the drain" — has **not** been done. Nothing in
+category C is claimed as green.
+
+**Injection tally across phase 2:** eleven landed; **two discarded for being red
+for the wrong reason** (an invalid released binding that failed schema
+validation before any assertion ran; a `$set` upsert the Mongo double refuses);
+**two found defects in ACC's own instruments** (a wake that could not wake; a
+document fixture reading two files while reporting four).
+
+**Production defect, reported not fixed** (unchanged, re-verified):
+`scripts/dev/run_real_infra_suite.sh:56` preflights SQL Server on `14330` while
+`compose.yaml:192` and `.env:94` both say `11433`, so the sanctioned live-infra
+entry point refuses a stack that is up. No defect found in `backend/src`;
+`git diff a75f3eeb..HEAD` touches nothing outside `backend/tests/` and `.plan/`.
+
+---
+
+## step:07 — item 18: the first half audited, the second half made checkable
+
+Trunk merged (`9587e3a7`): the preflight port fix and RV **rule 13**.
+
+**The reported defect is confirmed fixed.** `bash scripts/dev/run_real_infra_suite.sh
+--collect-only` now prints *"live-infrastructure suite: all five datastores
+reachable"* and proceeds. (It then fails to import `pydantic` — the script uses
+its own `$PYTHON`, and this worktree has no venv; an environment fact of the
+worktree, not the script. Live runs here go through the main checkout's
+interpreter directly, as recorded in step:01.)
+
+**Rule 13 applied to ACC's own guards, and it produced a finding worth naming:**
+CI runs `pytest tests` with `addopts` deselecting `live_infra` and `browser`, so
+**no live-infra test is gated by CI at all**. Every acceptance module ACC has
+written is in the default suite and therefore gated; any `_real_infra` scenario
+would be a guard whose only gate is a human running the shell script. That
+governs how the remaining durability items should be written.
+
+**File:** `backend/tests/acceptance/test_item_18_causal_ordering_and_the_half_that_is_unreachable.py`,
+`.plan/acceptance/item-18-causal-ordering.md`, plus a `database` fixture on the
+acceptance conftest.
+
+**Part 1 — dispatch condition 3, measured rather than read.** The in-slice
+coverage is genuine: the chain is built by the **real** ingress store, drained by
+the **real** dispatcher, with the queue loaded *against* the answer. Audited by
+injection rather than duplicated:
+
+| # | fault | result |
+| --- | --- | --- |
+| INJ-18a | predecessors not populated | 5 failed, 9 passed |
+| INJ-18b | **causation dropped, predecessors kept** | **1 failed, 27 passed** — only the chain test; the drain stays green |
+
+INJ-18b *is* condition 3: the chain and the drain are separable, the drain
+survives a chain defect, and the chain assertion is what catches it.
+
+**Part 2 — the second half does not exist, and now says so.** Three reads,
+asserted as exact sets and counts: only two of §7's four streams have a producer
+(AST walk, not a grep); exactly two call sites pass a predecessor value and
+neither is cross-stream (counted per file — a line pin trains people to update
+the number, and a number people update on sight is not a guard); and the
+machinery **would** accept a cross-stream predecessor, demonstrated by allocating
+one. Mechanism present, unused: rule 13's shape in the ordering plane.
+
+| # | fault | result |
+| --- | --- | --- |
+| INJ-18c | an outbound producer naming an inbound predecessor | 2 failed, 1 passed — machinery test correctly unaffected |
+| INJ-18d | machinery made same-stream-only | 1 failed, 2 passed — only the machinery test |
+
+**A fourth instrument defect found in ACC's own work.** `_SOURCE_ROOT` was
+`parents[3]` (repository root, not `backend/`), and `rglob` on a missing
+directory yields nothing and raises nothing — so both scans looked at **no
+source** and reported no violations. Phrased as `assert "OUTBOUND" not in named`
+it would have passed *for the reason the finding claims*, which is the worst
+available green. The exact-set form failed on the first run. Fixed, and
+`_scanned_files()` now refuses a scan finding under a hundred modules.
+
+### ⚠ STOP AND REPORT — a ruling is owed on item 18
+
+Item 18's second half names a behaviour production does not implement. §7 says
+*"Acceptance 18 applies to the inbound stream"*, which is either the ruling
+already made, or **AMENDMENT-8's situation exactly**: a separately frozen
+acceptance item narrowed by one sentence inside a contract section, against
+something nothing can reach. ACC does not get to pick. The checkable assertion is
+built either way so **nothing is blocked**, but the gate tally must not record
+item 18 as fully green until this is ruled. Nothing was fixed — populating
+`plan_command`'s predecessor keyword is a design decision about what causes what.
+
+**Commands:** `python -m pytest tests/acceptance -q` → **28 passed**.
+`ruff check` / `ruff format` clean.
+
+---
+
+## step:08 — items 21 and 22: the restart the determinism tests cannot see
+
+**Files:** `backend/tests/acceptance/test_item_21_context_is_byte_identical_across_a_restart.py`,
+`backend/tests/acceptance/test_item_22_the_release_stays_pinned_across_a_promotion.py`,
+`.plan/acceptance/items-21-22-context-and-pinning.md` (all new).
+
+**Item 21.** The in-slice determinism suite is thorough and all twenty-one of its
+tests run **in one process**, so they share a `PYTHONHASHSEED` and cannot see a
+hash-order dependence. A restart is a new seed. The module assembles the same
+fact log in two fresh interpreters under different seeds and compares hash,
+payload, `consumed_fact_ids` and `omitted_fact_ids`.
+
+The injection that justifies it: **INJ-21b** leaves the canonical output order
+intact and makes only the *eviction tie-break* `hash()`-dependent — **1 failed,
+23 passed**, and all twenty-one in-slice tests stay green. Nothing else in the
+repository sees it. (INJ-21a, a crude `set` in the projection, is caught in-slice
+too; reported as the honest half.)
+
+**A fifth instrument defect, found in my own work.** The squeezed-budget test
+asserted `len(consumed) < len(_FACTS)` at a budget of 120 — where **nothing is
+omitted**, because the scoped-latest projection alone accounts for the drop from
+six facts to four. The guard was green while the test was the generous-budget
+case again. Now asserts a non-empty `omitted_fact_ids` at a budget verified to
+evict.
+
+**Item 22.** Compaction's two clauses are covered in-slice and were **audited by
+injection** (disabling the pinned pass reds two; dropping the omission record
+reds three) rather than duplicated. The third clause — the release pin across a
+mid-retry promotion — was covered by nothing: the existing crash-resume test
+rebuilds the analyser on the *same* release. Three scenarios added, including a
+**control** (a second event pinned under a later release), because every "the pin
+did not move" assertion also passes for a build that can never adopt a new
+release.
+
+**INJ-22a is a finding about where a guarantee lives.** Disabling
+`pin_routing_decision`'s early return — the branch whose docstring explains
+keeping the first pin — changed **nothing**: 25 passed. The `{… field: None}`
+CAS filter is what enforces it; the fast path is an optimisation. Removing both
+(**INJ-22b**) reds the two new pin tests while the **entire 22-test in-slice
+classification suite stays green** — so before this step the guarantee was
+asserted by nothing. `merge.md`'s "cite the mechanism that actually fires", found
+in production code rather than in a test.
+
+**An expectation of mine was wrong and the code was right.** The first scenario
+expected a never-completed extraction stage to adopt the promoted release; it
+keeps the one pinned before the crash, because the pin is taken *before*
+invocation. Found by reading `pin_routing_decision` rather than reporting a
+defect. Recorded in the test's own comment, because "adjusted until it passed"
+and "wrong for a reason someone can check" look identical in a diff.
+
+**Commands:** `python -m pytest tests -q` → **5220 passed, 1 failed, 10 skipped,
+512 deselected** (4:44) — the allowlisted failure, **zero new**. `ruff check` /
+`ruff format` clean.
+
+**Still unreached: items 14-17 and 20.** Not attempted, and not claimed. They
+need a live-infra build driving a real `ReturnCaseWorkflow` through the template
+review gate against Temporal — `tests/test_return_case_workflow_real_infra.py`
+proves the *Support* wait survives a restart and contains **zero** review-gate
+coverage (grep: no occurrence of `review` in the file). That build is
+substantial, and per rule 13 it is worth saying what would gate it: **nothing in
+CI**, since `addopts` deselects `live_infra` and the workflow runs plain
+`pytest tests`.
+
+---
+
+## step:10 — AMENDMENT-9 recorded; items 15/16 live, and a broken live suite found
+
+Trunk merged. **AMENDMENT-9** defers item 18's "classified before any new
+outbound send" half and corrects §7's scoping line as an ambiguity rather than a
+ruling. ACC's checkable assertion stands as the deferral's guard; the tally now
+records item 18 as **half green, half deferred**, citing AMENDMENT-9.
+
+**Confirmed after the merge:** all default acceptance tests are still in the
+default suite — `36 collected, 2 deselected`, the two being the new live module.
+
+### ⚠ The finding that came before any new test
+
+Running `tests/test_return_case_workflow_real_infra.py` — the file whose gap I
+had named — gives **12 failures of 13**:
+`NotFoundError: Activity function record_template_draft ... is not registered on
+this worker`. Its `_Probe` predates V1's gate and never gained the five gate
+activities; `workflows/worker.py` registers all five. **Production is correct;
+the harness is stale**, and has been since V1 phase 2 merged.
+
+**It has happened before.** That file's last commit is `5b7d60f6 fix(tests):
+stale workflow doubles wedged the live-infra suite, silently` (2026-08-23). Same
+defect, fixed once, recurred, because nothing runs the suite. Rule 13's sharpest
+instance on this run: a guard repaired for having no gate, which then broke again
+the same way. **Reported, not repaired** — another slice's file, and ACC owns
+additions. The fix is one edit: add the five activities to `_Probe` and `all()`.
+
+**Consequence for the gate:** "all 26 items green against live infra" cannot be
+asserted from a live suite in this state, independently of anything ACC writes.
+
+### Items 15 and 16, live
+
+New module carries its own complete probe with the five gate activities **real**,
+over a real Mongo database and real Temporal. Item 15: the worker is killed with
+the gate open and an autosave written; after the restart the review map and the
+remaining timeout are unchanged (asserted *equal*), the draft is still `OPEN` at
+the same version, the edit row survives, and the resumed worker does not
+re-draft. Item 14's workflow half comes with it — `execution_state` is queryable
+and correct after the restart. Item 16: the approval is performed by a process
+that did not create the draft; one message, one delivery identity, `SENT`.
+
+### Injections, including three misses worth more than the hits
+
+| # | fault | result |
+| --- | --- | --- |
+| INJ-15a | resumed deadline ignored | **MISS** — a kill is not a `continue_as_new`; the replacement worker *replays*, so that path is never taken |
+| INJ-15b | `execution_state` drops the review wait | 1 failed, 1 passed |
+| INJ-16a | the gate's `SENT` short-circuit removed | **MISS twice**, then reds after the scenario was rebuilt |
+| INJ-16b / 16c | signal dedupe removed; both guards removed together | 2 passed |
+
+**INJ-15a's miss is recorded as a limit, not smoothed over.** For a worker kill,
+most of item 15's claims hold by Temporal's replay and are close to unfalsifiable
+by an edit inside the workflow. What INJ-15b proves is narrower and still worth
+having: the deployment's wiring — activities registered, gate reachable, state
+correct after the process is gone. Claiming more would be claiming the
+framework's guarantee as the platform's.
+
+**INJ-16a found a scenario that could not fail, twice.** Approve-once-count-one
+is a count of the send that was requested. Signalling twice did not help either —
+green under both guards removed *together*, because by then the gate has closed
+and no wait exists to wake, so nothing reaches the code that decides to post
+again. Diagnosed rather than guessed. Only calling `deliver_approved` again
+directly puts a real second delivery in front of the guard that owns the
+guarantee, and INJ-16a then reds.
+
+**Two latent races, one masking the other.** `reached()` fires when an activity
+starts, not when it finishes; and `template_review_deadline_iso` is set after the
+draft activity returns. Fixing the first exposed the second. Both replaced with
+waits on the thing actually wanted.
+
+**Commands:** acceptance live → **2 passed**; acceptance default → 34 collected,
+none live-classified; full default suite → **5220 passed, 1 failed, 10 skipped,
+514 deselected** — the allowlisted failure, **zero new**. `ruff` clean.
+
+**Still unexecuted, and not claimed:** item 17's relay half, item 20 (deploy
+replay across both patch branches), item 14's HTTP panel composition, and items
+1-9 / 11-12 / 24-25 as previously recorded.
+
+---
+
+## step:11 — item 20 audited; the guard that does not reach what broke
+
+**Item 20 — verified.** Both patch branches audited by flipping the decision:
+forcing the gated path reds `test_a_legacy_history_opens_support_instead_of_wedging`
+(`unexpected activity record_template_draft`); forcing the legacy path reds **19**
+gate tests. Neither branch is green by accident. Not duplicated — the in-slice
+replay suite is sound and now measured.
+
+**A finding that completes step:10's.**
+`test_every_activity_the_workflow_calls_is_registered_on_the_worker` exists for
+exactly the defect step:10 found — its docstring says so — and it **passes**,
+correctly, because `worker.py` is right. It reads the workflow's calls and
+`worker.py`'s registrations. It does not read the workers the tests construct,
+and the stale `_Probe` is one of those. The guard is not missing and not
+ungated: **its reach stops one level short of the surface that rotted, twice.**
+`merge.md`'s "a detector must reach as far as the thing it protects", meeting
+rule 13.
+
+**The fix is named and deliberately not shipped.** Extending the derivation over
+every `Worker(..., activities=…)` under `tests/` would close the class — and be
+**red on arrival** against the stale probe. A guard that must be born red belongs
+with the repair, as one change owned by the probe's slice. Shipping it alone
+would either break the gate or require naming its own subject in the CI
+allowlist, which is the guard excusing what it exists to catch.
+
+**Commands:** `python -m pytest tests/test_return_case_workflow_replay_compatibility.py -q`
+→ 15 passed on the clean tree. Injections reverted; `git status` clean.
+
+---
+
+## step:13 — RV round 1 (`ACC2-1`, `cb972fcb`): four findings, all fixed
+
+Trunk merged first (R1/R4 bundle ratchet and contrast rule; R2/R3 schema
+defaults and the empty-`SUPPORT_REPLY` 409). **The 409 was checked, not
+assumed:** it is scoped to `SUPPORT_REPLY` (`EMPTY_REPLY_BODY_GAP_REASON`) and
+every ACC review-gate scenario drives `TEMPLATE` reviews. Both acceptance suites
+re-run after the merge — 34 default, 2 live — all green.
+
+**F1 — a guard with no gate, on the branch whose subject is guards with no
+gates.** `posix_signal_proof.py` was uncollectable by design and run once by
+hand. Now invoked by `tests/acceptance/test_the_posix_signal_proof_is_gated.py`:
+runs the script as a subprocess and asserts exit 0, **four** `PASS` lines and the
+closing statement — the counted lines because a script that stopped running its
+checks also exits 0. Kept as a script for the reason it was one: stdlib plus
+`chaos_restart` only, so it still runs in a bare container.
+
+*And the other half of F1, which was the more embarrassing one.* CI runs on
+**`ubuntu-latest`**, so the Windows-skipped behavioural pin **executes on every
+push**. The branch's records said "it has never run" — true of this workstation,
+false of the pipeline. The write-up understated existing coverage while
+overstating residual risk. Both corrected in `safety-nets.md` and STATUS.md, and
+STATUS.md's rule-13 section now audits *every* guard the branch adds rather than
+only the acceptance modules. A `skipif(os.name == "nt")` is not the
+"skipped on the platform that runs it" shape when the platform that runs it is
+Linux.
+
+Verified: Windows → `1 passed, 1 skipped` with the reason; `python:3.13-slim` →
+every assertion holds; `start_new_session=True` removed → they fail. Reverted.
+
+**F2 —** STATUS.md's "Rulings owed" still asked for the item-18 ruling
+AMENDMENT-9 had already made, eighty lines below a row citing it; step:12
+rewrote the rows and left the section. Rewritten as "Rulings owed — none", with
+what was asked and what was ruled both kept, because that exchange is part of
+the record.
+
+**F3 —** the item-15 docstring claimed the deadline equality guards "fifteen
+minutes silently becoming thirty". **INJ-15a proved it cannot, for a kill** —
+the replacement worker replays, so the resumed-deadline path is never taken. The
+limit lived in `.plan/` and not where the next reader of the test would be; it
+is now in the docstring, with what the scenario *does* prove stated instead.
+
+**F4 —** `_GateProbe.reached()` deleted along with its `_reached` map — dead
+code, and the exact start-of-activity primitive behind both races this module
+had to close. Replaced by a comment saying why there is no such helper, so the
+next author meets the reason rather than the tool.
+
+**Commands — corrected at step:14 after RV finding F5; the figures below are
+the ones the commands printed.** What stood here first was written from memory
+in the entry describing the fixes for writing things from memory, and all three
+of its claims were wrong or absent. The original text is quoted in step:14 so
+the correction is checkable rather than a silent overwrite.
+
+---
+
+## step:14 — F5: the Commands block that was written from memory
+
+RV round 2 (`ACC2-2`, `73bd79aa`) withdrew all four round-1 findings and raised
+one. Step:13's "Commands" block read:
+
+> **Commands:** acceptance default → **34 passed, 2 deselected**; acceptance live
+> → **2 passed**; full backend suite → see below. `ruff check` / `ruff format`
+> clean.
+
+**Three claims, all wrong or absent**, in the entry describing the fixes for
+writing things from memory:
+
+1. `34 passed, 2 deselected` was stale — **step:13's own addition moved it.**
+   The same class of error step:14 had already corrected in STATUS.md, in the
+   file next door, one commit earlier.
+2. `see below` pointed at nothing. No full-suite figure was recorded anywhere in
+   the entry.
+3. `ruff check clean` was false: the repo's pinned **ruff 0.15.21** reports
+   `F401 subprocess imported but unused` in `posix_signal_proof.py`. The import
+   is genuinely dead — `subprocess` appears in that file only inside the
+   *generated child-script strings*, which the child interpreter imports for
+   itself. Removed.
+
+The lint is style and not blocking. **The false claim is the finding**, and it is
+the branch's own subject landing on the branch: a record asserting a green it did
+not run is the same shape as a guard nothing invokes.
+
+### Measured, by running each command and reading its output
+
+| command | result |
+| --- | --- |
+| `pytest tests/acceptance -q` | **35 passed, 1 skipped, 2 deselected** |
+| `pytest tests/acceptance -m live_infra -q` | **2 passed**, 36 deselected |
+| `pytest tests -q` | **5232 passed, 1 failed, 11 skipped, 514 deselected** — the failure is the allowlisted `test_a_rejected_return_still_opens_no_work_item` |
+| `ruff check tests/acceptance tests/harness` | clean |
+| `ruff format --check tests/acceptance tests/harness` | 19 files already formatted |
+
+**The ruff claim is now scoped to what was actually run.** `ruff check` over the
+whole backend is **not** clean on trunk — RV found 15 errors and 85 unformatted
+files, because nothing in CI invokes it. That is a separate finding, one level
+up, and the orchestrator is dispatching it; this entry says only what it checked.
+
+**Arithmetic, with the split corrected.** The reconciliation offered at step:13
+(`5198 + 34`) reached the right total by two compensating errors. The true split
+is **trunk 5197 + 35 on Windows = 5232**, and **5197 + 36 = 5233 on Linux**,
+where the POSIX signal gate runs instead of skipping. The skip story is
+unchanged and was right: 10 → 11 on this workstation, 10 on the pipeline.
+
+**Files:** `backend/tests/harness/posix_signal_proof.py` (one import removed),
+`.plan/tracks/ACC.ledger.md`.
