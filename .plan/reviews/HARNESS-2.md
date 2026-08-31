@@ -3,10 +3,235 @@
 **Branch** `feat/live-harness-registration`
 **Head** `2f1c0e50` — *"(harness) step:23 inconclusive, and step:21 misread its own headline number"*
 **Base** `7a898cf9` (merge-base with trunk, unchanged from round 1)
-**Trunk at review** `c8eac86d`
+**Trunk at review** `c8eac86d`; **trunk now** `72f37ba2`
 **Round 1** `.plan/reviews/HARNESS-1.md` — `CHANGES_REQUIRED`, three ledger findings
 
-## Verdict: `PASS`
+# ⚠ VERDICT WITHDRAWN AND CORRECTED — `PASS` → `CHANGES_REQUIRED`
+
+**This document originally returned `PASS`. That verdict was wrong and is
+withdrawn.** The branch at `2f1c0e50` breaks trunk on merge. The original review
+body is retained below, unedited, from "What actually changed" onward — the same
+discipline I required of the ledger applies to me, and rewriting it would destroy
+the evidence of how the miss happened.
+
+**Reproduced independently**, merge tree `bfbba2ee` (`git merge-tree
+--write-tree 72f37ba2 2f1c0e50`, clean), full default suite:
+
+    2 failed, 5245 passed, 11 skipped, 514 deselected in 277.99s
+
+    FAILED test_a_test_worker_for_the_case_workflow_exists_to_be_checked
+    FAILED test_every_test_worker_registers_every_activity_the_workflow_calls
+
+Exactly the coordinator's numbers, and both failures are this branch's own
+guard. Nothing else in the merged tree is affected.
+
+---
+
+## F4 — the population pin is stale in content (blocking)
+
+`test_return_case_workflow_replay_compatibility.py:466-469` asserts file-set
+**equality** against two names. Trunk gained a third worker file — `da3dcd00`
+*(ACC) step:10 items 15 and 16 live*, added 2026-08-31, during this branch's own
+review cycle — at
+`backend/tests/acceptance/test_items_15_16_review_survives_a_kill_real_infra.py`.
+It builds four genuine `ReturnCaseWorkflow` workers.
+
+The pin is **correct in design and stale in content**. I sustain the equality
+property as valuable in round 1; I did not check it against a moving trunk.
+
+## F5 — the guard cannot resolve a worker file in a subdirectory (blocking, and the more serious)
+
+Line 504: `importlib.import_module(f"tests.{path.stem}")`, against a walker that
+is deliberately repo-wide (`_test_root().rglob("*.py")`, line 431). Any worker
+file below `tests/` raises `ModuleNotFoundError`. This is a **latent bug in the
+guard**, not a stale list: the next worker file in any subdirectory breaks it
+identically, and `backend/tests/` has 8 test subpackages.
+
+**I identified this exact defect in round 1 and graded it non-blocking. That
+grading was wrong.** See "What I got wrong" below.
+
+## F6 — the guard, once fixed, reports a real under-registration on trunk (finding against ACC, not against this branch)
+
+This is the part neither the coordinator nor I had, and it decides the second
+judgement. With the module path derived correctly, the guard imports the
+acceptance file and reports:
+
+    tests/acceptance/test_items_15_16_..._real_infra.py:566 (_GateProbe)
+      declared 15 of 18 — missing {case_has_return_details,
+                                   record_clarification_answer,
+                                   relay_clarification_to_support}
+    ... and identically at :599, :658, :666
+
+    (the other 22 sites, both original files: declared 18, missing none)
+
+**`_GateProbe` is under-registered by three activities, on trunk, today.** The
+three are unreachable in that module's current scenarios — `return_details_
+required` defaults to `False` and the module never sets it; the clarification
+pair is called only from the `clarification_answered` handler and the module
+contains no occurrence of "clarification". So it is **green because its inputs
+cannot exercise the property**: category B, the identical diagnosis this branch
+made about the sibling policy-gate probe in round 1, and the exact reasoning the
+branch rejected when it chose to register all 18 on its own probes rather than
+only what its scenarios reach.
+
+**Consequence for the merge plan, and it needs the orchestrator.** Fixing the
+guard does **not** make the merge green — it converts a guard-bug failure into a
+true-positive failure. `backend/tests/acceptance/` belongs to ACC, so HARNESS
+cannot repair `_GateProbe` without a rule 11 breach. Either ACC adds the three
+stubs first, or the two land together. **What must not happen is the guard being
+scoped down to make the red go away**, which is F6 disappearing into F5's fix.
+
+---
+
+## Judgement 1 — equality vs superset: **neither; invert the assertion**
+
+Asked what makes equality worth the tax. My answer is that it **is not worth
+it, and the choice is a false pair** — because equality is doing a job the
+sibling assertion already does better.
+
+The pin has exactly one job: anti-vacuity, so the registration guard is not
+asserting over an empty list. The property that serves it is *"no file that
+previously had a worker has stopped having one."* Equality over-specifies: it
+also asserts *"and no file has been added,"* which is not a defect, is a routine
+event, and is the whole of the tax.
+
+Is the added strictness buying anything? The pin's own comment argues yes — *"a
+new probe is exactly where an under-registered one arrives"* — and F6 proves the
+premise true. But the **registration guard already checks every file the walker
+finds, new ones included**. Equality was only serving as a crude "a new file
+appeared" alarm *because the registration guard would choke on it* (F5). Fix F5
+and the redundancy is clean. The two defects were propping each other up.
+
+So: assert the subset in the direction that matters, and keep the floor.
+
+    assert {
+        "test_return_case_policy_gate_real_infra.py",
+        "test_return_case_workflow_real_infra.py",
+    } <= {path.name for path, _line, _cls, _src in workers}
+
+This catches every drop-out of a known file — the failure equality existed for —
+and costs an unrelated branch nothing when a file is added. The named set becomes
+append-only: adding to it is optional and deliberate, removing from it is a
+decision that should be reviewed anyway.
+
+**The residual, stated honestly.** A newly-added file is *not* protected against
+silently dropping out until someone adds it to the list. Equality gave that
+protection automatically, and this trades it away. I judge that worth it: the
+protection equality bought applied to files nobody had yet decided to protect,
+and it was paid for by breaking every unrelated merge. Keep `len(workers) >= 20`
+as the cheap second net, and raise the floor when the named set grows.
+
+## Judgement 2 — derive the module path; do **not** scope the walker
+
+Unambiguous, on F6's evidence. **Scoping the walker to `tests/*.py` would blind
+the guard to a real under-registration that exists on trunk right now.** That is
+not a smaller fix, it is the guard being narrowed to the region where it happens
+to already pass — the "correct mechanism existed and was bypassed" pattern that
+rule 13 was written for, and it would be this branch committing it.
+
+Scoping also contradicts the walker's own stated design at line 425: *"A worker
+for some other workflow is none of this rule's business … so the filter is on the
+workflow, not on the file."* The walker is deliberately repo-wide and its filter
+is deliberately semantic. Scoping would replace a semantic filter with a
+positional one.
+
+Asked whether the guard *should* be checking that file at all: **yes,
+decisively.** It builds a real `ReturnCaseWorkflow` worker against real Temporal
+and kills it mid-run — a restart is precisely where a case can take a path the
+file's happy scenarios do not, which is the branch's own argument for registering
+by release rather than by scenario. Being live-infra is irrelevant: the guard is
+a static/import-time check that runs in the default suite, which is why it is
+worth having at all.
+
+    dotted = ".".join(path.relative_to(_test_root().parent).with_suffix("").parts)
+    module = importlib.import_module(dotted)
+
+**Both changes verified together** in a scratch copy of the merge tree (not in
+the repository — I edit no source): the population pin passes, the importer
+resolves `tests.acceptance....`, and the run goes to `1 failed, 16 passed` where
+the one failure is F6 — the guard correctly reporting a real defect.
+
+## Standing note — branch-green is not merge-green for tree-walking guards
+
+The coordinator asked for this and I would widen it slightly, because "exact-set
+assertion" names the instance rather than the class.
+
+**The property that makes a guard merge-fragile is that its outcome depends on
+repository state outside its own diff.** Exact-set pins are the clearest case,
+but the class includes anything that walks the tree — `rglob`/`glob` sweeps,
+collection counts, floors, "every X has a Y" rules — and, as F5 shows, **any
+guard whose own resolution logic assumes a repository layout** (module paths,
+directory depth, naming). For all of these, a green branch is evidence about the
+branch and not about the merge.
+
+**The rule:** for any branch adding or modifying a guard of this shape, build the
+merge tree and **run it**, not merely merge it and lint it. `git merge-tree
+--write-tree <trunk> <branch>`, `git archive` the result, run the suite. It cost
+me under five minutes here and would have caught both findings.
+
+**This is not a narrow class.** `git grep -ln "rglob\|\.glob("` over
+`backend/tests/` and `scripts/` on trunk returns **28 files**. I have not audited
+them and am not raising findings against them; I record the number so the note
+reads as a live risk rather than a maxim.
+
+## What I got wrong, precisely
+
+Two errors, and the second is worse than the first.
+
+**1. I found F5 in round 1 and argued myself out of it.** Verbatim, HARNESS-1 §3:
+
+> One noted fragility, **not a finding**: the guard resolves probes via
+> `importlib.import_module(f"tests.{path.stem}")`, which assumes the file sits
+> directly under `tests/`. Moving a probe file into a subpackage would keep the
+> filename (so the pin passes) and then raise `ModuleNotFoundError` in the guard.
+> **That fails red, not silently, which is the correct direction.**
+
+I named the defect, predicted the exact exception, and dismissed it on an
+argument about *what kind* of failure it is — never about how likely it was or
+what it would cost. "Fails red, not silently" is the right disposition for a
+**defect detector**; for a **guard's own plumbing** it is a liability, because
+red-on-a-legitimate-change is indistinguishable, to whoever is holding the merge,
+from red-on-a-real-defect. That is how guards get edited around.
+
+I also mis-imagined the trigger — *moving* an existing probe file, which is rare
+and deliberate — and so underweighted the likelihood. The actual trigger was
+*adding* a new worker file to an existing subpackage, which is routine, and which
+happened within days.
+
+**2. I carried round 1's verification forward on a byte-identical diff.** Round 2
+opens by establishing that `activity_probe.py` and the guard file are
+byte-identical to the round-1 state, and uses that to carry §1-§3 forward "without
+re-derivation." That was efficient and it is exactly how the misgrade propagated
+unchallenged. **Byte-identical code is not byte-identical risk when the tree
+around it has moved** — and for a guard whose whole purpose is to assert over
+that tree, an unchanged diff is close to no information at all. This is the more
+general lesson and it is not confined to set assertions.
+
+I checked the merge tree for *format* and reported it clean, which was correct
+and which made the omission harder to see: I had the merge tree materialised and
+ran `ruff` over it rather than `pytest`. The instrument was in my hand.
+
+## Revised verdict on `2f1c0e50`: `CHANGES_REQUIRED`
+
+Three findings: **F4** (stale pin), **F5** (subdirectory resolution — the latent
+one), **F6** (a true positive the fixed guard surfaces, owned by ACC and needing
+orchestrator sequencing).
+
+Everything in the retained body below stands as verified — the reversion, the
+three assertion sites, the outbox strengthening, rule 10 on the net diff, the
+runner exercised green and red, and the ledger's corrections. **None of it is
+withdrawn.** The branch's substance is sound; it is the guard's contact with a
+moved trunk that fails, and that is the one thing the original review did not
+measure.
+
+Re-review at the author's next head. I will run the merge tree.
+
+---
+
+<details>
+<summary><b>Original review body, retained unedited — verdict superseded above</b></summary>
+
+## Verdict: `PASS` *(WITHDRAWN — see above)*
 
 Zero unresolved findings. Round 1's F1, F2 and F3 are answered in the form
 contracts.md §3 requires — original wording kept, forward pointers inserted, the
@@ -483,3 +708,5 @@ failed, and marking its own prediction as one that could only confirm — is wor
 more to this repository than one that ends with a finding it cannot support.
 
 `PASS`. Merge permitted, as a three-way merge.
+
+</details>
