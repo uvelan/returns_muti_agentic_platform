@@ -160,11 +160,14 @@ jobs:
       #
       # The two files are NOT interchangeable in content and this does not
       # claim they are: a developer `.env` carries exactly 11 keys the example
-      # does not, most of them live-infra and host-port settings. The example
-      # has none the developer file lacks -- it is a strict subset, which is
-      # why copying it suffices. What was measured is that the normal suite's
-      # OUTCOME is the same either way, which is all CI needs, since CI only
-      # ever sees `.env.example`.
+      # does not, most of them live-infra and host-port settings, and the
+      # example has none the developer file lacks.
+      #
+      # What establishes that the example is ENOUGH is the measured run above,
+      # not that containment -- a subset of a sufficient set is not itself
+      # sufficient, and the 11 missing keys are exactly what would make it
+      # insufficient if one of them were ever required without a default.
+      # That is the thing to re-measure when this file changes.
       #
       # What stops this rotting (rule 13, and the honest answer is that the
       # gate is mostly this job itself):
