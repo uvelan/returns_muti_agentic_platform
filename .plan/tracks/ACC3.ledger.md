@@ -823,3 +823,76 @@ that table means unverified, never "fine". That is what stops the map from
 becoming the next thing a reader over-trusts.
 
 Documentation only: `git diff -- backend/src/` empty.
+
+---
+
+## step:11 — RV ACC3-2 F2: I corrected the prose and left the table
+
+The finding is my own, in the document that argues for it. `STATUS.md:169` — the
+phase-3 verdict table — still carried F1's wording verbatim, so the document
+contradicted itself, **and the half a reader reaches first was the wrong half.**
+A category table is precisely the artifact this audit argues auditors act on.
+
+Two defects in the one line: the understated scope, and a cross-reference to
+"production finding 3" — which is `pin_routing_decision`, unrelated. Worse than a
+wrong number: STATUS has **two** numbered lists, "Production defects" (1–2) and
+"Findings handed to their owners" (1–5), so "production finding 3" named the
+wrong list *and* the wrong item. The correct target is the second list's **4**.
+
+### Closing the class rather than the instance
+
+RV asked for one sweep, on the grounds that "corrected the mechanism, left the
+map" is exactly how the mis-pointed rows I found came to exist. It found three
+more instances beyond the one named:
+
+```
+$ grep -n "one branch\|of the pair\|both patch branches" STATUS.md category-b-audit.md
+$ grep -nE "finding[s]? [0-9]" STATUS.md category-b-audit.md
+```
+
+* **`STATUS.md:76`** — item 20's *category-A* row, "both patch branches audited
+  by flipping the decision each way". **Left standing as a claim**, because it is
+  true of ACC-2's own scenario and I did not re-audit it; weakening a correct
+  claim to look thorough would be its own defect. Annotated with a pointer to
+  finding 4 and an explicit "ACC3 did not re-audit this row", so a reader landing
+  there learns that patch-gate coverage elsewhere is a separate question.
+* **`STATUS.md:273, 279`** — bare "finding 1" / "findings 1 and 2" that could
+  resolve to either list. Disambiguated, with a parenthetical stating the
+  convention once.
+* **`category-b-audit.md:227`** — the same two-lists-both-starting-at-1 collision
+  in the other document (`### 1.` appears under both "the two genuine coverage
+  holes" and "Production findings"). RV judged it clean because "production"
+  qualifies it, and that is right — but the collision is the same one I had just
+  fixed in STATUS, so it is fixed the same way. Closing a class in one document
+  and not the other is the miss this step is about.
+
+The remaining "one branch" hits (`STATUS.md:290`, `category-b-audit.md:176, 197,
+202`) are quotes of the superseded wording inside the correction prose — the
+record of the correction, not surviving assertions. Left deliberately.
+
+### Verification of what I wrote, not what I remembered
+
+The patch ids were typed fresh into `STATUS.md:169`, so they were checked rather
+than trusted:
+
+```
+$ grep -c "\"v3-clarification-round-trip\"" ...            -> 1
+$ grep -c "\"support-draft-returns-structured-payload\"" ... -> 1
+$ grep -c "\"support-template-review-gate\"" ...            -> 1
+$ grep -c "workflow\.patched" ...                           -> 4
+```
+
+The `4` is one more than the three call sites, which is the kind of number that
+should not be left as an assumption:
+
+```
+149:#: `workflow.patched` is what tells the two apart.   <- prose, not a call
+1672:        if not workflow.patched(_PATCH_V3_CLARIFICATION_ROUND_TRIP):
+2247:            if workflow.patched(_PATCH_STRUCTURED_SUPPORT_DRAFT):
+2294:        if workflow.patched(_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE):
+```
+
+Three call sites, three distinct ids, each defined once. Both documents now
+assert the same scope in all four places that state it.
+
+Documentation only: `git diff -- backend/` empty.

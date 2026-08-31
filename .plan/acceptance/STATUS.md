@@ -73,7 +73,7 @@ skips.
 | **14** (workflow half) | `execution_state` queryable and correct after a worker kill; the panel's HTTP composition is **not** exercised | `items-14-17-review-across-a-kill.md` |
 | **15** | kill mid-review, live: draft, edit rows and remaining timeout survive; the resumed worker does not re-draft | `items-14-17-review-across-a-kill.md` |
 | **16** | one approval, one message, one delivery identity — across a restart, and under a genuine second delivery | `items-14-17-review-across-a-kill.md` |
-| **20** | both patch branches audited by flipping the decision each way | `items-14-17-review-across-a-kill.md` |
+| **20** | both patch branches audited by flipping the decision each way — **this is ACC-2's own scenario and stands as written**; it says nothing about patch-gate coverage elsewhere, and "Findings handed to their owners" **4** records a module where none exists (ACC3 did not re-audit this row) | `items-14-17-review-across-a-kill.md` |
 | **21** | byte-identical across two interpreters with different hash seeds, including under eviction | `items-21-22-context-and-pinning.md` |
 | **22** | compaction clauses audited; the release pin across a promotion, covered by nothing before | `items-21-22-context-and-pinning.md` |
 | **26** | every merged branch has a recorded `PASS`; the calibration bait was caught | below |
@@ -166,7 +166,7 @@ coverage invisible in both directions.
 | 7–8 relay + multi-RMA | `tests/operations/test_support_message_classification.py` (22) — `test_an_unmatched_artifact_never_creates_a_record` (DR-11), `test_an_ambiguous_artifact_asks_rather_than_guesses` | **→ A.** Both DR-11 tests are load-bearing under three injections, including one that makes UNMATCHED genuinely create a record. Row incomplete: item 8's cross-assignment lives in `tests/operations/test_artifact_binding.py`, never named here. One blind test closed (persistence half). The prompt-injection fixture **remains B**. |
 | 9, 11–12 resolver | `tests/operations/test_support_resolution_ladder.py` (23), `tests/operations/test_support_clarification_roundtrip.py` (18) | **→ A** for the disclosure line and budget exhaustion. **One hole closed** (403/404 wrote a durable command; only the status half was tested). Remaining ladder/roundtrip scenarios **remain B**. |
 | 17 (relay half) | `test_the_transcript_entry_is_appended_once_across_a_redelivery` | **→ A**, by two tests together. The named test **stays green when the append-once guard is deleted** — it drives a double with its own dedupe. The guarantee is pinned in `tests/operations/test_support_relay_and_wiring.py`. The named test does pin that `relayed_entries` counts writes, not calls. |
-| 20 (deploy replay) | `tests/test_return_case_workflow_replay_compatibility.py` (15) | **remains B** — not reached. See production finding 3 below: one branch of the pair is unexercised in `test_cumulative_support_outcomes.py`. |
+| 20 (deploy replay) | `tests/test_return_case_workflow_replay_compatibility.py` (15) | **remains B** — not reached. See "Findings handed to their owners" **4**: in `test_cumulative_support_outcomes.py`, **no branch of any patch gate is exercised — both limbs of all three** (`v3-clarification-round-trip`, `support-draft-returns-structured-payload`, `support-template-review-gate`), because `_Runtime` has no `patched` at all. |
 
 ## The falsifiable map — per guarantee, the test that reddens when you delete it
 
@@ -270,13 +270,15 @@ touches nothing outside `backend/tests/` and `.plan/`.
 3. **`pin_routing_decision`'s early return enforces nothing** — the
    `{… field: None}` CAS filter does. Behaviour correct; the branch a reader
    would cite is inert.
-4. **(ACC3) The merge tip is red, and it is finding 1's class recurring.**
+4. **(ACC3) The merge tip is red, and it is this list's finding 1 recurring.**
    `tests/test_cumulative_support_outcomes.py::test_a_rejected_return_still_opens_no_work_item`
    fails on a clean tree at `63744f2a` with
    `AttributeError: '_Runtime' object has no attribute 'patched'`. That module's
    `_Runtime` double (line 1311) never grew a `patched` method when production
    grew a `workflow.patched` call. Production correct, harness stale — exactly
-   what findings 1 and 2 predicted would recur, in a third file.
+   what **this list's** findings 1 and 2 predicted would recur, in a third file.
+   (Both numbered lists in this document run from 1; references here are always
+   to "Findings handed to their owners", never to "Production defects".)
    **The acceptance-gate consequence:** `return_case_workflow.py` calls
    `workflow.patched` at **three** sites (1672 `_PATCH_V3_CLARIFICATION_ROUND_TRIP`,
    2247 `_PATCH_STRUCTURED_SUPPORT_DRAFT`, 2294 `_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE`),

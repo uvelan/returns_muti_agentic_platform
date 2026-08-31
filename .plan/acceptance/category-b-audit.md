@@ -224,7 +224,7 @@ No defect was found in `backend/src` behaviour.
 | --- | --- |
 | **8, prompt-injection fixture** | not attempted. `test_the_clarification_question_is_composed_never_quoted` exists and was read but **never injected against**; its composed-not-quoted claim is unverified by this audit. |
 | **AMENDMENT-5's retry-409 (4 named tests)** | not reached. Still category B, untouched. |
-| **20, deploy replay** (`test_return_case_workflow_replay_compatibility.py`, 15) | not reached. Still category B — and see production finding 1, which bears on it. |
+| **20, deploy replay** (`test_return_case_workflow_replay_compatibility.py`, 15) | not reached. Still category B — and see **"Production findings, reported not repaired" 1**, which bears on it: no branch of any patch gate is exercised in `test_cumulative_support_outcomes.py`. (This document also numbers "the two genuine coverage holes" from 1; references name their section.) |
 | **9, 11–12 resolver, remainder** | partially reached. Budget (B18), disclosure (B19) and the clarification route's authz (B20) are done; the ladder's other 20 tests and the roundtrip's remaining scenarios are **not** injected against. |
 | **3–6, the rest of the 93** | the four guarantees the dispatch named are done. The remaining ~85 tests in those two files were not individually injected against. |
 | **1–2, graph and literal bindings** | only `case_fact` (B12) and `return_record` (B13–B15) were injected. `graph:` batching and `literal:` were not. |
