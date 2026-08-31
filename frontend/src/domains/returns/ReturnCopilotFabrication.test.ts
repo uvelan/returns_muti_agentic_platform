@@ -220,8 +220,16 @@ const ABSENCE_VOCABULARY: ReadonlySet<string> = new Set([
   "RMA pending",
   "-", // CandidateOrderMode's absence marker for a column with no value.
   "Support has been asked to verify this claim.", // ReturnEvaluationMode
-  "This reply was empty.", // CasePanel -- names an empty reply, invents no reply
-  "This reply is empty. Rebuild it before sending — Support would receive nothing.", // SupportReplyBody
+  // The empty-reply pair is deliberately GONE rather than kept. Both surfaces
+  // now render the shared `EMPTY_REPLY_NOTICE`, so the walk -- which notes
+  // literals and not identifiers -- no longer sees a literal in either
+  // position, and an entry that matches nothing is exactly the stale
+  // allowlist line this list is supposed not to accumulate.
+  //
+  // What guards that sentence instead: `supportReplyDraft.test.ts` pins both
+  // surfaces to the one constant by identity, and -- the part that matters --
+  // `review_aggregate.approve` refuses an empty `SUPPORT_REPLY` body with a
+  // 409 before anything can be sent. The wording is no longer the defence.
   "source not recorded", // SupportReplyBody -- provenance the platform does not have
   "That could not be recorded. Nothing was sent to Support.", // ClarificationsSection
   "Ordered quantity not on the source line", // ItemSelectionMode

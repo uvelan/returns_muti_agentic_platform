@@ -113,9 +113,7 @@ async def test_a_release_published_earlier_is_activated_rather_than_refused(
 ) -> None:
     """Published on an earlier boot, then deactivated. Activating it is still right."""
     schema = load_active_schema(schema_path)
-    release_id = seeded_release_id(
-        schema.configuration_release_id, schema.configuration_checksum
-    )
+    release_id = seeded_release_id(schema.configuration_release_id, schema.configuration_checksum)
     store = FakeReleases()
     store.published[release_id] = schema  # published, but no pointer
 

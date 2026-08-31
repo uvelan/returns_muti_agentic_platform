@@ -22,9 +22,7 @@ from return_platform.operations.support_template_draft import SAMPLE_CASE
 from return_platform.security import roles as r
 from return_platform.security.principal import Principal
 
-_PRODUCTION_YAML = (
-    Path(__file__).resolve().parents[2] / "config" / "returns" / "production.yaml"
-)
+_PRODUCTION_YAML = Path(__file__).resolve().parents[2] / "config" / "returns" / "production.yaml"
 
 
 def _client(
@@ -187,9 +185,7 @@ def test_an_empty_draft_is_a_422_not_a_500() -> None:
 
 def test_a_gapping_required_field_previews_as_a_gap() -> None:
     template = _template()
-    template["variants"][0]["sections"][0]["fields"][0]["source_binding"] = (
-        "case_fact:no_such_fact"
-    )
+    template["variants"][0]["sections"][0]["fields"][0]["source_binding"] = "case_fact:no_such_fact"
     for client in _client():
         response = client.post(
             "/api/v1/config/support-template/preview", json={"template": template}

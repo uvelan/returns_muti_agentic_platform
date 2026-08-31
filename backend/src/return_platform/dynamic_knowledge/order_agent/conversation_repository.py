@@ -237,9 +237,7 @@ def _agent_text(result: dict[str, Any]) -> str:
     if not isinstance(statements, list):
         return ""
     return " ".join(
-        str(statement.get("text", ""))
-        for statement in statements
-        if isinstance(statement, dict)
+        str(statement.get("text", "")) for statement in statements if isinstance(statement, dict)
     ).strip()
 
 

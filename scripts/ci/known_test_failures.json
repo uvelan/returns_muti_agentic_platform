@@ -23,14 +23,21 @@
   "suites": {
     "backend": {
       "$comment": [
-        "Pre-existing before this run's slices. `workflow.patched(...)` raises",
-        "`AttributeError: '_Runtime' object has no attribute 'patched'` inside",
-        "return_case_workflow.py. Recorded in .plan/merge.md as the single known",
-        "trunk failure that every slice measured against."
+        "Empty, and it stays empty. The one entry here was",
+        "tests.test_cumulative_support_outcomes::test_a_rejected_return_still_opens_no_work_item,",
+        "which raised `AttributeError: '_Runtime' object has no attribute",
+        "'patched'` because the module's workflow double never grew the method",
+        "`return_case_workflow.py` calls at lines 2247 and 2294. The double now",
+        "has it, and the same test uncovered a second staleness underneath: the",
+        "shipped release suspends `policy_evaluation`, so the rejected return it",
+        "names was never rejected. Both fixed on branch",
+        "feat/runtime-patch-double; the backend suite runs clean.",
+        "",
+        "An empty list is the correct state and `assert_known_failures.py`",
+        "handles it: `allowed` is empty, so any failure at all is unexpected and",
+        "the job fails. Do not add an entry here to get a branch green."
       ],
-      "known_failures": [
-        "tests.test_cumulative_support_outcomes::test_a_rejected_return_still_opens_no_work_item"
-      ]
+      "known_failures": []
     },
     "frontend": {
       "$comment": [

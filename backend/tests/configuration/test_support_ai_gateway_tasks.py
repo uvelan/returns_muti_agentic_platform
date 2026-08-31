@@ -43,9 +43,7 @@ def configuration() -> AIGatewayConfiguration:
 
 
 @pytest.mark.parametrize("task_id", [CLASSIFY, EXTRACT])
-def test_the_release_carries_the_task(
-    configuration: AIGatewayConfiguration, task_id: str
-) -> None:
+def test_the_release_carries_the_task(configuration: AIGatewayConfiguration, task_id: str) -> None:
     assert task_id in configuration.tasks
 
 

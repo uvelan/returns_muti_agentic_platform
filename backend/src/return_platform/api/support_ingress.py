@@ -272,9 +272,7 @@ async def receive_support_message(
     store = _ingress_store(request, configuration)
     await _enforce_rate(store, case_id=item.caseId, configuration=configuration)
 
-    event = normalize_inbound_message(
-        payload, case_id=item.caseId, work_item_id=work_item_id
-    )
+    event = normalize_inbound_message(payload, case_id=item.caseId, work_item_id=work_item_id)
     try:
         receipt = await store.record_inbound_message(
             event=event,

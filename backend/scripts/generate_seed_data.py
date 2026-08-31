@@ -162,8 +162,18 @@ def _day(moment: datetime) -> datetime:
 PICKUP_SHIP_VIA: frozenset[str] = frozenset({"CPU", "WCL", "BO"})
 
 _POD_MONTHS = (
-    "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
-    "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+    "JAN",
+    "FEB",
+    "MAR",
+    "APR",
+    "MAY",
+    "JUN",
+    "JUL",
+    "AUG",
+    "SEP",
+    "OCT",
+    "NOV",
+    "DEC",
 )
 
 

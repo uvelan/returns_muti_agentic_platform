@@ -6797,7 +6797,7 @@
       },
       "CaseFactProjection": {
         "additionalProperties": false,
-        "description": "One fact at its latest value, with the provenance that decides trust.\n\nServes the existing `latest_case_facts` projection. The backend already\ncomputes it and the console duplicates it client-side in `latestFacts`;\nserving it here is what deletes the duplicate.\n\n`value` is deliberately untyped -- the fact log is heterogeneous by design --\nbut every provenance field beside it is not, because provenance is what makes\na fact admissible to policy evaluation (plan sect. 7.3).\n\n**`actorId` is not `agentId`.** The agent is what produced the observation;\nthe actor is the principal on whose authority a *command* caused it\n(contracts.md sect. 4, server-stamped). Without it a UI asking \"who\nauthorised this\" got \"nobody\" for every case-level command fact, which is\nthe one provenance question an audit actually asks. `None` is the honest\nanswer for an observation, which has no actor at all.\n\nStill omitted, deliberately: `record_scope` and `identity_version`, because\nthis projection is keyed by fact *name* over the unscoped\n`latest_case_facts` -- per-record facts collapse before they reach here, so a\n`recordScope` field would name whichever scope won the collapse and imply a\nper-record view that does not exist. It belongs with the\n`latest_case_facts_scoped` convergence (contracts.md sect. 10's registered\nfollow-up), not ahead of it. `turnId` and `correlationId` are request-tracing\nlinks rather than provenance, and are not what the audit question needs.",
+        "description": "One fact at its latest value, with the provenance that decides trust.\n\nServes the existing `latest_case_facts` projection. The backend already\ncomputes it and the console duplicates it client-side in `latestFacts`;\nserving it here is what deletes the duplicate.\n\n`value` is deliberately untyped -- the fact log is heterogeneous by design --\nbut every provenance field beside it is not, because provenance is what makes\na fact admissible to policy evaluation (plan sect. 7.3).\n\n**`actorId` is not `agentId`.** The agent is what produced the observation;\nthe actor is the principal on whose authority a *command* caused it\n(contracts.md sect. 4, server-stamped). Without it a UI asking \"who\nauthorised this\" got \"nobody\" for every case-level command fact, which is\nthe one provenance question an audit actually asks. `None` is the honest\nanswer for an observation, which has no actor at all.\n\nStill omitted, deliberately: `record_scope` and `identity_version`, because\nthis projection is keyed by fact *name* over the unscoped\n`latest_case_facts` -- per-record facts collapse before they reach here, so a\n`recordScope` field would name whichever scope won the collapse and imply a\nper-record view that does not exist. It belongs with the\n`latest_case_facts_scoped` convergence (contracts.md sect. 10's registered\nfollow-up), not ahead of it. `turnId` and `correlationId` are request-tracing\nlinks rather than provenance, and are not what the audit question needs.\n\n**No field here carries a default, and that is the whole point.** In\nPydantic *any* default -- `= None` included -- emits the field as\nnon-required, so eleven always-serialised fields were published as nine\noptional ones and a client had to type them optional and write defensive\ncode for an absence that cannot occur. Declaring `X | None` with no default\nproduces required-and-nullable, which is what the writer actually\nguarantees: `case_repository.append_scoped_case_fact` writes every key,\n`None` included, and `assembly.project_facts` binds all eleven on every\nconstruction. *Absent* and *null* therefore stay distinguishable, which is\nthe difference between provenance and a gap. Adding a default to any field\nbelow silently re-opens that hole, and neither `tsc` nor any type-level\nassertion can see it -- the console's `Served<T>` alias strips optionality\nregardless of the document. The guard is a *data* assertion over the\nemitted `required` array, `frontend/scripts/check-served-fields.js`, run by\n`npm run contracts:check` and gated by CI's `contract drift` job.",
         "properties": {
           "acquisitionMethod": {
             "anyOf": [
@@ -6936,7 +6936,16 @@
         },
         "required": [
           "factId",
-          "factName"
+          "factName",
+          "value",
+          "agentId",
+          "actorId",
+          "channel",
+          "sourceSystem",
+          "acquisitionMethod",
+          "observedAt",
+          "recordedAt",
+          "supersedesFactId"
         ],
         "title": "CaseFactProjection",
         "type": "object"

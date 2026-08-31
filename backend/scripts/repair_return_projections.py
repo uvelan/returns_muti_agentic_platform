@@ -150,9 +150,7 @@ async def _dry_run() -> int:
         if not plan.targets:
             print("\nNothing to repair.")
             return 0
-        print(
-            f"\nTo apply: python scripts/repair_return_projections.py --apply {plan.digest}"
-        )
+        print(f"\nTo apply: python scripts/repair_return_projections.py --apply {plan.digest}")
         return 0
     finally:
         await client.close()

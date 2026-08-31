@@ -68,6 +68,14 @@ linux_kit_validation/
 # Claude Code local state
 .claude/settings.local.json
 
+# Agent worktrees. These are real git repositories checked out inside the
+# working tree, so `git add -A` stages them as gitlinks and prints seventeen
+# "adding embedded git repository" warnings -- and would commit a submodule
+# pointer to a clone nobody else has. Ignoring them costs nothing: a worktree
+# is a view of this repository's own history, so anything worth keeping is
+# already reachable from a branch.
+.claude/worktrees/
+
 # Linux-only developer helper, deliberately not committed.
 #
 # `start_manual_mode.sh` brings the platform up with every reasoning turn

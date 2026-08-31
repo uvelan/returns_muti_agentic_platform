@@ -55,9 +55,7 @@ class _Client:
         status = self._credential_statuses.get(credential, 200)
         return _Response(status, self._catalogs[url] if status == 200 else {})
 
-    async def post(
-        self, url: str, *, json: dict[str, Any], **_kwargs: object
-    ) -> _Response:
+    async def post(self, url: str, *, json: dict[str, Any], **_kwargs: object) -> _Response:
         model = str(json.get("model") or url.split("/models/", 1)[1].split(":", 1)[0])
         return _Response(self._statuses[model], {})
 

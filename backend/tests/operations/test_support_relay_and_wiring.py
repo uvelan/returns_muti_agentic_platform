@@ -211,12 +211,8 @@ def test_the_entry_id_cannot_collide_across_a_shifted_boundary() -> None:
     `3:a|b|1:c|...`); under a bare `"|".join` they both render `a|b|c|K|r` and
     the two identities become one.
     """
-    one = system_entry_id(
-        case_id="a", support_event_id="b|c", entry_kind="K", return_record_id="r"
-    )
-    two = system_entry_id(
-        case_id="a|b", support_event_id="c", entry_kind="K", return_record_id="r"
-    )
+    one = system_entry_id(case_id="a", support_event_id="b|c", entry_kind="K", return_record_id="r")
+    two = system_entry_id(case_id="a|b", support_event_id="c", entry_kind="K", return_record_id="r")
     assert one != two, (
         "a part containing the separator forged a boundary: the length prefixes "
         "are what stop it, and this is the only input shape that shows it"
@@ -361,8 +357,7 @@ async def test_the_adapter_records_who_answered_beside_the_pinned_candidate() ->
 
     assert result["intent"] == "rma_issued"
     assert result["provider"] == "NVIDIA", (
-        "the pin says who was eligible; this says who replied, and the audit "
-        "trail needs both"
+        "the pin says who was eligible; this says who replied, and the audit trail needs both"
     )
     assert invoker.calls[0]["probe"] == "hello"
     assert invoker.calls[0]["log"]["routeCandidate"] == "GOOGLE"

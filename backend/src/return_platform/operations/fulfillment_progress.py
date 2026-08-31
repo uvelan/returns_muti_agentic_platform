@@ -148,9 +148,7 @@ class FulfillmentProgress:
             value="ALL_RETURNS_DELIVERED",
         )
 
-    async def _append_fact(
-        self, *, fact_id: str, case_id: str, name: str, value: Any
-    ) -> None:
+    async def _append_fact(self, *, fact_id: str, case_id: str, name: str, value: Any) -> None:
         try:
             await self._repository.append_case_fact(
                 fact_id=fact_id,

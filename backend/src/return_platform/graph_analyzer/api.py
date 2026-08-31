@@ -105,9 +105,7 @@ async def bootstrap(
         # Re-read through `get_run` rather than viewing the raw document here:
         # turning a stored row into a view is the service's job, and a second
         # place doing it is a second thing to keep in step with the schema.
-        active_view = (
-            await service.get_run(str(active["_id"])) if active is not None else None
-        )
+        active_view = await service.get_run(str(active["_id"])) if active is not None else None
         data = data.model_copy(
             update={
                 "syncHistory": [_sync_run_of(run) for run in runs],
@@ -366,7 +364,6 @@ async def review_recommendation(
     return APIResponse(data=result, meta=_meta(request))
 
 
-
 def _graph_sync(request: Request) -> Any:
     """The one engine that writes the system graph.
 
@@ -382,9 +379,7 @@ def _graph_sync(request: Request) -> Any:
     """
     service = getattr(request.app.state, "graph_sync", None)
     if service is None:
-        raise HTTPException(
-            status_code=503, detail="Graph synchronization is unavailable."
-        )
+        raise HTTPException(status_code=503, detail="Graph synchronization is unavailable.")
     return service
 
 

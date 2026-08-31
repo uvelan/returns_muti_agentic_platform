@@ -23,7 +23,8 @@
     "test:e2e": "playwright test",
     "contracts:export": "node scripts/export-contracts.js",
     "contracts:generate": "npm run contracts:export && openapi-typescript openapi/return-platform.openapi.json -o src/api/generated/return-platform.d.ts",
-    "contracts:check": "npm run contracts:generate && git diff --exit-code openapi/return-platform.openapi.json src/api/generated/return-platform.d.ts"
+    "contracts:served": "node scripts/check-served-fields.js",
+    "contracts:check": "npm run contracts:generate && npm run contracts:served && git diff --exit-code openapi/return-platform.openapi.json src/api/generated/return-platform.d.ts"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",

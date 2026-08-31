@@ -6281,30 +6281,46 @@ export interface components {
          *     `latest_case_facts_scoped` convergence (contracts.md sect. 10's registered
          *     follow-up), not ahead of it. `turnId` and `correlationId` are request-tracing
          *     links rather than provenance, and are not what the audit question needs.
+         *
+         *     **No field here carries a default, and that is the whole point.** In
+         *     Pydantic *any* default -- `= None` included -- emits the field as
+         *     non-required, so eleven always-serialised fields were published as nine
+         *     optional ones and a client had to type them optional and write defensive
+         *     code for an absence that cannot occur. Declaring `X | None` with no default
+         *     produces required-and-nullable, which is what the writer actually
+         *     guarantees: `case_repository.append_scoped_case_fact` writes every key,
+         *     `None` included, and `assembly.project_facts` binds all eleven on every
+         *     construction. *Absent* and *null* therefore stay distinguishable, which is
+         *     the difference between provenance and a gap. Adding a default to any field
+         *     below silently re-opens that hole, and neither `tsc` nor any type-level
+         *     assertion can see it -- the console's `Served<T>` alias strips optionality
+         *     regardless of the document. The guard is a *data* assertion over the
+         *     emitted `required` array, `frontend/scripts/check-served-fields.js`, run by
+         *     `npm run contracts:check` and gated by CI's `contract drift` job.
          */
         CaseFactProjection: {
             /** Acquisitionmethod */
-            acquisitionMethod?: string | null;
+            acquisitionMethod: string | null;
             /** Actorid */
-            actorId?: string | null;
+            actorId: string | null;
             /** Agentid */
-            agentId?: string | null;
+            agentId: string | null;
             /** Channel */
-            channel?: string | null;
+            channel: string | null;
             /** Factid */
             factId: string;
             /** Factname */
             factName: string;
             /** Observedat */
-            observedAt?: string | null;
+            observedAt: string | null;
             /** Recordedat */
-            recordedAt?: string | null;
+            recordedAt: string | null;
             /** Sourcesystem */
-            sourceSystem?: string | null;
+            sourceSystem: string | null;
             /** Supersedesfactid */
-            supersedesFactId?: string | null;
+            supersedesFactId: string | null;
             /** Value */
-            value?: string | number | boolean | null;
+            value: string | number | boolean | null;
         };
         /**
          * CasePanelView

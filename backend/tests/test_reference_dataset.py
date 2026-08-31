@@ -197,9 +197,9 @@ def test_every_order_can_reach_a_customer(orders: list[dict[str, Any]]) -> None:
     load = _module("load_reference_dataset")
     template = json.loads((DATASET / "customerOutboundCDM.json").read_text(encoding="utf-8"))
     customers = load._customers(orders, template)
-    assert not any(
-        "custAccts" in party for customer in customers for party in customer["party"]
-    ), "the fabricated custAccts shape is back; no real CDM document has one"
+    assert not any("custAccts" in party for customer in customers for party in customer["party"]), (
+        "the fabricated custAccts shape is back; no real CDM document has one"
+    )
     bridged = {
         str(bridge["mainCusts"]).partition("*")[2]
         for customer in customers

@@ -62,9 +62,7 @@ def _through_the_graph(
         configuration.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
     )
     domain_payloads = {RETURN_PLATFORM_DOMAIN_KEY: json.loads(payload_json)}
-    return ReturnPlatformConfiguration.model_validate(
-        domain_payloads[RETURN_PLATFORM_DOMAIN_KEY]
-    )
+    return ReturnPlatformConfiguration.model_validate(domain_payloads[RETURN_PLATFORM_DOMAIN_KEY])
 
 
 # ---------------------------------------------------------------------------
@@ -162,9 +160,7 @@ def test_the_policy_is_inside_what_the_release_checksum_covers(
     """
     payload = packaged.model_dump(mode="json")
     tampered = json.loads(json.dumps(payload))
-    tampered["return_eligibility_policy"]["standard_stock_return"]["purchase_window"][
-        "days"
-    ] = 60
+    tampered["return_eligibility_policy"]["standard_stock_return"]["purchase_window"]["days"] = 60
 
     original = compute_release_checksum(
         [(RETURN_PLATFORM_DOMAIN_KEY, json.dumps(payload, sort_keys=True))]
@@ -223,7 +219,9 @@ def test_widening_the_window_is_a_yaml_edit_and_nothing_else(
     # And the widened window is what the graph would carry, not just what the
     # file says.
     assert (
-        _through_the_graph(edited).return_eligibility_policy.standard_stock_return.purchase_window.days
+        _through_the_graph(
+            edited
+        ).return_eligibility_policy.standard_stock_return.purchase_window.days
         == 60
     )
 

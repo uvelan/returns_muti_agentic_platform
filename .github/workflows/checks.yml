@@ -26,6 +26,70 @@ name: checks
 # has started passing, so the list cannot rot into a blanket excuse.
 #
 # ---------------------------------------------------------------------------
+# The gate could not see a test that never ran
+# ---------------------------------------------------------------------------
+#
+# Everything above describes a gate that reasons about the failures IN a report,
+# which left one way for this whole workflow to report green over a suite it did
+# not run. The case for closing it is made from THIS FILE, not from an incident:
+# a guard justified by an anecdote is deleted by the first person who cannot
+# reproduce the anecdote, and this one is visible by reading three things here.
+#
+#   1. Both suite steps below run `set +e` and bail out only on `status -gt 1`.
+#      Exit 1 is the TOLERATED path and has to be -- `frontend-tests` exits 1 on
+#      a CORRECT run, because of the two allowlisted failures in
+#      src/domains/registry.test.ts. A truncated run exiting 1 passes that step.
+#   2. Against a run that dropped whole files, `assert_known_failures.py`'s
+#      "new failure" and "now passes" rules are STRUCTURALLY empty -- a dropped
+#      file produces neither a failure nor a pass, so neither rule can fire.
+#      Only "an allowlisted test was not collected" can, and only when a dropped
+#      file happens to carry an allowlisted id.
+#   3. Its one remaining floor, "the report contains no test cases", catches
+#      TOTAL collapse and nothing short of it.
+#
+# So: one accidental partial guard, one all-or-nothing guard. Drop any set of
+# files carrying no allowlisted id and the job exits 0 over a fraction of the
+# suite -- and on `backend` the accident turns entirely on the single name that
+# list happens to hold; empty it and the accident is gone outright.
+#
+# This is NOT a defect in the allowlist. An allowlist comparator can only notice
+# failures already on its list: it is the right instrument for "did anything new
+# break" and the wrong one for "did the suite actually run", and nothing here
+# asked the second question. That distinction is worth keeping in mind before
+# deleting the floor -- the gate it sits next to is reasonable, and looking
+# reasonable is exactly why the gap survived.
+#
+# The observation that prompted the work is recorded as an observation and not
+# as the argument: under memory pressure `npm test` came back with
+# `Test Files  40 passed (40)` while 21 of 61 files never started -- not "21
+# failed"; vitest believed there were forty. It has resisted repetition on some
+# machines and reproduced readily on others. The three facts above hold either
+# way, which is the point of writing it this way round.
+#
+# `assert_known_failures.py` now also floors the run against
+# `scripts/ci/suite_size_floor.json`: the number of test files and test cases the
+# report accounts for, compared with what this repository has reason to expect.
+# It is a FLOOR and not a pin -- a suite that grows never fails it -- and
+# lowering it is a deliberate one-line edit in a data file, because that is the
+# distinction the check is built around. A suite that ran fewer tests because
+# somebody deleted some is a code change and arrives with a diff to review; a
+# suite that ran fewer because a worker died is an infrastructure failure
+# reporting green.
+#
+# It exits 2 rather than 1 when the floor is breached, on this file's own
+# boundary: 1 is a verdict about the tests, and anything above it is the run
+# itself breaking. Both suite steps below already treat it that way.
+#
+# NOT DONE HERE, and deliberately: no `maxWorkers` cap was added to the frontend
+# suite. Capping vitest's pool would make truncation rarer without making it
+# visible, which on a gate whose whole job is reporting what did not run is the
+# more dangerous of the two outcomes -- a defect that still exists and now fires
+# seldom enough that nobody sees it. The cap addresses vitest's pool behaviour;
+# the floor addresses this workflow being unable to tell. They are different
+# changes and this is only the second. A cap may well be worth setting, and it
+# belongs to whoever owns `frontend/vitest.config.ts` -- proposed, not folded in.
+#
+# ---------------------------------------------------------------------------
 # Everything `npm run check` covers is now gated -- as separate steps
 # ---------------------------------------------------------------------------
 #
@@ -52,6 +116,22 @@ name: checks
 #      could be any of five things and requires opening the log to tell which.
 #
 # So the bundle ratchet is its own step, independent of `npm run build`.
+#
+# ---------------------------------------------------------------------------
+# The backend's linter, which was configured and never called
+# ---------------------------------------------------------------------------
+#
+# The same defect as the bundle budget, one language over. `ruff` is declared
+# in `backend/pyproject.toml`, configured there with an eight-rule `select`,
+# and pinned in `poetry.lock` -- and the first version of this file gated the
+# frontend's `lint` while never writing the backend's. Fourteen lint errors and
+# ninety-four unformatted files had accumulated behind the gap, findable only
+# by audit.
+#
+# `backend-static` below closes it. Unlike the suites, it needs no allowlist:
+# the violations were fixed rather than baselined, because they were fixable in
+# two mechanical commits, and a hard gate with nothing to maintain beats a
+# ratchet whose baseline file can rot.
 
 on:
   push:
@@ -74,6 +154,16 @@ jobs:
   # below report "acceptable" while three tests are failing, and that verdict
   # is worth nothing unless the comparator can still fail. A broken comparator
   # turns this entire workflow into an expensive `exit 0`.
+  #
+  # This now also covers the SIZE FLOOR, which needs it more than the allowlist
+  # does. The allowlist has failing tests to point at, so a run notices when it
+  # misbehaves; the floor's whole job is to disbelieve a report that looks fine,
+  # so on every healthy run a floor wired up wrongly is indistinguishable from a
+  # floor working perfectly. The only thing that can tell those apart is a
+  # planted short run, and those live in
+  # `scripts/ci/test_assert_known_failures.py` -- the central one being an
+  # all-green report missing a fifth of its files, which the comparator accepted
+  # before the floor existed.
   # ---------------------------------------------------------------------
   allowlist-self-test:
     name: allowlist self-test
@@ -90,7 +180,10 @@ jobs:
   # The backend suite. `[tool.pytest.ini_options]` already deselects the
   # `live_infra` and `browser` markers, so the default run is the normal
   # suite -- unit plus in-process integration, no MongoDB, no Temporal
-  # server, no browser. It needs nothing this runner does not have.
+  # server, no browser.
+  #
+  # It does need one thing this runner does not have, and that omission meant
+  # this job had never once completed a run. See the `.env` step below.
   # ---------------------------------------------------------------------
   backend:
     name: backend suite
@@ -99,6 +192,90 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------
+      # Without this, the job dies before collecting a single test.
+      #
+      # `backend/tests/conftest.py`'s `pytest_configure` raises when the
+      # repository-root `.env` is missing, and `.env` is gitignored
+      # (`.gitignore:25`) and untracked. So on a fresh runner pytest raised
+      # at configure time, exited 3, and the discriminator below reported
+      # "the run failed, not the tests" -- correctly, and about itself.
+      #
+      # So the BACKEND job's greens were replicated locally, on a workstation
+      # that happened to have a `.env`, and never observed in the pipeline.
+      # (Only that job: the other "green on this commit" notes in this file
+      # belong to `frontend-static` and `contracts`, neither of which reads
+      # `.env`, and they are unaffected.) The gate existed, named itself, and
+      # could not execute: the same defect it was written to prevent.
+      #
+      # `.env.example` is tracked, and this is not an invented command line:
+      # `scripts/bootstrap_host.sh:17` and
+      # `scripts/linux/reset_docker_environment.sh:85` run this same copy, and
+      # two further scripts instruct developers to.
+      #
+      # To be exact, since a comment that rounds off is how this file got into
+      # trouble in the first place: both of those wrap the copy in
+      # `if [[ ! -f .env ]]` and follow it with `chmod 600`. The `cp` line is
+      # identical; the two wrappers are dropped here deliberately. The guard
+      # protects a developer's filled-in `.env` from being overwritten, and
+      # after `actions/checkout` no such file can exist -- a guard against an
+      # impossible state reads as though the state were possible. And
+      # `chmod 600` narrows access on a shared workstation; a runner is
+      # single-tenant and discarded with the job, and the content is a tracked
+      # file already public in the repository.
+      #
+      # Measured rather than assumed, with the red observed first: absent
+      # `.env` gives INTERNALERROR and exit 3; `.env.example` gives
+      # `1 failed, 5232 passed, 11 skipped, 514 deselected`, exit 1, the sole
+      # failure being the allowlisted one -- which the allowlist step then
+      # passes. The placeholders satisfy `Settings`, and the default run
+      # deselects `live_infra`, so nothing here dials a real service.
+      #
+      # The two files are NOT interchangeable in content and this does not
+      # claim they are: a developer `.env` carries exactly 11 keys the example
+      # does not, most of them live-infra and host-port settings, and the
+      # example has none the developer file lacks.
+      #
+      # What establishes that the example is ENOUGH is the measured run above,
+      # not that containment -- a subset of a sufficient set is not itself
+      # sufficient, and the 11 missing keys are exactly what would make it
+      # insufficient if one of them were ever required without a default.
+      # That is the thing to re-measure when this file changes.
+      #
+      # What stops this rotting (rule 13, and the honest answer is that the
+      # gate is mostly this job itself):
+      #   * delete `.env.example` and the `cp` right here fails loudly -- a
+      #     `run` step is `bash -e`, and the failing step names itself;
+      #   * drop a key and `Settings` (`frontend_cors_origin`, `mongo_dsn`)
+      #     or `conftest`'s `_required_environment_variable` fails BY NAME;
+      #   * drift its content and `tests/test_ai_gateway_routing.py:194`
+      #     fails -- it reads the tracked `.env.example` and asserts over it;
+      #   * `ensure_runtime_env_keys.py` is itself gated, by
+      #     `tests/test_runtime_env_key_sync.py`, which `runpy`s the real
+      #     script rather than re-implementing it.
+      # The last three are backend-suite tests, so all three were equally
+      # unreachable in CI until this step existed. (The first is this step.) An earlier draft of
+      # this comment credited `ensure_runtime_env_keys.py` with maintaining
+      # `.env.example`; it does not -- its `update()` flows example -> env,
+      # one way, and never inspects the example. The real protections are the
+      # four above, and they are stronger than the one that was claimed.
+      #
+      # NOT a committed `.env.ci`: `.gitignore:31` ignores `.env.*`, and the
+      # comment above that rule records why -- a backup file once carried a
+      # live provider key into git history and was caught by push
+      # protection. Un-ignoring a file to satisfy CI would punch a hole in a
+      # guard installed after a real credential incident, to solve what a
+      # tracked file already solves. NOT a conftest that degrades when the
+      # file is absent, either: that raise is a guard making a missing `.env`
+      # loud instead of letting tests run against silent defaults. Copying
+      # satisfies it; degrading weakens it.
+      #
+      # The `contracts` job was checked for the same exposure and does not
+      # have it -- `backend/scripts/export_openapi.py` runs to exit 0 with no
+      # `.env` at all, so no copy is cargo-culted into that job.
+      - name: Provide the repository environment file
+        run: cp .env.example .env
 
       - uses: actions/setup-python@v5
         with:
@@ -136,7 +313,16 @@ jobs:
             exit "$status"
           fi
 
-      - name: Only the known failures failed
+      # Rule 13: for every guard added, name the gate that runs it. THIS STEP is
+      # the name for the size floor in `scripts/ci/suite_size_floor.json`, as
+      # well as for the allowlist -- which is why it is one call and not two. A
+      # suite cannot be gated by the allowlist without also being measured,
+      # because the same script does both and both jobs already invoke it.
+      #
+      # The step name says "ran in full" first on purpose. The old name promised
+      # only that the failures were known, which was true of the collapsed run
+      # that motivated the floor.
+      - name: The suite ran in full, and only the known failures failed
         working-directory: backend
         run: python ../scripts/ci/assert_known_failures.py --suite backend --report junit-backend.xml
 
@@ -148,6 +334,123 @@ jobs:
           path: backend/junit-backend.xml
           if-no-files-found: ignore
           retention-days: 14
+
+  # ---------------------------------------------------------------------
+  # The backend's static checks, in their own job for the same reason
+  # `frontend-static` is separate from `frontend-tests`: a lint error and a
+  # failing test are different events with different owners, and lint should
+  # not wait 45 minutes behind a suite to report a misplaced import.
+  #
+  # This job is the gate rule 13 was written for. `ruff` was declared in
+  # `backend/pyproject.toml`, configured there under `[tool.ruff]`, pinned to
+  # 0.15.21 in `poetry.lock` -- and invoked by nothing. The frontend's `lint`
+  # was gated from the day this file landed; the backend's equivalent simply
+  # was never written, and 14 lint errors plus 94 unformatted files accumulated
+  # behind the gap. A configured linter nothing runs is a comment.
+  #
+  # Both steps are green on this commit. The violations were not baselined:
+  # they were fixed, in two commits of their own that precede this one, which
+  # is why these are plain hard gates with no allowlist file. There is no
+  # `known_lint_failures.json` and deliberately so -- baselining is the right
+  # instrument when the debt is expensive to pay (as with the `workflow.patched`
+  # failure that `known_test_failures.json` exists for), and this debt was 14
+  # import sorts and one `ruff format` run.
+  # ---------------------------------------------------------------------
+  backend-static:
+    name: backend lint and format
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # Same source as the `backend` job: backend/pyproject.toml's
+          # requires-python, and backend/Dockerfile's python:3.13-slim.
+          python-version: "3.13"
+
+      - name: Install the backend toolchain
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python -m pip install --disable-pip-version-check "poetry==2.4.1"
+          # --no-root as everywhere else here. The ruff that runs is
+          # poetry.lock's pinned 0.15.21, never `latest`: a linter whose
+          # version floats is a gate whose verdict changes without a commit.
+          poetry install --with dev --no-root
+
+      # `ruff check` and `ruff format --check` are two steps, not one, for the
+      # reason this file already gives about `npm run check`: a combined step
+      # short-circuits, so a lint error would hide an unformatted file until
+      # the first was fixed, and the summary line would name neither.
+      #
+      # They are also genuinely different questions. On the commit that
+      # motivated this job the two sets barely overlapped -- 6 files carried
+      # lint errors, 94 were unformatted, 2 were both -- and a contributor
+      # fixing one is not fixing the other.
+      - name: ruff check
+        working-directory: backend
+        run: |
+          set +e
+          poetry run ruff check .
+          status=$?
+          # 0 = clean, 1 = violations, which is a verdict about the code.
+          # 2 is ruff failing to run -- unreadable file, unparseable config --
+          # which is not a verdict about the code and must not read as one.
+          if [ "$status" -gt 1 ]; then
+            echo "::error::ruff check exited $status -- the linter failed to run, not the code"
+            exit "$status"
+          fi
+          exit "$status"
+
+      - name: ruff format --check
+        working-directory: backend
+        run: |
+          set +e
+          poetry run ruff format --check .
+          status=$?
+          if [ "$status" -gt 1 ]; then
+            echo "::error::ruff format exited $status -- the formatter failed to run, not the code"
+            exit "$status"
+          fi
+          exit "$status"
+
+      # The backend's ruff surface is not `backend/`. The repository's own
+      # definition of backend quality is `scripts/linux/03_run_backend_quality.sh`,
+      # and it runs ruff over `backend/` AND over three paths at the root:
+      # `scripts/probe_configured_ai_models.py`, `scripts/linux/validate_env.py`
+      # and `scripts/tests`. There is no root pyproject.toml, so those resolve
+      # to backend/pyproject.toml's config -- one lint domain, not two.
+      #
+      # Gating only `backend/` would have left them exactly as ruff itself was:
+      # covered by a script, run by nothing. Two of the three were unformatted
+      # when this job was written, which is what a gap like that produces.
+      #
+      # Kept as its own step rather than folded into the paths above, because
+      # `backend/` and the root scripts have different owners and a failure
+      # should say which one moved.
+      #
+      # `check` and `format` share this step, unlike above, and that is not a
+      # relapse into the short-circuiting this file warns about: both run
+      # unconditionally and both exit codes are collected before either is
+      # allowed to fail the step, so neither can hide the other. The rule is
+      # "nothing goes unmeasured", not "one command per step".
+      - name: ruff over the root script paths
+        run: |
+          set +e
+          cd backend
+          paths="../scripts/probe_configured_ai_models.py ../scripts/linux/validate_env.py ../scripts/tests"
+          poetry run ruff check $paths
+          check=$?
+          poetry run ruff format --check $paths
+          format=$?
+          for status in "$check" "$format"; do
+            if [ "$status" -gt 1 ]; then
+              echo "::error::ruff exited $status -- it failed to run, not the code"
+              exit "$status"
+            fi
+          done
+          [ "$check" -eq 0 ] && [ "$format" -eq 0 ]
 
   # ---------------------------------------------------------------------
   # The frontend's static checks: the repository's own `lint`, `typecheck`,
@@ -268,7 +571,14 @@ jobs:
             exit "$status"
           fi
 
-      - name: Only the known failures failed
+      # The other half of rule 13's answer for the size floor, and the job the
+      # defect was actually observed in. This step is reached on a vitest exit of
+      # 0 OR 1 -- the `set +e` above only bails out above 1 -- which matters more
+      # here than anywhere else in this file: the frontend suite exits non-zero
+      # on a CORRECT run, because of the two allowlisted failures in
+      # src/domains/registry.test.ts. A size check that only ran after a green
+      # suite would be gated by the very condition it exists to doubt.
+      - name: The suite ran in full, and only the known failures failed
         working-directory: frontend
         run: python ../scripts/ci/assert_known_failures.py --suite frontend --report junit-frontend.xml
 

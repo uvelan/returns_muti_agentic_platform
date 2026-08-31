@@ -55,7 +55,9 @@ def _compose(**overrides: object):
             warehouse_reference="686",
             return_location="686/686-BAY-01",
         ),
-        "policy": SupportHandoffPolicy(state="EVALUATED", route="STANDARD_RETURN", decision="APPROVE"),
+        "policy": SupportHandoffPolicy(
+            state="EVALUATED", route="STANDARD_RETURN", decision="APPROVE"
+        ),
         "order_confirmed": True,
         "required_details_complete": True,
     }
@@ -125,17 +127,23 @@ def test_a_suspended_policy_gate_is_never_reported_as_an_approval() -> None:
         )
     )
 
-    assert "- Policy Evaluation: Skipped by configuration (Eligibility gate suspended" in handoff.text
+    assert (
+        "- Policy Evaluation: Skipped by configuration (Eligibility gate suspended" in handoff.text
+    )
     assert "Approved" not in handoff.text
     assert "APPROVE" not in handoff.text
     assert handoff.payload["verification"]["policyEvaluation"]["decision"] is None
-    assert handoff.payload["verification"]["policyEvaluation"]["state"] == "SKIPPED_BY_CONFIGURATION"
+    assert (
+        handoff.payload["verification"]["policyEvaluation"]["state"] == "SKIPPED_BY_CONFIGURATION"
+    )
 
 
 def test_an_unresolved_bay_says_so_and_asks_for_a_manual_one() -> None:
     """Never a fabricated bay, and never silence about the absence."""
     handoff = _compose(
-        bay=SupportHandoffBay(status="PRE_ARRIVAL_NOT_ALLOWED", unresolved_reason="PRE_ARRIVAL_NOT_ALLOWED")
+        bay=SupportHandoffBay(
+            status="PRE_ARRIVAL_NOT_ALLOWED", unresolved_reason="PRE_ARRIVAL_NOT_ALLOWED"
+        )
     )
 
     assert "- Assignment Status: PRE_ARRIVAL_NOT_ALLOWED" in handoff.text

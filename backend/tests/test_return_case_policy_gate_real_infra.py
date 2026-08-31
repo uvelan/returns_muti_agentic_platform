@@ -132,9 +132,7 @@ class _Probe:
         )
 
     @activity.defn(name="draft_support_request")
-    async def draft_support_request(
-        self, request: DraftSupportRequestInput
-    ) -> SupportRequestDraft:
+    async def draft_support_request(self, request: DraftSupportRequestInput) -> SupportRequestDraft:
         del request
         self._record("draft_support_request")
         # Returns what the activity returns. This used to answer `str`, which

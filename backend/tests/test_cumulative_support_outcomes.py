@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from itertools import pairwise
@@ -79,6 +79,8 @@ from return_platform.workflows.return_case_activities import (
 from return_platform.workflows.return_case_workflow import (
     CaseTerminalCommand,
     DraftSupportRequestInput,
+    PolicyDecisionName,
+    PolicyGateState,
     RecordSupportOutcomeInput,
     ReturnCaseOutcome,
     ReturnCaseStatus,
@@ -86,8 +88,10 @@ from return_platform.workflows.return_case_workflow import (
     ReturnCaseWorkflow,
     ReturnCaseWorkflowInput,
     SupportOutcomeReceipt,
+    SupportRequestDraft,
     SupportResponseNotice,
     SupportReturnRecord,
+    TemplateReviewDraftSet,
     TerminalCommandName,
 )
 
@@ -112,6 +116,31 @@ NOW = datetime(2026, 8, 15, 12, 0, tzinfo=UTC)
 #: about the platform rather than about the fixture.
 SHIPPED_CONFIGURATION = load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration
 RELEASED_REQUIREMENTS = build_return_method_requirement_table(SHIPPED_CONFIGURATION)
+
+#: The same release with the policy gate switched back on, and nothing else changed.
+#:
+#: The shipped file suspends the gate on this development host
+#: (`config/returns/production.yaml`, `policy_evaluation.enabled: false`, reason
+#: "Suspended on this development host while order-discovery turns are answered
+#: through the MANUAL provider"). That is a deployment switch, and it is stated in
+#: configuration precisely so it survives a reset -- but it means the shipped
+#: release answers `SKIPPED_BY_CONFIGURATION` for every case, which *clears* the
+#: gate. A test whose whole claim is "a rejected return opens no work item" then
+#: proves nothing: no return is ever rejected, the case sails past the gate, and
+#: the assertion that no work item exists holds for a reason the test does not
+#: name.
+#:
+#: `tests/policy/test_case_policy_gate.py` overrides exactly this one value for
+#: exactly this reason (see its `configuration` fixture); the reasoning is copied,
+#: not re-derived. The skip *itself* is covered over there, against a configuration
+#: that says so explicitly.
+POLICY_ENABLED_CONFIGURATION = SHIPPED_CONFIGURATION.model_copy(
+    update={
+        "policy_evaluation": SHIPPED_CONFIGURATION.policy_evaluation.model_copy(
+            update={"enabled": True, "disabled_reason": None}
+        )
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1323,23 +1352,34 @@ class _Runtime:
         activities: dict[str, Callable[[Any], Awaitable[Any]]],
         *,
         arrivals: list[Callable[[], None]] | None = None,
+        patches: bool | Mapping[str, bool] = True,
     ) -> None:
         self._activities = activities
         self._arrivals = list(arrivals or [])
         self._uuid = 0
+        self._patches = patches
         self.calls: list[str] = []
+        self.patch_ids: list[str] = []
+        self.options: list[tuple[str, dict[str, Any]]] = []
         self.instant = NOW
         self.logger = logging.getLogger("tests.phase4")
 
-    async def execute_activity(self, name: str, argument: Any, **_options: Any) -> Any:
+    async def execute_activity(self, name: str, argument: Any, **options: Any) -> Any:
         """Run the activity, and wrap a raised one the way Temporal would.
 
         The wrapping matters. The workflow's failure handling is written against
         `ActivityError` -- a graph sync that raised a bare `RuntimeError` here
         would escape the `except ActivityError` that parks the case, and the
         test would prove the opposite of what it claims.
+
+        `self.options` records the keyword options alongside the name. The two
+        limbs of `_PATCH_STRUCTURED_SUPPORT_DRAFT` call the *same* activity with
+        the same input and differ only in whether `result_type` is pinned, so
+        the name alone cannot tell them apart -- and a test that cannot tell
+        them apart is not covering either.
         """
         self.calls.append(name)
+        self.options.append((name, dict(options)))
         try:
             return await self._activities[name](argument)
         except Exception as error:
@@ -1352,6 +1392,54 @@ class _Runtime:
                 activity_id=name,
                 retry_state=None,
             ) from error
+
+    def patched(self, patch_id: str) -> bool:
+        """Answer the way the execution this runtime is standing in for would.
+
+        `workflow.patched(id)` is not a feature flag and must not be doubled as
+        one. On an execution with no history it writes the marker and returns
+        `True`; replaying a history recorded *before* that marker exists, it
+        returns `False`, because the only safe thing to do with such a history
+        is to keep running the code that produced it. That asymmetry is the
+        whole mechanism, so a double hardcoded to `True` would leave the legacy
+        limb of every gate exactly as unreachable as having no `patched` at all
+        -- it would only move the failure from an `AttributeError` to silence.
+
+        So the answer is a constructor choice, not a constant. `patches=True`
+        (the default) is the faithful answer for these tests, which all start
+        from nothing and are therefore new executions; `patches=False` builds a
+        runtime that answers as a history older than every marker, which is the
+        only way the un-patched branch is reachable from a test at all.
+
+        **A mapping, not just a flag, and the reason is in production's own
+        comments.** `_PATCH_STRUCTURED_SUPPORT_DRAFT` documents a real
+        population -- histories that ran after `eaed61c` and before the marker
+        existed -- for which one marker is absent and the behaviour it guards is
+        already present. Markers are written independently, so a history carries
+        an arbitrary *subset* of them, and a single boolean cannot express the
+        subsets. `{id: answer}` can, and it is also what lets one test hold the
+        draft gate fixed while it moves the review gate, which is the only way
+        either gate's limbs are separable at all.
+
+        An id absent from a supplied mapping raises `KeyError` rather than
+        defaulting. That is deliberate: if `_open_support` grows a fourth
+        `workflow.patched` call, a test pinning the three it knows about must
+        fail loudly rather than quietly answer the new one at random -- the same
+        guarantee `_LegacyRuntime.patched` gets from its `assert`.
+
+        `self.patch_ids` records which markers were consulted, in order. That is
+        the part that must not drift silently: the count and the ids are how a
+        test asserts the gate was *reached* rather than merely stepped over.
+
+        The same shape as `tests/policy/test_case_policy_gate.py::_Runtime` and
+        `tests/test_support_template_review_gate.py::_Runtime`, deliberately --
+        three runtimes standing in for one module should not each invent their
+        own idea of what a patch marker is.
+        """
+        self.patch_ids.append(patch_id)
+        if isinstance(self._patches, bool):
+            return self._patches
+        return self._patches[patch_id]
 
     def now(self) -> datetime:
         return self.instant
@@ -1416,6 +1504,7 @@ def _harness(
     approved: bool = True,
     configuration: Any = SHIPPED_CONFIGURATION,
     arrivals: list[Callable[[ReturnCaseWorkflow], None]] | None = None,
+    patches: bool | Mapping[str, bool] = True,
 ) -> _WorkflowHarness:
     fixture = _fixture(approved=approved, configuration=configuration)
     instance = ReturnCaseWorkflow()
@@ -1437,6 +1526,7 @@ def _harness(
             (lambda step=step: step(instance))  # type: ignore[misc]
             for step in (arrivals or [])
         ],
+        patches=patches,
     )
     monkeypatch.setattr(workflow_module, "workflow", runtime)
     return _WorkflowHarness(instance=instance, fixture=fixture, runtime=runtime)
@@ -1899,8 +1989,14 @@ async def test_a_rejected_return_still_opens_no_work_item(
     against the *work-item collection*, because a case can be marked
     `POLICY_REJECTED` and still have opened a thread with a human on the end of
     it.
+
+    Run against `POLICY_ENABLED_CONFIGURATION`, because the claim is about what
+    the gate *decides* and the shipped release currently suspends it. Under the
+    shipped release this test passed its own assertions for the wrong reason --
+    `SKIPPED_BY_CONFIGURATION` clears the gate, so nothing was rejected and "no
+    work item" was true of a case that had simply not been judged.
     """
-    harness = _harness(monkeypatch)
+    harness = _harness(monkeypatch, configuration=POLICY_ENABLED_CONFIGURATION)
     for name in (
         "condition_new",
         "suitable_for_resale",
@@ -1941,6 +2037,204 @@ async def test_a_rejected_return_still_opens_no_work_item(
     assert "record_support_outcome" not in harness.runtime.calls, "the drain ran on a rejection"
     # The gate is evaluated, and nothing after it is.
     assert "evaluate_case_eligibility" in harness.runtime.calls
+    # And it is evaluated *as a rejection*, not skipped into a pass. Without this
+    # the three assertions above are all true of a suspended gate, which is what
+    # the shipped release now configures.
+    assert harness.instance._state.policy is not None
+    assert harness.instance._state.policy.state == PolicyGateState.EVALUATED.value
+    assert harness.instance._state.policy.decision == PolicyDecisionName.REJECT.value
+    # `_open_support` is the statement after the gate and holds the only two
+    # `workflow.patched` calls on this path, so an empty marker log is the
+    # positional guarantee restated: nothing past the gate ran at all.
+    assert harness.runtime.patch_ids == []
+
+
+# ---------------------------------------------------------------------------
+# The two patch gates inside `_open_support`, both limbs of each
+#
+# `_Runtime` had no `patched` until this branch, so *every* test above stopped
+# short of `_open_support` and neither gate had ever been evaluated from this
+# module -- two gates, four limbs, no coverage. A `patched` that merely stopped
+# raising would have made the two patched limbs reachable and left the two
+# un-patched ones exactly as dark, so both sides of both are taken here.
+#
+# The ids are read off production rather than restated, so a renamed marker
+# fails these tests instead of quietly answering a string nobody consults.
+# ---------------------------------------------------------------------------
+
+_DRAFT_MARKER = workflow_module._PATCH_STRUCTURED_SUPPORT_DRAFT
+_REVIEW_MARKER = workflow_module._PATCH_SUPPORT_TEMPLATE_REVIEW_GATE
+
+
+def _option_for(harness: _WorkflowHarness, activity: str) -> dict[str, Any]:
+    """The keyword options `_open_support` passed with one activity call."""
+    matches = [options for name, options in harness.runtime.options if name == activity]
+    assert len(matches) == 1, f"expected exactly one {activity} call, saw {len(matches)}"
+    return matches[0]
+
+
+async def _unreachable_template_draft(_request: Any) -> TemplateReviewDraftSet:
+    """A gate activity that is present so its *absence from the log* means something."""
+    return TemplateReviewDraftSet(drafts=(), template_available=False)
+
+
+async def test_a_new_execution_asks_the_draft_activity_for_the_typed_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_PATCH_STRUCTURED_SUPPORT_DRAFT`, patched limb (workflow line 2247).
+
+    A new execution writes the marker and pins `result_type=SupportRequestDraft`,
+    so the payload converter types the result and the structured payload reaches
+    the opening message. The pin is the entire difference between the two limbs
+    -- same activity, same input -- which is why the assertion is on the options
+    and not on the call list.
+    """
+    harness = _harness(monkeypatch, patches={_DRAFT_MARKER: True, _REVIEW_MARKER: False})
+    # The review marker is pinned off only to keep this test about the draft
+    # gate. The stub means a review marker answered wrongly degrades to the
+    # composed path rather than exploding, so the assertion that fires below
+    # stays legible as "the draft gate took the wrong limb" and is never
+    # replaced by a `KeyError` from a neighbouring gate.
+    harness.runtime._activities["record_template_draft"] = _unreachable_template_draft
+
+    outcome = await _run(harness, work_item_id=None)
+
+    assert harness.runtime.patch_ids == [_DRAFT_MARKER, _REVIEW_MARKER]
+    assert _option_for(harness, "draft_support_request")["result_type"] is SupportRequestDraft
+    # And the typed draft is what Support was handed.
+    assert outcome.work_item_id is not None
+    opened = harness.fixture.support.work_items[outcome.work_item_id]
+    assert opened["draft"], "the typed branch opened a thread with no request in it"
+
+
+async def test_an_unmarked_history_decodes_the_bare_string_the_activity_used_to_return(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_PATCH_STRUCTURED_SUPPORT_DRAFT`, un-patched limb (workflow line 2247).
+
+    The limb that wedged cases `return-case-7b216e58` and `return-case-2328a586`.
+    A history recorded before the marker existed holds prose where the typed
+    branch expects a dataclass, so this limb pins no `result_type` at all and
+    hands whatever came back to `_coerce_support_draft`.
+
+    The string is what a pre-`eaed61c` execution recorded, and the assertion is
+    that it *arrives at Support unchanged* -- the failure this guards against is
+    not an exception, it is a thread opened with the wrong words in it. The
+    payload is empty because a string carries none, and inventing one would put
+    facts on the message that nothing observed.
+    """
+    harness = _harness(monkeypatch, patches={_DRAFT_MARKER: False, _REVIEW_MARKER: False})
+    legacy_text = "RETURN SUPPORT REQUEST\n\nCase:\n- Case ID: case-phase-4\n"
+
+    async def _prose(_request: Any) -> Any:
+        return legacy_text
+
+    harness.runtime._activities["draft_support_request"] = _prose
+    # Same reason as the test above: the neighbouring gate must not be able to
+    # supply this test's failure.
+    harness.runtime._activities["record_template_draft"] = _unreachable_template_draft
+
+    outcome = await _run(harness, work_item_id=None)
+
+    assert harness.runtime.patch_ids == [_DRAFT_MARKER, _REVIEW_MARKER]
+    assert "result_type" not in _option_for(harness, "draft_support_request"), (
+        "the legacy limb pinned a result type, which is the wedge it exists to avoid"
+    )
+    assert outcome.work_item_id is not None
+    opened = harness.fixture.support.work_items[outcome.work_item_id]
+    assert opened["draft"] == legacy_text
+    assert workflow_module._coerce_support_draft(legacy_text).payload == {}
+
+
+async def test_a_new_execution_consults_the_review_gate_before_it_sends(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE`, patched limb (workflow line 2294).
+
+    The marker is present, so `_template_review_gate` runs and its first act is
+    `record_template_draft`. The release here has published no template, which is
+    one of the gate's two documented ways of handing the outcome back
+    (`template_available=False`), and the case then takes the composed path and
+    opens the thread as it always did.
+
+    That shape is chosen deliberately: it proves the gate was *entered* -- the
+    activity call is the proof, and it cannot happen on the other limb -- without
+    rebuilding the reviewer machinery that `tests/test_support_template_review_gate.py`
+    already owns 1,200 lines of. What is new here is only which branch of
+    `_open_support` ran.
+    """
+    harness = _harness(monkeypatch, patches={_DRAFT_MARKER: True, _REVIEW_MARKER: True})
+
+    async def _no_template_published(_request: Any) -> TemplateReviewDraftSet:
+        return TemplateReviewDraftSet(drafts=(), template_available=False)
+
+    harness.runtime._activities["record_template_draft"] = _no_template_published
+
+    outcome = await _run(harness, work_item_id=None)
+
+    assert harness.runtime.patch_ids == [_DRAFT_MARKER, _REVIEW_MARKER]
+    assert "record_template_draft" in harness.runtime.calls, "the gate was skipped while marked"
+    assert harness.runtime.calls.index("record_template_draft") < harness.runtime.calls.index(
+        "open_support_work_item"
+    ), "the gate ran after the send it is supposed to gate"
+    # No template, so the composed path still runs and the case is not parked.
+    assert outcome.work_item_id is not None
+    assert outcome.status == ReturnCaseStatus.AWAITING_SUPPORT.value
+
+
+async def test_an_unmarked_history_never_reaches_the_review_gate_at_all(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE`, un-patched limb (workflow line 2294).
+
+    The population this marker exists for: an execution recorded before the gate
+    was written. Its history holds `open_support_work_item` where the gated path
+    would reach `record_template_draft`, so a replay that took the gate would
+    fail non-determinism on every workflow task -- the wedge on a much wider
+    population than the draft marker's.
+
+    So the claim is byte-for-byte the pre-gate behaviour, and it is asserted
+    negatively *and* positionally: `record_template_draft` is never called, and
+    the send is the statement immediately after the draft. The marker is still
+    consulted -- that is what distinguishes "the gate answered no" from "the gate
+    is not there any more", and the latter would silently pass a bare absence
+    check.
+    """
+    harness = _harness(monkeypatch, patches={_DRAFT_MARKER: True, _REVIEW_MARKER: False})
+    # Deliberately available. If the un-patched limb ever started consulting the
+    # gate, this would make it succeed quietly instead of raising, so the
+    # assertions below are the only thing standing between the two limbs.
+    harness.runtime._activities["record_template_draft"] = _unreachable_template_draft
+
+    outcome = await _run(harness, work_item_id=None)
+
+    assert harness.runtime.patch_ids == [_DRAFT_MARKER, _REVIEW_MARKER]
+    assert "record_template_draft" not in harness.runtime.calls
+    assert (
+        harness.runtime.calls.index("open_support_work_item")
+        == harness.runtime.calls.index("draft_support_request") + 1
+    ), "something ran between the draft and the send on the pre-gate path"
+    assert outcome.work_item_id is not None
+    assert outcome.status == ReturnCaseStatus.AWAITING_SUPPORT.value
+
+
+async def test_a_patch_marker_this_module_does_not_know_about_fails_loudly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The mapping refuses to answer for a marker the test did not pin.
+
+    Rule 13 applied to the double itself. `_open_support` grew from one
+    `workflow.patched` call to two; if it grows a third, the four tests above
+    must fail rather than answer the new marker at random and go on asserting a
+    branch nobody chose. A `KeyError` naming the unpinned id is that failure.
+    """
+    runtime = _Runtime({}, patches={_DRAFT_MARKER: True})
+
+    assert runtime.patched(_DRAFT_MARKER) is True
+    with pytest.raises(KeyError):
+        runtime.patched(_REVIEW_MARKER)
+    assert runtime.patch_ids == [_DRAFT_MARKER, _REVIEW_MARKER]
+    del monkeypatch
 
 
 async def test_a_resumed_case_holding_a_work_item_does_not_re_evaluate_the_policy(

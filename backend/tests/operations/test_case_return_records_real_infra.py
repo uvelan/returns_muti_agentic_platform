@@ -47,6 +47,7 @@ from tests.sql_migrations import migration_batches
 _CONNECT_DEADLINE_SECONDS = 30
 CASE_DATABASE = "return_case_probe"
 
+
 #: The migrations under test, in the order the CLI applies them. Applied here
 #: rather than assumed, so this suite does not depend on whoever last ran the
 #: migration CLI against this server.

@@ -22,8 +22,8 @@ from typing import Any, Final
 
 __all__ = [
     "FORMATTER_IDS",
-    "TemplateFormatterError",
     "UNAVAILABLE",
+    "TemplateFormatterError",
     "format_value",
 ]
 

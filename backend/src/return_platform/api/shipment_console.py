@@ -27,22 +27,22 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from return_platform.security import capabilities
-from return_platform.security.authorization import require_capability
 from return_platform.api.return_shipments import _service as _shipment_state_service
 from return_platform.configuration.return_configuration import LoadedReturnConfiguration
 from return_platform.dynamic_knowledge.integration.shipment_state_sync import (
     ShipmentStateSyncFailed,
 )
+from return_platform.operations.fulfillment_progress import FulfillmentProgress
+from return_platform.operations.repository import resolve_operational_repository
 from return_platform.operations.shipment_tracking import (
     ShipmentTrackingStore,
     ShipmentTrackingUnconfigured,
     TransitionRejected,
 )
-from return_platform.operations.fulfillment_progress import FulfillmentProgress
 from return_platform.operations.sql_business_state import ShipmentUpdate
-from return_platform.operations.repository import resolve_operational_repository
 from return_platform.resources import RuntimeResources
+from return_platform.security import capabilities
+from return_platform.security.authorization import require_capability
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 logger = logging.getLogger("return_platform.api.shipment_console")
@@ -137,7 +137,7 @@ async def list_shipments(
             status=status_code, case_id=case, search=search, limit=limit
         )
     except ShipmentTrackingUnconfigured as unconfigured:
-        raise HTTPException(status_code=404, detail=str(unconfigured))
+        raise HTTPException(status_code=404, detail=str(unconfigured)) from unconfigured
     return APIResponse(data=shipments, meta=_meta(request))
 
 
@@ -147,7 +147,7 @@ async def get_shipment(identifier: str, request: Request) -> APIResponse[dict[st
     try:
         shipment = await _store(request).find(identifier)
     except ShipmentTrackingUnconfigured as unconfigured:
-        raise HTTPException(status_code=404, detail=str(unconfigured))
+        raise HTTPException(status_code=404, detail=str(unconfigured)) from unconfigured
     if shipment is None:
         raise HTTPException(
             status_code=404,
@@ -186,11 +186,11 @@ async def append_shipment_event(
             override_reason=payload.overrideReason,
             pro_number=payload.proNumber,
         )
-    except KeyError:
+    except KeyError as missing:
         raise HTTPException(
             status_code=404,
             detail={"code": "SHIPMENT_NOT_FOUND", "message": f"No shipment {shipment_id!r}."},
-        )
+        ) from missing
     except TransitionRejected as rejected:
         raise HTTPException(
             status_code=422,
@@ -199,9 +199,9 @@ async def append_shipment_event(
                 "message": str(rejected),
                 "allowedNext": list(rejected.allowed),
             },
-        )
+        ) from rejected
     except ShipmentTrackingUnconfigured as unconfigured:
-        raise HTTPException(status_code=404, detail=str(unconfigured))
+        raise HTTPException(status_code=404, detail=str(unconfigured)) from unconfigured
 
     # The C4 chain: authoritative row -> graph -> case -> associate. Field
     # names come off the store's own mapping, so a release rename holds here
@@ -222,16 +222,18 @@ async def append_shipment_event(
         service = await _shipment_state_service(request)
         event_at = (payload.eventAt or datetime.now(UTC)).astimezone(UTC).replace(tzinfo=None)
         try:
-            await service.record_update(ShipmentUpdate(
-                return_reference=rma,
-                tracking_reference=tracking,
-                shipment_status=payload.status,
-                status_at=event_at,
-                tracking_type="BOL" if mode == "freight" else "PPL",
-                carrier_code=(str(updated.get(f("carrier")) or "") or None),
-                shipment_details=payload.note,
-            ))
-        except ShipmentStateSyncFailed:
+            await service.record_update(
+                ShipmentUpdate(
+                    return_reference=rma,
+                    tracking_reference=tracking,
+                    shipment_status=payload.status,
+                    status_at=event_at,
+                    tracking_type="BOL" if mode == "freight" else "PPL",
+                    carrier_code=(str(updated.get(f("carrier")) or "") or None),
+                    shipment_details=payload.note,
+                )
+            )
+        except ShipmentStateSyncFailed as sync_failed:
             logger.warning(
                 "shipment_console_graph_sync_failed",
                 extra={"shipment_id": shipment_id, "rma": rma},
@@ -247,7 +249,7 @@ async def append_shipment_event(
                     ),
                     "retryable": True,
                 },
-            )
+            ) from sync_failed
     # What the status means for the record and the case -- terminal closes the
     # record (and the case once every record is terminal), an exception-class
     # status surfaces on Operations and in the associate's conversation. The

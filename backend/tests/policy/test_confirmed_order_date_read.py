@@ -25,9 +25,7 @@ pytestmark = pytest.mark.asyncio
 ORDER_DATE_PATHS = ("salesHdr.salesHdrData.orderDate",)
 NEW_YORK = ZoneInfo("America/New_York")
 
-_DATASET = (
-    Path(__file__).resolve().parents[2] / "fixtures" / "reference_dataset" / "salesInv1.json"
-)
+_DATASET = Path(__file__).resolve().parents[2] / "fixtures" / "reference_dataset" / "salesInv1.json"
 
 
 @pytest.fixture(scope="module")

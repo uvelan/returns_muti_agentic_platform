@@ -45,9 +45,7 @@ def _record(record_id: str, reference: str | None, **fields: Any) -> dict[str, A
 
 
 def _tracking(value: str = "TRK-1", binding: str | None = None) -> ExtractedArtifact:
-    return ExtractedArtifact(
-        artifact_type=ArtifactType.TRACKING, value=value, binding=binding
-    )
+    return ExtractedArtifact(artifact_type=ArtifactType.TRACKING, value=value, binding=binding)
 
 
 # ---------------------------------------------------------------------------
@@ -72,9 +70,7 @@ class TestBindingRules:
         assert decision.return_record_id == "rec-1"
 
     def test_an_unknown_reference_is_unmatched_and_never_a_new_record(self) -> None:
-        decision = bind_artifact(
-            _tracking(binding="RMA-9"), [_record("rec-1", "RMA-1")]
-        )
+        decision = bind_artifact(_tracking(binding="RMA-9"), [_record("rec-1", "RMA-1")])
         assert decision.status is BindingStatus.UNMATCHED
         assert decision.return_record_id is None
         assert "RMA-9" in (decision.reason or "")
@@ -98,17 +94,13 @@ class TestBindingRules:
         assert decision.status is BindingStatus.UNMATCHED
 
     def test_a_blank_binding_claim_is_no_reference(self) -> None:
-        decision = bind_artifact(
-            _tracking(binding="  "), [_record("rec-1", "RMA-1")]
-        )
+        decision = bind_artifact(_tracking(binding="  "), [_record("rec-1", "RMA-1")])
         assert decision.status is BindingStatus.BOUND
         assert decision.return_record_id == "rec-1"
 
     def test_bind_artifacts_decides_each_against_one_read(self) -> None:
         records = [_record("rec-1", "RMA-1"), _record("rec-2", "RMA-2")]
-        decisions = bind_artifacts(
-            [_tracking(binding="RMA-1"), _tracking("TRK-2")], records
-        )
+        decisions = bind_artifacts([_tracking(binding="RMA-1"), _tracking("TRK-2")], records)
         assert [decision.status for decision in decisions] == [
             BindingStatus.BOUND,
             BindingStatus.AMBIGUOUS,
@@ -240,6 +232,47 @@ class TestBoundPersistence:
         with pytest.raises(ConcurrencyConflictError):
             await _persist(_bound(_tracking("TRK-9"), "rec-1"), store)
 
+    # -- the record-*selection* step, on a case that actually holds a choice --
+    #
+    # Every test above this line stores exactly one record, so `records[0]` and
+    # "the record the decision names" are the same document and the search in
+    # `_merge_bound_artifact` cannot be wrong. On a multi-RMA case they come
+    # apart, and that is the only shape in which cross-assignment -- Support's
+    # tracking for RMA-2 landing on RMA-1 -- is expressible at all. (ACC3
+    # category-B audit: the two below are the tests INJ-B4 found missing.)
+
+    async def test_a_bound_artifact_merges_onto_the_named_record_not_the_first(
+        self,
+    ) -> None:
+        """Item 8's cross-assignment case, at the persistence layer.
+
+        The decision names the *second* record. Asserting only that rec-2 was
+        written would still pass if rec-1 were written too, so the untouched
+        neighbour is asserted as well: a customer's tracking number appearing
+        on someone else's return is the business failure being excluded.
+        """
+        store = _RecordStore([_record("rec-1", "RMA-1"), _record("rec-2", "RMA-2")])
+        assert await _persist(_bound(_tracking("TRK-9"), "rec-2"), store)
+        assert store.updates == [("rec-2", {"trackingReference": "TRK-9"})]
+        assert store.records[0]["trackingReference"] is None, (
+            "the first record is not the bound one and must be untouched"
+        )
+        assert store.records[1]["trackingReference"] == "TRK-9"
+
+    async def test_a_decision_naming_a_record_the_case_does_not_hold_refuses(
+        self,
+    ) -> None:
+        """The merge refuses rather than falling back to a neighbour.
+
+        With one stored record this branch is unreachable-by-accident: any
+        fallback would pick the record the decision meant anyway. With two, a
+        silent fallback is a mis-assignment, so the raise is load-bearing.
+        """
+        store = _RecordStore([_record("rec-1", "RMA-1"), _record("rec-2", "RMA-2")])
+        with pytest.raises(LookupError):
+            await _persist(_bound(_tracking("TRK-9"), "rec-404"), store)
+        assert store.updates == []
+
 
 @pytest.mark.asyncio
 class TestUnboundPersistence:
@@ -275,7 +308,5 @@ class TestUnboundPersistence:
         appender = _FactAppender()
         decision = bind_artifact(_tracking("TRK-9"), records)
         assert await _persist(decision, _RecordStore(records), appender, dedupe_key="evt-7-0")
-        assert not await _persist(
-            decision, _RecordStore(records), appender, dedupe_key="evt-7-0"
-        )
+        assert not await _persist(decision, _RecordStore(records), appender, dedupe_key="evt-7-0")
         assert len(appender.appended) == 1

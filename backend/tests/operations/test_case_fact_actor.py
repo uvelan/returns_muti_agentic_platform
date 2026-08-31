@@ -106,9 +106,7 @@ class TestTheLegacyDocumentStaysValid:
         that set, and this exact-set comparison would fail naming it.
         """
         required = {
-            name
-            for name, field in CaseFactView.model_fields.items()
-            if field.is_required()
+            name for name, field in CaseFactView.model_fields.items() if field.is_required()
         }
         assert required == {
             "factId",
@@ -129,9 +127,7 @@ class TestTheLegacyDocumentStaysValid:
         unknown keys, which would make every assertion in this file vacuous.
         """
         with pytest.raises(ValidationError):
-            CaseFactView.model_validate(
-                _legacy_fact_document(somethingNobodyDeclared="x")
-            )
+            CaseFactView.model_validate(_legacy_fact_document(somethingNobodyDeclared="x"))
 
 
 class TestTheFieldHoldsTheActor:
@@ -235,9 +231,7 @@ def _activities(repository: _Repository) -> ReturnCaseActivities:
     return ReturnCaseActivities(repository=repository, support_service=None)  # type: ignore[arg-type]
 
 
-def _fact_kwargs(
-    name: str = "support_template_revision", value: Any = "revised"
-) -> dict[str, Any]:
+def _fact_kwargs(name: str = "support_template_revision", value: Any = "revised") -> dict[str, Any]:
     """One command-originated observation, as a workflow callsite derives it."""
     return {
         "fact_id": f"{name}-case-1-evt-1",
@@ -282,10 +276,7 @@ class TestTheActorSurvivesTheWholeWritePath:
         latest = await repository.latest_case_facts_scoped("case-1")
         held = latest[("record-1", "support_template_revision")]
         assert held["actorId"] == "principal:branch-associate-4471"
-        assert (
-            CaseFactView.model_validate(held).actorId
-            == "principal:branch-associate-4471"
-        )
+        assert CaseFactView.model_validate(held).actorId == "principal:branch-associate-4471"
 
     async def test_a_case_level_command_fact_carries_its_actor_too(
         self, repository: _Repository
@@ -299,8 +290,7 @@ class TestTheActorSurvivesTheWholeWritePath:
 
         latest = await repository.latest_case_facts_scoped("case-1")
         assert (
-            latest[(None, "support_clarification_answered")]["actorId"]
-            == "principal:supervisor-9"
+            latest[(None, "support_clarification_answered")]["actorId"] == "principal:supervisor-9"
         )
 
     async def test_an_observation_with_no_actor_stores_an_explicit_none(
@@ -429,9 +419,7 @@ class TestTheLegacyPathIsUntouched:
         than quietly do nothing.
         """
         with pytest.raises(TypeError):
-            await repository.append_case_fact(
-                actor_id="principal:associate-1", **_fact_kwargs()
-            )
+            await repository.append_case_fact(actor_id="principal:associate-1", **_fact_kwargs())
 
     async def test_the_legacy_projection_still_returns_the_documents_it_always_did(
         self, repository: _Repository

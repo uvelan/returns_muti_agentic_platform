@@ -21,6 +21,7 @@ from return_platform.configuration.return_configuration import load_return_confi
 from return_platform.configuration.support_template_configuration import (
     SupportTemplateConfiguration,
 )
+from return_platform.operations.case_projection.contract import ReturnRecordProjection
 from return_platform.operations.support_handoff import (
     SupportHandoffBay,
     SupportHandoffCustomer,
@@ -71,9 +72,7 @@ def _minimal_template(**field_overrides: object) -> SupportTemplateConfiguration
                 {
                     "variant_id": "default",
                     "subject_template": "Return {order_number}",
-                    "sections": [
-                        {"section_id": "order", "title": "Order:", "fields": [field]}
-                    ],
+                    "sections": [{"section_id": "order", "title": "Order:", "fields": [field]}],
                 }
             ],
         }
@@ -83,7 +82,9 @@ def _minimal_template(**field_overrides: object) -> SupportTemplateConfiguration
 class _GraphStub:
     """A graph port that counts its traffic, per the batching acceptance."""
 
-    def __init__(self, values: dict[str, object] | None = None, after_sync: dict[str, object] | None = None):
+    def __init__(
+        self, values: dict[str, object] | None = None, after_sync: dict[str, object] | None = None
+    ):
         self.values = dict(values or {})
         self.after_sync = dict(after_sync or {})
         self.reads: list[str] = []
@@ -109,9 +110,7 @@ class TestVariantSelection:
         assert select_variant(production_template, context).variant_id == "parcel"
 
     def test_ltl_modes_select_the_ltl_variant(self, production_template) -> None:
-        context = TemplateRenderContext(
-            shipping_modes=("BRANCH_LTL", "OFFSITE_LTL"), item_count=2
-        )
+        context = TemplateRenderContext(shipping_modes=("BRANCH_LTL", "OFFSITE_LTL"), item_count=2)
         assert select_variant(production_template, context).variant_id == "ltl"
 
     def test_mixed_parcel_and_ltl_falls_to_the_default(self, production_template) -> None:
@@ -151,8 +150,7 @@ class TestVariantSelection:
         )
         assert select_variant(template, TemplateRenderContext(item_count=2)).variant_id == "small"
         assert (
-            select_variant(template, TemplateRenderContext(item_count=4)).variant_id
-            == "also_small"
+            select_variant(template, TemplateRenderContext(item_count=4)).variant_id == "also_small"
         )
 
     def test_a_template_with_no_variants_refuses_loudly(self) -> None:
@@ -162,6 +160,7 @@ class TestVariantSelection:
 
 class TestBinding:
     pytestmark = pytest.mark.asyncio
+
     async def test_case_fact_binding_carries_provenance(self) -> None:
         template = _minimal_template()
         rendered = await render_support_template(
@@ -169,9 +168,7 @@ class TestBinding:
             TemplateDraftInput(
                 case_id="case-1",
                 context=TemplateRenderContext(),
-                facts={
-                    (None, "confirmed_order_reference"): {"value": "CQ800002", "factId": "f-1"}
-                },
+                facts={(None, "confirmed_order_reference"): {"value": "CQ800002", "factId": "f-1"}},
             ),
         )
         (field,) = rendered.sections[0].fields
@@ -247,6 +244,7 @@ class TestBinding:
 
 class TestPerRecordSections:
     pytestmark = pytest.mark.asyncio
+
     def _template(self) -> SupportTemplateConfiguration:
         return _template(
             {
@@ -343,7 +341,22 @@ class TestPerRecordSections:
         assert "RMA-2" not in rendered.subject
         assert rendered.subject == "Return Not available"
 
-    async def test_an_undeclared_attribute_degrades_rather_than_reaching(self) -> None:
+    @pytest.mark.parametrize(
+        "record",
+        [
+            pytest.param(
+                {"returnRecordId": "rec-1", "returnReference": "RMA-1"},
+                id="mapping",
+            ),
+            pytest.param(
+                ReturnRecordProjection(returnRecordId="rec-1", returnReference="RMA-1"),
+                id="projection",
+            ),
+        ],
+    )
+    async def test_an_undeclared_attribute_degrades_rather_than_reaching(
+        self, record: object
+    ) -> None:
         """AMENDMENT-2, from the render side.
 
         Release validation already refuses `return_record:__class__`, so this
@@ -352,14 +365,26 @@ class TestPerRecordSections:
         -- a gap or a fallback -- and never resolve it, so `<class '...'>`
         cannot reach the message a person on the Support desk reads, and no
         exception escapes to the caller either.
+
+        **Both record shapes, because only one of them can fail.**
+        `_record_attribute` branches on `isinstance(record, Mapping)`, and a
+        dict's `.get("__class__")` is `None` whether or not the allowlist is
+        there -- so a Mapping-only version of this test passes with
+        AMENDMENT-2's guard deleted. The `getattr` limb is the one the
+        amendment was written against ("resolving it through unconstrained
+        `getattr` is forbidden"), and `ReturnRecordProjection` -- a pydantic
+        model, not a Mapping -- is the shape production actually renders.
+        (ACC3 category-B audit: INJ-B13 removed the allowlist and left the
+        Mapping-only test green.)
         """
         template = self._template()
-        reaching = template.variants[0].sections[0].fields[0].model_copy(
-            update={"source_binding": "return_record:__class__", "required": True}
+        reaching = (
+            template.variants[0]
+            .sections[0]
+            .fields[0]
+            .model_copy(update={"source_binding": "return_record:__class__", "required": True})
         )
-        section = template.variants[0].sections[0].model_copy(
-            update={"fields": (reaching,)}
-        )
+        section = template.variants[0].sections[0].model_copy(update={"fields": (reaching,)})
         variant = template.variants[0].model_copy(update={"sections": (section,)})
         template = template.model_copy(update={"variants": (variant,)})
 
@@ -369,7 +394,7 @@ class TestPerRecordSections:
                 case_id="c",
                 context=TemplateRenderContext(),
                 facts={},
-                return_records=({"returnRecordId": "rec-1", "returnReference": "RMA-1"},),
+                return_records=(record,),
             ),
         )
         assert rendered.text.find("class") == -1
@@ -378,6 +403,7 @@ class TestPerRecordSections:
 
 class TestGraphBatching:
     pytestmark = pytest.mark.asyncio
+
     def _template(self, *paths: str) -> SupportTemplateConfiguration:
         return _template(
             {
@@ -418,9 +444,7 @@ class TestGraphBatching:
         template = self._template("erp/order/total", "erp/order/carrier", "wms/bay/zone")
         rendered = await render_support_template(
             template,
-            TemplateDraftInput(
-                case_id="c", context=TemplateRenderContext(), facts={}, graph=graph
-            ),
+            TemplateDraftInput(case_id="c", context=TemplateRenderContext(), facts={}, graph=graph),
         )
         # Three missing bindings across two sources: exactly two synchronize
         # calls, each carrying every missing path of its source.
@@ -438,9 +462,7 @@ class TestGraphBatching:
         graph = _GraphStub()
         rendered = await render_support_template(
             self._template("erp/order/total"),
-            TemplateDraftInput(
-                case_id="c", context=TemplateRenderContext(), facts={}, graph=graph
-            ),
+            TemplateDraftInput(case_id="c", context=TemplateRenderContext(), facts={}, graph=graph),
         )
         assert len(graph.sync_calls) == 1
         (gap,) = rendered.gaps
@@ -479,6 +501,7 @@ class TestGraphBatching:
 
 class TestSubjectEscaping:
     pytestmark = pytest.mark.asyncio
+
     async def test_double_braces_render_as_literal_braces(self) -> None:
         template = _template(
             {
@@ -527,6 +550,7 @@ class TestSubjectEscaping:
         # The value is inserted as text; it does not become a placeholder.
         assert rendered.subject == "Return {order_number}"
         assert rendered.sections[0].fields[0].value == "{order_number}"
+
 
 class TestComposedEquivalenceMatrix:
     """The seam test: the production default variant against
@@ -718,9 +742,7 @@ class TestComposedEquivalenceMatrix:
     }
 
     @pytest.mark.parametrize("scenario", sorted(_SCENARIOS))
-    async def test_the_default_variant_reproduces_the_composed_text(
-        self, scenario: str
-    ) -> None:
+    async def test_the_default_variant_reproduces_the_composed_text(self, scenario: str) -> None:
         case = self._case(**self._SCENARIOS[scenario])
         template = load_return_configuration(_PRODUCTION_YAML).configuration.support_template
 

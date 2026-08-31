@@ -928,9 +928,7 @@ class GraphSyncService:
             await self.refresh_schema()
             unknown = sorted(set(request.scope) - set(self._schema.sources))
             if unknown:
-                raise ValueError(
-                    f"Not configured sources: {', '.join(unknown)}"
-                )
+                raise ValueError(f"Not configured sources: {', '.join(unknown)}")
             requested = frozenset(request.scope)
             # Intersected with any scope the caller already passed, for the
             # reason `_sync_participating_sources` gives: narrowing composes,

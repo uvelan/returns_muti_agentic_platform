@@ -29,6 +29,37 @@ import type { ReviewPanelView } from "../../../../../api/casePanel";
 
 export const SUPPORT_REPLY_KIND = "SUPPORT_REPLY";
 
+/**
+ * What every surface says about a reply draft with no body.
+ *
+ * **One constant because there is one state, not because two strings looked
+ * untidy.** `CasePanel`'s read-only review and `SupportReplyBody` render the
+ * *same* draft -- both reach `messageText` through `readSupportReplyDraft` --
+ * and they disagreed: one said "This reply was empty." and the other said this.
+ * An associate moving between the two panes saw a live draft described two
+ * ways, one of them in the past tense, and had no way to tell whether they were
+ * looking at one thing or two.
+ *
+ * The past-tense sentence is gone rather than reconciled. A pending draft is
+ * not a closed record: it can still be edited, and it is a description of what
+ * *would* be sent, not of what *was*. Describing it as finished told the
+ * associate the decision was already behind them, which is the opposite of the
+ * one thing this screen exists to ask.
+ *
+ * Present tense and actionable, so it names the state and the next action:
+ * the draft is empty, rebuilding it is what fixes that, and the consequence of
+ * not doing so is concrete rather than abstract.
+ *
+ * **This string is not the guard.** `review_aggregate.approve` refuses an empty
+ * `SUPPORT_REPLY` body with a 409 (`EmptyReplyBodyError`,
+ * `SUPPORT_REPLY_BODY_EMPTY`), on the one transition both an associate's
+ * approval and `auto_send` pass through. This sentence explains a refusal that
+ * has already been made; it is not what stands between an empty draft and a
+ * send.
+ */
+export const EMPTY_REPLY_NOTICE =
+  "This reply is empty. Rebuild it before sending — Support would receive nothing.";
+
 export type SupportReplyDraft = {
   /**
    * What would be sent to Support, verbatim.

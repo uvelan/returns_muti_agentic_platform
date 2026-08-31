@@ -35,6 +35,7 @@ import { CasePanel } from "../CasePanel";
 import { clearPanelSectionRenderers } from "../panelSectionRegistry";
 import {
   confidencePercent,
+  EMPTY_REPLY_NOTICE,
   isSupportReply,
   readSupportReplyDraft,
   rungWords,
@@ -51,11 +52,11 @@ function wrapper(client: QueryClient, children: ReactNode) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
-function renderPanel() {
+function renderPanel(readOnly = false) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, refetchInterval: false } },
   });
-  return { client, ...render(wrapper(client, <CasePanel caseId={CASE} readOnly={false} />)) };
+  return { client, ...render(wrapper(client, <CasePanel caseId={CASE} readOnly={readOnly} />)) };
 }
 
 beforeEach(() => {
@@ -116,6 +117,72 @@ describe("reading a reply draft off a review", () => {
   it("reports the resolver's own confidence, and says nothing when it recorded none", () => {
     expect(confidencePercent(940_000)).toBe("94%");
     expect(confidencePercent(null)).toBeNull();
+  });
+});
+
+/**
+ * One empty reply, one sentence, in both panes.
+ *
+ * The two surfaces render the *same* draft -- `CasePanel`'s read-only review
+ * and `SupportReplyBody` both reach `messageText` through
+ * `readSupportReplyDraft` -- and they described it differently, one of them in
+ * the past tense. An associate moving between panes could not tell whether
+ * they were looking at one draft or two, and "This reply was empty." told them
+ * a pending decision was already behind them.
+ *
+ * Asserted as **whole-value equalities against the exported constant**, not as
+ * `toContain` and not as two hardcoded strings compared with each other. Two
+ * copies of the same literal in a test pass happily while the components drift;
+ * only reading the constant the components read can catch that.
+ *
+ * The wording is not the guard. `review_aggregate.approve` refuses an empty
+ * `SUPPORT_REPLY` body with a 409 before anything can be sent; these
+ * assertions are about what the associate is told, not about what stops the
+ * send.
+ */
+describe("an empty reply draft reads the same in both panes", () => {
+  it("says it in the review pane", async () => {
+    servePanel(emptyReplyReview());
+    renderPanel();
+
+    const body = await screen.findByText(EMPTY_REPLY_NOTICE);
+    expect(body.textContent).toBe(EMPTY_REPLY_NOTICE);
+  });
+
+  it("says the identical sentence in the read-only operations pane", async () => {
+    servePanel(emptyReplyReview());
+    renderPanel(true);
+
+    const body = await screen.findByText(EMPTY_REPLY_NOTICE);
+    expect(body.textContent).toBe(EMPTY_REPLY_NOTICE);
+  });
+
+  it("is present tense and names the next action", () => {
+    // The past-tense sentence is deleted rather than reconciled: a live draft
+    // is never described as a closed record. Pinned as an equality so a
+    // rewrite that dropped the instruction -- back to a bare "This reply is
+    // empty." -- turns this red rather than passing on a substring.
+    expect(EMPTY_REPLY_NOTICE).toBe(
+      "This reply is empty. Rebuild it before sending — Support would receive nothing.",
+    );
+  });
+
+  it("still renders a non-empty reply as itself, not as the notice", async () => {
+    // The other direction, varying the body and nothing else. A notice
+    // rendered unconditionally would satisfy both tests above and hide every
+    // real reply.
+    //
+    // A single-line body on purpose: `findByText` normalises whitespace, so
+    // pinning the multi-line `REPLY_TEXT` as a text node would fail on the
+    // paragraph breaks rather than on anything this test is about. The
+    // multi-line value is already pinned as a `<textarea>` value above.
+    const oneLine = "Your return RMA-88120 is in bay 3 awaiting inspection.";
+    servePanel(emptyReplyReview(oneLine));
+    renderPanel();
+
+    const body = await screen.findByText(oneLine);
+    expect(body.textContent).toBe(oneLine);
+    expect(screen.queryByText(EMPTY_REPLY_NOTICE)).toBeNull();
   });
 });
 
@@ -237,6 +304,34 @@ function metaBlock() {
     partial: false,
     warnings: [],
   };
+}
+
+/**
+ * A reply review rendered as *text*, with the body as the only variable.
+ *
+ * `APPROVING` rather than `OPEN` because `TemplateReviewSection` only draws the
+ * read-only paragraph when `editable` is false (`state === "OPEN"` is the
+ * editable one) -- an `OPEN` empty reply renders an empty `<textarea>`, which
+ * has no notice in it and is a different surface. The non-empty control below
+ * uses this same builder for exactly that reason: it must differ from the
+ * empty case in the body and in nothing else, or it is not a control.
+ */
+function emptyReplyReview(messageText = "", state = "APPROVING") {
+  return baseReview({
+    review_kind: "SUPPORT_REPLY",
+    state,
+    draft: {
+      messageText,
+      disclosesAgent: true,
+      supportEventId: "evt-77",
+      intent: "shipment_status",
+      confidenceMillionths: 940_000,
+      resolvedByRung: "case_facts",
+      citedFactIds: [],
+      consumedFactIds: [],
+      contextHash: "c".repeat(64),
+    },
+  }) as never;
 }
 
 function baseReview(overrides: Record<string, unknown>) {

@@ -147,9 +147,7 @@ async def ensure_support_ingress_indexes(database: Any) -> None:
         unique=True,
         name=INBOUND_IDENTITY_INDEX,
     )
-    await collection.create_index(
-        "supportEventId", unique=True, name=INBOUND_EVENT_INDEX
-    )
+    await collection.create_index("supportEventId", unique=True, name=INBOUND_EVENT_INDEX)
     await collection.create_index([("caseId", ASCENDING), ("recordedAt", ASCENDING)])
     await database[SUPPORT_PARKING_ALERTS].create_index("caseId")
 
@@ -203,9 +201,9 @@ class DurableSupportIngressStore(DurableSupportEventStore):
         same millisecond must still have a total order, or "reprocess in stream
         order" is a claim the drain cannot keep.
         """
-        cursor = self._inbound.find(
-            {"caseId": case_id, "status": SupportEventStatus.PARKED}
-        ).sort([("recordedAt", ASCENDING), ("_id", ASCENDING)])
+        cursor = self._inbound.find({"caseId": case_id, "status": SupportEventStatus.PARKED}).sort(
+            [("recordedAt", ASCENDING), ("_id", ASCENDING)]
+        )
         return [dict(document) async for document in cursor]
 
     async def parked_count(self, case_id: str) -> int:
@@ -297,9 +295,7 @@ class DurableSupportIngressStore(DurableSupportEventStore):
             try:
                 await self._inbound.insert_one(dict(document))
             except DuplicateKeyError:
-                winner = await self._inbound.find_one(
-                    {"supportEventId": event.support_event_id}
-                )
+                winner = await self._inbound.find_one({"supportEventId": event.support_event_id})
                 if winner is None:  # pragma: no cover - duplicate on no known key
                     raise
                 return await self._receipt_for_existing(winner, event, digest)
@@ -371,9 +367,7 @@ class DurableSupportIngressStore(DurableSupportEventStore):
 
     # ------------------------------------------------------------- the drain
 
-    async def drain_parked(
-        self, *, case_id: str, workflow_id: str, actor_id: str
-    ) -> list[str]:
+    async def drain_parked(self, *, case_id: str, workflow_id: str, actor_id: str) -> list[str]:
         """Release parked messages into the inbound chain, oldest first.
 
         Returns the event ids released, in the order they were chained.
@@ -414,9 +408,7 @@ class DurableSupportIngressStore(DurableSupportEventStore):
                     now=_now,
                     session=mongo_session,
                 )
-                await self._outbox_collection.insert_one(
-                    dict(_command), session=mongo_session
-                )
+                await self._outbox_collection.insert_one(dict(_command), session=mongo_session)
                 await self._inbound.update_one(
                     {"supportEventId": _event_id},
                     {
@@ -518,9 +510,7 @@ class DurableSupportIngressStore(DurableSupportEventStore):
             **fields,
         }
 
-    async def _last_enqueued_inbound_event(
-        self, case_id: str, *, session: Any
-    ) -> str | None:
+    async def _last_enqueued_inbound_event(self, case_id: str, *, session: Any) -> str | None:
         """The tail of this case's inbound chain, or `None` for the first link.
 
         Read from the *outbox* rather than from the message collection, because
@@ -631,11 +621,7 @@ def inbound_chain(commands: Sequence[Mapping[str, Any]]) -> list[tuple[str, tupl
     of those constrains a dispatcher.
     """
     ordered = sorted(
-        (
-            command
-            for command in commands
-            if command.get("stream") == CaseStream.INBOUND.value
-        ),
+        (command for command in commands if command.get("stream") == CaseStream.INBOUND.value),
         key=lambda command: int(command.get("streamSequence") or 0),
     )
     return [
