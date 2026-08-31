@@ -425,6 +425,66 @@ class TestTheSignalBodyIsTheNoticeTheWorkflowDeclares:
         assert payload["verbatim_question"] == QUESTION
 
 
+async def _command_count(mongo: FakeClient) -> int:
+    total = 0
+    for database_name in mongo.databases:  # type: ignore[attr-defined]
+        collection = mongo[database_name]["case_command_records"]
+        total += len([document async for document in collection.find({})])
+    return total
+
+
+@pytest.mark.parametrize(
+    ("label", "case", "facts"),
+    [
+        pytest.param("another_tenant", _case_document(tenant_id="tenant-b"), None, id="another_tenant"),
+        pytest.param("missing_case", _MISSING, None, id="missing_case"),
+        pytest.param("never_asked", None, [], id="never_asked"),
+    ],
+)
+def test_a_refused_answer_records_no_command(
+    monkeypatch: pytest.MonkeyPatch,
+    store: DurableCaseCommandStore,
+    mongo: FakeClient,
+    label: str,
+    case: dict[str, Any] | None,
+    facts: list[dict[str, Any]] | None,
+) -> None:
+    """A 404 must leave nothing behind (contracts.md sect. 9, items 11-12).
+
+    The sibling tests assert the *status* of each refusal. None of them asserts
+    the half that matters durably: that the answer did not reach
+    `case_command_records` on its way to being refused. A handler that recorded
+    the command and then refused would return exactly the same 404 with exactly
+    the same body, while a stranger's words sat on file against a case they
+    cannot see -- queued for delivery to Support behind a clarification id this
+    principal was never shown.
+
+    (ACC3 category-B audit: INJ-B20 deferred the refusal until after
+    `record_command` and left all 5,237 backend tests green.)
+    """
+    import asyncio
+
+    kwargs: dict[str, Any] = {}
+    if case is not _MISSING:
+        kwargs["case"] = case
+    else:
+        kwargs["case"] = _MISSING
+    if facts is not None:
+        kwargs["facts"] = facts
+
+    for client in _client(monkeypatch, store, **kwargs):
+        response = _post(client)
+        assert response.status_code == 404, label
+        assert response.json()["detail"]["code"] == "CASE_CLARIFICATION_NOT_FOUND"
+        break
+    else:  # pragma: no cover - the fixture always yields
+        raise AssertionError("the client fixture yielded nothing")
+
+    assert asyncio.run(_command_count(mongo)) == 0, (
+        f"{label}: the refusal left a command on file"
+    )
+
+
 async def _only_command(mongo: FakeClient) -> dict[str, Any]:
     from return_platform.configuration.settings import Settings as _Settings
 

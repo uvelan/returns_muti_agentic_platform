@@ -27,6 +27,9 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | ACC-1 (harness) | feat/acc-harness | **MERGED** | 2 · CR → PASS (9cb3508) | c1c2b0f |
 | fabrication guard (AST) | feat/fabrication-guard-ternary | **MERGED** | 1 · PASS (fb221d8a) | 85dc4271 |
 | actorId fixtures | feat/actorid-required | **MERGED** — `tsc` now exits **0** on trunk | 1 · PASS (93ad88fa) | (merged) |
+| ACC-3 (category B audit) | feat/acc-audit-b | IN_PROGRESS | — | — |
+| CI backend lint | feat/ci-backend-lint | AWAITING RV (`a9165b76`) | — | — |
+| live-harness registration | feat/live-harness-registration | AWAITING RV (`00471116`) | — | — |
 | RV calibration | rv-calibration/seeded-hardcoding | bait CAUGHT as blocking | 1 (d59e017) | never merges |
 
 **All nine backend slices merged:** S1, S1b, ACC-1, V1 phase 1, S2, V2 phase 1, V2 phase 1b, V3, V1 phase 2. Trunk suite: **5121 passed, 1 failed** — the single known pre-existing `test_a_rejected_return_still_opens_no_work_item`.
@@ -46,6 +49,44 @@ RV settled the scoping question — was `ruff check tests/acceptance tests/harne
 And it excluded the "dead import that isn't" empirically rather than by reading. `subprocess` appeared otherwise only inside a generated `parent.py` string whose own first line imports it — so the removal was safe only if the child scripts never relied on the parent's import. Re-running the signal proof under `python:3.13-slim`: exit 0, and critically **check 2 passes**, the one that spawns the generated parent and needs a grandchild heartbeat. That is exactly the check that would have gone red.
 
 *One observation recorded as not-a-finding, and it is the honest kind:* the remedy for the three unfalsifiable sentences — a table whose left column is a pasteable command — outruns the change at one point, since nothing structurally stops the next Commands block being written from memory. ACC was right not to build that gate: the only one available is a test that parses planning documents, which item 26 already ruled out and which would be circular. **The residue is inherent to a written record, not a shortfall in the fix.**
+
+## ACC phase 3 — the category-B audit, and a failure shape worse than a blind test
+
+Phase 2 left a category B: *"tests exist, found by name, bodies never read, never injected against."* Phase 3 audited it with fault injection — 20 injections, 2 discarded, 7 tests added. **No blocking defect against a non-negotiable:** DR-11 holds under three injections including one that makes an UNMATCHED artifact genuinely create a record through the outcome signal, and zero-hardcoding holds — resolving facts by `field_id` instead of the configured binding reddens 23 tests.
+
+### The dominant finding is not blind tests. It is mis-pointed rows.
+
+**Six guarantees are pinned by tests in files the category-B rows never name.** Read literally, the status record credits `canonical_edit_version` and autosave-after-`APPROVING` to 93 named review-gate tests that stay **96/96 green** when either check is deleted; and credits *"the transcript entry is appended once"* to a test that stays green when the append-once guard is deleted, because it drives a double with its own dedupe — the double supplies the very guarantee under test.
+
+**Why this is worse than a blind test, in phase 3's own words:** coverage is real; the map is wrong — *"a future auditor deletes the guard, sees the named suite green, and concludes the guard was dead."* A blind test fails to catch a defect. A mis-pointed row actively argues for removing a working guard. **The remedy is not more tests but a corrected map**, and the audit's value was mostly in producing one.
+
+### Two real holes — production correct in both, coverage defective in both
+
+1. **Sent ≠ frozen payload.** Every delivery test approves a review that has **no canonical edit**, so the frozen payload and the raw draft are byte-identical and the choice between them is unobservable. An injection sending the raw draft left **5,235 tests green**. *Business consequence:* an associate's edit is hash-verified at approval and **the original draft is sent to Support behind a valid receipt** — the precise failure F2's frozen-payload rule exists to prevent, invisible to the entire suite.
+2. **A refused request could write a durable command.** The four 404 tests assert **status only**. Deferring the 404 until after `record_command` left **5,237 green**. *Business consequence:* a principal who cannot see a case receives a correct 404 **while their answer sits on file, queued for delivery to Support.**
+
+The seven added tests are each injected against, and the sent-payload one **asserts its own premise** — that the canonical edit and the draft actually differ — so it cannot decay back into vacuity. That is the right shape for a test closing a hole of this kind: it fails if the *conditions that make it meaningful* stop holding, not only if the guarantee breaks.
+
+### The remedy: a falsifiable map, and the two disciplines that keep it honest
+
+The mis-pointed-row finding was turned on the record that produced it. STATUS's category tables **are** a map of exactly the kind found to be wrong, so phase 3 replaced trust with a check: ~18 rows, one per guarantee actually injected against, each naming **the mechanism to delete and the test that reddens** — e.g. *delete `review_aggregate.py:751` → `test_approval_refuses_a_stale_canonical_edit_version` reddens, that one test only, while the 93 in the named review-gate files stay 96/96 green.* A row naming a file where tests were found asks for trust; a row naming a deletion and its consequence is checkable in one command. Cost was near zero — every entry had already been measured.
+
+**Two disciplines were applied deliberately to stop the map becoming the next over-trusted artifact:**
+
+1. Every test name was re-verified with `grep -rn "def <name>"` against `tests/` rather than transcribed from run output — the same rule that caught interrupted work four times on this run.
+2. **Guarantees not injected against are absent, and the table says absence means *unverified*, never *fine*.** A completeness-implying map would recreate precisely the defect it exists to fix.
+
+That second point is the general lesson and it outlives this audit: **a map's honesty lives in what it refuses to imply about its own gaps.**
+
+### Handed to the gate's owner
+
+`test_a_rejected_return_still_opens_no_work_item` is red on the merge tip: its `_Runtime` double never grew a `patched` method when production grew a `workflow.patched` call. Production correct, harness stale — **ACC-2's handed-off finding recurring in a third file.**
+
+**The consequence, corrected by RV and larger than first reported.** Phase 3 initially wrote *"one branch of item 20's deploy-replay pair is unexercised."* In fact `_Runtime` has no `patched` attribute at all, and `return_case_workflow.py` calls `workflow.patched` at **three** sites guarding **three distinct gates** — `_PATCH_V3_CLARIFICATION_ROUND_TRIP` (1672), `_PATCH_STRUCTURED_SUPPORT_DRAFT` (2247), `_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE` (2294). Since `patched` appears nowhere in that 51-test module and is never monkeypatched in, any test reaching any site raises `AttributeError`; 50 of 51 pass, so **none of the 50 reaches any site.** The correct statement is **three gates, six limbs, none exercised.**
+
+*Why the correction matters more than the arithmetic:* as first written, the record would have sent the harness owner to fix one branch and then believe they were done — **a sixth of the work, followed by false confidence.** An understated finding misdirects its owner exactly as a mis-pointed row does, one level up. Fitting thing to have gotten wrong in this particular audit, and it was caught because RV re-derived the claim instead of accepting it.
+
+*Not reached, and recorded as unexecuted rather than green:* AMENDMENT-5's four retry-409 tests, item 20's replay suite, item 8's prompt-injection fixture (read, never injected against), `graph:`/`literal:` bindings, ~85 other review-gate tests, and 20 further ladder scenarios.
 
 ## Contract amendments (all in `.plan/contracts.md` §1a)
 
@@ -115,7 +156,56 @@ The gap below is closed. The workflow runs the repository's **own** scripts and 
 - **The suites run in full.** Nothing deselected, skipped or deleted. `scripts/ci/assert_known_failures.py` reads the JUnit report and fails on **any** unnamed failure — **and on a named failure that has started passing**, so the list is self-pruning and cannot rot into a blanket excuse. The three known failures are named with their diagnosed causes.
 - **Exit codes are discriminated:** pytest/vitest `>1` means the *run* broke, not the tests, and no allowlist covers that.
 
-**New finding it surfaced, deliberately not papered over:** `npm run check` is `lint && build`, and `build` includes `check:bundle`, which **FAILS** — all JavaScript now totals **278.5 kB gzipped against a 260.0 kB budget** (the entry chunk is fine at 79.1/80.0). The budget's own comment says to raise it "deliberately, in a commit that says what earned the weight". **Choosing a new number is a product decision, not a wiring one**, so the workflow gates `lint` and `typecheck` directly instead of through `check`, and states plainly that `vite build` and `check:bundle` are gated by **nothing** until the budget is settled. **Open decision for the user.** When settled, the `frontend-static` job collapses to a single `npm run check`.
+**The bundle-budget decision is SETTLED and the section above is superseded.** It read, until now, that `check:bundle` failed at 278.5 kB against a 260.0 kB budget, that picking a new number was a product decision the workflow had no business making, and that `vite build` and `check:bundle` were therefore gated by nothing. All three clauses are stale. `frontend/scripts/check-bundle.js` is a **ratchet** now — it compares each build against measured values in `frontend/bundle-budget.json` and fails on growth — so there is no number left to pick and no reason left not to gate it. Both steps run in `frontend-static`, decomposed rather than collapsed into one `npm run check`, because `&&` short-circuits (a lint error would mean the bundle is never measured) and because a failing step names itself on the summary line.
+
+**Also added since:** a `backend-static` job gating `ruff check` and `ruff format --check` over the whole surface `scripts/linux/03_run_backend_quality.sh` defines — not just `backend/`.
+
+## ⚠ RULE 13, TURNED ON THE GATE I WROTE — the backend job has never run in CI
+
+RV found it while reviewing something else, and it is the sharpest instance of the pattern yet, because the guard is mine.
+
+`backend/tests/conftest.py:29` **hard-raises** when the repository-root `.env` is missing:
+
+```python
+if not ROOT_ENV_FILE.is_file():
+    raise RuntimeError(f"Required repository environment file was not found: {ROOT_ENV_FILE}")
+```
+
+`.env` is gitignored (`.gitignore:25`) and untracked — verified: `git ls-files --error-unmatch .env` says no such path. So on a fresh runner, after `actions/checkout`, `pytest_configure` raises **before collection**, pytest exits **3**, and my own exit-code discriminator reports *"pytest exited 3 — the run failed, not the tests"* and fails the job.
+
+**Consequence, stated plainly:** the `backend` job has almost certainly never completed a run since it was wired. Every *"green on this commit"* claim in `checks.yml`'s comments rests on **local replication on a Windows workstation that happens to have a `.env`**, not on the pipeline. The allowlist self-test, the frontend jobs and `contracts` are unaffected — none of them import that conftest.
+
+This is precisely rule 13's shape and I wrote it: **a gate whose green nobody had watched arrive.** The gate exists, it names itself correctly, its comments are careful — and it cannot execute.
+
+**The fix is settled, and it was measured rather than argued.** `cp .env.example .env` in the job:
+
+| `.env` source | outcome |
+|---|---|
+| absent | INTERNALERROR, exit **3** |
+| the real `.env` | 1 failed, **5197 passed**, 10 skipped, 512 deselected |
+| **`.env.example`** | 1 failed, **5197 passed**, 10 skipped, 512 deselected |
+
+*Those two rows were measured on an earlier trunk and are kept as the original evidence. Re-measured on the merged trunk, and independently reproduced by RV: absent `.env` → INTERNALERROR, exit **3**; `.env.example` → **`1 failed, 5232 passed, 11 skipped, 514 deselected`**, exit 1.*
+
+**One precision the comparison does not support, and the record should not imply it:** the two files are **not** interchangeable in content — a developer `.env` carries ~11 extra live-infra and host-port keys. What is established is that the **normal suite's outcome** is the same either way, which is all CI needs, since CI only ever sees `.env.example`.
+
+**The same outcome** — down to the single allowlisted failure and the exit code the allowlist step then passes. (This said "Byte-identical", sitting immediately after the paragraph that disclaims interchangeability; the two sentences contradicted each other on a careless read, and the weaker one is the true one.) `Settings` accepts the placeholders, and the normal suite has live-infra deselected so nothing dials a real service.
+
+**Measured precisely, since "~11 extra keys" was itself approximate:** `.env.example` carries 124 keys, a working `.env` 135; **exactly 11** are env-only and **zero** are example-only. The example is a strict subset — which is the actual reason copying it suffices, and a stronger statement than the outcome comparison alone supports.
+
+**Both alternatives I proposed were rejected on evidence, and the first rejection is the one worth keeping.** A committed `.env.ci` is ignored by `.gitignore:31`'s `.env.*` rule — and the comment above that rule records *why it exists*: `backend/.env.vault-backup` once carried a live provider key into git history and was caught by push protection. Adding `!.env.ci` would **punch a hole in a guard installed after a real credential incident, to solve a problem a tracked file already solves.** A degrading conftest was rejected too: the raise is a deliberate guard making a missing `.env` loud rather than letting tests run against silent defaults, so copying satisfies it honestly while degrading weakens it — rule 13 in spirit.
+
+And it is not an invented command line, which is `checks.yml`'s own stated principle: `scripts/bootstrap_host.sh:17` and `reset_docker_environment.sh:85` already run exactly that copy, and two further scripts instruct developers to.
+
+~~`ensure_runtime_env_keys.py` maintains `.env.example` as the authoritative key set so it cannot silently rot.~~ **Struck: it does not.** Its `update(path, example_path)` reads the example and writes into `.env` — one way — and never inspects the example. I wrote this into the fix's own rule-13 answer, which is the worst place for it: *a claim about what stops a thing rotting, that names a mechanism which is not doing that job.* RV caught it; I confirmed the direction in the source rather than accepting the correction.
+
+**The real protections, all four stronger than the one claimed:** deleting `.env.example` fails the `cp` in the job; dropping a key fails `Settings` (`frontend_cors_origin`, `mongo_dsn`) or `conftest`'s `_required_environment_variable` **by name**; drifting its content fails `tests/test_ai_gateway_routing.py:194`, which reads the tracked example and asserts over it; and `ensure_runtime_env_keys.py` is itself gated, by `tests/test_runtime_env_key_sync.py`. **Every one is a backend-suite test — so every one was equally unreachable in CI until this step existed.**
+
+*And the thing worth keeping:* `test_ai_gateway_routing.py`'s own comment says it *"used to pass or fail on a file nobody reviews and CI never sees."* Somebody hit this exact defect class before, wrote it down, and fixed it in one test — while the job that would have caught it everywhere sat unable to start.
+
+**Two conditions on whoever implements it:** `contracts` is likely exposed the same way since it imports the app — verify it too. And **prove the fix by watching the job fail first**; a fix for a gate that has never run is exactly the claim that needs its red observed before its green.
+
+**Dispatched separately and reviewed on its own** — not folded into the lint branch that found it. Ordering matters: both touch `checks.yml`, so the lint branch merges first.
 
 ## ⚠ The CI gap this closed (kept for the record)
 
@@ -137,11 +227,15 @@ Its design principle is right — *a `GraphReadPort` returning `{}` is worse tha
 
 ## Escalation to the harness owner — stale bases are a provisioning defect, not vigilance
 
-**Seven independent agents have now read the branch ref instead of the sha they were given, and all seven were right to.** Instances include a snapshot naming a commit **reachable from nothing in the repo**, and a worktree arriving checked out **100+ commits behind** on an ancestor of trunk — where branching as instructed would have silently omitted every slice merged this run.
+**Nine independent agents have now read the branch ref instead of the sha they were given, and all nine were right to.** Instances include a snapshot naming a commit **reachable from nothing in the repo**, and worktrees arriving checked out **837 and 847 commits behind** on ancestors of trunk — where branching as instructed would have silently omitted every slice merged this run.
 
 RV's judgement: *"seven independent agents reading the ref instead of the number isn't seven lucky catches. Worth fixing at provisioning before one of them doesn't notice."*
 
 **Why it is dangerous rather than annoying:** an ancestor base **fails silently**. The work compiles, the suites pass, and the slice is simply missing everything merged since — there is no red to notice. Contracts §3 now makes ref-verification mandatory, which is a mitigation, not a fix. **The fix belongs where worktrees are provisioned.**
+
+**The mechanism is now identified, and it is not random.** Instances 8 and 9 were both **agent worktrees under `.claude/worktrees/`**, arriving at 837 and 847 commits behind respectively — the two largest gaps recorded. That is not drift; it is a worktree provisioned from a stale point and never advanced. The number keeps growing because trunk keeps moving while the provisioning point does not, which means **the next instance will be worse than this one, and the failure will stay silent as it grows.** Every agent dispatched into a worktree must verify against the ref; the dispatch template now says so in its first paragraph, and both agents that hit it caught it there.
+
+*Related, and found by causing it:* those same worktrees are real repositories inside the working tree, so `git add -A` stages them as gitlinks — a submodule pointer to a clone nobody else has. Now ignored (`63744f2a`).
 
 ## ⚠ Bears on the acceptance run — live-suite flakiness under load
 
@@ -158,6 +252,16 @@ The harness repair recorded a residual it explicitly did **not** claim to have f
 - **UX-copy inconsistency across panes:** `CasePanel.tsx:198` says "This reply was empty." while `SupportReplyBody.tsx:95` says "This reply is empty. Rebuild it before sending — Support would receive nothing." Same state, two sentences, two panes. Owning slice's to settle.
 - **`review.conflict`'s contrast pairing** — the same failing pair at the same tint that V2 found on its own token twin. V1's token in V1's component; registered, untouched by V2, correctly.
 - **`animate-bounce` — RESOLVED by restyle** (`39fd7c0`), user-directed. The dots are now a staggered `animate-pulse`: Tailwind's bounce is a squash curve built for scroll-down arrows and disagreed with the `animate-spin` loader on the line above, **and** pulse inherits `index.css`'s `prefers-reduced-motion` rule, which freezes it outright — bounce had no such handling, so the restyle fixes an accessibility gap as well as the visual one. Never suppressed. V2 was right not to invent an ignore format for a plugin that exposes none.
+
+## Rule 13, one layer deeper — the backend quality script nothing invokes
+
+The CI-lint branch was dispatched to gate `ruff` and came back having found the larger version of its own errand. **`scripts/linux/03_run_backend_quality.sh` is the repository's own definition of backend quality** — it runs `ruff check .`, `ruff format --check .`, ruff over three further root paths, `mypy`, and `poetry check` — and **nothing in CI invokes it.** Gating only `backend/` would have reproduced the exact defect one level down; two of those three root paths were unformatted.
+
+**It also corrected the dispatch that sent it.** I had given it "15 errors, 85 unformatted files" in a phrasing that implied one population. Measured: **14 errors across 6 files, 94 unformatted, overlap 2** — and 96 unformatted once the root paths are included. `ruff check` and `ruff format --check` select genuinely different file sets, and treating them as one set is how a fix gets scoped to the wrong thing. It re-measured rather than inheriting either number.
+
+**Option 1 (fix now) was chosen on measurement, not preference:** five unmerged branches touch **zero** of the affected files, so the "large diff landing on top of in-flight reviews" objection was checked and found absent. And the six `B904`s were fixed by **chaining** rather than `from None` — which would equally have satisfied ruff while throwing the traceback away.
+
+**Left explicitly undispatched, and named rather than absorbed:** `mypy` is pinned, configured `strict = true`, run by two developer scripts, and **gated by nothing**. Same for `poetry check` and `pytest scripts/tests`. A strict-mypy debt is a different size of question and was correctly refused as out of track scope.
 
 ## Queued follow-up dispatches
 

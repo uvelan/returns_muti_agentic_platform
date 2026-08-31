@@ -356,6 +356,75 @@ async def test_delivery_neutralises_even_a_payload_that_was_stored_raw(
     assert "[removed]" in sent
 
 
+@_async
+async def test_delivery_sends_the_frozen_canonical_edit_not_the_draft(
+    reviews: ReviewAggregateStore,
+    mongo: FakeClient,
+    test_settings: Settings,
+    configuration: ReturnPlatformConfiguration,
+) -> None:
+    """What a person approved is what leaves the platform.
+
+    Every other delivery test in this file approves a review that has **no
+    canonical edit**, so `canonical_review_payload` returns the draft and the
+    two candidate sources are byte-identical -- the choice between them cannot
+    be observed, and a delivery that read `draftPayload` directly would pass
+    all of them. (ACC3 category-B audit: INJ-B11 did exactly that and left
+    5,235 backend tests green.)
+
+    Here they differ. The draft says the return was rejected; the associate
+    resolved a canonical edit saying it was approved, and *that* is the text
+    the gate froze at approval and verified by hash. If delivery re-reads the
+    draft, Support is told the opposite of what the associate signed off --
+    silently, with a valid approval receipt behind it.
+    """
+    support = _Support()
+    service = _service(reviews, mongo, test_settings, configuration, support=support)
+    await reviews.create_review(
+        case_id=CASE_ID,
+        request_id=REQUEST_ID,
+        review_kind=ReviewKind.TEMPLATE,
+        draft_payload=_payload_with("REJECTED -- do not refund"),
+        review_id=REVIEW_ID,
+    )
+    await reviews.resolve_canonical_edit(
+        case_id=CASE_ID,
+        review_id=REVIEW_ID,
+        resolved_by="approver-1",
+        canonical_payload=_payload_with("APPROVED -- refund issued"),
+        resolved_from_actor_edit_ids=[],
+    )
+    review = await reviews.get_review(case_id=CASE_ID, review_id=REVIEW_ID)
+    frozen = canonical_review_payload(review)
+    # The premise of the test, asserted rather than assumed: the two sources
+    # really are different here. Without this the test would silently decay
+    # back into the shape it exists to replace if the fixture ever stopped
+    # writing a canonical edit.
+    assert frozen != dict(review["draftPayload"])
+
+    await service.approve(
+        case_id=CASE_ID,
+        review_id=REVIEW_ID,
+        actor_id="approver-1",
+        expected_draft_version=int(review["draftVersion"]),
+        expected_canonical_edit_version=int(review["canonicalEditVersion"]),
+        canonical_approved_payload_hash=canonical_payload_digest(frozen),
+        workflow_id=WORKFLOW_ID,
+        signal_id="sig-1",
+    )
+    await service.deliver_approved(
+        case_id=CASE_ID,
+        review_id=REVIEW_ID,
+        tenant_id="default",
+        principal_id="p-1",
+        fact_id_seed="seed-1",
+    )
+
+    sent = support.posted[0]["message_text"]
+    assert "APPROVED -- refund issued" in sent
+    assert "REJECTED" not in sent, "the superseded draft must not be what is sent"
+
+
 # --------------------------------------------------------------------------- #
 # Conditions 5a and 8: the conflict question, asked of the rows
 # --------------------------------------------------------------------------- #

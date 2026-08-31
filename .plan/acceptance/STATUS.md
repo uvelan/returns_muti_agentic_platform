@@ -73,11 +73,18 @@ skips.
 | **14** (workflow half) | `execution_state` queryable and correct after a worker kill; the panel's HTTP composition is **not** exercised | `items-14-17-review-across-a-kill.md` |
 | **15** | kill mid-review, live: draft, edit rows and remaining timeout survive; the resumed worker does not re-draft | `items-14-17-review-across-a-kill.md` |
 | **16** | one approval, one message, one delivery identity — across a restart, and under a genuine second delivery | `items-14-17-review-across-a-kill.md` |
-| **20** | both patch branches audited by flipping the decision each way | `items-14-17-review-across-a-kill.md` |
+| **20** | both patch branches audited by flipping the decision each way — **this is ACC-2's own scenario and stands as written**; it says nothing about patch-gate coverage elsewhere, and "Findings handed to their owners" **4** records a module where none exists (ACC3 did not re-audit this row) | `items-14-17-review-across-a-kill.md` |
 | **21** | byte-identical across two interpreters with different hash seeds, including under eviction | `items-21-22-context-and-pinning.md` |
 | **22** | compaction clauses audited; the release pin across a promotion, covered by nothing before | `items-21-22-context-and-pinning.md` |
 | **26** | every merged branch has a recorded `PASS`; the calibration bait was caught | below |
 | AMENDMENT-5 (partial) | a weekend close leaves **no review without a legal exit** | `items-13-19-business-time.md` |
+| **7–8** (DR-11) | ACC3: unmatched never creates a record — injected by making it create one through the outcome signal; ambiguous never guesses | `category-b-audit.md` |
+| **8** (cross-assignment) | ACC3: both the decision and the persistence layer, the latter blind until a two-record case was added | `category-b-audit.md` |
+| **3–6** (four guarantees) | ACC3: `hold` never auto-sends; `draft_version`, `canonical_edit_version` and the payload hash broken **one at a time**; autosave after `APPROVING` refused; sent payload = frozen payload (that one had no test at all) | `category-b-audit.md` |
+| **1–2** (zero hardcoding) | ACC3: facts resolved by `field_id` instead of the configured binding reds 23 tests; AMENDMENT-2's reach, both layers | `category-b-audit.md` |
+| **17** (relay half) | ACC3: append-once under a genuine redelivery, and the write-vs-call count | `category-b-audit.md` |
+| **9, 12** | ACC3: disclosure line dropped; budget checked after the call instead of before | `category-b-audit.md` |
+| **11–12** (authz) | ACC3: 403/404 **with no fact written** — the second half had no test | `category-b-audit.md` |
 
 ## Injection tally
 
@@ -142,24 +149,66 @@ make the application suite fail on a planning document.
 
 ## B — in-slice coverage located, not audited
 
-| item(s) | where |
-| --- | --- |
-| 1–2 config-only rendering | V1's template/renderer suites |
-| 3–6 review gate | `tests/test_support_template_review_gate.py` (33), `tests/api/test_case_panel_and_reviews.py` (60) |
-| AMENDMENT-5's retry-409 | `test_a_retry_after_the_gate_closed_is_refused_and_changes_nothing`, `test_a_retry_we_cannot_adjudicate_is_503_not_409`, `test_every_state_that_cannot_retry_says_what_can_be_done_instead`, `test_every_state_the_gate_can_close_over_ends_with_a_legal_exit` |
-| 7–8 relay + multi-RMA | `tests/operations/test_support_message_classification.py` (22) — `test_an_unmatched_artifact_never_creates_a_record` (DR-11), `test_an_ambiguous_artifact_asks_rather_than_guesses` |
-| 9, 11–12 resolver | `tests/operations/test_support_resolution_ladder.py` (23), `tests/operations/test_support_clarification_roundtrip.py` (18) |
-| 17 (relay half) | `test_the_transcript_entry_is_appended_once_across_a_redelivery` |
-| 20 (deploy replay) | `tests/test_return_case_workflow_replay_compatibility.py` (15) |
+**ACC phase 3 audited most of this category by fault injection.** What moved is
+marked below; the full record is `category-b-audit.md` and `.plan/tracks/ACC3.ledger.md`.
+
+The phase-3 headline is **not** that these tests were blind — most were not. It
+is that **six guarantees were pinned by tests in files these rows never named**,
+and in two cases the *named* test survives the removal of the guarantee it is
+credited with. A mis-pointed row is worse than a blind test: it makes the real
+coverage invisible in both directions.
+
+| item(s) | where | phase-3 verdict |
+| --- | --- | --- |
+| 1–2 config-only rendering | V1's template/renderer suites | **→ A** for `case_fact` hardcoding and AMENDMENT-2. Row was mis-pointed: the AMENDMENT-2 guard lives in `tests/configuration/test_support_template_configuration.py`. One blind test closed. `graph:`/`literal:` **remain B**. |
+| 3–6 review gate | `tests/test_support_template_review_gate.py` (33), `tests/api/test_case_panel_and_reviews.py` (60) | **→ A** for the four named guarantees. Row mis-pointed twice: `canonical_edit_version` and autosave-after-`APPROVING` are pinned only in `tests/operations/test_review_aggregate.py` — these 93 stay 96/96 green when either check is deleted. **One hole closed** (sent ≠ frozen payload). The other ~85 tests **remain B**. |
+| AMENDMENT-5's retry-409 | `test_a_retry_after_the_gate_closed_is_refused_and_changes_nothing`, `test_a_retry_we_cannot_adjudicate_is_503_not_409`, `test_every_state_that_cannot_retry_says_what_can_be_done_instead`, `test_every_state_the_gate_can_close_over_ends_with_a_legal_exit` | **remains B** — not reached. |
+| 7–8 relay + multi-RMA | `tests/operations/test_support_message_classification.py` (22) — `test_an_unmatched_artifact_never_creates_a_record` (DR-11), `test_an_ambiguous_artifact_asks_rather_than_guesses` | **→ A.** Both DR-11 tests are load-bearing under three injections, including one that makes UNMATCHED genuinely create a record. Row incomplete: item 8's cross-assignment lives in `tests/operations/test_artifact_binding.py`, never named here. One blind test closed (persistence half). The prompt-injection fixture **remains B**. |
+| 9, 11–12 resolver | `tests/operations/test_support_resolution_ladder.py` (23), `tests/operations/test_support_clarification_roundtrip.py` (18) | **→ A** for the disclosure line and budget exhaustion. **One hole closed** (403/404 wrote a durable command; only the status half was tested). Remaining ladder/roundtrip scenarios **remain B**. |
+| 17 (relay half) | `test_the_transcript_entry_is_appended_once_across_a_redelivery` | **→ A**, by two tests together. The named test **stays green when the append-once guard is deleted** — it drives a double with its own dedupe. The guarantee is pinned in `tests/operations/test_support_relay_and_wiring.py`. The named test does pin that `relayed_entries` counts writes, not calls. |
+| 20 (deploy replay) | `tests/test_return_case_workflow_replay_compatibility.py` (15) | **remains B** — not reached. See "Findings handed to their owners" **4**: in `test_cumulative_support_outcomes.py`, **no branch of any patch gate is exercised — both limbs of all three** (`v3-clarification-round-trip`, `support-draft-returns-structured-payload`, `support-template-review-gate`), because `_Runtime` has no `patched` at all. |
+
+## The falsifiable map — per guarantee, the test that reddens when you delete it
+
+Added by ACC3 because **these category tables are themselves the kind of map the
+audit found to be wrong.** A row naming a *file where tests were found* asks the
+reader to trust it. A row naming *the mechanism to delete and the test that goes
+red* is checkable in one command, by anyone, in about a minute.
+
+**Every line below was executed**, not inferred: each is a `src/` edit that was
+applied, run, and reverted (`.plan/tracks/ACC3.ledger.md` carries the verbatim
+output). A guarantee ACC3 did not inject against is **absent from this table** —
+absence here means unverified, never "fine".
+
+| guarantee | delete this in `src/` | this reddens |
+| --- | --- | --- |
+| DR-11: unmatched never creates a record | route UNMATCHED into `_record_support_outcome` | `test_an_unmatched_artifact_never_creates_a_record` (on `events.calls == []`) |
+| DR-11: ambiguous asks, never guesses | `artifact_binding.py:155` AMBIGUOUS → BOUND `records[0]` | `test_an_ambiguous_artifact_asks_rather_than_guesses` |
+| item 8: right record, decision layer | `bind_artifact` matched → `records[0]` | `test_an_artifact_naming_a_known_reference_binds_to_that_record` |
+| item 8: right record, persistence layer | `_merge_bound_artifact` search **and** write → `records[0]` | `test_a_bound_artifact_merges_onto_the_named_record_not_the_first` |
+| approval checks `draft_version` | `review_aggregate.py:747` | `test_approval_refuses_a_stale_draft_version` |
+| approval checks `canonical_edit_version` | `review_aggregate.py:751` | `test_approval_refuses_a_stale_canonical_edit_version` — **this one test only**; the 93 in the two review-gate files stay 96/96 green |
+| approval checks the payload hash | `review_aggregate.py:778` | `test_approval_refuses_a_hash_of_bytes_the_store_does_not_hold` |
+| `hold` never auto-sends | `return_case_workflow.py:2759` widen the policy test | `test_nobody_answering_parks_the_case_and_sends_nothing` |
+| autosave after `APPROVING` refused | `upsert_draft_edit`'s state guard, add `APPROVING` | `test_autosave_after_approving_is_a_409_and_the_row_survives` |
+| sent payload = frozen payload | `support_template_gate.py:709` → `review["draftPayload"]` | `test_delivery_sends_the_frozen_canonical_edit_not_the_draft` |
+| zero hardcoding of field names | renderer resolves `case_fact` by `field_id` | 23 tests, incl. every `TestComposedEquivalenceMatrix` scenario |
+| AMENDMENT-2 reach, release validation | `support_template_configuration.py:93` | `test_an_undeclared_attribute_is_refused` (+2 siblings) |
+| AMENDMENT-2 reach, render side | **both** guards at once | `test_an_undeclared_attribute_degrades_rather_than_reaching[projection]` — `[mapping]` stays green |
+| item 17: transcript appended once | `relay.py:163` append-once guard | `test_the_same_entry_is_appended_once_however_often_it_is_delivered` — **not** the test the B row named |
+| item 17: relay counts writes, not calls | `_relay_to_channel_a`'s `if wrote:` | `test_the_transcript_entry_is_appended_once_across_a_redelivery` |
+| item 12: budget checked before the call | `resolution_ladder.py:439` `>=` → `>` | `test_budget_exhaustion_writes_the_fact_and_escalates` |
+| item 9: disclosure on agent-authored sends | `_with_disclosure` returns the bare body | `test_an_auto_reply_is_delivered_with_system_provenance_and_disclosure` (+11) |
+| items 11–12: a 404 writes no command | defer the 404 past `store.record_command` | `test_a_refused_answer_records_no_command` (all 3 params) |
 
 ## C — not reached
 
 | item(s) | why |
 | --- | --- |
-| 1–2 | time. Reachable in the normal suite. |
-| 3–6 beyond AMENDMENT-5's exit assertion | time. Reachable in the normal suite. |
-| 8 (multi-RMA cross-assignment, prompt-injection fixture) | time. |
-| 9, 11–12 (resolver disclosure line, budget, authz) | time. The fact rung and the clarification path are reachable; only item 10's tool rung is deliberately absent. |
+| 1–2 | **partly closed by ACC3** (`case_fact` hardcoding, AMENDMENT-2). `graph:` batching and `literal:` bindings still not injected against. |
+| 3–6 beyond AMENDMENT-5's exit assertion | **partly closed by ACC3** (four guarantees). AMENDMENT-5's four retry-409 tests still not reached. |
+| 8 (multi-RMA cross-assignment, prompt-injection fixture) | **cross-assignment closed by ACC3**, both layers. The prompt-injection fixture (`test_the_clarification_question_is_composed_never_quoted`) was read but **never injected against** — still not verified. |
+| 9, 11–12 (resolver disclosure line, budget, authz) | **closed by ACC3** — all three. The ladder's other 20 scenarios and the roundtrip's remainder are still not injected against. Item 10's tool rung remains deliberately absent. |
 | **14 (panel HTTP composition)** | not attempted. The workflow half is verified; composing `GET /panel` after a reload needs the API surface up as well as a worker. |
 | **17 (relay half)** | not attempted. The omc half is verified (`amendment-4-eventually-once.md`); "relayed once" through the transcript is covered in-slice (category B) and was not audited. |
 | 24–25 (frontend) | **outside this dispatch's scope as written** — "backend tests only". Needs the frontend suite (`npm test`, `contracts:check`, MSW conformance) and a widened brief or a different owner. |
@@ -221,3 +270,28 @@ touches nothing outside `backend/tests/` and `.plan/`.
 3. **`pin_routing_decision`'s early return enforces nothing** — the
    `{… field: None}` CAS filter does. Behaviour correct; the branch a reader
    would cite is inert.
+4. **(ACC3) The merge tip is red, and it is this list's finding 1 recurring.**
+   `tests/test_cumulative_support_outcomes.py::test_a_rejected_return_still_opens_no_work_item`
+   fails on a clean tree at `63744f2a` with
+   `AttributeError: '_Runtime' object has no attribute 'patched'`. That module's
+   `_Runtime` double (line 1311) never grew a `patched` method when production
+   grew a `workflow.patched` call. Production correct, harness stale — exactly
+   what **this list's** findings 1 and 2 predicted would recur, in a third file.
+   (Both numbered lists in this document run from 1; references here are always
+   to "Findings handed to their owners", never to "Production defects".)
+   **The acceptance-gate consequence:** `return_case_workflow.py` calls
+   `workflow.patched` at **three** sites (1672 `_PATCH_V3_CLARIFICATION_ROUND_TRIP`,
+   2247 `_PATCH_STRUCTURED_SUPPORT_DRAFT`, 2294 `_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE`),
+   and the string `patched` occurs nowhere in that test module — so any test
+   reaching any of them raises. 50 of 51 pass, therefore **no branch of any patch
+   gate is exercised in that module, both limbs of all three.** Item 20's "both
+   patch branches audited" holds for the branches ACC-2 flipped directly; it
+   describes nothing this module covers. **Fixing `_Runtime` unblocks three
+   gates, six limbs** — an earlier draft said "one branch of one pair", which
+   would have sent the owner to do too little (RV ACC3-1 F1). Any full-suite run
+   on this branch is red before an auditor starts. Reported, not repaired.
+5. **(ACC3) AMENDMENT-2 is defended twice; only one layer is reachable by test.**
+   `support_template_renderer._record_attribute`'s allowlist can be deleted with
+   the whole suite green, because `binding_source()` refuses the same binding at
+   release validation first. Legitimate defence in depth, and the docstring says
+   so — recorded so a future reader does not delete it as dead code.

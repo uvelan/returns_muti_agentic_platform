@@ -232,6 +232,51 @@ class TestBoundPersistence:
         with pytest.raises(ConcurrencyConflictError):
             await _persist(_bound(_tracking("TRK-9"), "rec-1"), store)
 
+    # -- the record-*selection* step, on a case that actually holds a choice --
+    #
+    # Every test above this line stores exactly one record, so `records[0]` and
+    # "the record the decision names" are the same document and the search in
+    # `_merge_bound_artifact` cannot be wrong. On a multi-RMA case they come
+    # apart, and that is the only shape in which cross-assignment -- Support's
+    # tracking for RMA-2 landing on RMA-1 -- is expressible at all. (ACC3
+    # category-B audit: the two below are the tests INJ-B4 found missing.)
+
+    async def test_a_bound_artifact_merges_onto_the_named_record_not_the_first(
+        self,
+    ) -> None:
+        """Item 8's cross-assignment case, at the persistence layer.
+
+        The decision names the *second* record. Asserting only that rec-2 was
+        written would still pass if rec-1 were written too, so the untouched
+        neighbour is asserted as well: a customer's tracking number appearing
+        on someone else's return is the business failure being excluded.
+        """
+        store = _RecordStore(
+            [_record("rec-1", "RMA-1"), _record("rec-2", "RMA-2")]
+        )
+        assert await _persist(_bound(_tracking("TRK-9"), "rec-2"), store)
+        assert store.updates == [("rec-2", {"trackingReference": "TRK-9"})]
+        assert store.records[0]["trackingReference"] is None, (
+            "the first record is not the bound one and must be untouched"
+        )
+        assert store.records[1]["trackingReference"] == "TRK-9"
+
+    async def test_a_decision_naming_a_record_the_case_does_not_hold_refuses(
+        self,
+    ) -> None:
+        """The merge refuses rather than falling back to a neighbour.
+
+        With one stored record this branch is unreachable-by-accident: any
+        fallback would pick the record the decision meant anyway. With two, a
+        silent fallback is a mis-assignment, so the raise is load-bearing.
+        """
+        store = _RecordStore(
+            [_record("rec-1", "RMA-1"), _record("rec-2", "RMA-2")]
+        )
+        with pytest.raises(LookupError):
+            await _persist(_bound(_tracking("TRK-9"), "rec-404"), store)
+        assert store.updates == []
+
 
 @pytest.mark.asyncio
 class TestUnboundPersistence:

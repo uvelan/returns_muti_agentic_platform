@@ -30,6 +30,7 @@ from return_platform.operations.support_handoff import (
     SupportHandoffReturn,
     compose_support_handoff,
 )
+from return_platform.operations.case_projection.contract import ReturnRecordProjection
 from return_platform.operations.support_template_draft import (
     SNAPSHOT_KEYS,
     fact_log_projection,
@@ -340,7 +341,22 @@ class TestPerRecordSections:
         assert "RMA-2" not in rendered.subject
         assert rendered.subject == "Return Not available"
 
-    async def test_an_undeclared_attribute_degrades_rather_than_reaching(self) -> None:
+    @pytest.mark.parametrize(
+        "record",
+        [
+            pytest.param(
+                {"returnRecordId": "rec-1", "returnReference": "RMA-1"},
+                id="mapping",
+            ),
+            pytest.param(
+                ReturnRecordProjection(returnRecordId="rec-1", returnReference="RMA-1"),
+                id="projection",
+            ),
+        ],
+    )
+    async def test_an_undeclared_attribute_degrades_rather_than_reaching(
+        self, record: object
+    ) -> None:
         """AMENDMENT-2, from the render side.
 
         Release validation already refuses `return_record:__class__`, so this
@@ -349,6 +365,17 @@ class TestPerRecordSections:
         -- a gap or a fallback -- and never resolve it, so `<class '...'>`
         cannot reach the message a person on the Support desk reads, and no
         exception escapes to the caller either.
+
+        **Both record shapes, because only one of them can fail.**
+        `_record_attribute` branches on `isinstance(record, Mapping)`, and a
+        dict's `.get("__class__")` is `None` whether or not the allowlist is
+        there -- so a Mapping-only version of this test passes with
+        AMENDMENT-2's guard deleted. The `getattr` limb is the one the
+        amendment was written against ("resolving it through unconstrained
+        `getattr` is forbidden"), and `ReturnRecordProjection` -- a pydantic
+        model, not a Mapping -- is the shape production actually renders.
+        (ACC3 category-B audit: INJ-B13 removed the allowlist and left the
+        Mapping-only test green.)
         """
         template = self._template()
         reaching = (
@@ -367,7 +394,7 @@ class TestPerRecordSections:
                 case_id="c",
                 context=TemplateRenderContext(),
                 facts={},
-                return_records=({"returnRecordId": "rec-1", "returnReference": "RMA-1"},),
+                return_records=(record,),
             ),
         )
         assert rendered.text.find("class") == -1
