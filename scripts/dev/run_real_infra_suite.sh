@@ -53,7 +53,13 @@ fi
 declare -a required_ports=(
   "MongoDB:27017"
   "Neo4j:17687"
-  "SQL Server:14330"
+  # 11433, matching `.env`'s PLATFORM_SQLSERVER_PORT and compose.yaml's
+  # `${PLATFORM_SQLSERVER_PORT:-11433}`. This said 14330 and so refused a stack
+  # that was fully up -- blocking the only sanctioned entry point to the 512
+  # live-infra tests with the message "start the stack". compose.yaml:186-191
+  # records the earlier fix that moved the published port off 14330; this file
+  # was missed by it, and nothing cross-checks the two.
+  "SQL Server:11433"
   "Valkey:6379"
   # 17233: Windows reserves TCP 7147-7246, so the host publish moved. In-container
   # addressing is still `temporal:7233`.
