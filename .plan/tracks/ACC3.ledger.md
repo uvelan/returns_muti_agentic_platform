@@ -730,3 +730,30 @@ All three redden; the pre-existing 18 stay green, which is the measurement that
 the injection really is invisible to them.
 
 Reverted; `git diff -- backend/src/` empty; the five suites `117 passed`.
+
+---
+
+## step:09 — deliverables, and the final verification run
+
+Full backend suite from a clean tree, with all seven added tests in place:
+
+```
+$ ./.venv/Scripts/python.exe -m pytest tests -q -p no:randomly
+FAILED tests/test_cumulative_support_outcomes.py::test_a_rejected_return_still_opens_no_work_item
+1 failed, 5240 passed, 10 skipped, 514 deselected, 2 warnings in 252.90s (0:04:12)
+```
+
+`5,233 → 5,240` passing (+7: two in `test_artifact_binding.py`, one in
+`test_support_template_gate.py`, one parameter set in
+`test_support_template_renderer.py`, three in
+`test_case_clarification_answer_route.py`). The single failure is step:03's
+pre-existing red, unchanged and untouched.
+
+Written: `.plan/acceptance/category-b-audit.md` (findings, the full 20-injection
+table, and what was not reached). Updated: `.plan/acceptance/STATUS.md` —
+category A gains seven ACC3 rows, category B's rows are annotated with what moved
+and what did not, category C is corrected, and two production findings are
+appended (the red merge tip with its item-20 consequence, and AMENDMENT-2's
+unreachable second layer).
+
+`git diff -- backend/src/` empty. Nothing uncommitted at the boundary.
