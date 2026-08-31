@@ -19,7 +19,7 @@ Planned order: `T0 → S1 → S2 → V1 → V2 → V3 → ACC`, RV `PASS` (zero 
 | V1 phase 2 | feat/v1-phase2 | **MERGED** | 3 · CR → CR → PASS (8bcce23) | b542524 |
 | V2 phase 1 | feat/v2-ingress-relay | **MERGED** | 2 · CR → PASS (02da231) | 97bca1e |
 | V2 phase 1b | feat/v2-ingress-relay | **MERGED** | 1 · PASS (a51c9b4) | 95b5672 |
-| V2 phase 2 (frontend) | feat/v2-frontend | UNDER_RV_REVIEW round 2 · candidate 6a792c77 | 2 · CR (335ce003) → open | — |
+| V2 phase 2 (frontend) | feat/v2-frontend | PASS · applying one advisory before merge | 2 · CR → PASS (1692242e) | — |
 | V3 backend | feat/v3-resolver-clarification | **MERGED** | 2 · CR (3d8715f) → PASS (c463872) | 270c223 |
 | V3 frontend | feat/v3-frontend | **MERGED** | 1 · PASS (cfcbe44) | 9952f2b |
 | V3 backend phase 2 (trigger) | feat/v3-resolver-trigger | IN_PROGRESS · the resolver has no production invocation site | — | — |
