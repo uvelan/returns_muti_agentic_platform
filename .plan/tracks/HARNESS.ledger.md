@@ -1628,3 +1628,131 @@ tests themselves cost.
    sources and its summary block was corrupted by my own edit. A controlled run on
    a quiet machine, with the step:10 ceiling and the step:12 timestamps in force,
    would be the first trustworthy one.
+
+---
+
+## step:13 — a second writer, a verified fix, and a corruption of mine
+
+Discovered while verifying the final state, not looked for.
+
+### 13.1 — this branch had two authors at once
+
+Two commits on `feat/live-harness-registration` are not mine:
+
+    c11c7db5  2026-08-31 17:11:20  (harness) step:11 the stale pin, and a mechanism the record already had
+    472dd452  2026-08-31 17:17:55  (harness) step:12 the ceiling did not fire, and fourteen runs threw the message away
+
+Both landed **while run 1 was in flight** (module ~44 at 17:11, ~47 at 17:17).
+They interleave with my own `d1313348` (step:11) and `d4d35f4f` (step:12), and
+the consequence is in the ledger:
+
+    $ grep -oE "^## step:[0-9]+" .plan/tracks/HARNESS.ledger.md | sort | uniq -d
+    ## step:11
+    ## step:12
+
+**Two `step:11` sections and two `step:12` sections, by different authors, about
+different things.** contracts.md §3 requires one entry per step and an append-only
+ledger; append-only holds, but the step ids no longer identify a step. A reader
+asking "what happened at step:12" now gets two answers. **Not repaired here** —
+renumbering would rewrite another author's entry, which is the one operation an
+append-only ledger forbids most clearly. It needs the orchestrator to assign the
+numbering, and it is recorded so the next reader is not the one who discovers it.
+
+The root cause is not the numbering. **Two agents held the same worktree and the
+same branch at the same time**, and neither could see the other's commits without
+looking. That is the same shape as the three contention sources in step:12: a
+shared resource with no protocol and no record, where each party's activity is
+invisible to the other until it collides.
+
+### 13.2 — their fix was sound, and is now verified
+
+`c11c7db5` edited `test_integration_outbox_index_plans_real_infra.py`, the S2 test
+I had declined to touch in step:09. **It is a strengthening, not a weakening, and
+it clears rule 10 cleanly:**
+
+- pin corrected `7` → `9`, matching what `ensure_integration_outbox_indexes`
+  actually declares;
+- **four assertions added** — `unique` and `partialFilterExpression` on each of the
+  two named ordering indexes — so an index that landed non-unique or non-partial
+  now reddens a test that previously would have passed on the key pattern alone;
+- the test renamed off `..._as_six_indexes_...`, taking the count out of the name
+  that had already gone stale once.
+
+Nothing removed, no skip, no xfail. My step:09 reading — production correct, pin
+stale — is independently confirmed by their analysis, and their fix goes further
+than a re-pin would have.
+
+Their commit closes with: *"Not executed. The outbox fix is prepared and
+unverified against a live server and must not be read as green until it has been
+run."* Correctly scoped, and that gap is now closed — stack quiet, machine idle:
+
+    $ env -u PYTHONPATH bash scripts/dev/run_real_infra_suite.sh \
+        tests/operations/test_integration_outbox_index_plans_real_infra.py
+    source tree: /k/.../worktrees/agent-af79f912fcfd95e05/backend/src
+    collected 7 items
+    ============================= 7 passed in 15.64s ==============================
+    EXIT: 0
+
+**7 passed.** The last remaining unverified change on this branch is now executed.
+Note the count moved 7 → 7 tests because two assertions merged into one renamed
+test; the module reported `2 failed, 5 passed` in run 1 and reports `7 passed` now.
+
+### 13.3 — one claim of theirs is disproven
+
+Their step:11 states that every run made from this worktree imported
+`return_platform` from the main checkout, and therefore that *"the in-flight run's
+greens are hybrid-tree greens."*
+
+**The defect is real — I fixed it in step:12 — but the conclusion about run 1 is
+wrong.** Run 1 was launched with `PYTHONPATH` exported in the parent shell, and
+environment variables are inherited by the script and by every pytest it spawns.
+Measured both ways against a script that sets nothing itself:
+
+    A: PYTHONPATH exported by the caller (how run 1 ran)
+       child resolves -> ...worktrees/agent-af79f912fcfd95e05/backend/src   ← worktree
+    B: no export (every other caller)
+       child resolves -> ...returns_muti_agentic_platform/backend/src        ← main
+
+Corroborated by run 1's own collection line: the main tree gives
+`512/5550 tests collected` **plus a collection error** in
+`tests/operations/test_case_projection.py` on an `actorId` field absent at this
+base; run 1 recorded `512/5711 tests collected (5199 deselected)`, clean. Those
+are different trees and the log says which one.
+
+So **run 1's greens are not hybrid-tree greens.** They are contended greens, from
+three sources, which is a different and smaller caveat. Recorded here rather than
+left standing, because a correct finding with an overreaching conclusion is the
+exact failure this track has spent itself on — and it would have retired the only
+complete live-suite run this repository has produced.
+
+### 13.4 — a corruption I introduced
+
+The same check surfaced a defect of mine:
+
+    ## step:07 — RV HARNESS-1 corrections        ← correct em dash
+    ## step:08 â€” the acceptance run              ← mojibake
+    ## step:09 â€” the per-module run
+    ## step:10 â€” a ceiling per module
+    ## step:11 â€” three corrections
+    ## step:12 â€” run 1 complete
+
+Every section I appended via PowerShell `Get-Content -Raw` piped to `Add-Content
+-Encoding utf8` has double-encoded every non-ASCII character: UTF-8 bytes read as
+ANSI, then re-encoded as UTF-8. Step:07, written through the editor rather than
+the shell, is clean; the other agent's entries, written in ASCII, are clean.
+
+Content is unaffected and every command and output remains legible, but it is
+damage to the record and it is mine. **Not repaired here:** a byte-level rewrite
+of six committed sections is exactly the edit append-only exists to prevent, and I
+have already once talked myself past a rule I had written down. It needs the
+orchestrator's call, and the fix for future entries is simply not to append
+through that path.
+
+### What this step does not change
+
+The branch's substantive state is unchanged: the three RV corrections stand, the
+per-module runner and its three step:12 fixes stand, run 1's aggregate stands, and
+the wall-clock-budget mechanism stands as the better explanation. What changed is
+that one more unverified thing became verified, and three record-level defects —
+duplicate step ids, a disproven claim, and an encoding corruption — are now
+written down instead of waiting to be found.
