@@ -91,7 +91,7 @@ from return_platform.workflows.return_case_workflow import (
     TemplateReviewDraftResult,
     TemplateReviewDraftSet,
 )
-from tests.activity_probe import declared_activities
+from tests.activity_probe import LIVENESS_CEILING_SECONDS, declared_activities
 from tests.workflow_result import result_within
 
 #: Module-scoped loop, so one client can serve every test in the file.
@@ -200,9 +200,7 @@ class _Probe:
         return self.eligibility
 
     @activity.defn(name="draft_support_request")
-    async def draft_support_request(
-        self, request: DraftSupportRequestInput
-    ) -> SupportRequestDraft:
+    async def draft_support_request(self, request: DraftSupportRequestInput) -> SupportRequestDraft:
         del request
         self._record("draft_support_request")
         # Returns what the activity returns. This used to answer `str`, which
@@ -317,13 +315,28 @@ class _Probe:
         self.calls.append(name)
         self._reached.setdefault(name, asyncio.Event()).set()
 
-    async def reached(self, name: str, *, within_seconds: float = 30.0) -> None:
+    async def reached(self, name: str, *, within_seconds: float = LIVENESS_CEILING_SECONDS) -> None:
         """Wait until `name` has run once.
 
         Named `within_seconds` rather than `timeout`: the deadline is here, not
         at the call site, so the failure can say *which* step never ran --
         "open_support_work_item did not run within 20s" is a diagnosis, and a
         bare CancelledError from a caller-side scope is not.
+
+        The default was a flat 30.0s, and that is why this module was the
+        suite's flakiest: `start_to_close_timeout` is 30s **per attempt**, so a
+        single accepted-but-never-completed attempt consumed the test's entire
+        budget before the workflow had done anything wrong. The ceiling is now
+        derived from the production retry schedule -- see
+        `tests/activity_probe.py::LIVENESS_CEILING_SECONDS` -- so it tracks
+        `_PERSIST_TIMEOUT` and `_PERSIST_RETRY` instead of restating a number
+        somebody chose.
+
+        **This is a liveness net.** It exists so a stuck workflow fails with a
+        diagnosis instead of hanging. Where a budget is instead asserting that
+        the workflow was *fast* -- three sites below, all of them
+        `bay_wait_seconds=30` against a 20s ceiling -- the call site passes its
+        own value and says why.
         """
         event = self._reached.setdefault(name, asyncio.Event())
         try:
@@ -550,6 +563,10 @@ async def test_a_bay_result_arriving_before_the_wait_is_kept(client: Client) -> 
             ReturnCaseWorkflow.bay_result,
             BayResultNotice(warehouse_reference="WH-1", bay_reference="BAY-7"),
         )
+        # KEEPS ITS OWN BUDGET, deliberately. `bay_wait_seconds` is 30 and this
+        # is 20: the ceiling being *below* the bay wait is what proves the case
+        # did not sit the wait out. Raising it to the derived liveness ceiling
+        # would delete that assertion and leave a green test behind.
         await probe.reached("open_support_work_item", within_seconds=20)
         await handle.signal(
             ReturnCaseWorkflow.support_response,
@@ -590,6 +607,11 @@ async def test_the_bay_activity_answers_and_no_signal_is_needed(client: Client) 
     async with Worker(
         client, task_queue=queue, workflows=(ReturnCaseWorkflow,), activities=probe.all()
     ):
+        # KEEPS ITS OWN BUDGET -- the docstring above says why: 30s of
+        # `bay_wait_seconds` and a test that does not take 30 seconds *is* the
+        # assertion. Note `state.bay_resolved` two lines down: the same claim is
+        # available as a state fact, which is the registered follow-up for
+        # replacing this timing proxy with something deterministic.
         await probe.reached("open_support_work_item", within_seconds=20)
         state = await handle.query(ReturnCaseWorkflow.execution_state)
         assert state.bay_resolved is True
@@ -625,6 +647,9 @@ async def test_a_signal_that_won_the_race_is_not_overwritten_by_the_activity(
     async with Worker(
         client, task_queue=queue, workflows=(ReturnCaseWorkflow,), activities=probe.all()
     ):
+        # KEEPS ITS OWN BUDGET. Same reason as the two sites above:
+        # `bay_wait_seconds=30` against a 20s ceiling, so the ceiling is the
+        # evidence that the activity answered rather than the wait expiring.
         await probe.reached("open_support_work_item", within_seconds=20)
         await handle.signal(
             ReturnCaseWorkflow.support_response,
@@ -769,7 +794,11 @@ async def test_cancelling_stops_the_case_without_asking_support(client: Client) 
     async with Worker(
         client, task_queue=queue, workflows=(ReturnCaseWorkflow,), activities=probe.all()
     ):
-        await probe.reached("request_bay_assignment", within_seconds=20)
+        # A liveness net despite `bay_wait_seconds=30`, unlike the three sites
+        # that keep their own budget: this waits for the bay *activity*, which
+        # runs before the wait window opens, and what is asserted is the
+        # cancellation below. Nothing here is claiming the workflow was quick.
+        await probe.reached("request_bay_assignment")
         await handle.signal(
             ReturnCaseWorkflow.cancel_case, CancelCaseCommand(reason="customer changed their mind")
         )
@@ -805,7 +834,9 @@ async def test_the_wait_counts_business_time_not_wall_clock(client: Client) -> N
     async with Worker(
         client, task_queue=queue, workflows=(ReturnCaseWorkflow,), activities=probe.all()
     ):
-        await probe.reached("open_support_work_item", within_seconds=20)
+        # `bay_wait_seconds=0` here, so there is no bay wait for a tight budget
+        # to prove avoidance of. Liveness net.
+        await probe.reached("open_support_work_item")
         # Long enough that a one-second wall-clock interval would have fired
         # several times over.
         await asyncio.sleep(5)

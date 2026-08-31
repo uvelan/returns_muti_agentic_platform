@@ -43,11 +43,76 @@ a live-infra run that has to be started by hand.
 
 from __future__ import annotations
 
-from typing import Any
+from datetime import timedelta
+from typing import Any, Final
 
 from temporalio import activity
+from temporalio.common import RetryPolicy
 
-__all__ = ["declared_activities", "declared_activity_names"]
+from return_platform.workflows.return_case_workflow import (
+    _PERSIST_RETRY,
+    _PERSIST_TIMEOUT,
+)
+
+__all__ = [
+    "LIVENESS_CEILING_SECONDS",
+    "declared_activities",
+    "declared_activity_names",
+    "worst_case_activity_seconds",
+]
+
+
+def worst_case_activity_seconds(timeout: timedelta, retry: RetryPolicy) -> float:
+    """The wall time one activity may consume while behaving entirely within spec.
+
+    `start_to_close_timeout` is **per attempt**, which is the fact that made
+    every wall-clock budget in the live workflow tests assert on a coincidence.
+    An attempt that is accepted by a worker and never completed burns the whole
+    timeout before the server retries it -- observed, not theorised: a slow run's
+    history carries `ACTIVITY_TASK_STARTED` followed 30s later by
+    `ACTIVITY_TASK_TIMED_OUT / TIMEOUT_TYPE_START_TO_CLOSE`. So the bound is the
+    timeout times the attempt count, plus the backoff between attempts.
+    """
+    attempts = max(retry.maximum_attempts, 1)
+    initial = retry.initial_interval.total_seconds() if retry.initial_interval else 0.0
+    coefficient = retry.backoff_coefficient or 1.0
+    cap = retry.maximum_interval.total_seconds() if retry.maximum_interval else None
+
+    backoff = 0.0
+    for index in range(attempts - 1):
+        interval = initial * (coefficient**index)
+        backoff += interval if cap is None else min(interval, cap)
+    return timeout.total_seconds() * attempts + backoff
+
+
+#: Headroom over the retry schedule for the rest of the path -- every other
+#: activity, the workflow tasks between them, and process startup. Derived from
+#: measurement rather than taste: twelve instrumented runs put the *entire*
+#: fast path at 2.86-5.29s, so this is roughly three times the worst observed
+#: whole-path cost, and it is small beside the term it is added to.
+_PATH_MARGIN_SECONDS: Final = 15.0
+
+#: The ceiling for a probe's `reached()` liveness wait.
+#:
+#: **Derived, uniformly, from the worst retry policy on the path -- not per
+#: site.** A per-site bound would be tighter and would offer one more chance per
+#: site to under-model exactly one path, which is the error this constant exists
+#: to end: the first attempt at it used `_BEST_EFFORT_RETRY` (2 attempts, 61s)
+#: because that was the activity observed failing, while `open_support_work_item`
+#: sits downstream of `_PERSIST_RETRY` activities at five attempts. One
+#: conservative bound cannot be wrong in that direction. Do not "improve" this
+#: into fourteen fragile derivations.
+#:
+#: This is a **liveness net, not a performance assertion.** `reached()` returns
+#: as soon as its condition is met, so raising the ceiling costs a passing test
+#: nothing and only makes a genuinely stuck one take longer to report.
+#:
+#: Three call sites deliberately do **not** use it -- see
+#: `test_return_case_workflow_real_infra.py`, where a budget below
+#: `bay_wait_seconds` *is* the assertion.
+LIVENESS_CEILING_SECONDS: Final = (
+    worst_case_activity_seconds(_PERSIST_TIMEOUT, _PERSIST_RETRY) + _PATH_MARGIN_SECONDS
+)
 
 
 def _declared(owner: type) -> list[str]:

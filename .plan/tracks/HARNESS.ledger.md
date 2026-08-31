@@ -2309,3 +2309,172 @@ is a few minutes of stack, and I am not spending that without a decision.
 4. Whether the undelivered attempt is a production defect is **unsettled**, and
    the discriminator in sect. 5 has not been run.
 5. Module 64 remains unexplained.
+
+---
+
+## step:16 -- the discriminator, and the ceiling derived in code
+
+### 1. The discriminator: `START_TO_CLOSE`, and the server did not lose the task
+
+A slow run was captured with its workflow id (34.31s, 8 activities,
+`test-return-case-8f19915c`) and its history read read-only:
+
+    $ docker exec ...temporal-1 temporal workflow show \
+        --workflow-id test-return-case-8f19915c --namespace default \
+        --address 172.22.0.7:7233
+
+    id=17 EVENT_TYPE_ACTIVITY_TASK_SCHEDULED  activity=request_bay_assignment id=3 s2c=30s s2s=0s
+    id=18 EVENT_TYPE_ACTIVITY_TASK_STARTED    attempt=2 identity=28556@udhaya-pc
+    id=19 EVENT_TYPE_ACTIVITY_TASK_TIMED_OUT  TIMEOUTTYPE=TIMEOUT_TYPE_START_TO_CLOSE
+                                              retryState=RETRY_STATE_MAXIMUM_ATTEMPTS_REACHED
+    id=23 EVENT_TYPE_ACTIVITY_TASK_SCHEDULED  activity=evaluate_case_eligibility id=4
+    id=24 EVENT_TYPE_ACTIVITY_TASK_STARTED    attempt=1
+    id=25 EVENT_TYPE_ACTIVITY_TASK_COMPLETED
+
+Timestamps: event 18 at `12:58:45`, event 19 at `12:59:15` -- **30 seconds
+exactly**, which is `_PERSIST_TIMEOUT`.
+
+**`TIMEOUT_TYPE_START_TO_CLOSE`, not `SCHEDULE_TO_START`.** A real worker
+(`28556@udhaya-pc`, the test process itself) **accepted** attempt 2 and never
+completed it. The server delivered the task.
+
+**Why that is the reassuring answer, and why it is not merely reassuring by
+assertion.** `s2s=0s` -- `schedule_to_start_timeout` is unset, i.e. unlimited.
+Had the server failed to deliver the task, it would have sat in the queue
+**forever** rather than timing out at 30s. So delivery is **proven by the
+timeout type that fired**, not inferred from the absence of evidence. The
+alarming reading -- an activity scheduled that no worker ever receives -- is
+ruled out by the mechanism of the observation itself.
+
+**Residual production concern, downgraded but not closed.** What remains is "a
+live worker accepted a task and did not execute it", which is precisely the
+condition `start_to_close_timeout` exists to bound, and production handles it the
+way it is designed to: time out, retry, five attempts on `_PERSIST_RETRY`. A
+production case would be delayed rather than stuck, and the delay is bounded and
+visible in the workflow history. **It is a worker-side stall, not a server
+routing defect, and it is not the silent-and-unexplained failure mode I flagged.**
+
+*Still unexplained:* why a worker inside a live `async with Worker(...)` accepts
+a task and does not run it. My harness-churn story from step:15 does not fully
+cover it -- mode A used a fresh queue per iteration -- and I am leaving it
+unexplained rather than fitting a story to it. It is now a bounded curiosity
+rather than a possible production defect, which is the difference the
+discriminator bought.
+
+### 2. The remedy, applied
+
+**Files:** `tests/activity_probe.py`, `tests/test_return_case_workflow_real_infra.py`,
+`tests/test_return_case_policy_gate_real_infra.py`. **No production file
+touched.**
+
+The derivation lives in `activity_probe.py` -- the module that already exists
+because a duplicated hand-maintained list rotted twice, which makes it the right
+home for the second thing that was duplicated across the same two files:
+
+    def worst_case_activity_seconds(timeout: timedelta, retry: RetryPolicy) -> float:
+        attempts = max(retry.maximum_attempts, 1)
+        ...
+        return timeout.total_seconds() * attempts + backoff
+
+    LIVENESS_CEILING_SECONDS = (
+        worst_case_activity_seconds(_PERSIST_TIMEOUT, _PERSIST_RETRY) + _PATH_MARGIN_SECONDS
+    )
+
+Evaluated against the real production objects:
+
+    persist  worst: 165.0      # 30 * 5 + (1+2+4+8)
+    besteff  worst:  61.0      # 30 * 2 + 1
+    LIVENESS_CEILING_SECONDS = 180.0
+
+**It is a derivation, not a comment describing one.** Every term is read from
+the imported `RetryPolicy` (`maximum_attempts`, `initial_interval`,
+`backoff_coefficient`, `maximum_interval`) and from `_PERSIST_TIMEOUT`. Change
+either constant in production and the ceiling moves with it.
+
+**The margin is 15.0s and it is derived, not chosen for feel.** Twelve
+instrumented runs (step:14) put the *entire* fast path at 2.86-5.29s, so 15s is
+roughly three times the worst observed whole-path cost. It is also small beside
+the 165s term it is added to, which is the point: the bound is dominated by the
+schedule, not by my headroom.
+
+**Uniform, deliberately.** One bound from the worst policy on the path, not a
+per-site derivation. A per-site bound would be tighter and would offer fourteen
+more chances to under-model exactly one path -- which is the error I made in
+step:14, deriving 61s from `_BEST_EFFORT_RETRY` because that was the activity I
+had watched fail. **A conservative uniform bound cannot be wrong in that
+direction.** This is recorded in the constant's own docstring so the next reader
+does not "improve" it into fourteen fragile derivations.
+
+**The cost is not the cost I feared.** `reached()` returns as soon as its
+condition is met, so the ceiling is a ceiling and not a duration: a larger bound
+makes *failing* tests slower to report and does nothing to passing ones.
+
+**Scope: 17 sites across both modules.** 14 take the derived ceiling; 3 keep
+their own. The policy-gate module's five sites were included -- fixing twelve and
+leaving five would have been the mis-pointed-row shape in a new costume, and that
+module's `reached()` docstring now records that this is the **second** defect
+caused by the two files carrying separate copies of the same helper.
+
+**Registered, not done:** collapsing the two `_Probe.reached` implementations
+into one shared helper. The budget no longer drifts -- both defaults now come
+from the same constant -- but the *method* is still duplicated, and the two
+probes differ in construction (the policy-gate probe takes a required argument),
+so merging them is a larger refactor than this remedy. **Registering it rather
+than leaving it silent, because the duplication is now 2 for 2 on causing
+defects.**
+
+### 3. The three sites that keep their budgets, and what they assert
+
+`553`, `593`, `628` (pre-edit numbering) keep `within_seconds=20`, each with a
+comment at the call site saying why -- because a future reader seeing three
+"unfixed" budgets beside fourteen raised ones would otherwise assume an oversight
+and finish the job:
+
+> `bay_wait_seconds` is 30 and this is 20: the ceiling being *below* the bay wait
+> is what proves the case did not sit the wait out. Raising it to the derived
+> liveness ceiling would delete that assertion and leave a green test behind.
+
+**These three remain flaky, and that is stated rather than hidden.** They are
+exposed to the same accepted-but-never-completed attempt as everything else, and
+when it happens they will fail. Under the standing rule those failures are
+**flakes and must be recorded as flakes, never re-run into passes.**
+
+**Registered follow-up (option 2), with a target rather than a direction:**
+replace the timing proxy at those three sites with an assertion on
+`execution_state` -- that the bay resolved by signal or activity rather than by
+the wait expiring. `test_the_bay_activity_answers_and_no_signal_is_needed`
+already queries `state.bay_resolved` **two lines below its own wall-clock wait**,
+so the state fact is available today. That is strictly stronger than the timing
+proxy: it distinguishes *why* the bay resolved, where 20-versus-30 seconds only
+infers it. Not done here because it changes what the tests assert.
+
+### 4. Rule 10 and rule 13
+
+    $ git diff -U0 | grep "^+.*\(skip\|xfail\)"       -> no matches
+    $ git diff -U0 | grep "^-.*\(assert \|def test_\)" -> no matches
+    $ ruff check <3 files>                             -> All checks passed!
+    $ ruff format <3 files>                            -> 2 reformatted, 1 unchanged
+
+No test deleted, no assertion removed or weakened, no skip or xfail added. Four
+assertions were **added** to the outbox test in step:11 and none removed
+anywhere. The three promptness budgets are unchanged.
+
+**Rule 13.** Both edited test modules are `*_real_infra.py` carrying
+`pytest.mark.live_infra`, and `addopts` carries
+`-m "not live_infra and not browser"`, so **CI runs neither.** They fall on the
+ungated side; their only gate is `scripts/dev/run_real_infra_suite.sh`.
+`tests/activity_probe.py` is different: it is imported by
+`test_return_case_workflow_replay_compatibility.py`, which carries **no**
+live-infra marker and **is** collected by CI's backend job
+(`checks.yml:129`). So the new code in `activity_probe.py` is import-time
+executed under CI -- if the derivation raised, CI would go red. The *value* it
+computes is only exercised live.
+
+### Open
+
+1. Repetition proof is running; results in the next step. **Nothing is claimed
+   green until it lands.**
+2. Sites 553/593/628 stay flaky until the option-2 follow-up.
+3. The two `reached()` copies are still two copies (sect. 2).
+4. Why a live worker accepts a task and does not run it (sect. 1).
+5. Module 64 remains unexplained.

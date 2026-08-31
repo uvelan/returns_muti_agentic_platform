@@ -66,7 +66,7 @@ from return_platform.workflows.return_case_workflow import (
     TemplateReviewDraftResult,
     TemplateReviewDraftSet,
 )
-from tests.activity_probe import declared_activities
+from tests.activity_probe import LIVENESS_CEILING_SECONDS, declared_activities
 from tests.workflow_result import result_within
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
@@ -132,9 +132,7 @@ class _Probe:
         )
 
     @activity.defn(name="draft_support_request")
-    async def draft_support_request(
-        self, request: DraftSupportRequestInput
-    ) -> SupportRequestDraft:
+    async def draft_support_request(self, request: DraftSupportRequestInput) -> SupportRequestDraft:
         del request
         self._record("draft_support_request")
         # Returns what the activity returns. This used to answer `str`, which
@@ -237,7 +235,17 @@ class _Probe:
         self.calls.append(name)
         self._reached.setdefault(name, asyncio.Event()).set()
 
-    async def reached(self, name: str, *, within_seconds: float = 30.0) -> None:
+    async def reached(self, name: str, *, within_seconds: float = LIVENESS_CEILING_SECONDS) -> None:
+        """Wait until `name` has run once. A liveness net, not a speed assertion.
+
+        This module carries its **own copy** of `reached`, and the duplication
+        has now caused a defect twice -- once when the sibling probe's
+        registration tuple went stale in both files, and again here, where a
+        flat 30.0s budget was smaller than one attempt's own
+        `start_to_close_timeout`. None of the five call sites below is asserting
+        promptness (all default to `bay_wait_seconds: 0`), so all five take the
+        derived ceiling. See `tests/activity_probe.py::LIVENESS_CEILING_SECONDS`.
+        """
         event = self._reached.setdefault(name, asyncio.Event())
         try:
             async with asyncio.timeout(within_seconds):
