@@ -470,3 +470,106 @@ in the 5249 the gate counted. The allowlist change is itself gated twice — by
 
 Nothing added here is behind a `live_infra` marker, and nothing added here is
 ungated.
+
+---
+
+## Step 6 — the sibling shape, checked to exhaustion
+
+Files touched: none (survey).
+
+The dispatch asks whether other doubles standing in for `temporalio.workflow` are
+missing `patched` or anything else production now calls. Answer: **no, and the
+population is closed.**
+
+### Only one production module calls `patched` at all
+
+```
+$ grep -rn "workflow.patched\|get_version\|deprecate_patch" src/ --include="*.py"
+src/return_platform/workflows/return_case_activities.py:1661:        only from inside `workflow.patched(...)`, so a deployment that has the
+src/return_platform/workflows/return_case_workflow.py:149:#: `workflow.patched` is what tells the two apart. ...
+src/return_platform/workflows/return_case_workflow.py:1672:        if not workflow.patched(_PATCH_V3_CLARIFICATION_ROUND_TRIP):
+src/return_platform/workflows/return_case_workflow.py:2247:            if workflow.patched(_PATCH_STRUCTURED_SUPPORT_DRAFT):
+src/return_platform/workflows/return_case_workflow.py:2294:        if workflow.patched(_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE):
+```
+
+(:1661 is prose in a docstring, :149 a comment.) There are 24 modules under
+`src/return_platform/workflows/`, including three other workflow definitions
+(`order_discovery_workflow.py`, `production_return_workflow.py`,
+`return_workflow.py`); none of them consults a patch marker, so none of their tests
+can have a stale double for this reason.
+
+### And only four test modules substitute the module
+
+```
+$ grep -rn 'setattr(.*"workflow"' tests/ src/
+tests/acceptance/test_items_13_19_reminder_cadence_in_business_time.py:257
+tests/policy/test_case_policy_gate.py:538,1156,1216,1243
+tests/test_cumulative_support_outcomes.py:1531,1574
+tests/test_return_case_workflow_replay_compatibility.py:455
+tests/test_support_template_review_gate.py:450,1033,1143
+```
+
+All four target `return_case_workflow`. `tests/test_return_workflow.py` imports
+`temporalio.workflow` but uses the **real** module (`SandboxedWorkflowRunner`,
+:479) rather than a double, so it is not in this population.
+
+Against production's full surface on that module
+(`all_handlers_finished  continue_as_new  defn  execute_activity  info  logger  now
+patched  query  run  signal  uuid  wait_condition`):
+
+| double | complete? |
+|---|---|
+| `tests/policy/test_case_policy_gate.py::_Runtime` | yes |
+| `tests/test_support_template_review_gate.py::_Runtime` | yes (and `tests/acceptance/test_items_13_19_...::_RecordingRuntime` subclasses it at :148, so the acceptance suite inherits it) |
+| `tests/test_return_case_workflow_replay_compatibility.py::_LegacyRuntime` | narrow **by design** — it drives `_open_support` only, and its `patched` asserts the marker is one of the two that method consults, so a third fails loudly |
+| `tests/test_cumulative_support_outcomes.py::_Runtime` | was missing `patched`; fixed on this branch |
+
+**`patched` was the only thing any of them was missing, and this was the only one
+missing it.** Nothing else in scope to fix.
+
+### All six limbs are now covered somewhere
+
+Site 1672, which this module cannot legitimately reach, turns out to be covered where
+it belongs — I checked rather than assumed:
+
+- **un-patched limb** —
+  `tests/test_support_template_review_gate.py:1265`,
+  `test_an_unmarked_history_keeps_the_behaviour_it_recorded`, built with
+  `patches=False` and asserting `_PATCH_V3_CLARIFICATION_ROUND_TRIP in
+  runtime.patch_ids` (:1293) so "the gate answered no" stays distinct from "the gate
+  is gone".
+- **patched limb** — seven other `clarification_answered` calls in the same class
+  (:1164, :1184, :1202, :1203, :1220, :1241, :1260) on the default `patches=True`.
+
+So the run-wide position is: **three gates, six limbs, all six exercised** — four of
+them newly, from this module, and two already, next door.
+
+### One thing found and deliberately not fixed — not mine
+
+`tests/policy/test_case_policy_gate.py::_Runtime` has a `patches: bool = True`
+constructor flag whose docstring (:317) explains that `patches=False` "builds a
+runtime that answers as an *old* history ... which is how the legacy arm is reachable
+from a test at all". **No test in that file ever passes it:**
+
+```
+$ grep -n "patches=" tests/policy/test_case_policy_gate.py
+317:        `patches=False` builds a runtime that answers as an *old* history
+```
+
+One hit, and it is the docstring. That is a rule-13 shape in miniature — the correct
+mechanism exists and nothing invokes it. It is not this branch's file and the limbs
+it would reach are covered from `test_cumulative_support_outcomes.py` as of step 4,
+so it is a knob with no caller rather than a coverage hole. **Named, not fixed.**
+
+By contrast `tests/test_support_template_review_gate.py` does use it (:1280), which
+is what covers site 1672's un-patched limb above.
+
+### One stale reference left alone, deliberately
+
+`.plan/merge.md:32` records "Trunk suite: **5121 passed, 1 failed** — the single
+known pre-existing `test_a_rejected_return_still_opens_no_work_item`". That is a
+dated snapshot of a past merge, not a live claim, and `.plan/merge.md` is the
+integration agent's file. Rewriting someone's historical record to keep a number
+current would be an ownership breach and would also destroy the record. **Named for
+the orchestrator; untouched.** The stale pointer *to* it lived in
+`known_test_failures.json`'s comment, and that pointer is gone (step 5).
