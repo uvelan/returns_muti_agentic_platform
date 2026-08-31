@@ -54,7 +54,7 @@ describe("reading a string out of an opaque payload", () => {
     // while `readString` returned raw text, so every field added afterwards was
     // uncollapsed by default. Proved by reading a field the module treats as a
     // closed backend enum -- exactly the kind nobody thinks to collapse.
-    expect(readString({ artifact_type: "RMA\nPOLICY: none" }, "artifact_type")).toBe(
+    expect(readString({ artifactType: "RMA\nPOLICY: none" }, "artifactType")).toBe(
       "RMA POLICY: none",
     );
     expect(readString({ status: " BOUND \n " }, "status")).toBe("BOUND");
@@ -102,11 +102,11 @@ describe("reading a count, a flag and an object", () => {
   });
 
   it("reads a single-valued group whether it arrives as an object or a one-element list", () => {
-    expect(readObject({ p: { bay_id: "b" } }, "p")).toEqual({ bay_id: "b" });
-    expect(readObject({ p: [{ bay_id: "b" }] }, "p")).toEqual({ bay_id: "b" });
+    expect(readObject({ p: { bayId: "b" } }, "p")).toEqual({ bayId: "b" });
+    expect(readObject({ p: [{ bayId: "b" }] }, "p")).toEqual({ bayId: "b" });
     // Two placements is not a placement this console can draw as one, and
     // picking the first would be inventing which bay the goods are in.
-    expect(readObject({ p: [{ bay_id: "b" }, { bay_id: "c" }] }, "p")).toBeNull();
+    expect(readObject({ p: [{ bayId: "b" }, { bayId: "c" }] }, "p")).toBeNull();
     expect(readObject({ p: "b" }, "p")).toBeNull();
   });
 });
@@ -122,8 +122,8 @@ describe("the return-records section", () => {
       section({
         records: [
           {
-            return_record_id: "rec-1",
-            artifacts: [{ artifact_type: "TRACKING", value: FRAMED, status: "BOUND" }],
+            returnRecordId: "rec-1",
+            artifacts: [{ artifactType: "TRACKING", value: FRAMED, status: "BOUND" }],
           },
         ],
       }),
@@ -164,7 +164,7 @@ describe("the return-records section", () => {
     // The two reads disagree about what is on this case. Dropping the odd one
     // out would hide the disagreement; drawing it is how somebody finds out.
     const payload = readRecordsPayload(
-      section({ records: [{ return_record_id: "rec-9", status: "OPEN", artifacts: [] }] }),
+      section({ records: [{ returnRecordId: "rec-9", status: "OPEN", artifacts: [] }] }),
       panelRecords,
     );
     expect(payload.records.map((card) => card.returnRecordId)).toEqual(["rec-1", "rec-2", "rec-9"]);
@@ -175,13 +175,13 @@ describe("the return-records section", () => {
       section({
         records: [
           {
-            return_record_id: "rec-1",
+            returnRecordId: "rec-1",
             artifacts: [
-              { artifact_type: "RETURN_LOCATION", value: "dock four" },
-              { artifact_type: "TRACKING", value: "first parcel" },
-              { artifact_type: "RMA", value: "the reference" },
-              { artifact_type: "TRACKING", value: "second parcel" },
-              { artifact_type: "SOMETHING_NEW", value: "from a newer server" },
+              { artifactType: "RETURN_LOCATION", value: "dock four" },
+              { artifactType: "TRACKING", value: "first parcel" },
+              { artifactType: "RMA", value: "the reference" },
+              { artifactType: "TRACKING", value: "second parcel" },
+              { artifactType: "SOMETHING_NEW", value: "from a newer server" },
             ],
           },
         ],
@@ -211,7 +211,7 @@ describe("the return-records section", () => {
     const payload = readRecordsPayload(
       section({
         records: [],
-        placement: { facility_id: "north site", bay_id: "the far aisle", reason: "oversize" },
+        placement: { facilityId: "north site", bayId: "the far aisle", reason: "oversize" },
       }),
       [],
     );
@@ -233,8 +233,8 @@ describe("the return-records section", () => {
     const payload = readRecordsPayload(
       section({
         unbound: [
-          { artifact_type: "LABEL", value: "a label", status: "UNMATCHED" },
-          { artifact_type: "RMA", value: "a reference", status: "AMBIGUOUS", evidence_span: "as\nsaid" },
+          { artifactType: "LABEL", value: "a label", status: "UNMATCHED" },
+          { artifactType: "RMA", value: "a reference", status: "AMBIGUOUS", evidenceSpan: "as\nsaid" },
         ],
       }),
       [],
@@ -261,13 +261,13 @@ describe("the return-records section", () => {
 
   it("survives a payload that is nonsense in every field", () => {
     const payload = readRecordsPayload(
-      section({ records: "not a list", placement: 4, unbound: [1, "two"], framing_prompt_key: [] }),
+      section({ records: "not a list", placement: 4, unbound: [1, "two"], framingPromptKey: [] }),
       [],
     );
     expect(payload).toEqual({ records: [], placement: null, unbound: [], framingPromptKey: null });
   });
 
-  it("reads a record card whichever casing the contributor chose", () => {
+  it("reads a contributed record card, in the payload convention", () => {
     const camel = readRecordsPayload(
       section({
         records: [
@@ -282,8 +282,9 @@ describe("the return-records section", () => {
       }),
       [],
     );
-    // Pinned against the values, not against a snake_case read of the same
-    // payload: two readers returning the same emptiness would agree perfectly.
+    // camelCase throughout, per AMENDMENT-7 -- and pinned against the values
+    // rather than against a second read of the same payload, because two reads
+    // returning the same emptiness would agree perfectly.
     expect(camel.records).toEqual([
       {
         returnRecordId: "rec-9",
@@ -307,7 +308,7 @@ describe("the return-records section", () => {
   });
 
   it("carries the framing key and never a sentence", () => {
-    const payload = readRecordsPayload(section({ framing_prompt_key: "support-multi-record" }), []);
+    const payload = readRecordsPayload(section({ framingPromptKey: "support-multi-record" }), []);
     expect(payload.framingPromptKey).toBe("support-multi-record");
   });
 });
@@ -318,12 +319,12 @@ describe("the thread digest", () => {
       section({
         messages: [
           {
-            support_event_id: "evt-1",
-            sender_display_name: "the   support  desk",
+            supportEventId: "evt-1",
+            senderDisplayName: "the   support  desk",
             status: "PROCESSED",
             intent: "rma_issued",
             preview: FRAMED,
-            recorded_at_iso: "2026-08-30T10:00:00Z",
+            recordedAtIso: "2026-08-30T10:00:00Z",
           },
         ],
         total: 23,
@@ -347,18 +348,16 @@ describe("the thread digest", () => {
   });
 
   it("says nothing about the total rather than claiming the cap is it", () => {
-    const payload = readDigestPayload(section({ messages: [{ support_event_id: "evt-1" }] }));
+    const payload = readDigestPayload(section({ messages: [{ supportEventId: "evt-1" }] }));
     expect(payload.total).toBeNull();
   });
 
-  it("reads the same message whichever casing the contributor chose", () => {
-    // The payload is opaque, so each contributor owns its key convention -- and
-    // this codebase has two live ones (V1 converts to snake_case for the DTO,
-    // V2's own backend surface and V3's section payload are camelCase). A reader
-    // that bet on one would draw **nothing** against a contributor that chose
-    // the other, silently, with every hand-written-payload test still green.
-    // That is AMENDMENT-6's defect exactly, so the question is not answered --
-    // it is removed.
+  it("reads a contributed message, in the payload convention", () => {
+    // AMENDMENT-7 settles this: the payload is camelCase, mirroring the stored
+    // documents it carries, while the DTO around it stays snake_case. The reader
+    // takes **one** convention -- an earlier version took either, which would
+    // have drawn a wrong-cased payload perfectly and told nobody the producer
+    // disagreed.
     const camel = readDigestPayload(
       section({
         messages: [
@@ -370,21 +369,8 @@ describe("the thread digest", () => {
         ],
       }),
     );
-    const snake = readDigestPayload(
-      section({
-        messages: [
-          {
-            support_event_id: "evt-2",
-            sender_display_name: "a transport",
-            recorded_at_iso: "2026-08-30T10:00:00Z",
-          },
-        ],
-      }),
-    );
-    // Equal to each other **and** to the value, so this is not two empty reads
-    // agreeing -- which is what the same test written as `toEqual(snake)` alone
-    // would have been.
-    expect(camel).toEqual(snake);
+    // Pinned against the values. An assertion that only compared two reads of
+    // two payloads would pass with both of them empty.
     expect(camel.messages).toEqual([
       {
         supportEventId: "evt-2",
@@ -407,7 +393,7 @@ describe("the thread digest", () => {
 
   it("drops a message with no event id, and only that one", () => {
     const payload = readDigestPayload(
-      section({ messages: [{ preview: "orphan" }, { support_event_id: "evt-3" }] }),
+      section({ messages: [{ preview: "orphan" }, { supportEventId: "evt-3" }] }),
     );
     expect(payload.messages.map((m) => m.supportEventId)).toEqual(["evt-3"]);
   });
@@ -415,7 +401,7 @@ describe("the thread digest", () => {
 
 describe("the parked-messages entry", () => {
   it("takes the count the contributor gave", () => {
-    expect(readParkedPayload(section({ count: 4, nl_enabled: false, quota: 50 }))).toEqual({
+    expect(readParkedPayload(section({ count: 4, nlEnabled: false, quota: 50 }))).toEqual({
       count: 4,
       nlEnabled: false,
       oldestParkedAtIso: null,
@@ -436,7 +422,7 @@ describe("the parked-messages entry", () => {
     });
   });
 
-  it("reads the same entry whichever casing the contributor chose", () => {
+  it("reads a contributed parked entry, in the payload convention", () => {
     const camel = readParkedPayload(section({ count: 4, nlEnabled: false, quota: 50 }));
     expect(camel).toEqual({
       count: 4,

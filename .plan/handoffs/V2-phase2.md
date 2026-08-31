@@ -49,8 +49,9 @@ Touched elsewhere, and only this much: one side-effect import line in
 ## 2. The payload shapes — what a contributor must send
 
 `PanelSectionView.payload` is opaque, so this is the contract and nothing
-validates it on the wire. **The reader accepts either snake_case or camelCase for
-every key** (see §6); snake_case is canonical and is what the MSW handler emits.
+validates it on the wire. **Keys are camelCase**, per AMENDMENT-7, and the reader takes **only** that
+spelling — a wrong-cased payload renders a visible complaint rather than an empty
+section. See §6.
 
 ### `support_return_records`
 
@@ -58,26 +59,30 @@ every key** (see §6); snake_case is canonical and is what the MSW handler emits
 {
   "records": [
     {
-      "return_record_id": "…",          // joined onto CasePanelView.return_records[]
-      "return_reference": "…",          // optional; the panel's own is preferred
+      "returnRecordId": "…",            // joined onto CasePanelView.return_records[]
+      "returnReference": "…",           // optional; the panel's own is preferred
       "artifacts": [
         {
-          "artifact_type": "RMA|TRACKING|LABEL|SHIPPING_INSTRUCTION|RETURN_LOCATION",
+          "artifactType": "RMA|TRACKING|LABEL|SHIPPING_INSTRUCTION|RETURN_LOCATION",
           "value": "…",                 // support-derived — see §5
           "status": "BOUND|AMBIGUOUS|UNMATCHED",
-          "evidence_span": "…",         // support-derived
-          "support_event_id": "…"
+          "evidenceSpan": "…",          // support-derived
+          "supportEventId": "…"
         }
       ]
     }
   ],
   "placement": {                        // one OBJECT, case-level, not per record
-    "facility_id": "…", "bay_id": "…", "reason": "…"
+    "facilityId": "…", "bayId": "…", "reason": "…"
   },
   "unbound": [ /* artifacts that named no record, or one this case lacks */ ],
-  "framing_prompt_key": "support-multi-record-do-not-mix"
+  "framingPromptKey": "support-multi-record-do-not-mix"
 }
 ```
+
+> **camelCase throughout, per AMENDMENT-7** — and note that the DTO field this
+> joins onto, `CasePanelView.return_records[].return_record_id`, is snake_case.
+> Two sources, two conventions; §6 has the rule and the test that pins it.
 
 **`placement` is an object, not a list.** A one-element list is also accepted; a
 two-element list reads as **no placement**, because picking the first would be
@@ -94,9 +99,9 @@ drawn: dropping it would hide a disagreement between two reads of one case.
 ```jsonc
 {
   "messages": [
-    { "support_event_id": "…", "sender_display_name": "…", "sender": "…",
+    { "supportEventId": "…", "senderDisplayName": "…", "sender": "…",
       "status": "PROCESSED|PARKED", "intent": "…", "preview": "…",
-      "recorded_at_iso": "…" }
+      "recordedAtIso": "…" }
   ],
   "total": 23        // the THREAD's size, not messages.length — omit if unknown
 }
@@ -110,10 +115,10 @@ claiming the cap is the total.
 ### `support_parked_messages`
 
 ```jsonc
-{ "count": 3, "nl_enabled": false, "quota": 50, "oldest_parked_at_iso": "…" }
+{ "count": 3, "nlEnabled": false, "quota": 50, "oldestParkedAtIso": "…" }
 ```
 
-`nl_enabled` **omitted** means the copy describes the count without asserting a
+`nlEnabled` **omitted** means the copy describes the count without asserting a
 cause. "These are on file" is true either way; "free-text intake is switched off"
 is a claim about a release the console has not read.
 
@@ -172,6 +177,7 @@ eyeballed for it.
 | Section | Empty | Degraded (`status !== "ok"`) | Populated |
 | --- | --- | --- | --- |
 | records | renders `null` | a notice: display problem, nothing lost, back next refresh | `<h3>` + one `<h4>` card per record |
+| *any, wrong casing* | — | a **distinct** notice: the payload is in the DTO's convention, this is a release fault, nothing about the return has changed | — |
 | digest | renders `null` | same | `<h3>` + `<ul>`; footer only when `total` is given |
 | parked | `count === 0` → `null` | same | `<h3>` naming the count |
 | announcer | empty region | n/a | one sentence |
@@ -222,22 +228,33 @@ is about is unusable on a case with several.
 
 ---
 
-## 6. Key casing — read both, and why
+## 6. Key casing — AMENDMENT-7, and it is enforced
 
-The payload is opaque, so each contributor owns its key convention, and this
-codebase has **two live ones**: V1's `_return_records` deliberately converts the
-store's camelCase to snake_case for the DTO; V2's own backend surface
-(`SupportMessageAcceptedView`, the relay's system entries, `list_inbound`) is
-camelCase; V3's section payload is camelCase.
+**The DTO's own fields are snake_case** (`case_id`, `return_records`,
+`section_id`, `accepted_commands`). **A section's opaque `payload` is
+camelCase** (`returnRecordId`, `supportEventId`), mirroring the stored documents
+it carries.
 
-A reader betting on one draws **nothing** against a contributor that chose the
-other, silently — an empty section reads exactly like a case Support has said
-nothing about, and every test built on a hand-written payload stays green. So the
-readers take both, with the camelCase twin **derived** from the snake_case name
-rather than listed, so a field added later cannot be added to one list and
-forgotten in the other.
+`readRecordsPayload` reads *both*, a few lines apart: the panel's
+`return_records[]` in snake_case, the contributed payload in camelCase. That is
+not inconsistency — two sources, two settled conventions — and the two blocks
+look almost identical, which is exactly why they are pinned.
 
----
+**The reader takes one convention, not both.** An earlier version of this module
+accepted either spelling; that is removed. A tolerant reader draws a wrong-cased
+payload perfectly and tells nobody the producer disagreed, and where it does not
+draw, an empty section is indistinguishable from a case Support has said nothing
+about. A wrong-cased payload now renders a **visible complaint** — see §4 — so
+the disagreement is reported rather than absorbed.
+
+**Enforcement:** `supportPayloadCasing.test.ts`. It hands each reader a
+**recording proxy** and asserts the exact set of keys the reader actually asked
+for — observed, not restated, because a list written beside the reader is two
+copies of one intention agreeing with each other. Plus a behavioural guard: a
+snake_case payload must read as **nothing**, which is the only assertion that
+separates a strict reader from a tolerant one (a tolerant reader asks for the
+camelCase key first and finds it, so the observed key sets are identical either
+way).
 
 ## 7. The transcript system entry (DR-3)
 

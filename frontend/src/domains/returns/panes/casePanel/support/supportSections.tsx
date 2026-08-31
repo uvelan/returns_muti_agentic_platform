@@ -6,6 +6,7 @@ import { framingFor, intentLabel } from "./supportCopy";
 import {
   SUPPORT_SECTION_IDS,
   isDegraded,
+  mentionsSnakeCaseKeys,
   readDigestPayload,
   readParkedPayload,
   readRecordsPayload,
@@ -94,6 +95,28 @@ function Row({ term, value }: { readonly term: string; readonly value: string | 
  * told us" draw identically on a screen that shows neither, and only one of them
  * is a reason to go and ask somebody.
  */
+/**
+ * A contributor sent this section in the DTO's convention, not the payload's.
+ *
+ * **This is what replaced the dual-read** (AMENDMENT-7). A reader that took
+ * either spelling would have drawn this payload perfectly and told nobody the
+ * producer disagreed; a reader that takes one and says nothing draws an empty
+ * section, which is indistinguishable from a case Support has said nothing
+ * about. So the mismatch is *reported*, on the screen, in the words of the
+ * person who can act on it -- and it is a deployment fault, so it reads like the
+ * unrenderable-section placeholder rather than like a fact about the return.
+ */
+function WrongShape({ what }: { readonly what: string }) {
+  return (
+    <p className={COPILOT_TOKENS.support.attentionNotice}>
+      {what} arrived in a shape this console cannot read: its fields are named in
+      the panel's convention rather than the section's. Nothing about the return has
+      changed and nothing Support sent has been lost -- this is a fault in the
+      release that composed the panel, and somebody needs to be told.
+    </p>
+  );
+}
+
 function Degraded({ what }: { readonly what: string }) {
   return (
     <p className={COPILOT_TOKENS.support.notice}>
@@ -162,6 +185,7 @@ function RecordCard({ card }: { readonly card: SupportRecordCard }) {
 
 export function SupportRecordsSection({ section, panel }: PanelSectionRendererProps) {
   if (isDegraded(section)) return <Degraded what="What Support has sent about these returns" />;
+  if (mentionsSnakeCaseKeys(section?.payload)) return <WrongShape what="What Support has sent about these returns" />;
 
   const payload = readRecordsPayload(section, panel.return_records);
   if (payload.records.length === 0 && payload.unbound.length === 0) return null;
@@ -260,6 +284,7 @@ export function SupportRecordsSection({ section, panel }: PanelSectionRendererPr
 
 export function SupportDigestSection({ section }: PanelSectionRendererProps) {
   if (isDegraded(section)) return <Degraded what="The messages from Support" />;
+  if (mentionsSnakeCaseKeys(section?.payload)) return <WrongShape what="The messages from Support" />;
 
   const payload = readDigestPayload(section);
   if (payload.messages.length === 0) return null;
@@ -311,6 +336,7 @@ export function SupportDigestSection({ section }: PanelSectionRendererProps) {
 
 export function SupportParkedSection({ section }: PanelSectionRendererProps) {
   if (isDegraded(section)) return <Degraded what="Whether Support has messages waiting" />;
+  if (mentionsSnakeCaseKeys(section?.payload)) return <WrongShape what="Whether Support has messages waiting" />;
 
   const payload = readParkedPayload(section);
   if (payload.count === 0) return null;

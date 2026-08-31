@@ -150,7 +150,7 @@ describe("what the panel shows once Support has been heard from", () => {
   });
 
   it("tells an operator that a message was parked, and why, and that it is safe", async () => {
-    // The scope item in full: `nl_enabled: false` **parks rather than
+    // The scope item in full: `nlEnabled: false` **parks rather than
     // rejecting** (sect. 5, never a 409), and the panel is where an operator
     // learns that. A 4xx or an empty panel would send them to ask Support to
     // re-send something the platform already holds.

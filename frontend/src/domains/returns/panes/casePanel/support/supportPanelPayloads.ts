@@ -94,37 +94,54 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * The same field, in either casing a contributor might have used.
+ * Key casing on this seam, per **AMENDMENT-7**.
  *
- * **This is not tidiness, it is the failure mode of an opaque payload.**
- * `PanelSectionView.payload` is opaque by design, so each contributor owns its
- * own key convention -- and this codebase has two live ones. V1's `_return_records`
- * deliberately *converts* the store's camelCase to snake_case for the panel DTO;
- * V2's own backend surface (`SupportMessageAcceptedView`, the relay's system
- * entries, `list_inbound`) is camelCase throughout; V3's section payload is
- * camelCase.
+ * Two conventions, at two different sources, and neither is tolerance:
  *
- * Neither is wrong, and that is the problem: a reader that bet on one would draw
- * **nothing** against a contributor that chose the other, and it would do it
- * silently -- an empty section reads exactly like a case Support has said nothing
- * about, and every test built on a hand-written payload stays green. AMENDMENT-6
- * is the same class of defect, found the same way, and it cost a whole slice's
- * section.
+ * * the **`CasePanelView` DTO's own fields are snake_case** (`case_id`,
+ *   `return_records`, `section_id`) -- V1's `_return_records` converts the
+ *   store's camelCase to snake_case deliberately for the DTO;
+ * * a section's **opaque `payload` is camelCase** (`returnRecordId`,
+ *   `supportEventId`), mirroring the stored documents it carries.
  *
- * So the reader takes both spellings and the question stops being load-bearing.
- * The snake_case name is canonical -- it is what this module's shapes are
- * documented in, and what the MSW handler emits -- and the camelCase twin is
- * derived rather than listed, so a field added later cannot be added to one list
- * and forgotten in the other.
+ * `readRecordsPayload` reads *both*: the panel's `return_records[]` in
+ * snake_case and the contributed payload in camelCase, a few lines apart. That
+ * is not inconsistency -- they are two different sources with two settled
+ * conventions, and `supportPayloadCasing.test.ts` pins the exact key set each
+ * one is read with.
+ *
+ * **An earlier version of this module read either spelling.** That is removed.
+ * A tolerant reader turns a producer disagreement into a section that renders
+ * correctly and tells nobody -- and where it does not render, an empty section
+ * is indistinguishable from a case Support has said nothing about. Reading one
+ * convention makes a wrong-cased payload *visible*: `mentionsSnakeCaseKeys`
+ * below detects it and the section says so on the screen, rather than looking
+ * like an absence.
  */
-function camel(key: string): string {
-  return key.replace(/_([a-z0-9])/g, (_, char: string) => char.toUpperCase());
+function isSnakeCase(key: string): boolean {
+  return /_[a-z0-9]/.test(key);
 }
 
-function field(source: Record<string, unknown>, key: string): unknown {
-  if (key in source) return source[key];
-  const twin = camel(key);
-  return twin === key ? undefined : source[twin];
+/**
+ * Whether a contributed payload was written in the DTO's convention by mistake.
+ *
+ * Looks at the payload's own keys and one level into the objects it carries --
+ * which is where the give-away lives: a payload can legitimately have only
+ * single-word keys at the top (`records`, `messages`, `count`) and still be
+ * entirely snake_case underneath.
+ *
+ * Deliberately **not** used to read anything. It exists so the section can
+ * report "this contributor sent the wrong shape" instead of drawing an empty
+ * panel, which is the whole reason the dual-read was the wrong fix.
+ */
+export function mentionsSnakeCaseKeys(payload: unknown): boolean {
+  if (!isRecord(payload)) return false;
+  const nested = Object.values(payload).flatMap((value) => {
+    if (isRecord(value)) return [value];
+    if (Array.isArray(value)) return value.filter(isRecord);
+    return [];
+  });
+  return [payload, ...nested].some((node) => Object.keys(node).some(isSnakeCase));
 }
 
 /**
@@ -152,7 +169,7 @@ function field(source: Record<string, unknown>, key: string): unknown {
  */
 export function readString(source: unknown, key: string): string | null {
   if (!isRecord(source)) return null;
-  const value = field(source, key);
+  const value = source[key];
   if (typeof value !== "string") return null;
   return displayText(value);
 }
@@ -160,7 +177,7 @@ export function readString(source: unknown, key: string): string | null {
 /** An object field, or `null`. Accepts a one-element array of one, see below. */
 export function readObject(source: unknown, key: string): Record<string, unknown> | null {
   if (!isRecord(source)) return null;
-  const value = field(source, key);
+  const value = source[key];
   if (isRecord(value)) return value;
   // A contributor that serialises a single-valued group as a one-element list
   // is a shape this reader can honour without ambiguity, and the alternative --
@@ -173,21 +190,21 @@ export function readObject(source: unknown, key: string): Record<string, unknown
 /** A finite non-negative integer field, or `null`. Never `NaN`, never a coerced string. */
 export function readCount(source: unknown, key: string): number | null {
   if (!isRecord(source)) return null;
-  const value = field(source, key);
+  const value = source[key];
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0) return null;
   return value;
 }
 
 export function readBoolean(source: unknown, key: string): boolean | null {
   if (!isRecord(source)) return null;
-  const value = field(source, key);
+  const value = source[key];
   return typeof value === "boolean" ? value : null;
 }
 
 /** An array of objects, skipping anything in it that is not one. */
 export function readObjects(source: unknown, key: string): readonly Record<string, unknown>[] {
   if (!isRecord(source)) return [];
-  const value = field(source, key);
+  const value = source[key];
   if (!Array.isArray(value)) return [];
   return value.filter(isRecord);
 }
@@ -289,15 +306,15 @@ export type SupportRecordsPayload = {
 };
 
 function readArtifact(source: Record<string, unknown>): SupportArtifact | null {
-  const artifactType = readString(source, "artifact_type");
+  const artifactType = readString(source, "artifactType");
   if (artifactType === null) return null;
   return {
     artifactType,
     label: ARTIFACT_LABELS[artifactType] ?? artifactType,
     value: readString(source, "value"),
     status: readString(source, "status"),
-    evidenceSpan: readString(source, "evidence_span"),
-    supportEventId: readString(source, "support_event_id"),
+    evidenceSpan: readString(source, "evidenceSpan"),
+    supportEventId: readString(source, "supportEventId"),
   };
 }
 
@@ -335,13 +352,16 @@ export function readRecordsPayload(
   const payload = section?.payload;
   const contributed = new Map<string, Record<string, unknown>>();
   for (const entry of readObjects(payload, "records")) {
-    const id = readString(entry, "return_record_id");
+    const id = readString(entry, "returnRecordId");
     if (id !== null) contributed.set(id, entry);
   }
 
   const cards: SupportRecordCard[] = [];
   const seen = new Set<string>();
 
+  // **The panel's own projection, in the DTO's snake_case** (AMENDMENT-7).
+  // The contributed payload a few lines down is camelCase. Two sources, two
+  // settled conventions, pinned key-for-key in `supportPayloadCasing.test.ts`.
   for (const record of panelRecords) {
     const id = readString(record, "return_record_id");
     if (id === null) continue;
@@ -361,13 +381,15 @@ export function readRecordsPayload(
     });
   }
 
+  // A record the section names and the panel does not hold. Contributed
+  // payload, so camelCase -- the near-identical block above reads the DTO.
   for (const [id, entry] of contributed) {
     if (seen.has(id)) continue;
     cards.push({
       returnRecordId: id,
-      returnReference: readString(entry, "return_reference"),
+      returnReference: readString(entry, "returnReference"),
       status: readString(entry, "status"),
-      returnMethod: readString(entry, "return_method"),
+      returnMethod: readString(entry, "returnMethod"),
       artifacts: orderArtifacts(
         readObjects(entry, "artifacts").flatMap((raw) => {
           const artifact = readArtifact(raw);
@@ -391,8 +413,8 @@ export function readRecordsPayload(
     placementSource === null
       ? null
       : {
-          facilityId: readString(placementSource, "facility_id"),
-          bayId: readString(placementSource, "bay_id"),
+          facilityId: readString(placementSource, "facilityId"),
+          bayId: readString(placementSource, "bayId"),
           reason: readString(placementSource, "reason"),
         };
 
@@ -413,7 +435,7 @@ export function readRecordsPayload(
         return artifact === null ? [] : [artifact];
       }),
     ),
-    framingPromptKey: readString(payload, "framing_prompt_key"),
+    framingPromptKey: readString(payload, "framingPromptKey"),
   };
 }
 
@@ -465,17 +487,17 @@ export type SupportDigestPayload = {
 export function readDigestPayload(section: PanelSectionView | undefined): SupportDigestPayload {
   return {
     messages: readObjects(section?.payload, "messages").flatMap((entry) => {
-      const supportEventId = readString(entry, "support_event_id");
+      const supportEventId = readString(entry, "supportEventId");
       if (supportEventId === null) return [];
       return [
         {
           supportEventId,
           sender:
-            readString(entry, "sender_display_name") ?? readString(entry, "sender"),
+            readString(entry, "senderDisplayName") ?? readString(entry, "sender"),
           status: readString(entry, "status"),
           intent: readString(entry, "intent"),
           preview: readString(entry, "preview"),
-          recordedAtIso: readString(entry, "recorded_at_iso"),
+          recordedAtIso: readString(entry, "recordedAtIso"),
         },
       ];
     }),
@@ -515,8 +537,8 @@ export type SupportParkedPayload = {
 export function readParkedPayload(section: PanelSectionView | undefined): SupportParkedPayload {
   return {
     count: readCount(section?.payload, "count") ?? 0,
-    nlEnabled: readBoolean(section?.payload, "nl_enabled"),
-    oldestParkedAtIso: readString(section?.payload, "oldest_parked_at_iso"),
+    nlEnabled: readBoolean(section?.payload, "nlEnabled"),
+    oldestParkedAtIso: readString(section?.payload, "oldestParkedAtIso"),
     quota: readCount(section?.payload, "quota"),
   };
 }

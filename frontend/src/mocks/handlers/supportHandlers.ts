@@ -53,9 +53,9 @@ type Inbound = {
 type Store = {
   inbound: Inbound[];
   /** Artifacts the platform has filed against a return, keyed by record. */
-  artifacts: Map<string, { artifact_type: string; value: string; status: string }[]>;
+  artifacts: Map<string, { artifactType: string; value: string; status: string }[]>;
   /** Artifacts it could not file. */
-  unbound: { artifact_type: string; value: string; status: string; evidence_span: string }[];
+  unbound: { artifactType: string; value: string; status: string; evidenceSpan: string }[];
 };
 
 function freshStore(): Store {
@@ -75,17 +75,17 @@ function freshStore(): Store {
       [
         "rec-mock-1",
         [
-          { artifact_type: "TRACKING", value: "the parcel Support gave us", status: "BOUND" },
-          { artifact_type: "RETURN_LOCATION", value: "the north dock", status: "BOUND" },
+          { artifactType: "TRACKING", value: "the parcel Support gave us", status: "BOUND" },
+          { artifactType: "RETURN_LOCATION", value: "the north dock", status: "BOUND" },
         ],
       ],
     ]),
     unbound: [
       {
-        artifact_type: "LABEL",
+        artifactType: "LABEL",
         value: "a label reference nobody can place",
         status: "UNMATCHED",
-        evidence_span: "label attached, see below",
+        evidenceSpan: "label attached, see below",
       },
     ],
   };
@@ -120,11 +120,13 @@ export function supportPanelSections(): readonly {
   return [
     {
       section_id: "support_parked_messages",
+      // **camelCase, per AMENDMENT-7.** The DTO's own fields are snake_case;
+      // a section's opaque payload mirrors the stored documents it carries.
       payload: {
         count: parkedCount(),
-        nl_enabled: nlEnabled,
+        nlEnabled: nlEnabled,
         quota: PER_CASE_QUOTA,
-        oldest_parked_at_iso:
+        oldestParkedAtIso:
           store.inbound.find((message) => message.status === "PARKED")?.recordedAtIso ?? null,
       },
       status: "ok",
@@ -134,18 +136,18 @@ export function supportPanelSections(): readonly {
       section_id: "support_return_records",
       payload: {
         records: [...store.artifacts].map(([returnRecordId, artifacts]) => ({
-          return_record_id: returnRecordId,
+          returnRecordId: returnRecordId,
           artifacts,
         })),
         // A single object, which is the shape the reader takes and the shape the
         // case projection produces: one facility and one bay per case.
         placement: {
-          facility_id: "the northern site",
-          bay_id: "the far aisle",
+          facilityId: "the northern site",
+          bayId: "the far aisle",
           reason: "oversize goods",
         },
         unbound: store.unbound,
-        framing_prompt_key: "support-multi-record-do-not-mix",
+        framingPromptKey: "support-multi-record-do-not-mix",
       },
       status: "ok",
       reason: null,
@@ -154,12 +156,12 @@ export function supportPanelSections(): readonly {
       section_id: "support_thread_digest",
       payload: {
         messages: store.inbound.map((message) => ({
-          support_event_id: message.supportEventId,
-          sender_display_name: message.sender,
+          supportEventId: message.supportEventId,
+          senderDisplayName: message.sender,
           status: message.status,
           intent: message.intent,
           preview: message.bodyText,
-          recorded_at_iso: message.recordedAtIso,
+          recordedAtIso: message.recordedAtIso,
         })),
         total: store.inbound.length,
       },

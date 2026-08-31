@@ -104,7 +104,7 @@ describe("a support-derived value, on the screen", () => {
     renderRecords(
       {
         records: [
-          { return_record_id: "rec-1", artifacts: [{ artifact_type: "TRACKING", value: HOSTILE }] },
+          { returnRecordId: "rec-1", artifacts: [{ artifactType: "TRACKING", value: HOSTILE }] },
         ],
       },
       { return_records: [RECORD_ONE] },
@@ -124,7 +124,7 @@ describe("a support-derived value, on the screen", () => {
     renderRecords(
       {
         records: [
-          { return_record_id: "rec-1", artifacts: [{ artifact_type: "TRACKING", value: FRAMED }] },
+          { returnRecordId: "rec-1", artifacts: [{ artifactType: "TRACKING", value: FRAMED }] },
         ],
       },
       { return_records: [RECORD_ONE] },
@@ -148,8 +148,8 @@ describe("a support-derived value, on the screen", () => {
       {
         records: [
           {
-            return_record_id: "rec-1",
-            artifacts: [{ artifact_type: "SOMETHING_NEW", value: "from a newer server" }],
+            returnRecordId: "rec-1",
+            artifacts: [{ artifactType: "SOMETHING_NEW", value: "from a newer server" }],
           },
         ],
       },
@@ -163,7 +163,7 @@ describe("a support-derived value, on the screen", () => {
 describe("the return-record cards", () => {
   it("gives each return its own heading, so a fan-out can be told apart", () => {
     renderRecords(
-      { records: [], framing_prompt_key: "support-multi-record-do-not-mix" },
+      { records: [], framingPromptKey: "support-multi-record-do-not-mix" },
       { return_records: [RECORD_ONE, RECORD_TWO] },
     );
     expect(screen.getAllByRole("heading", { level: 4 }).map((node) => node.textContent)).toEqual([
@@ -174,7 +174,7 @@ describe("the return-record cards", () => {
 
   it("warns not to mix records, and only when there is more than one", () => {
     const { unmount } = renderRecords(
-      { framing_prompt_key: "support-multi-record-do-not-mix" },
+      { framingPromptKey: "support-multi-record-do-not-mix" },
       { return_records: [RECORD_ONE, RECORD_TWO] },
     );
     expect(screen.getByText(/Each card below is a separate return/)).toBeVisible();
@@ -183,7 +183,7 @@ describe("the return-record cards", () => {
     // One record is not a fan-out, and a standing warning that is always there
     // is a warning nobody reads on the day it matters.
     renderRecords(
-      { framing_prompt_key: "support-multi-record-do-not-mix" },
+      { framingPromptKey: "support-multi-record-do-not-mix" },
       { return_records: [RECORD_ONE] },
     );
     expect(screen.queryByText(/Each card below is a separate return/)).toBeNull();
@@ -194,7 +194,7 @@ describe("the return-record cards", () => {
     // recognise it, and the do-not-mix warning silently disappears from a
     // fan-out -- which is the one case the warning exists for.
     renderRecords(
-      { framing_prompt_key: "a-framing-from-a-later-release" },
+      { framingPromptKey: "a-framing-from-a-later-release" },
       { return_records: [RECORD_ONE, RECORD_TWO] },
     );
     expect(screen.getByText(/Each card below is a separate return/)).toBeVisible();
@@ -203,7 +203,7 @@ describe("the return-record cards", () => {
   it("draws the bay once for the case, not once per return", () => {
     renderRecords(
       {
-        placement: { facility_id: "the north site", bay_id: "the far aisle", reason: "oversize" },
+        placement: { facilityId: "the north site", bayId: "the far aisle", reason: "oversize" },
       },
       { return_records: [RECORD_ONE, RECORD_TWO] },
     );
@@ -218,10 +218,10 @@ describe("the return-record cards", () => {
       {
         unbound: [
           {
-            artifact_type: "RMA",
+            artifactType: "RMA",
             value: "a reference nobody can place",
             status: "AMBIGUOUS",
-            evidence_span: "as   they   wrote   it",
+            evidenceSpan: "as   they   wrote   it",
           },
         ],
       },
@@ -238,6 +238,31 @@ describe("the return-record cards", () => {
   it("says nothing at all when Support has sent nothing", () => {
     const { container } = renderRecords({}, { return_records: [] });
     expect(container).toBeEmptyDOMElement();
+  });
+
+  it("says so when a contributor sent the payload in the DTO's convention", () => {
+    // AMENDMENT-7's enforcement, on the screen. The dual-read this replaced
+    // would have drawn this payload perfectly and told nobody the producer
+    // disagreed; a strict reader that said nothing would draw an empty section,
+    // which reads exactly like a case Support has said nothing about.
+    const wrong = section(SUPPORT_SECTION_IDS.records, {
+      records: [
+        { return_record_id: "rec-1", artifacts: [{ artifact_type: "TRACKING", value: "a parcel" }] },
+      ],
+    });
+    render(
+      <SupportRecordsSection
+        section={wrong}
+        panel={panelWith([wrong], { return_records: [RECORD_ONE] })}
+        caseId="case-1"
+      />,
+    );
+    expect(screen.getByText(/arrived in a shape this console cannot read/)).toBeVisible();
+    expect(screen.getByText(/fault in the release that composed the panel/)).toBeVisible();
+    // And it is not confused with the two states it sits between: the section
+    // did not silently draw the value, and it did not report a display outage.
+    expect(screen.queryByText("a parcel")).toBeNull();
+    expect(screen.queryByText(/could not be loaded just now/)).toBeNull();
   });
 
   it("tells a section it could not read from a case with nothing to say", () => {
@@ -270,7 +295,7 @@ describe("the parked-messages entry", () => {
   }
 
   it("names the count and says the messages are safe", () => {
-    renderParked({ count: 3, nl_enabled: false, quota: 50 });
+    renderParked({ count: 3, nlEnabled: false, quota: 50 });
     expect(screen.getByRole("heading", { level: 3 }).textContent).toContain(
       "3 messages from Support are waiting to be read",
     );
@@ -312,8 +337,8 @@ describe("the thread digest", () => {
     renderDigest({
       messages: [
         {
-          support_event_id: "evt-1",
-          sender_display_name: "the support desk",
+          supportEventId: "evt-1",
+          senderDisplayName: "the support desk",
           status: "PROCESSED",
           intent: "rma_issued",
           preview: HOSTILE,
@@ -334,8 +359,8 @@ describe("the thread digest", () => {
     // a taxonomy skew looks like a skew and not like a phrase we chose.
     renderDigest({
       messages: [
-        { support_event_id: "evt-1", intent: "rma_issued", preview: "one" },
-        { support_event_id: "evt-2", intent: "a_newer_intent", preview: "two" },
+        { supportEventId: "evt-1", intent: "rma_issued", preview: "one" },
+        { supportEventId: "evt-2", intent: "a_newer_intent", preview: "two" },
       ],
     });
     expect(screen.getByText("Read as: Return authorised")).toBeVisible();
@@ -343,7 +368,7 @@ describe("the thread digest", () => {
   });
 
   it("claims no total when the contributor did not give one", () => {
-    renderDigest({ messages: [{ support_event_id: "evt-1", preview: "hello" }] });
+    renderDigest({ messages: [{ supportEventId: "evt-1", preview: "hello" }] });
     expect(screen.queryByText(/Showing/)).toBeNull();
   });
 });
@@ -356,7 +381,7 @@ describe("what arrives while somebody is typing", () => {
   const quiet = panelWith([section(SUPPORT_SECTION_IDS.records, { records: [] })]);
   const arrived = panelWith([
     section(SUPPORT_SECTION_IDS.records, {
-      records: [{ return_record_id: "rec-1", artifacts: [{ artifact_type: "RMA", value: "x" }] }],
+      records: [{ returnRecordId: "rec-1", artifacts: [{ artifactType: "RMA", value: "x" }] }],
     }),
   ]);
 
