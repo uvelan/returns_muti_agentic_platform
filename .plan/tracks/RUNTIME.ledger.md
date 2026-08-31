@@ -373,3 +373,100 @@ Temporary probe file `tests/test_zz_probe.py`, used in steps 3–4, was deleted;
 tree is clean apart from the test module.
 
 Next step: the allowlist.
+
+---
+
+## Step 5 — the allowlist entry is deleted, and the deletion is verified both ways
+
+Files touched: `scripts/ci/known_test_failures.json`.
+
+`suites.backend.known_failures` is now `[]`. The `$comment` is rewritten rather than
+left describing an entry that is gone — a stale comment on a self-pruning list is the
+next person's wrong mental model.
+
+`assert_known_failures.py:88` reads `known_failures` with a `.get(..., [])` default
+and `allowed` is then an empty set, so every failure is `unexpected` and the job
+fails on any of them. An empty list is the correct, strictest state; nothing needed
+to change in the script.
+
+### The CI allowlist self-test still passes
+
+```
+$ python scripts/ci/test_assert_known_failures.py
+...
+  [ok  ] rejects a missing report
+
+all negative controls passed
+```
+
+### And the gate is load-bearing, checked in both directions
+
+Against the real JUnit report from the fixed suite:
+
+```
+$ python scripts/ci/assert_known_failures.py --suite backend --report /tmp/after.xml
+5249 tests ran, 0 failed, 0 allowlisted
+only the 0 known, still-failing tests failed
+exit=0
+```
+
+Against the real JUnit report from the *base tip* — the exact run the deleted entry
+used to excuse:
+
+```
+$ python scripts/ci/assert_known_failures.py --suite backend --report /tmp/before.xml
+5244 tests ran, 1 failed, 0 allowlisted
+::error::NEW FAILURE (not on the allowlist): tests.test_cumulative_support_outcomes::test_a_rejected_return_still_opens_no_work_item
+exit=1
+```
+
+The second is the one that matters: the list no longer excuses anything, and the
+entry could not be quietly re-added without that failure returning.
+
+### Full backend suite, before and after
+
+Measured by checking the two changed files back to `02f8d45e`, running, and
+restoring — so the only difference between the two runs is this branch's diff.
+
+Before (base tip):
+
+```
+$ PYTHONPATH=...\src ...python.exe -m pytest -q --junitxml=/tmp/before.xml
+FAILED tests/test_cumulative_support_outcomes.py::test_a_rejected_return_still_opens_no_work_item
+1 failed, 5232 passed, 11 skipped, 514 deselected, 2 warnings in 250.07s (0:04:10)
+```
+
+After:
+
+```
+$ PYTHONPATH=...\src ...python.exe -m pytest -q --junitxml=/tmp/after.xml
+5238 passed, 11 skipped, 514 deselected, 2 warnings in 255.06s (0:04:15)
+```
+
+`5232 + 1 = 5233` before, `5238` after: the one red is green and five tests are new.
+The 11 skips and 514 deselections are unchanged — no test was skipped, xfailed,
+weakened or deleted.
+
+### Lint
+
+```
+$ python -m ruff check .
+All checks passed!
+$ python -m ruff format --check .
+1159 files already formatted
+```
+
+### Rule 13 — the gate that runs every guard added here
+
+Everything added is in `backend/tests/test_cumulative_support_outcomes.py`, which has
+no marker, so `pytest_collection_modifyitems` puts it in the **normal** suite. The
+default run is `-m "not live_infra and not browser"` (`pyproject.toml:139`), which
+*selects* it. `checks.yml:244` runs that suite on every push and then hands the
+report to `assert_known_failures.py --suite backend`, which now allows nothing.
+
+So: **CI-gated, not live-infra-gated.** All five new tests are in the 5238 above and
+in the 5249 the gate counted. The allowlist change is itself gated twice — by
+`checks.yml:103` (the self-test) and by `checks.yml:244` (the real report).
+
+Nothing added here is behind a `live_infra` marker, and nothing added here is
+ungated.
