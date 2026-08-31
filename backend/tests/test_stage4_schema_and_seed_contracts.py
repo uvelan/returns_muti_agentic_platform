@@ -7,12 +7,12 @@ from pathlib import Path
 
 from return_platform.data_platform.schema_registry import load_schema_registry
 from return_platform.operations.seed_manifest import (
-    effective_seed_counts,
     SEED_SCENARIOS,
     SOURCE_CUSTOMERS_DATASET,
     SOURCE_PRODUCTS_DATASET,
     SOURCE_SALES_DATASET,
     SOURCE_SHIPMENTS_DATASET,
+    effective_seed_counts,
     materialize_domain_seed,
     scenario_counts,
 )

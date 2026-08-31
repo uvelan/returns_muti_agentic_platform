@@ -7,7 +7,6 @@ is what is under test, not the driver.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -217,7 +216,7 @@ async def test_field_mapping_renames_the_stored_keys() -> None:
 
 @pytest.mark.asyncio
 async def test_lookup_by_every_identifier() -> None:
-    store, collection = _store()
+    store, _collection = _store()
     await store.seed(_seed(return_method="BRANCH_LTL", tracking_reference="PRO-7",
                            bol_reference="BOL-7", rma_reference="RMA-7",
                            case_id="case-7", return_record_id="rec-7"))

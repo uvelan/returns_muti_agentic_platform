@@ -27,11 +27,11 @@ from return_platform.operations.case_commands import (
 from return_platform.operations.review_aggregate import (
     CASE_REVIEWS,
     DRAFT_EDIT_ACTOR_INDEX,
+    EMPTY_REPLY_BODY_GAP_REASON,
     REVIEW_DRAFT_EDITS,
     REVIEW_SCOPE_INDEX,
     SYSTEM_ACTOR,
     TERMINAL_REVIEW_STATES,
-    EMPTY_REPLY_BODY_GAP_REASON,
     ApprovedPayloadHashMismatchError,
     EmptyReplyBodyError,
     PendingRevisionError,
