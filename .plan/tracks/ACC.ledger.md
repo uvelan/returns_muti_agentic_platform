@@ -1039,3 +1039,82 @@ coverage (grep: no occurrence of `review` in the file). That build is
 substantial, and per rule 13 it is worth saying what would gate it: **nothing in
 CI**, since `addopts` deselects `live_infra` and the workflow runs plain
 `pytest tests`.
+
+---
+
+## step:10 — AMENDMENT-9 recorded; items 15/16 live, and a broken live suite found
+
+Trunk merged. **AMENDMENT-9** defers item 18's "classified before any new
+outbound send" half and corrects §7's scoping line as an ambiguity rather than a
+ruling. ACC's checkable assertion stands as the deferral's guard; the tally now
+records item 18 as **half green, half deferred**, citing AMENDMENT-9.
+
+**Confirmed after the merge:** all default acceptance tests are still in the
+default suite — `36 collected, 2 deselected`, the two being the new live module.
+
+### ⚠ The finding that came before any new test
+
+Running `tests/test_return_case_workflow_real_infra.py` — the file whose gap I
+had named — gives **12 failures of 13**:
+`NotFoundError: Activity function record_template_draft ... is not registered on
+this worker`. Its `_Probe` predates V1's gate and never gained the five gate
+activities; `workflows/worker.py` registers all five. **Production is correct;
+the harness is stale**, and has been since V1 phase 2 merged.
+
+**It has happened before.** That file's last commit is `5b7d60f6 fix(tests):
+stale workflow doubles wedged the live-infra suite, silently` (2026-08-23). Same
+defect, fixed once, recurred, because nothing runs the suite. Rule 13's sharpest
+instance on this run: a guard repaired for having no gate, which then broke again
+the same way. **Reported, not repaired** — another slice's file, and ACC owns
+additions. The fix is one edit: add the five activities to `_Probe` and `all()`.
+
+**Consequence for the gate:** "all 26 items green against live infra" cannot be
+asserted from a live suite in this state, independently of anything ACC writes.
+
+### Items 15 and 16, live
+
+New module carries its own complete probe with the five gate activities **real**,
+over a real Mongo database and real Temporal. Item 15: the worker is killed with
+the gate open and an autosave written; after the restart the review map and the
+remaining timeout are unchanged (asserted *equal*), the draft is still `OPEN` at
+the same version, the edit row survives, and the resumed worker does not
+re-draft. Item 14's workflow half comes with it — `execution_state` is queryable
+and correct after the restart. Item 16: the approval is performed by a process
+that did not create the draft; one message, one delivery identity, `SENT`.
+
+### Injections, including three misses worth more than the hits
+
+| # | fault | result |
+| --- | --- | --- |
+| INJ-15a | resumed deadline ignored | **MISS** — a kill is not a `continue_as_new`; the replacement worker *replays*, so that path is never taken |
+| INJ-15b | `execution_state` drops the review wait | 1 failed, 1 passed |
+| INJ-16a | the gate's `SENT` short-circuit removed | **MISS twice**, then reds after the scenario was rebuilt |
+| INJ-16b / 16c | signal dedupe removed; both guards removed together | 2 passed |
+
+**INJ-15a's miss is recorded as a limit, not smoothed over.** For a worker kill,
+most of item 15's claims hold by Temporal's replay and are close to unfalsifiable
+by an edit inside the workflow. What INJ-15b proves is narrower and still worth
+having: the deployment's wiring — activities registered, gate reachable, state
+correct after the process is gone. Claiming more would be claiming the
+framework's guarantee as the platform's.
+
+**INJ-16a found a scenario that could not fail, twice.** Approve-once-count-one
+is a count of the send that was requested. Signalling twice did not help either —
+green under both guards removed *together*, because by then the gate has closed
+and no wait exists to wake, so nothing reaches the code that decides to post
+again. Diagnosed rather than guessed. Only calling `deliver_approved` again
+directly puts a real second delivery in front of the guard that owns the
+guarantee, and INJ-16a then reds.
+
+**Two latent races, one masking the other.** `reached()` fires when an activity
+starts, not when it finishes; and `template_review_deadline_iso` is set after the
+draft activity returns. Fixing the first exposed the second. Both replaced with
+waits on the thing actually wanted.
+
+**Commands:** acceptance live → **2 passed**; acceptance default → 34 collected,
+none live-classified; full default suite → **5220 passed, 1 failed, 10 skipped,
+514 deselected** — the allowlisted failure, **zero new**. `ruff` clean.
+
+**Still unexecuted, and not claimed:** item 17's relay half, item 20 (deploy
+replay across both patch branches), item 14's HTTP panel composition, and items
+1-9 / 11-12 / 24-25 as previously recorded.
