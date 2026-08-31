@@ -579,3 +579,63 @@ message a Support-desk person reads.
 **Production is correct and defended twice.** This is a coverage finding only.
 
 Reverted; `git diff -- backend/src/` empty; renderer + configuration `332 passed`.
+
+---
+
+## step:07 — item 17's relay half. The named test does not test the named guarantee.
+
+Baseline: `37 passed in 2.66s`.
+
+Phase 2's lesson applied first: does the scenario put a **real** duplicate in
+front of the guard? `test_the_transcript_entry_is_appended_once_across_a_redelivery`
+does call `_analyse` twice — a genuine second delivery of the classify command,
+the right shape, not a second signal into a closed gate. So the shape is fine.
+The question is *which* guard the duplicate lands on.
+
+### INJ-B16 — the real append-once guard removed
+
+`operations/return_support/relay.py:163`,
+`if any(str(item.get("entryId")) == entry_id for item in existing): return False`
+disabled. This is the mechanism the docstring credits: *"Append-once is the
+adapter's contract (the entry id is derived from the event and the record), so a
+redelivered classify command appends nothing new."*
+
+```
+--- the file STATUS names, alone ---
+22 passed in 2.67s
+--- plus the relay adapter's own suite ---
+FAILED tests/operations/test_support_relay_and_wiring.py::test_the_same_entry_is_appended_once_however_often_it_is_delivered
+1 failed, 36 passed in 3.03s
+```
+
+**The test STATUS names for item 17's relay half stays green with the production
+append-once guard deleted.** It drives `_RecordingRelay`
+(`tests/operations/test_support_message_classification.py:164`), a double that
+implements *its own* dedupe on `(support_event_id, return_record_id, entry_kind)`.
+The second delivery is real, but the guard it meets is the double's, not
+production's.
+
+The guarantee **is** pinned — by
+`test_the_same_entry_is_appended_once_however_often_it_is_delivered` in
+`tests/operations/test_support_relay_and_wiring.py`. Fifth file in this audit
+that holds a guarantee its category-B row does not name.
+
+### INJ-B17 — what the named test *does* pin
+
+`message_classification.py:700`, `if wrote: appended += 1` → count every call.
+
+```
+FAILED tests/operations/test_support_message_classification.py::test_the_transcript_entry_is_appended_once_across_a_redelivery
+1 failed, 21 passed in 3.03s
+```
+
+**CAUGHT.** So the named test is not vacuous: it pins that `relayed_entries`
+reports *writes* rather than *calls* — which is the propagation half, and is
+what makes `second.relayed_entries == 0` meaningful. It simply is not the test
+of "appended once"; that lives one layer down.
+
+### Verdict
+
+Item 17's relay half → **A**, by the two tests together. The correction is to the
+pointer, not to the coverage: read literally, STATUS credits the guarantee to a
+test that survives the guarantee's removal.
