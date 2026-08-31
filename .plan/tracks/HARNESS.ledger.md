@@ -834,3 +834,103 @@ orchestrator decision.
    bounded rather than diagnosed. Provenance unestablished.
 4. **The suite has still never been run to completion.** 29 of 71 modules is what
    exists. No one should quote a live-suite result until it has.
+
+---
+
+## step:11 â€” three corrections to my own record
+
+Step:09 and step:10 contain claims that are wrong. Correcting them here, per the
+same append-only discipline step:07 applied to RV's findings: the original text
+keeps its wording, and this is the corrected record.
+
+### 11.1 â€” the hung process was killed by the orchestrator, not by me
+
+Step:09 recorded that I could not terminate the hung
+`test_order_line_reservations_real_infra.py` process (PIDs 27660 and 28092)
+because the permission system refused `Stop-Process` and the bash `kill` could
+not map the Windows PID. That much is accurate.
+
+What happened next is not what I reported. I later observed the loop had advanced
+past module 30 and offered "my `kill -9` may have landed after all" as the
+explanation. **That is wrong.** The orchestrator verified both processes â€” started
+16:07:30, idle since â€” and **killed them from outside this session.** That is what
+released the loop.
+
+The wrong explanation is worse than a missing one. A delayed signal is not a
+thing that happens here, and leaving that sentence in the record would teach a
+future reader to expect one. **An orchestrator action is an event in the run and
+belongs in the record as an event**, not as an unexplained process death
+back-filled with the most convenient local cause.
+
+The orchestrator also notes it intervened in a run it believed had already ended,
+on the strength of my incorrect report in 11.2. No harm resulted. It is recorded
+because the cause of the intervention was my error, not its own.
+
+### 11.2 â€” "the run was terminated at 29 modules" is retracted
+
+Step:09 states the suite run "did not finish", completed "29 of 71 modules" and
+was "terminated at the timeout". **The run was never terminated.** It was still
+executing the whole time, and reached module 40 while this entry was being
+written.
+
+What I actually did: read a 0-byte harness task-output file, read a log snapshot
+showing 29 modules, saw a background *waiter* task report `killed`, and concluded
+the run had died. The waiter was one of my own polling loops. The 0-byte file was
+the launcher's stdout, which is empty by construction because the run redirects
+its own output to a log. **Two instruments, neither of them pointed at the run,
+both read as evidence about the run.**
+
+This is the same family as measuring against the wrong `src`, recorded in
+step:08's environment note: **an instrument pointed at the wrong artifact reports
+confidently and wrongly.** It does not return an error, and nothing in the reading
+says which artifact it came from. Both times the tell was available â€” the log's
+own mtime was current â€” and both times I did not check it before drawing a
+conclusion.
+
+The correct statement of module 30: it produced **no summary line at all**. The
+loop recorded it as a failure whose "summary" is its last non-empty output, a row
+of progress dots â€” which is precisely the case step:10's timeout handling was
+written for, and precisely the case run 1 is too old to have handled.
+
+### 11.3 â€” I edited the script while it was executing, having written that I would not
+
+Step:09 says, of the missing per-module timeout: *"Not implemented in this step,
+because the script was being executed by a live bash process throughout â€” bash
+reads a script incrementally and editing it mid-run corrupts the loop."*
+
+Step:10 then edited that file while run 1 was still executing it. I believed run 1
+had ended, on the strength of 11.2. **The reasoning in step:09 was right and I
+overrode it with a bad reading rather than a better argument.**
+
+The mechanics, precisely, because the general rule is worth more than this
+instance:
+
+- Bash parses a **compound statement whole** before executing it. The entire
+  per-module `for` loop is one compound statement, so run 1 is executing the
+  pre-step:10 loop body from memory. That is consistent with what was observed:
+  run 1 hung on module 30 with no ceiling, which is exactly the version without
+  the timeout.
+- Bash re-reads the file **by byte offset** for top-level commands *after* that
+  compound statement. Step:10 changed the byte length of the file above the
+  summary block. **So run 1's final summary block may be read from shifted or
+  edited bytes and cannot be trusted.**
+
+Consequences, split by what is and is not affected:
+
+- **Safe:** every per-module result line already in the log. Each is pytest's own
+  output from its own process, written before any edit and never re-read.
+- **Suspect:** run 1's own aggregate summary, which is the exact property step:08
+  was asked to prove.
+
+**Mitigation:** the aggregate for run 1 is computed from the log rather than
+quoted from the script's summary. And the honest consequence is stated rather
+than worked around: **run 1 cannot serve as the proof of the aggregate property**,
+even if its numbers come out fine. That proof rests on step:08's and step:10's
+injections, which ran to completion against files nobody was editing.
+
+**The rule, which is the part worth keeping:** *a running script is a live
+artifact, and editing it is editing a process.* Not a file that a process happens
+to have read â€” one it is still reading. The safe move was the one step:09 had
+already identified and I talked myself out of.
+
+**Next step:** step:12 â€” run 1's completion, reported from the log.
