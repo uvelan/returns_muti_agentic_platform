@@ -133,6 +133,11 @@ function fact(
     factName: name,
     value,
     agentId: "bay-assignment-agent",
+    // No actor: these are observations, not command-originated facts. Written
+    // longhand rather than left to `overrides`, because a field supplied only
+    // by the `Partial<>` spread is typed optional and `CaseFactProjection`
+    // requires it.
+    actorId: null,
     channel: "SYSTEM",
     acquisitionMethod: "DERIVED",
     sourceSystem: "RETURN_CASE_WORKFLOW",
