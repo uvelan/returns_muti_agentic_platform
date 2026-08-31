@@ -436,7 +436,9 @@ async def _command_count(mongo: FakeClient) -> int:
 @pytest.mark.parametrize(
     ("label", "case", "facts"),
     [
-        pytest.param("another_tenant", _case_document(tenant_id="tenant-b"), None, id="another_tenant"),
+        pytest.param(
+            "another_tenant", _case_document(tenant_id="tenant-b"), None, id="another_tenant"
+        ),
         pytest.param("missing_case", _MISSING, None, id="missing_case"),
         pytest.param("never_asked", None, [], id="never_asked"),
     ],
@@ -480,9 +482,7 @@ def test_a_refused_answer_records_no_command(
     else:  # pragma: no cover - the fixture always yields
         raise AssertionError("the client fixture yielded nothing")
 
-    assert asyncio.run(_command_count(mongo)) == 0, (
-        f"{label}: the refusal left a command on file"
-    )
+    assert asyncio.run(_command_count(mongo)) == 0, f"{label}: the refusal left a command on file"
 
 
 async def _only_command(mongo: FakeClient) -> dict[str, Any]:

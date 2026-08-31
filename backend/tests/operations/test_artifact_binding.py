@@ -251,9 +251,7 @@ class TestBoundPersistence:
         neighbour is asserted as well: a customer's tracking number appearing
         on someone else's return is the business failure being excluded.
         """
-        store = _RecordStore(
-            [_record("rec-1", "RMA-1"), _record("rec-2", "RMA-2")]
-        )
+        store = _RecordStore([_record("rec-1", "RMA-1"), _record("rec-2", "RMA-2")])
         assert await _persist(_bound(_tracking("TRK-9"), "rec-2"), store)
         assert store.updates == [("rec-2", {"trackingReference": "TRK-9"})]
         assert store.records[0]["trackingReference"] is None, (
@@ -270,9 +268,7 @@ class TestBoundPersistence:
         fallback would pick the record the decision meant anyway. With two, a
         silent fallback is a mis-assignment, so the raise is load-bearing.
         """
-        store = _RecordStore(
-            [_record("rec-1", "RMA-1"), _record("rec-2", "RMA-2")]
-        )
+        store = _RecordStore([_record("rec-1", "RMA-1"), _record("rec-2", "RMA-2")])
         with pytest.raises(LookupError):
             await _persist(_bound(_tracking("TRK-9"), "rec-404"), store)
         assert store.updates == []

@@ -21,6 +21,7 @@ from return_platform.configuration.return_configuration import load_return_confi
 from return_platform.configuration.support_template_configuration import (
     SupportTemplateConfiguration,
 )
+from return_platform.operations.case_projection.contract import ReturnRecordProjection
 from return_platform.operations.support_handoff import (
     SupportHandoffBay,
     SupportHandoffCustomer,
@@ -30,7 +31,6 @@ from return_platform.operations.support_handoff import (
     SupportHandoffReturn,
     compose_support_handoff,
 )
-from return_platform.operations.case_projection.contract import ReturnRecordProjection
 from return_platform.operations.support_template_draft import (
     SNAPSHOT_KEYS,
     fact_log_projection,
