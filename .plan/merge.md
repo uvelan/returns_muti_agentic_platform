@@ -189,7 +189,9 @@ This is precisely rule 13's shape and I wrote it: **a gate whose green nobody ha
 
 **One precision the comparison does not support, and the record should not imply it:** the two files are **not** interchangeable in content — a developer `.env` carries ~11 extra live-infra and host-port keys. What is established is that the **normal suite's outcome** is the same either way, which is all CI needs, since CI only ever sees `.env.example`.
 
-Byte-identical, down to the single allowlisted failure and the exit code the allowlist step then passes. `Settings` accepts the placeholders, and the normal suite has live-infra deselected so nothing dials a real service.
+**The same outcome** — down to the single allowlisted failure and the exit code the allowlist step then passes. (This said "Byte-identical", sitting immediately after the paragraph that disclaims interchangeability; the two sentences contradicted each other on a careless read, and the weaker one is the true one.) `Settings` accepts the placeholders, and the normal suite has live-infra deselected so nothing dials a real service.
+
+**Measured precisely, since "~11 extra keys" was itself approximate:** `.env.example` carries 124 keys, a working `.env` 135; **exactly 11** are env-only and **zero** are example-only. The example is a strict subset — which is the actual reason copying it suffices, and a stronger statement than the outcome comparison alone supports.
 
 **Both alternatives I proposed were rejected on evidence, and the first rejection is the one worth keeping.** A committed `.env.ci` is ignored by `.gitignore:31`'s `.env.*` rule — and the comment above that rule records *why it exists*: `backend/.env.vault-backup` once carried a live provider key into git history and was caught by push protection. Adding `!.env.ci` would **punch a hole in a guard installed after a real credential incident, to solve a problem a tracked file already solves.** A degrading conftest was rejected too: the raise is a deliberate guard making a missing `.env` loud rather than letting tests run against silent defaults, so copying satisfies it honestly while degrading weakens it — rule 13 in spirit.
 
