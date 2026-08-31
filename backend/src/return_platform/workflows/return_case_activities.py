@@ -36,6 +36,9 @@ from return_platform.configuration.return_configuration import (
     ReturnPlatformConfiguration,
     build_return_method_requirement_table,
 )
+from return_platform.configuration.support_resolver_configuration import (
+    SupportResolverConfiguration,
+)
 from return_platform.operations.business_calendar import (
     BusinessCalendar,
     WorkingPeriod,
@@ -64,6 +67,20 @@ from return_platform.operations.order_lines.reservations import (
 )
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_issuance import ReturnRecordStorePort
+from return_platform.operations.return_support.clarification import (
+    ClarificationAnswer,
+    deadline_after_clarification,
+)
+from return_platform.operations.return_support.clarification import (
+    # Aliased: the two activity methods below carry the contract's names
+    # (sect. 10) and would otherwise shadow the functions they wrap. An alias is
+    # cheaper than either renaming an activity away from its contract name or
+    # relying on Python's class-body scoping to tell them apart.
+    record_clarification_answer as write_clarification_answer_fact,
+)
+from return_platform.operations.return_support.clarification import (
+    relay_clarification_to_support as post_clarification_answer_to_support,
+)
 from return_platform.operations.review_aggregate import (
     SYSTEM_ACTOR,
     PendingRevisionError,
@@ -110,6 +127,10 @@ from return_platform.workflows.case_policy_facts import (
 from return_platform.workflows.return_case_workflow import (
     BayResultNotice,
     CaseEligibilityOutcome,
+    ClarificationAnswerInput,
+    ClarificationAnswerResult,
+    ClarificationRelayInput,
+    ClarificationRelayView,
     DraftSupportRequestInput,
     EvaluateCaseEligibilityInput,
     HoldUnsettledReviewsInput,
@@ -1776,6 +1797,106 @@ class ReturnCaseActivities:
             actor_id=request.actor_id,
             note=request.note,
             fact_id_seed=request.fact_id_seed,
+        )
+
+    @activity.defn(name="record_clarification_answer")
+    async def record_clarification_answer(
+        self, request: ClarificationAnswerInput
+    ) -> ClarificationAnswerResult:
+        """The associate's answer, on the case, and the deadline it earns.
+
+        Contracts.md sect. 9, 10. A thin durable wrapper: everything worth
+        testing lives in `operations/return_support/clarification.py` and is
+        tested without a Temporal environment, which is the arrangement
+        `artifact_binding.py` and `message_classification.py` both follow.
+
+        **The deadline decision is made here rather than in the workflow**, and
+        by the pure function that already implements it. The workflow resolves
+        both instants -- it must, they come from the business calendar through
+        `resolve_business_deadline` -- and hands them over; `deadline_after_
+        clarification` decides between them against the released
+        `clarification_resets_deadline`. Spelling that `max(...)` a second time
+        workflow-side is how one released switch acquires two meanings, and the
+        workflow may not import `operations` in any case.
+
+        `recorded=False` means the append-once path absorbed a redelivery. That
+        is a success: the fact is on the case either way.
+        """
+        recorded = await write_clarification_answer_fact(
+            ClarificationAnswer(
+                clarification_id=request.clarification_id,
+                case_id=request.case_id,
+                support_event_id=request.support_event_id,
+                verbatim_question=request.verbatim_question,
+                answer_text=request.answer_text,
+                actor_id=request.actor_id,
+                resolution_choice=request.resolution_choice,
+                return_record_id=request.return_record_id,
+            ),
+            append_scoped_fact_once=self.append_scoped_fact_once,
+        )
+        resumed: str | None = None
+        if request.current_deadline_iso is not None and request.refreshed_deadline_iso is not None:
+            resumed = deadline_after_clarification(
+                current_deadline_iso=request.current_deadline_iso,
+                refreshed_deadline_iso=request.refreshed_deadline_iso,
+                resets=self._clarification_resets_deadline(),
+            )
+        return ClarificationAnswerResult(recorded=recorded, resumed_deadline_iso=resumed)
+
+    def _clarification_resets_deadline(self) -> bool:
+        """The released switch, read per call.
+
+        Defaults to the *configuration model's* default rather than to a literal
+        when no configuration is available in this process: a value invented
+        here would be a second place the default lives, and the two would drift
+        the first time one moved.
+        """
+        configuration = self._configuration() if self._configuration is not None else None
+        if configuration is None:
+            return SupportResolverConfiguration().clarification_resets_deadline
+        return configuration.support_resolver.clarification_resets_deadline
+
+    @activity.defn(name="relay_clarification_to_support")
+    async def relay_clarification_to_support(
+        self, request: ClarificationRelayInput
+    ) -> ClarificationRelayView:
+        """Send the answer back to Support (contracts.md sect. 9, 10).
+
+        Down the **same** `ensure_case_support_thread` + `post_support_message`
+        pair the reply gate uses -- sect. 7's own instruction, and the reason is
+        that each additional posting path is another chance to get the dedupe
+        identity wrong.
+
+        `tenant_id` and `principal_id` are the case's own, read from the case
+        document exactly as `record_support_outcome` reads them when it issues a
+        return. The disclosure line rides the release, so an answer the platform
+        relayed cannot be read as one Support's own desk wrote.
+        """
+        case = await self._repository.get_case(request.case_id) or {}
+        configuration = self._configuration() if self._configuration is not None else None
+        relayed = await post_clarification_answer_to_support(
+            ClarificationAnswer(
+                clarification_id=request.clarification_id,
+                case_id=request.case_id,
+                support_event_id=request.support_event_id,
+                verbatim_question=request.verbatim_question,
+                answer_text=request.answer_text,
+                actor_id=request.actor_id,
+                resolution_choice=request.resolution_choice,
+                return_record_id=request.return_record_id,
+            ),
+            tenant_id=str(case.get("tenantId") or ""),
+            principal_id=str(case.get("principalId") or ""),
+            disclosure=(
+                None if configuration is None else configuration.support_ingress.agent_disclosure
+            ),
+            threads=self._support,
+        )
+        return ClarificationRelayView(
+            delivery_id=relayed.delivery_id,
+            message_id=relayed.message_id,
+            absorbed=relayed.absorbed,
         )
 
     @activity.defn(name="hold_unsettled_reviews")

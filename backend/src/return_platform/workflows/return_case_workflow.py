@@ -174,10 +174,28 @@ _PATCH_STRUCTURED_SUPPORT_DRAFT: Final = "support-draft-returns-structured-paylo
 _PATCH_SUPPORT_TEMPLATE_REVIEW_GATE: Final = "support-template-review-gate"
 
 #: V3's activity name for answering a clarification (contracts.md sect. 10).
-#: **Declared, never implemented here.** The gate accepts the signal so V3's
-#: first delivery does not meet an unknown handler; writing the answer is V3's,
-#: and a second implementation would be a second record of one answer.
+#: Declared by V1 phase 2 so V3 would find the seam rather than build a parallel
+#: path; V3 phase 2 implemented the handler against it.
 _V3_CLARIFICATION_ACTIVITY: Final = "record_clarification_answer"
+
+#: `clarification_answered` went from an empty handler to two activity calls.
+#:
+#: **A new activity call is a replay hazard in a way a new activity is not**, and
+#: the hazard here is specific: a history that received this signal while the
+#: handler was empty recorded the signal and no activity calls. Replayed against
+#: code that makes two, the sequences disagree and the execution fails.
+#:
+#: That population is not hypothetical enough to wave through. The sender --
+#: `POST .../clarifications/{id}/answer` -- **is** mounted in `main.py`, so any
+#: deployment carrying V1 phase 2 could have taken an answer and signalled it.
+#: The marker is what makes such a history keep the behaviour it recorded (the
+#: notice is accepted and acted on nowhere, exactly as it was), while every
+#: execution from here on runs the round-trip.
+#:
+#: Same reasoning as `_PATCH_SUPPORT_TEMPLATE_REVIEW_GATE`, and the same answer:
+#: where a configuration pin would leave a window between publishing a release
+#: and deploying the code, a history marker has no window.
+_PATCH_V3_CLARIFICATION_ROUND_TRIP: Final = "v3-clarification-round-trip"
 
 #: Review states the wait loop stops waiting on. `DELIVERY_FAILED` and
 #: `HELD_FOR_OPERATIONS` are **settled for the gate** and unsettled for
@@ -675,21 +693,36 @@ class TemplateReviewNotice:
 
 @dataclass(frozen=True, slots=True)
 class ClarificationAnsweredNotice:
-    """V3's signal, declared here and **not implemented** (brief item 3).
+    """V3's signal (contracts.md sect. 7, 9).
 
-    The gate has to accept it to be a complete signal surface -- a workflow
-    that rejected an unknown signal name would fail V3's first delivery -- but
-    answering a clarification is V3's activity (`record_clarification_answer`,
-    contracts.md sect. 10) and V1 must not write a second one. The handler
-    records the id and does nothing else; the activity name is declared in
-    `_V3_CLARIFICATION_ACTIVITY` so V3 finds the seam rather than inventing a
-    parallel path.
+    Declared by V1 phase 2 with an empty handler and the activity name recorded
+    in `_V3_CLARIFICATION_ACTIVITY`, so that V3 would find the seam rather than
+    build a parallel path. V3 phase 2 implemented it.
+
+    **The question travels with the answer**, and does not get re-read at relay
+    time. `ClarificationAnswer` in `operations/return_support/clarification.py`
+    states the reason: a support thread carries several open questions at once,
+    and an answer paired with whichever question the reader last remembers is
+    worse than no answer at all.
+
+    Every field the handler needs is present, with the four V3 added defaulted
+    -- a signal is a wire contract, and a notice recorded by an older sender
+    must still deserialize rather than fail the delivery.
     """
 
     clarification_id: str
     actor: str
     signal_id: str
     answer: str | None = None
+    #: The support event whose question this answers. Empty only for a notice
+    #: sent before V3 phase 2 widened this payload.
+    support_event_id: str = ""
+    verbatim_question: str = ""
+    #: `map` or `reject` for an unmatched-artifact clarification, `None` for a
+    #: plain question. A closed set decided by the endpoint, never derived from
+    #: the answer text.
+    resolution_choice: str | None = None
+    return_record_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -771,6 +804,77 @@ class HoldUnsettledReviewsResult:
     """
 
     held_review_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class ClarificationAnswerInput:
+    """What `record_clarification_answer` is given (contracts.md sect. 9, 10).
+
+    Carries **both** deadlines because the choice between them is a released
+    decision (`support_resolver.clarification_resets_deadline`) implemented once,
+    as the pure `deadline_after_clarification`, in `operations/return_support/
+    clarification.py`. The workflow may not import that module -- keeping
+    `operations` out of the Temporal sandbox is the rule this file already
+    follows for `review_aggregate` -- and re-spelling `max(...)` here would be
+    the second implementation that makes a released switch stop meaning one
+    thing. So the workflow resolves both instants deterministically, through
+    `resolve_business_deadline`, and the activity decides between them.
+
+    `refreshed_deadline_iso` is `None` when the gate is not open: there is no
+    deadline to reset, and passing one would invent a wait nobody is in.
+    """
+
+    case_id: str
+    clarification_id: str
+    support_event_id: str
+    verbatim_question: str
+    answer_text: str
+    actor_id: str
+    resolution_choice: str | None = None
+    return_record_id: str | None = None
+    current_deadline_iso: str | None = None
+    refreshed_deadline_iso: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ClarificationAnswerResult:
+    """What the answer came to, and which deadline the wait resumes on.
+
+    `recorded` is `False` on a redelivery the append-once path absorbed. That is
+    a **success**, not a failure -- the fact is on the case either way -- and it
+    is returned rather than swallowed so a replay can be told apart from a first
+    write.
+    """
+
+    recorded: bool
+    resumed_deadline_iso: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ClarificationRelayInput:
+    """What `relay_clarification_to_support` is given (contracts.md sect. 9)."""
+
+    case_id: str
+    clarification_id: str
+    support_event_id: str
+    verbatim_question: str
+    answer_text: str
+    actor_id: str
+    resolution_choice: str | None = None
+    return_record_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ClarificationRelayView:
+    """The relayed message's delivery identity, for the workflow's history.
+
+    `absorbed` is the receiver's dedupe answering, and it is a success: sect. 7's
+    whole delivery design is that a retry reusing the identity is taken once.
+    """
+
+    delivery_id: str
+    message_id: str
+    absorbed: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1533,16 +1637,104 @@ class ReturnCaseWorkflow:
         )
 
     @workflow.signal(name="clarification_answered")
-    def clarification_answered(self, notice: ClarificationAnsweredNotice) -> None:
-        """V3's, and **a stub on purpose** -- see `_V3_CLARIFICATION_ACTIVITY`.
+    async def clarification_answered(self, notice: ClarificationAnsweredNotice) -> None:
+        """V3's, implemented into the seam V1 phase 2 left for it.
 
-        Accepted so V3's first delivery meets a handler rather than an unknown
-        signal name, recorded so the answer is not lost, and acted on nowhere:
-        writing it is `record_clarification_answer`, which is V3's activity.
-        Implementing it here would be a second record of one answer.
+        V1 declared this handler and deliberately left the body empty, with
+        `_V3_CLARIFICATION_ACTIVITY` naming the activity so V3 would "find the
+        seam rather than inventing a parallel path". This is that body: the two
+        activities sect. 10 enumerates, in order, and then the released deadline
+        decision.
+
+        **Async, and that is deliberate.** Every other signal here records into
+        state for the main loop to drain, and that shape is right for a review
+        notice -- which only means anything while the gate is open. A
+        clarification answer is not like that: the fact and the relay to Support
+        are owed **whether or not any review is waiting**, and a case whose gate
+        had already closed would otherwise record an answer nothing ever drains.
+        `_await_template_reviews` already waits on
+        `workflow.all_handlers_finished()` before `continue_as_new`, so an
+        in-flight handler is a shape this workflow was already built for.
+
+        **Ordered fact-then-relay, never the reverse.** The fact is the case's
+        own record of what the associate said; the relay puts those words in
+        front of Support. Relaying first would open a window in which Support
+        has been told something the case cannot show it ever decided -- and the
+        relay is the irreversible half, so it must be the *later* one.
+
+        Idempotent throughout: the signal is deduped on `signal_id`, the fact is
+        append-once on the clarification id, and the relay reuses a derived
+        delivery identity the receiver absorbs.
         """
-        if self._accept_template_signal(notice.signal_id):
-            self._state.clarification_answers.append(notice)
+        if not self._accept_template_signal(notice.signal_id):
+            return
+        self._state.clarification_answers.append(notice)
+        if not workflow.patched(_PATCH_V3_CLARIFICATION_ROUND_TRIP):
+            # A history recorded while this handler was empty. It holds the
+            # notice and no activity calls, and replaying two into it would
+            # break the execution. Recording and stopping is precisely what it
+            # observed. See `_PATCH_V3_CLARIFICATION_ROUND_TRIP`.
+            return
+        workflow_input = self._require_input()
+        timings = workflow_input.timings
+
+        # Resolved *before* either activity runs, and only while a wait is
+        # actually open. Both instants come from `resolve_business_deadline`, so
+        # the workflow contributes no clock reading of its own and a replay
+        # returns the same two values.
+        #
+        # **Both or neither.** With the gate closed there is no deadline to
+        # reset, and sending the stored instant on its own would put a stale
+        # deadline in the activity's hands for no reason -- the activity's guard
+        # would ignore it today, which is exactly the kind of "harmless" input
+        # that stops being harmless when the guard is next edited.
+        current: str | None = None
+        refreshed: str | None = None
+        if self._state.template_review_open and self._state.template_review_deadline_iso:
+            current = self._state.template_review_deadline_iso
+            refreshed = (
+                await self._business_deadline(timings, timings.template_review_wait_seconds)
+            ).isoformat()
+
+        answer: ClarificationAnswerResult = await workflow.execute_activity(
+            "record_clarification_answer",
+            ClarificationAnswerInput(
+                case_id=workflow_input.case_id,
+                clarification_id=notice.clarification_id,
+                support_event_id=notice.support_event_id,
+                verbatim_question=notice.verbatim_question,
+                answer_text=notice.answer or "",
+                actor_id=notice.actor,
+                resolution_choice=notice.resolution_choice,
+                return_record_id=notice.return_record_id,
+                current_deadline_iso=current,
+                refreshed_deadline_iso=refreshed,
+            ),
+            result_type=ClarificationAnswerResult,
+            start_to_close_timeout=_PERSIST_TIMEOUT,
+            retry_policy=_PERSIST_RETRY,
+        )
+        await workflow.execute_activity(
+            "relay_clarification_to_support",
+            ClarificationRelayInput(
+                case_id=workflow_input.case_id,
+                clarification_id=notice.clarification_id,
+                support_event_id=notice.support_event_id,
+                verbatim_question=notice.verbatim_question,
+                answer_text=notice.answer or "",
+                actor_id=notice.actor,
+                resolution_choice=notice.resolution_choice,
+                return_record_id=notice.return_record_id,
+            ),
+            result_type=ClarificationRelayView,
+            start_to_close_timeout=_PERSIST_TIMEOUT,
+            retry_policy=_PERSIST_RETRY,
+        )
+        if answer.resumed_deadline_iso is not None:
+            # The wait loop reads this field every pass, so the new instant
+            # takes effect on the next wake without the handler touching the
+            # loop's control flow.
+            self._state.template_review_deadline_iso = answer.resumed_deadline_iso
 
     @workflow.query(name="execution_state")
     def execution_state(self) -> ReturnCaseState:
@@ -2253,6 +2445,16 @@ class ReturnCaseWorkflow:
                 if self._reviews_settled() or self._cancelled():
                     return
 
+                # Re-read every pass rather than closing over the local. The
+                # `clarification_answered` handler resets this when the release
+                # says an answered clarification should push the wait out
+                # (`support_resolver.clarification_resets_deadline`), and a loop
+                # holding the instant it started with would keep counting down
+                # to a deadline nobody was on any more -- while still looking
+                # correct, because the wait still ends and the case still parks.
+                deadline = datetime.fromisoformat(
+                    self._state.template_review_deadline_iso or deadline.isoformat()
+                )
                 remaining = deadline - workflow.now()
                 if remaining <= timedelta(0):
                     await self._template_review_deadline(timings, intended_work_item_id)

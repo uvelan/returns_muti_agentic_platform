@@ -54,6 +54,18 @@ def create_return_workflow_worker(
             # it the only writer of `customer_name` is a reasoning model that is
             # not allowed to see one, so every case projects `customer: null`.
             case_activities.record_case_customer_identity,
+            # **Was missing**, and found by
+            # `test_every_activity_the_workflow_calls_is_registered_on_the_worker`
+            # rather than by anyone reading this list. `_await_return_details`
+            # calls it, no worker polled for it, and an unregistered activity
+            # raises nothing and logs nothing -- the execution simply schedules
+            # the task and waits. It is reached only when
+            # `timings.return_details_required` is on, which is what kept the
+            # stall from being noticed. Registered here beside its siblings, on
+            # the same reasoning the gate's block below states: what a *case*
+            # runs is decided by its pinned release, and a worker that has not
+            # registered an activity leaves such a case stopped.
+            case_activities.case_has_return_details,
             case_activities.request_bay_assignment,
             # The policy gate (3A.7). This list having exactly eight entries,
             # none of which evaluated a rule set, was the audit's proof that no
@@ -76,6 +88,14 @@ def create_return_workflow_worker(
             case_activities.rerender_template_draft,
             case_activities.hold_unsettled_reviews,
             case_activities.snapshot_sent_template,
+            # The clarification round-trip (contracts.md sect. 9, 10). Same
+            # reasoning as the gate's activities directly above: whether a case
+            # asks a clarification is decided by its pinned release, and a
+            # worker that had not registered these would strand an answered
+            # clarification on an unknown activity -- with the associate's
+            # answer on file, unrelayed, and Support still waiting.
+            case_activities.record_clarification_answer,
+            case_activities.relay_clarification_to_support,
         )
     return Worker(
         client,

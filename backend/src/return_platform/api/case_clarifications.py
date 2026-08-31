@@ -24,6 +24,7 @@ fact log verbatim, which is the audit record.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Annotated, Final, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -34,6 +35,7 @@ from return_platform.operations.case_commands import (
     CommandIdempotencyConflictError,
     DurableCaseCommandStore,
 )
+from return_platform.operations.fact_names import SUPPORT_CLARIFICATION_REQUESTED
 from return_platform.operations.repository import OperationalRepository
 from return_platform.operations.return_support.clarification import (
     clarification_answer_signal_id,
@@ -135,6 +137,44 @@ def _command_store(request: Request) -> DurableCaseCommandStore:
     return DurableCaseCommandStore(resources.mongo, resources.settings)
 
 
+@dataclass(frozen=True, slots=True)
+class _AskedClarification:
+    """What the case recorded when it asked. The question, and what it was about."""
+
+    support_event_id: str
+    verbatim_question: str
+
+
+async def _clarification_on_this_case(
+    repository: OperationalRepository, case_id: str, clarification_id: str
+) -> _AskedClarification | None:
+    """The `support_clarification_requested` fact, or `None`.
+
+    Two jobs, and the second is why the read is here rather than downstream.
+
+    It **refuses an answer to a clarification this case never asked**, with the
+    same 404 as a case the principal cannot see -- an endpoint that accepted one
+    would record a command, queue a delivery, and relay a stranger's words to
+    Support under a clarification id nobody recognises.
+
+    And it supplies the two fields the signal carries that the request body
+    cannot: the support event the question came from, and the question itself.
+    Neither may come from the body -- an answer whose caller chose which
+    question it was answering is an answer to whatever the caller preferred.
+    """
+    wanted = f"{SUPPORT_CLARIFICATION_REQUESTED}-{clarification_id}"
+    for fact in await repository.list_case_facts(case_id):
+        if str(fact.get("factId")) != wanted:
+            continue
+        value = fact.get("value")
+        value = value if isinstance(value, dict) else {}
+        return _AskedClarification(
+            support_event_id=str(value.get("supportEventId") or ""),
+            verbatim_question=str(value.get("verbatimQuestion") or ""),
+        )
+    return None
+
+
 def _not_found() -> HTTPException:
     """One answer for "no such case" and "not your case".
 
@@ -185,9 +225,14 @@ async def answer_clarification(
             },
         )
 
-    case = await _repository(request).get_case(case_id)
+    repository = _repository(request)
+    case = await repository.get_case(case_id)
     tenant_id = str(getattr(request.state, "tenant_id", "default"))
     if case is None or case.get("tenantId") != tenant_id:
+        raise _not_found()
+
+    asked = await _clarification_on_this_case(repository, case_id, clarification_id)
+    if asked is None:
         raise _not_found()
 
     store = _command_store(request)
@@ -202,13 +247,27 @@ async def answer_clarification(
             signal_id=signal_id,
             # Server-stamped (sect. 4). The body cannot carry one.
             actor_id=actor_id,
+            # **This is the signal body**, field-for-field
+            # `ClarificationAnsweredNotice`. It used to be a differently-shaped
+            # dict -- `answer_text`, `answered_by`, `case_id`, and no
+            # `signal_id` -- which the workflow's own notice type could not have
+            # deserialized: the round-trip would have dead-lettered on the
+            # first real answer. V3 phase 2 aligned it, and
+            # `test_the_signal_payload_is_the_notice_the_workflow_declares`
+            # asserts the two never drift again.
+            #
+            # The question travels **with** the answer rather than being re-read
+            # at relay time: a thread carries several open questions, and an
+            # answer paired with the wrong one is worse than no answer.
             payload={
                 "clarification_id": clarification_id,
-                "case_id": case_id,
-                "answer_text": payload.answerText,
+                "actor": actor_id,
+                "signal_id": signal_id,
+                "answer": payload.answerText,
+                "support_event_id": asked.support_event_id,
+                "verbatim_question": asked.verbatim_question,
                 "resolution_choice": payload.resolutionChoice,
                 "return_record_id": payload.returnRecordId,
-                "answered_by": actor_id,
             },
             return_record_id=payload.returnRecordId,
             correlation_id=_meta(request).request_id,

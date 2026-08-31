@@ -119,6 +119,23 @@ ACTIVITY_RESULT_TYPES: dict[str, set[str]] = {
     # before this activity existed, which is why the result type is pinned here
     # like the rest: a replay must decode it the same way for ever.
     "hold_unsettled_reviews": {"HoldUnsettledReviewsResult"},
+    # The clarification round-trip (contracts.md sect. 9, 10), added by V3 phase
+    # 2 into the seam V1 phase 2 declared and left empty.
+    #
+    # Two new activity calls, made only from the `clarification_answered`
+    # signal handler -- which was an empty handler until V3 phase 2 filled it.
+    # A history that recorded that signal while it was empty holds the notice
+    # and no activity calls, so replaying two into it would break the execution.
+    #
+    # The first draft of this entry argued the population was empty because the
+    # endpoint was unmounted. **That was wrong** -- `main.py:1425` includes
+    # `case_clarifications_router`; the integration agent had already applied
+    # the mount. Guarded with `workflow.patched(_PATCH_V3_CLARIFICATION_ROUND_
+    # TRIP)` instead, the same instrument the gate's three calls use and for the
+    # same reason: a marker has no window, and a claim about who could have sent
+    # a signal has to be checked rather than reasoned.
+    "record_clarification_answer": {"ClarificationAnswerResult"},
+    "relay_clarification_to_support": {"ClarificationRelayView"},
     "evaluate_case_eligibility": {"CaseEligibilityOutcome"},
     # `SupportRequestDraft` only. The un-patched branch no longer pins a result
     # type at all: it decodes whatever the history holds and coerces it through
@@ -292,6 +309,49 @@ def test_activity_result_types_match_the_pinned_contract() -> None:
         observed.setdefault(name, set()).add(result_type)
 
     assert observed == ACTIVITY_RESULT_TYPES
+
+
+def test_every_activity_the_workflow_calls_is_registered_on_the_worker() -> None:
+    """An unregistered activity is a stall with no exception anywhere.
+
+    The workflow schedules the task, no worker polls for it, and the execution
+    waits -- with the case's answer on file, unrelayed, and Support still
+    waiting. Nothing raises and nothing logs; the only symptom is a case that
+    stopped.
+
+    Derived from the two sources rather than from a list: the names come from
+    `execute_activity` calls in the workflow and the registrations from
+    `worker.py`'s own attribute references, so adding a call and forgetting the
+    registration fails **here** rather than in an environment. Two activities
+    added in V3 phase 2 were unregistered against a green suite until this
+    existed.
+    """
+    from pathlib import Path
+
+    from temporalio import activity as temporal_activity
+
+    from return_platform.workflows import worker as worker_module
+    from return_platform.workflows.return_case_activities import ReturnCaseActivities
+
+    registered: set[str] = set()
+    worker_tree = ast.parse(
+        Path(worker_module.__file__).read_text(encoding="utf-8")  # type: ignore[arg-type]
+    )
+    for node in ast.walk(worker_tree):
+        if (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "case_activities"
+        ):
+            method = getattr(ReturnCaseActivities, node.attr, None)
+            if method is None:
+                continue
+            definition = temporal_activity._Definition.from_callable(method)
+            if definition is not None:
+                registered.add(definition.name)
+
+    called = {name for name, _result_type, _line in _activity_calls() if name is not None}
+    assert called <= registered, called - registered
 
 
 def test_every_activity_call_names_its_activity_literally() -> None:

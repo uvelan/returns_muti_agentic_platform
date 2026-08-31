@@ -1078,34 +1078,268 @@ def test_every_gate_signal_shares_the_one_dedupe(signalling: ReturnCaseWorkflow)
     assert len(signalling._state.pending_template_notices) == 1  # noqa: SLF001
 
 
-def test_the_clarification_signal_is_accepted_and_acted_on_nowhere(
-    signalling: ReturnCaseWorkflow,
-) -> None:
-    """V3's, declared and not implemented (brief item 3).
+class TestTheClarificationRoundTripV3Implemented:
+    """V1 declared this handler empty and named the seam; V3 phase 2 filled it.
 
-    Recorded so the answer is not lost, and written by nothing here: writing it
-    is `record_clarification_answer`, and a second implementation would be a
-    second record of one answer.
+    Driven through the shipped handler with the two activities substituted, so
+    the assertions are about the **order and content** of what it asked for --
+    which is the whole of what a signal handler can get wrong.
     """
-    from return_platform.workflows.return_case_workflow import (
-        _V3_CLARIFICATION_ACTIVITY,
-        ClarificationAnsweredNotice,
-    )
 
-    signalling.clarification_answered(
-        ClarificationAnsweredNotice(
-            clarification_id="c-1", actor="associate-a", signal_id="sig-c-1", answer="yes"
+    @staticmethod
+    def _notice(**overrides: Any) -> Any:
+        from return_platform.workflows.return_case_workflow import ClarificationAnsweredNotice
+
+        base: dict[str, Any] = {
+            "clarification_id": "c-1",
+            "actor": "associate-a",
+            "signal_id": "sig-c-1",
+            "answer": "It belongs to RMA-4471.",
+            "support_event_id": "evt-9",
+            "verbatim_question": "Which return is this for?",
+        }
+        base.update(overrides)
+        return ClarificationAnsweredNotice(**base)
+
+    @staticmethod
+    def _wired(
+        monkeypatch: pytest.MonkeyPatch,
+        configuration: ReturnPlatformConfiguration,
+        *,
+        gate_open: bool,
+        resumed: str | None,
+        current: str | None = "2026-09-02T09:00:00+00:00",
+        patches: bool = True,
+    ) -> tuple[ReturnCaseWorkflow, Any, list[Any]]:
+        from return_platform.workflows.return_case_workflow import (
+            ClarificationAnswerResult,
+            ClarificationRelayView,
+            ResolvedBusinessDeadline,
         )
-    )
 
-    assert len(signalling._state.clarification_answers) == 1  # noqa: SLF001
-    assert signalling._state.pending_template_notices == []  # noqa: SLF001
-    assert _V3_CLARIFICATION_ACTIVITY == "record_clarification_answer"
+        seen: list[Any] = []
+
+        async def _record(argument: Any) -> Any:
+            seen.append(argument)
+            return ClarificationAnswerResult(recorded=True, resumed_deadline_iso=resumed)
+
+        async def _relay(argument: Any) -> Any:
+            seen.append(argument)
+            return ClarificationRelayView(delivery_id="d-1", message_id="m-1")
+
+        async def _deadline(argument: Any) -> Any:
+            return ResolvedBusinessDeadline(
+                instant_iso="2026-09-03T09:00:00+00:00", calendar_applied=True
+            )
+
+        runtime = _Runtime(
+            {
+                "record_clarification_answer": _record,
+                "relay_clarification_to_support": _relay,
+                "resolve_business_deadline": _deadline,
+            },
+            patches=patches,
+        )
+        monkeypatch.setattr(workflow_module, "workflow", runtime)
+        instance = ReturnCaseWorkflow()
+        instance._input = _input(_timings(configuration))  # noqa: SLF001
+        instance._state.template_review_open = gate_open  # noqa: SLF001
+        instance._state.template_review_deadline_iso = current  # noqa: SLF001
+        return instance, runtime, seen
+
+    @_async
+    async def test_the_fact_is_written_before_the_relay_goes_out(
+        self, monkeypatch: pytest.MonkeyPatch, configuration: ReturnPlatformConfiguration
+    ) -> None:
+        """Order, not merely presence.
+
+        The relay is the irreversible half: it puts the associate's words in
+        front of Support. Relaying first would open a window in which Support
+        has been told something the case cannot show it ever decided, and a test
+        that only asserted both ran would pass for exactly that.
+        """
+        instance, runtime, _ = self._wired(monkeypatch, configuration, gate_open=False, resumed=None)
+        await instance.clarification_answered(self._notice())
+
+        ordered = [
+            name
+            for name in runtime.calls
+            if name in {"record_clarification_answer", "relay_clarification_to_support"}
+        ]
+        assert ordered == ["record_clarification_answer", "relay_clarification_to_support"]
+
+    @_async
+    async def test_the_question_the_associate_was_shown_travels_with_the_answer(
+        self, monkeypatch: pytest.MonkeyPatch, configuration: ReturnPlatformConfiguration
+    ) -> None:
+        """Both activities get it, and neither re-reads it.
+
+        A support thread carries several open questions at once; an answer
+        paired with whichever one the reader last remembers is worse than no
+        answer.
+        """
+        instance, _, seen = self._wired(monkeypatch, configuration, gate_open=False, resumed=None)
+        await instance.clarification_answered(self._notice())
+
+        assert len(seen) == 2
+        for argument in seen:
+            assert argument.verbatim_question == "Which return is this for?"
+            assert argument.support_event_id == "evt-9"
+            assert argument.answer_text == "It belongs to RMA-4471."
+            assert argument.actor_id == "associate-a"
+
+    @_async
+    async def test_a_redelivered_signal_runs_the_activities_once(
+        self, monkeypatch: pytest.MonkeyPatch, configuration: ReturnPlatformConfiguration
+    ) -> None:
+        """The transport is at-least-once, so the second delivery *will* happen."""
+        instance, runtime, _ = self._wired(monkeypatch, configuration, gate_open=False, resumed=None)
+        notice = self._notice()
+        await instance.clarification_answered(notice)
+        await instance.clarification_answered(notice)
+
+        assert runtime.calls.count("record_clarification_answer") == 1
+        assert runtime.calls.count("relay_clarification_to_support") == 1
+
+    @_async
+    async def test_an_answer_with_no_wait_open_resolves_no_deadline(
+        self, monkeypatch: pytest.MonkeyPatch, configuration: ReturnPlatformConfiguration
+    ) -> None:
+        """A clarification can be answered long after the gate closed.
+
+        The fact and the relay are still owed; a deadline is not, and resolving
+        one would invent a wait nobody is in.
+        """
+        instance, runtime, seen = self._wired(monkeypatch, configuration, gate_open=False, resumed=None)
+        await instance.clarification_answered(self._notice())
+
+        assert "resolve_business_deadline" not in runtime.calls
+        assert seen[0].current_deadline_iso is None
+        assert seen[0].refreshed_deadline_iso is None
+
+    @_async
+    async def test_an_answer_during_the_wait_carries_both_instants_to_the_activity(
+        self, monkeypatch: pytest.MonkeyPatch, configuration: ReturnPlatformConfiguration
+    ) -> None:
+        """The workflow resolves; the activity decides.
+
+        The released `clarification_resets_deadline` is applied once, by the
+        pure `deadline_after_clarification` in `operations`. The workflow may
+        not import that module, and re-spelling its `max(...)` here is how one
+        switch acquires two meanings -- so both instants go over the boundary
+        and the decision comes back.
+        """
+        instance, runtime, seen = self._wired(
+            monkeypatch, configuration, gate_open=True, resumed="2026-09-03T09:00:00+00:00"
+        )
+        await instance.clarification_answered(self._notice())
+
+        assert "resolve_business_deadline" in runtime.calls
+        assert seen[0].current_deadline_iso == "2026-09-02T09:00:00+00:00"
+        assert seen[0].refreshed_deadline_iso == "2026-09-03T09:00:00+00:00"
+        # And the answer the activity gave is the one the wait now runs on.
+        assert instance._state.template_review_deadline_iso == "2026-09-03T09:00:00+00:00"  # noqa: SLF001
+
+    @_async
+    async def test_a_release_that_does_not_reset_leaves_the_deadline_alone(
+        self, monkeypatch: pytest.MonkeyPatch, configuration: ReturnPlatformConfiguration
+    ) -> None:
+        """The activity answering `None` is the switch being off.
+
+        Asserted as "the deadline did not move", not as "the activity was
+        called": a handler that assigned the refreshed instant regardless would
+        pass the second and fail this.
+        """
+        instance, _, _ = self._wired(monkeypatch, configuration, gate_open=True, resumed=None)
+        await instance.clarification_answered(self._notice())
+
+        assert instance._state.template_review_deadline_iso == "2026-09-02T09:00:00+00:00"  # noqa: SLF001
+
+    @_async
+    async def test_an_unmarked_history_keeps_the_behaviour_it_recorded(
+        self, monkeypatch: pytest.MonkeyPatch, configuration: ReturnPlatformConfiguration
+    ) -> None:
+        """The replay guard, and the reason it is not decoration.
+
+        A history recorded while this handler was empty holds the notice and no
+        activity calls. Replaying two into it breaks the execution -- so the
+        un-patched arm must still record and still call nothing, which is
+        exactly what that history observed.
+
+        The first version of this reasoning claimed no such history could exist
+        because the answer endpoint was unmounted. `main.py` mounts it. The
+        marker is what makes the guarantee independent of that kind of claim.
+        """
+        instance, runtime, seen = self._wired(
+            monkeypatch, configuration, gate_open=True, resumed=None, patches=False
+        )
+        await instance.clarification_answered(self._notice())
+
+        assert seen == []
+        assert runtime.calls == []
+        # Still recorded: the answer is not lost, which is what the empty
+        # handler did and therefore what the history holds.
+        assert len(instance._state.clarification_answers) == 1  # noqa: SLF001
+        from return_platform.workflows.return_case_workflow import (
+            _PATCH_V3_CLARIFICATION_ROUND_TRIP,
+        )
+
+        assert _PATCH_V3_CLARIFICATION_ROUND_TRIP in runtime.patch_ids
 
 
 # --------------------------------------------------------------------------- #
 # The wait survives a history reset
 # --------------------------------------------------------------------------- #
+
+
+@_async
+async def test_the_wait_runs_on_the_deadline_in_state_not_the_one_it_started_with(
+    monkeypatch: pytest.MonkeyPatch,
+    store: ReviewAggregateStore,
+    mongo: Any,
+    test_settings: Settings,
+    configuration: ReturnPlatformConfiguration,
+) -> None:
+    """A clarification answered mid-wait pushes the deadline, and the loop obeys.
+
+    The loop used to close over the instant it computed on entry, so the
+    `clarification_answered` handler could reset
+    `template_review_deadline_iso` and the wait would go on counting down to a
+    deadline nobody was on any more -- **while still looking correct**, because
+    the wait still ended and the case still parked. Injecting the closure back
+    left the whole gate suite green: 71 passed, blind.
+
+    Driven the way the reset actually happens -- state mutated from inside the
+    wait -- and asserted on the clock, because the clock is the thing the loop
+    was getting wrong. Without the push the wait ends at NOW+120; with it, the
+    loop must still be running past that.
+    """
+    support = _Support()
+    gate = _gate_service(store, mongo, test_settings, configuration, support)
+    pushed = NOW + timedelta(seconds=300)
+
+    def _clarification_answered_mid_wait() -> None:
+        holder[0]._state.template_review_deadline_iso = pushed.isoformat()  # noqa: SLF001
+
+    holder: list[ReturnCaseWorkflow] = []
+    instance, runtime = await _run_gate(
+        monkeypatch,
+        _GateActivities(gate),
+        _timings(
+            configuration,
+            review_wait_seconds=120,
+            reminder_interval_seconds=60,
+            max_reminders=10,
+        ),
+        arrivals=[lambda: None, _clarification_answered_mid_wait],
+        holder=holder,
+    )
+
+    assert instance._state.parked_reason == "TEMPLATE_REVIEW_UNANSWERED"  # noqa: SLF001
+    # The wait outlived the deadline it began with. A loop holding its own
+    # local would have parked the case at NOW+120.
+    assert runtime.instant >= pushed
+    assert support.posted == []
 
 
 @_async
