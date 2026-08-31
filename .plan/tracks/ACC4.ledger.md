@@ -354,3 +354,135 @@ $ git status --porcelain
 $ echo "TREE CLEAN"
 TREE CLEAN
 ```
+
+---
+
+## step:03 — FE-HOLE-1 closed, and injected against three ways
+
+Two more locating results first, both by reading:
+
+**Parked-message entry — verdict A, and comfortably so.** INJ-F8:
+`readParkedPayload`'s `count: readCount(section?.payload, "count") ?? 0` →
+`count: 0`, so the section returns `null` and the entry vanishes.
+
+```
+ FAIL  src/domains/returns/panes/casePanel/support/supportPanelIntegration.test.tsx > … > tells an operator that a message was parked, and why, and that it is safe
+ FAIL  src/domains/returns/panes/casePanel/support/supportPanelPayloads.test.ts > the parked-messages entry > takes the count the contributor gave
+ FAIL  src/domains/returns/panes/casePanel/support/supportPanelPayloads.test.ts > the parked-messages entry > reads a contributed parked entry, in the payload convention
+ FAIL  src/domains/returns/panes/casePanel/support/supportPayloadCasing.test.ts > what the readers ask a contributed payload for > asks the parked section for exactly these keys, all camelCase
+ FAIL  src/domains/returns/panes/casePanel/support/supportPayloadCasing.test.ts > a payload sent in the wrong convention > reads as nothing -- the reader does not quietly translate it
+ FAIL  src/domains/returns/panes/casePanel/support/supportSections.test.tsx > the parked-messages entry > names the count and says the messages are safe
+ FAIL  src/domains/returns/panes/casePanel/support/supportSections.test.tsx > the parked-messages entry > asserts no cause when the contributor did not give one
+ FAIL  src/domains/returns/panes/casePanel/support/supportSections.test.tsx > what arrives while somebody is typing > announces a message being parked as its own event
+ Test Files  5 failed | 56 passed (61)
+      Tests  10 failed | 850 passed (860)
+```
+
+**Caught by eight tests.** The stream-order half of that scenario is the copy —
+*"will be read in the order they came in"* (`supportSections.tsx:360`) — and the
+reprocessing it promises is backend behaviour, not reachable from here. See
+"what was not reached".
+
+**`CaseOperationsPage` reads the same payload — verdict A, structurally.** No
+injection, because there is nothing to break: there is exactly one fetch of the
+panel in the whole app and exactly one query for it, and the operations page
+mounts the copilot's own component.
+
+```
+$ grep -rn "/panel\`" --include=*.ts --include=*.tsx src/ | grep -v mocks/ | grep -v generated
+src/api/casePanel.ts:162:    response = await fetch(`/api/v1/cases/${encodeURIComponent(caseId)}/panel`, { headers });
+$ grep -rn "casePanelApi.read" --include=*.tsx src/ | grep -v test
+src/domains/returns/panes/casePanel/CasePanel.tsx:48:    queryFn: () => casePanelApi.read(caseId),
+$ grep -n "CasePanel" src/domains/operations/CaseOperationsPage.tsx
+22:import { CasePanel } from "../returns/panes/casePanel/CasePanel";
+```
+
+One reader, one component, two mount points. A test could only re-assert the
+import graph, and "same payload" holds by construction — which is stronger than
+a test, and is recorded here so a later reader does not add a second fetch
+believing the guarantee is only conventional.
+
+### The guard: `TemplateReviewSection.test.tsx`, 5 tests
+
+New file. Covers the marker being **visible**, its effect on **Send**, and its
+being **cleared by the canonical-edit write** — the three things INJ-F2/F3
+showed nothing watched.
+
+Its premise helper is the point:
+
+```ts
+function expectsConflictOnly(conflictPresent: boolean) {
+  const only = review(conflictPresent);
+  expect(only.gaps).toEqual([]);
+  expect(only.draft.gaps).toEqual([]);
+  expect(only.conflict_present).toBe(conflictPresent);
+  expect(only.state).toBe("OPEN");
+}
+```
+
+`blocked` is `gaps.length > 0 || review.conflict_present`. A conflicted fixture
+that also carried a gap is blocked either way, and every assertion would pass
+with the conflict limb deleted — **the same vacuity ACC3 found in the backend's
+delivery tests, in its frontend form.** Asserting the gaps are empty first makes
+that impossible; a later edit that adds a gap to the fixture fails the premise
+rather than quietly disarming the test.
+
+```
+$ npx vitest run src/domains/returns/panes/casePanel/TemplateReviewSection.test.tsx
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+```
+
+### Injected against — three times, because the rule is that a strengthening is a blind test until it is
+
+**INJ-F2 re-run** (`blocked` loses its conflict limb):
+
+```
+ FAIL  src/domains/returns/panes/casePanel/TemplateReviewSection.test.tsx > what an unresolved conflict does to Send > blocks it, and names the conflict as the reason rather than a missing field
+ FAIL  src/domains/returns/panes/casePanel/TemplateReviewSection.test.tsx > clearing it > is done by the canonical-edit write, and the panel then unblocks
+ Test Files  2 failed | 60 passed (62)
+      Tests  4 failed | 861 passed (865)
+```
+
+Previously **zero**. Now two.
+
+**INJ-F3 re-run** (banner suppressed):
+
+```
+ FAIL  src/domains/returns/panes/casePanel/TemplateReviewSection.test.tsx > a conflict on the shared panel > is on the screen, in words about the other person rather than about a flag
+ FAIL  src/domains/returns/panes/casePanel/TemplateReviewSection.test.tsx > clearing it > is done by the canonical-edit write, and the panel then unblocks
+ Test Files  2 failed | 60 passed (62)
+      Tests  4 failed | 861 passed (865)
+```
+
+Previously **zero**. Now two.
+
+**INJ-F10 — "Keep this version" clears the banner without writing the canonical
+edit.** The third test would be worth little if it only re-asserted the banner;
+this checks it pins the *write*.
+
+```
+     × is done by the canonical-edit write, and the panel then unblocks 1105ms
+ Test Files  1 failed (1)
+      Tests  1 failed | 4 passed (5)
+```
+
+**One red, and the other four green** — which is the measurement proving INJ-F10
+is invisible to them and that this test, alone, owns the write.
+
+Business consequence of what FE-HOLE-1 left open, stated at its size: two
+associates open the same case, one saves an edit, and the second is shown no
+banner and a live Send button. The backend still refuses the approval — sect. 6
+rejects unresolved conflicts at the CAS — so nothing wrong is *sent*. What is
+lost is the whole point of the marker: the associate is handed a bare refusal
+for a condition the screen was supposed to have told them about and offered a
+one-press way out of, and presses Send again.
+
+`git status` after every revert shows only the new test file:
+
+```
+$ git status --porcelain
+?? frontend/src/domains/returns/panes/casePanel/TemplateReviewSection.test.tsx
+```
+
+**Gate (rule 13): `frontend-tests` (`npm test`) in `.github/workflows/checks.yml`.**
