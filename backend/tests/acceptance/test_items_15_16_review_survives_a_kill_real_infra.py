@@ -186,32 +186,25 @@ class _GateProbe:
         self.calls: list[str] = []
         self.deadline_requests: list[ResolveBusinessDeadlineInput] = []
         self.review_ids: list[str] = []
-        self._reached: dict[str, asyncio.Event] = {}
 
     # --- bookkeeping ------------------------------------------------------
 
     def _record(self, name: str) -> None:
         self.calls.append(name)
-        self._reached.setdefault(name, asyncio.Event()).set()
 
-    async def reached(self, name: str, *, within_seconds: float = 30.0) -> None:
-        event = self._reached.setdefault(name, asyncio.Event())
-        try:
-            async with asyncio.timeout(within_seconds):
-                await event.wait()
-        except TimeoutError:
-            raise AssertionError(f"{name} did not run within {within_seconds}s") from None
+    # **There is deliberately no `reached(activity_name)` here.** An earlier
+    # draft had one, wired to `_record` at the *top* of each activity, and it
+    # caused both races this module had to close: it fires when an activity
+    # starts, and everything a caller then wants -- the recorded review, the
+    # opened wait -- exists only once it finishes. Waiting on a name and then
+    # reading a result is a race that passes whenever something slow happens to
+    # sit between the two, which is why one scenario passed and the other did
+    # not. It is removed rather than left unused: an unused primitive with an
+    # inviting name is one autocomplete away from reintroducing the defect.
+    # Wait for the thing you actually want -- the two waiters below do.
 
     async def first_review_id(self, *, within_seconds: float = 60.0) -> str:
-        """Wait for the review the gate **recorded**, not for the activity start.
-
-        `reached()` fires from `_record`, at the top of the activity; the id is
-        appended when `record_draft` returns. Waiting on the name and then
-        indexing the list is a race, and it is one that passes whenever
-        something slow happens to sit between the two -- in the first scenario a
-        `handle.query` did, so it passed there and failed here. Waiting for the
-        thing actually wanted removes the timing from the test.
-        """
+        """Wait for the review the gate **recorded**, not for the activity start."""
         deadline = datetime.now(UTC) + timedelta(seconds=within_seconds)
         while datetime.now(UTC) < deadline:
             if self.review_ids:
@@ -543,10 +536,26 @@ async def test_a_kill_mid_review_loses_neither_the_draft_nor_the_remaining_timeo
       notice a worker dying; Temporal is where the durability claim lives, and
       the deadline instant is what an operator's countdown is drawn from.
 
-    The deadline is asserted **equal**, not merely present. "A deadline exists"
-    passes for a gate that restarted its own clock on resume, which is the
-    failure this is written against: the reviewer's fifteen minutes silently
-    becoming thirty because a worker bounced.
+    The deadline is asserted **equal**, not merely present: "a deadline exists"
+    would pass for a gate that restarted its own clock on resume.
+
+    **What this scenario does and does not prove, measured rather than assumed.**
+    The obvious reading -- that the equality guards a reviewer's fifteen minutes
+    silently becoming thirty -- is **wrong for a worker kill, and an injection
+    proved it.** Making `_await_template_reviews` ignore
+    `resumed_template_review_deadline_iso` entirely changed nothing here (INJ-15a,
+    `.plan/acceptance/items-14-17-review-across-a-kill.md`), because **a kill is
+    not a `continue_as_new`**: the replacement worker replays the history, the
+    `resolve_business_deadline` result comes back from that history, and the
+    resumed-field path is never taken. That field guards *continuation*, and a
+    scenario that wants to guard it must continue-as-new rather than kill.
+
+    So the equality here holds by Temporal's replay, and most of what this test
+    asserts is the framework's guarantee rather than the platform's. What is
+    genuinely the platform's, and what INJ-15b does red, is narrower and still
+    worth a live test: the deployment's own wiring -- the gate activities
+    registered, the gate reachable, and the review state queryable and correct
+    after the process that opened it is gone. Claim that, and not more.
     """
     case_id = f"case-{uuid.uuid4().hex[:8]}"
     gate: SupportTemplateGateService = live["gate"]

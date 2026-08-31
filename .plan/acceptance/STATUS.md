@@ -14,18 +14,42 @@ Three categories, and nothing is promoted between them by inference.
   not a finding.
 * **C — not reached.** No ACC work, with the reason stated.
 
-## ⚠ RULE 13, APPLIED TO THE GATE ITSELF — CI runs no live-infra test
+## ⚠ RULE 13, APPLIED TO THE GATE ITSELF — and to this branch
 
-`.github/workflows/checks.yml`'s backend job is `pytest tests`, and
-`pyproject.toml`'s `addopts` carries `-m "not live_infra and not browser"`. So
-the **512 deselected tests are gated by nothing in CI** — their only gate is a
-human running `scripts/dev/run_real_infra_suite.sh`, which until `9587e3a7`
-refused to run at all against a healthy stack.
+**CI runs no live-infra test.** `.github/workflows/checks.yml`'s backend job is
+`pytest tests`, and `pyproject.toml`'s `addopts` carries
+`-m "not live_infra and not browser"`. The **514 deselected tests are gated by
+nothing in CI** — their only gate is a human running
+`scripts/dev/run_real_infra_suite.sh`, which until `9587e3a7` refused to run at
+all against a healthy stack. That is why the stale live-infra probe (below) could
+rot twice.
 
-That is rule 13's exact statement about the acceptance gate's own instruments,
-and it governs how the remaining durability items should be written: a
-`_real_infra` scenario is a guard whose gate is a person remembering. **Every
-acceptance module ACC has written is in the default suite and therefore gated.**
+**And the audit had to be turned on this branch, where it found two errors in
+opposite directions.** The scope of a rule-13 audit is every guard added, not
+only the ones in `tests/acceptance/`.
+
+* **`tests/harness/posix_signal_proof.py` was a guard with no gate.**
+  Deliberately uncollectable so pytest could not silently skip it on Windows,
+  correct in what it proved, and **run once by hand**. Now invoked by
+  `tests/acceptance/test_the_posix_signal_proof_is_gated.py`, which runs it as a
+  subprocess and asserts exit 0, four `PASS` lines and the closing statement —
+  the last two because a script that stopped running its checks also exits 0.
+  One implementation of the proof, two callers.
+* **The residual risk was overstated in the other direction.**
+  `.github/workflows/checks.yml` runs every job on **`ubuntu-latest`**, so the
+  behavioural pin
+  `test_chaos_restart.py::test_stop_lets_the_worker_handle_its_signal_and_kill_does_not`
+  is **executed on every push** — it is skipped on this Windows workstation and
+  nowhere else. ACC's earlier records said "it has never run", which was true of
+  the dev machine and false of the pipeline. A `skipif(os.name == "nt")` guard is
+  not the "skipped on the platform that runs it" shape when the platform that
+  runs it is Linux; that criticism belongs to a guard whose *only* runner skips
+  it.
+
+**Gating of every module this branch adds**, re-confirmed after each trunk merge:
+`36 collected, 2 deselected` — the two being the live review-gate module, which
+cannot be otherwise because a worker kill needs a worker, and which is labelled
+ungated in its own docstring rather than counted as coverage.
 
 ---
 
@@ -138,17 +162,24 @@ make the application suite fail on a planning document.
 
 Nothing in C is claimed as green.
 
-## Rulings owed
+## Rulings owed — none. Item 18's was made.
 
-**Item 18's cross-stream half.** Its text names "outbound waits for its inbound's
-classification, unrelated approval does not". Measured: only two of §7's four
-streams have a producer, no call site anywhere populates a cross-stream
-predecessor, and the machinery *would* accept one. §7's sentence *"Acceptance 18
-applies to the inbound stream"* is either the ruling already made, or
-**AMENDMENT-8's situation exactly** — a separately frozen acceptance item
-narrowed by one line of a contract section against something nothing can reach.
-ACC does not get to pick. Nothing is blocked; **the tally must not record item 18
-as fully green until this is ruled.**
+**Item 18 — RULED, by AMENDMENT-9.** ACC stopped and reported that item 18's
+second half names a behaviour production does not implement, and asked whether
+§7's *"Acceptance 18 applies to the inbound stream"* was the ruling or an
+AMENDMENT-8-shaped gap. **It was the gap.** AMENDMENT-9 defers the
+"classified before any new outbound send" half, corrects §7's line as an
+ambiguity rather than defending it, and names the business consequence: after an
+outage the platform can send Support a message composed without regard to what
+Support said during it. ACC's checkable assertion is the deferral's guard — if a
+call site ever populates a cross-stream predecessor, that test must be revisited
+and item 18 returns to full scope.
+
+The tally above records item 18 as **half green, half deferred** accordingly.
+This section previously said the ruling was outstanding and that "ACC does not
+get to pick"; that was written before the ruling and step:12 updated the rows
+without reconciling it. Corrected rather than deleted, because what the branch
+asked for and what it got are both part of the record.
 
 ## Production defects
 

@@ -194,3 +194,35 @@ Both injections were reverted with `git checkout`; `git status` showed
 `tests/harness/chaos_restart.py` unmodified after each.
 
 **Verdict: both safety nets hold, and the interrupted run's record is accurate.**
+
+
+---
+
+## Correction (RV ACC2-1, F1) — this record was wrong in both directions
+
+**It was a guard with no gate.** `posix_signal_proof.py` was written
+deliberately uncollectable, so pytest could not silently skip it on Windows, and
+then **run once, by hand**. That is RV rule 13 exactly, on the branch that made
+rule 13 its subject. It is now invoked by
+`backend/tests/acceptance/test_the_posix_signal_proof_is_gated.py`, which runs
+the script as a subprocess and asserts exit 0, **four** `PASS` lines, and the
+closing "all four links proved" — the last two because a script that stopped
+running its checks would also exit 0. The script stays a script: it imports only
+the standard library plus `chaos_restart`, which is what lets it run in a bare
+`python:3.13-slim`, and porting its checks into pytest would drag
+`conftest.py`'s `return_platform` import in and lose that.
+
+**And the residual risk above was overstated.** `.github/workflows/checks.yml`
+runs every job on **`ubuntu-latest`**. So
+`test_chaos_restart.py::test_stop_lets_the_worker_handle_its_signal_and_kill_does_not`
+— the behavioural pin this proof was written to substitute for — **executes on
+every push**. "It has never run" was true of this Windows workstation and false
+of the pipeline, and the distinction was never drawn. The substitution is a
+convenience for dev machines, not a stand-in for absent coverage.
+
+Verified rather than argued: on Windows the new module reports `1 passed,
+1 skipped` with the reason spelled out; under `python:3.13-slim` every assertion
+it makes holds (`returncode 0`, `PASS lines 4`, closing line present); and with
+`start_new_session=True` removed from `WorkerProcess.start()` the same
+assertions fail, so the gate is not decoration. Injection reverted; `git status`
+clean.

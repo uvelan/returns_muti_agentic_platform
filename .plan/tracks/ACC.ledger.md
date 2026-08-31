@@ -1148,3 +1148,55 @@ allowlist, which is the guard excusing what it exists to catch.
 
 **Commands:** `python -m pytest tests/test_return_case_workflow_replay_compatibility.py -q`
 → 15 passed on the clean tree. Injections reverted; `git status` clean.
+
+---
+
+## step:13 — RV round 1 (`ACC2-1`, `cb972fcb`): four findings, all fixed
+
+Trunk merged first (R1/R4 bundle ratchet and contrast rule; R2/R3 schema
+defaults and the empty-`SUPPORT_REPLY` 409). **The 409 was checked, not
+assumed:** it is scoped to `SUPPORT_REPLY` (`EMPTY_REPLY_BODY_GAP_REASON`) and
+every ACC review-gate scenario drives `TEMPLATE` reviews. Both acceptance suites
+re-run after the merge — 34 default, 2 live — all green.
+
+**F1 — a guard with no gate, on the branch whose subject is guards with no
+gates.** `posix_signal_proof.py` was uncollectable by design and run once by
+hand. Now invoked by `tests/acceptance/test_the_posix_signal_proof_is_gated.py`:
+runs the script as a subprocess and asserts exit 0, **four** `PASS` lines and the
+closing statement — the counted lines because a script that stopped running its
+checks also exits 0. Kept as a script for the reason it was one: stdlib plus
+`chaos_restart` only, so it still runs in a bare container.
+
+*And the other half of F1, which was the more embarrassing one.* CI runs on
+**`ubuntu-latest`**, so the Windows-skipped behavioural pin **executes on every
+push**. The branch's records said "it has never run" — true of this workstation,
+false of the pipeline. The write-up understated existing coverage while
+overstating residual risk. Both corrected in `safety-nets.md` and STATUS.md, and
+STATUS.md's rule-13 section now audits *every* guard the branch adds rather than
+only the acceptance modules. A `skipif(os.name == "nt")` is not the
+"skipped on the platform that runs it" shape when the platform that runs it is
+Linux.
+
+Verified: Windows → `1 passed, 1 skipped` with the reason; `python:3.13-slim` →
+every assertion holds; `start_new_session=True` removed → they fail. Reverted.
+
+**F2 —** STATUS.md's "Rulings owed" still asked for the item-18 ruling
+AMENDMENT-9 had already made, eighty lines below a row citing it; step:12
+rewrote the rows and left the section. Rewritten as "Rulings owed — none", with
+what was asked and what was ruled both kept, because that exchange is part of
+the record.
+
+**F3 —** the item-15 docstring claimed the deadline equality guards "fifteen
+minutes silently becoming thirty". **INJ-15a proved it cannot, for a kill** —
+the replacement worker replays, so the resumed-deadline path is never taken. The
+limit lived in `.plan/` and not where the next reader of the test would be; it
+is now in the docstring, with what the scenario *does* prove stated instead.
+
+**F4 —** `_GateProbe.reached()` deleted along with its `_reached` map — dead
+code, and the exact start-of-activity primitive behind both races this module
+had to close. Replaced by a comment saying why there is no such helper, so the
+next author meets the reason rather than the tool.
+
+**Commands:** acceptance default → **34 passed, 2 deselected**; acceptance live
+→ **2 passed**; full backend suite → see below. `ruff check` / `ruff format`
+clean.
