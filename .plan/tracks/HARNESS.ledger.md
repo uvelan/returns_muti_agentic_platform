@@ -3231,3 +3231,74 @@ depend on settling the flakiness question.
 4. The branch fails `ruff format --check`, pre-existing (step:20).
 5. The runner (author A's step:12 + my step:17) has still never been run end to
    end, and the live suite has still never been run to completion.
+
+---
+
+## step:24 — the two failures reproduced on the merge tree, not argued from the review
+
+HARNESS-2's verdict was withdrawn and reissued `CHANGES_REQUIRED` on three
+findings. Before touching anything I reproduced them myself, on the merge tree,
+because the whole point of this round is that a branch-local run is not evidence
+about the merge.
+
+**Base verified by ref, not by a sha quoted in a brief.**
+
+    git rev-parse refactor/unified-return-platform feat/live-harness-registration
+    bf7fa1400bd16df42bd37bb8b270c780aea0afb8
+    2f1c0e506c812605e76aeddb004c6a1e6ddf9254
+
+Trunk has moved since the review (HARNESS-2 measured against `72f37ba2`); the
+merge tree below is built against the current ref, not against the review's sha.
+
+**The merge tree.**
+
+    git merge-tree --write-tree refactor/unified-return-platform feat/live-harness-registration
+    920bbe6c5e1bdec8b57d26ab00715b07652c0683
+    exit=0            (clean, no conflicts)
+
+Materialised with `git archive` into a scratch tree (`.../scratchpad/mt0`),
+plus the repository `.env` that `backend/tests/conftest.py:30` requires and
+which is untracked.
+
+**The environment trap, checked rather than assumed.** `return_platform_backend.pth`
+in the venv points at the *main* worktree's `src`, so a bare interpreter call
+imports whichever branch the main tree is on. Every Python command in this
+ledger carries `PYTHONPATH` pinned to the tree under test, and I verified the pin
+actually wins:
+
+    PYTHONPATH=<mt0>/backend/src python -c "import return_platform; print(return_platform.__file__)"
+    C:\...\scratchpad\mt0\backend\src\return_platform\__init__.py
+
+**The failures.**
+
+    cd <mt0>/backend
+    PYTHONPATH=<mt0>/backend/src python -m pytest tests/test_return_case_workflow_replay_compatibility.py -q
+    ...
+    FAILED tests/test_return_case_workflow_replay_compatibility.py::test_a_test_worker_for_the_case_workflow_exists_to_be_checked
+    FAILED tests/test_return_case_workflow_replay_compatibility.py::test_every_test_worker_registers_every_activity_the_workflow_calls
+    2 failed, 15 passed in 7.61s
+
+The second one's exception is the one HARNESS-2 predicted in round 1 and then
+graded away:
+
+    name = 'tests.test_items_15_16_review_survives_a_kill_real_infra'
+    E   ModuleNotFoundError: No module named 'tests.test_items_15_16_review_survives_a_kill_real_infra'
+
+at `test_return_case_workflow_replay_compatibility.py:504`. So both findings are
+mine now, not the review's, and the branch alone would have shown neither: the
+same module run in the branch worktree is 17 passed.
+
+**Naming.** The brief numbers these F5/F6/F7; HARNESS-2 numbers the same three
+F4/F5/F6. I use the brief's numbers below and record the mapping here once so
+the two documents can be read against each other: brief F5 = review F4 (the
+population pin), brief F6 = review F5 (the importer), brief F7 = review F6
+(`_GateProbe`).
+
+### Gate (rule 13)
+
+`backend/tests/test_return_case_workflow_replay_compatibility.py` is collected by
+the default backend suite — no marker, and `addopts` deselects only `live_infra`.
+The gate that runs everything in this entry and every entry below it is the
+default `pytest` run in `scripts/linux/02_run_backend_tests.sh` / the backend job
+in `checks.yml`. Nothing here needs live infrastructure: the guard is a
+static/import-time check.
