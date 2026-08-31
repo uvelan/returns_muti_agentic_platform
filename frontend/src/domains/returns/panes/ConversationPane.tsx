@@ -462,12 +462,20 @@ export function ConversationPane({
                       <Loader2 size={14} className="animate-spin text-primary" aria-hidden="true" />
                       <span>
                         Searching
+                        {/*
+                          A staggered opacity pulse rather than `animate-bounce`.
+                          Tailwind's bounce is a squash curve built for scroll-down
+                          arrows; beside the smooth `animate-spin` loader on the line
+                          above, the two motions disagreed. Pulse also inherits the
+                          `prefers-reduced-motion` rule in `index.css`, which freezes
+                          `animate-pulse` outright -- bounce had no such handling.
+                        */}
                         <span aria-hidden="true" className="ml-px inline-flex">
                           {[0, 1, 2].map((index) => (
                             <span
                               key={index}
-                              className="animate-bounce"
-                              style={{ animationDelay: `${String(index * 150)}ms` }}
+                              className="animate-pulse"
+                              style={{ animationDelay: `${String(index * 200)}ms` }}
                             >
                               .
                             </span>
