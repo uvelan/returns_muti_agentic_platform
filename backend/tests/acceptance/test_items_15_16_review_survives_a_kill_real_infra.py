@@ -105,6 +105,7 @@ from return_platform.workflows.return_case_workflow import (
     TemplateReviewDraftSet,
     TemplateReviewRevisionInput,
 )
+from tests.activity_probe import declared_activities
 
 pytestmark = [pytest.mark.live_infra, pytest.mark.asyncio(loop_scope="module")]
 
@@ -405,26 +406,30 @@ class _GateProbe:
         )
 
     def all(self) -> tuple[Any, ...]:
-        return (
-            self.record_case_status,
-            self.record_case_customer_identity,
-            self.resolve_business_deadline,
-            self.request_bay_assignment,
-            self.evaluate_case_eligibility,
-            self.draft_support_request,
-            self.open_support_work_item,
-            self.send_support_reminder,
-            self.record_support_outcome,
-            self.synchronize_return_records,
-            self.record_template_draft,
-            self.rerender_template_draft,
-            self.record_template_revision,
-            self.hold_unsettled_reviews,
-            self.snapshot_sent_template,
-            self.case_has_return_details,
-            self.record_clarification_answer,
-            self.relay_clarification_to_support,
-        )
+        """Every activity this probe declares, derived rather than listed.
+
+        This was the **third** hand-written copy of the list `worker.py` already
+        owns, and the only one the registration guard could not see drift.
+        `test_every_test_worker_registers_every_activity_the_workflow_calls`
+        reads `declared_activity_names(probe_class)` -- the `@activity.defn`
+        declarations -- while `Worker(...)` is handed this tuple. Two readers,
+        two lists, nothing asserting they agree: drop an entry here and keep its
+        decorator, and the guard stays green while the worker under-registers
+        and every case it schedules stops on a task nothing polls.
+
+        That is not hypothetical. It is `.plan/reviews/HARNESS-3.md` C1,
+        reproduced on this branch before this line was written: the guard
+        reported `17 passed` with `declared 18 | all() 17`. Deriving the tuple
+        removes the second list, so there is no longer an entry to drop -- the
+        same argument, and the same fix, as the two sibling probes that already
+        do this because a hand-written list rotted twice (`5b7d60f6`, and the
+        day V1 phase 2's review gate merged). See `tests/activity_probe.py`.
+
+        Order is not a contract: `Worker` keys its activity registry by the
+        decorator's `name=`, and `declared_activities` sorts by attribute name
+        precisely so registration order stops depending on definition order.
+        """
+        return declared_activities(self)
 
 
 # --------------------------------------------------------------------------- #
