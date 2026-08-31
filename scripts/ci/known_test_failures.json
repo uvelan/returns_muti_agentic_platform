@@ -1,0 +1,48 @@
+{
+  "$comment": [
+    "The CI allowlist of tests that FAIL ON TRUNK TODAY.",
+    "",
+    "It exists so that `checks.yml` can be a hard gate on arrival instead of a",
+    "job that is red the day it lands -- a red-on-arrival gate teaches people to",
+    "ignore the gate, which is the failure mode this workflow was added to end.",
+    "",
+    "It is NOT a way to skip or delete a test. Every entry here is still",
+    "COLLECTED AND RUN on every CI run, still reported as failing in the log, and",
+    "still counted. The allowlist only decides whether the JOB fails, and it",
+    "fails on ANY failure that is not named here.",
+    "",
+    "It is also self-pruning: an entry whose test PASSES fails the job too, with",
+    "an instruction to delete the line. A known failure that quietly got fixed",
+    "must not stay on this list, because the list is the only thing standing",
+    "between the suite and a real regression sneaking in under a stale name.",
+    "",
+    "Ids are `<classname>::<name>` exactly as the JUnit report spells them:",
+    "pytest writes a dotted module path; vitest writes the file path and the",
+    "full `describe > it` name."
+  ],
+  "suites": {
+    "backend": {
+      "$comment": [
+        "Pre-existing before this run's slices. `workflow.patched(...)` raises",
+        "`AttributeError: '_Runtime' object has no attribute 'patched'` inside",
+        "return_case_workflow.py. Recorded in .plan/merge.md as the single known",
+        "trunk failure that every slice measured against."
+      ],
+      "known_failures": [
+        "tests.test_cumulative_support_outcomes::test_a_rejected_return_still_opens_no_work_item"
+      ]
+    },
+    "frontend": {
+      "$comment": [
+        "The `/shipments` pair. `returns.session.read` is now visible from the",
+        "shipment console as well as /returns and /support, and the registry",
+        "test still pins the older two-domain set. Pre-existing on trunk; owned",
+        "by whoever settles whether the third domain is deliberate."
+      ],
+      "known_failures": [
+        "src/domains/registry.test.ts::the domain registry > declares exactly the canonical domains",
+        "src/domains/registry.test.ts::the domain registry > shares a visibility capability only where that is deliberate"
+      ]
+    }
+  }
+}
