@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from itertools import pairwise
@@ -1323,23 +1323,34 @@ class _Runtime:
         activities: dict[str, Callable[[Any], Awaitable[Any]]],
         *,
         arrivals: list[Callable[[], None]] | None = None,
+        patches: bool | Mapping[str, bool] = True,
     ) -> None:
         self._activities = activities
         self._arrivals = list(arrivals or [])
         self._uuid = 0
+        self._patches = patches
         self.calls: list[str] = []
+        self.patch_ids: list[str] = []
+        self.options: list[tuple[str, dict[str, Any]]] = []
         self.instant = NOW
         self.logger = logging.getLogger("tests.phase4")
 
-    async def execute_activity(self, name: str, argument: Any, **_options: Any) -> Any:
+    async def execute_activity(self, name: str, argument: Any, **options: Any) -> Any:
         """Run the activity, and wrap a raised one the way Temporal would.
 
         The wrapping matters. The workflow's failure handling is written against
         `ActivityError` -- a graph sync that raised a bare `RuntimeError` here
         would escape the `except ActivityError` that parks the case, and the
         test would prove the opposite of what it claims.
+
+        `self.options` records the keyword options alongside the name. The two
+        limbs of `_PATCH_STRUCTURED_SUPPORT_DRAFT` call the *same* activity with
+        the same input and differ only in whether `result_type` is pinned, so
+        the name alone cannot tell them apart -- and a test that cannot tell
+        them apart is not covering either.
         """
         self.calls.append(name)
+        self.options.append((name, dict(options)))
         try:
             return await self._activities[name](argument)
         except Exception as error:
@@ -1352,6 +1363,54 @@ class _Runtime:
                 activity_id=name,
                 retry_state=None,
             ) from error
+
+    def patched(self, patch_id: str) -> bool:
+        """Answer the way the execution this runtime is standing in for would.
+
+        `workflow.patched(id)` is not a feature flag and must not be doubled as
+        one. On an execution with no history it writes the marker and returns
+        `True`; replaying a history recorded *before* that marker exists, it
+        returns `False`, because the only safe thing to do with such a history
+        is to keep running the code that produced it. That asymmetry is the
+        whole mechanism, so a double hardcoded to `True` would leave the legacy
+        limb of every gate exactly as unreachable as having no `patched` at all
+        -- it would only move the failure from an `AttributeError` to silence.
+
+        So the answer is a constructor choice, not a constant. `patches=True`
+        (the default) is the faithful answer for these tests, which all start
+        from nothing and are therefore new executions; `patches=False` builds a
+        runtime that answers as a history older than every marker, which is the
+        only way the un-patched branch is reachable from a test at all.
+
+        **A mapping, not just a flag, and the reason is in production's own
+        comments.** `_PATCH_STRUCTURED_SUPPORT_DRAFT` documents a real
+        population -- histories that ran after `eaed61c` and before the marker
+        existed -- for which one marker is absent and the behaviour it guards is
+        already present. Markers are written independently, so a history carries
+        an arbitrary *subset* of them, and a single boolean cannot express the
+        subsets. `{id: answer}` can, and it is also what lets one test hold the
+        draft gate fixed while it moves the review gate, which is the only way
+        either gate's limbs are separable at all.
+
+        An id absent from a supplied mapping raises `KeyError` rather than
+        defaulting. That is deliberate: if `_open_support` grows a fourth
+        `workflow.patched` call, a test pinning the three it knows about must
+        fail loudly rather than quietly answer the new one at random -- the same
+        guarantee `_LegacyRuntime.patched` gets from its `assert`.
+
+        `self.patch_ids` records which markers were consulted, in order. That is
+        the part that must not drift silently: the count and the ids are how a
+        test asserts the gate was *reached* rather than merely stepped over.
+
+        The same shape as `tests/policy/test_case_policy_gate.py::_Runtime` and
+        `tests/test_support_template_review_gate.py::_Runtime`, deliberately --
+        three runtimes standing in for one module should not each invent their
+        own idea of what a patch marker is.
+        """
+        self.patch_ids.append(patch_id)
+        if isinstance(self._patches, bool):
+            return self._patches
+        return self._patches[patch_id]
 
     def now(self) -> datetime:
         return self.instant
@@ -1416,6 +1475,7 @@ def _harness(
     approved: bool = True,
     configuration: Any = SHIPPED_CONFIGURATION,
     arrivals: list[Callable[[ReturnCaseWorkflow], None]] | None = None,
+    patches: bool | Mapping[str, bool] = True,
 ) -> _WorkflowHarness:
     fixture = _fixture(approved=approved, configuration=configuration)
     instance = ReturnCaseWorkflow()
@@ -1437,6 +1497,7 @@ def _harness(
             (lambda step=step: step(instance))  # type: ignore[misc]
             for step in (arrivals or [])
         ],
+        patches=patches,
     )
     monkeypatch.setattr(workflow_module, "workflow", runtime)
     return _WorkflowHarness(instance=instance, fixture=fixture, runtime=runtime)

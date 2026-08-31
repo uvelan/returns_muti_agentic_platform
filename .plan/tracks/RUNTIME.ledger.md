@@ -139,3 +139,55 @@ No production defect found. `backend/src/` untouched.
 
 Command: see 1a–1f above. Result: defect and all dispatch claims confirmed at source.
 Next step: give `_Runtime` a `patched` on the house pattern.
+
+---
+
+## Step 2 — `_Runtime.patched`, faithful and controllable per test
+
+Files touched: `backend/tests/test_cumulative_support_outcomes.py`.
+
+**The decision.** `patched` answers from a constructor argument, defaulting to
+`True` because every test in this module starts from no history and is therefore a
+new execution -- which is what a real `workflow.patched` returns there. A double
+hardcoded to `True` was rejected explicitly: it makes the patched limb reachable and
+leaves the un-patched limb exactly as unreachable as an `AttributeError` did, while
+looking finished.
+
+The argument is `bool | Mapping[str, bool]`, not `bool`. Production's own
+`_PATCH_STRUCTURED_SUPPORT_DRAFT` comment names a live population carrying *some*
+markers and not others (`return-case-7b216e58`, `return-case-2328a586`), so the
+subsets are real and a single flag cannot express them. It is also the only way to
+hold the draft gate fixed while moving the review gate, which is what separating the
+two gates' limbs requires. An id missing from a supplied mapping raises `KeyError`
+rather than defaulting, so a fourth `workflow.patched` call in `_open_support` would
+fail these tests loudly instead of being answered at random.
+
+`self.patch_ids` records which markers were consulted, in order.
+`execute_activity` now also records its keyword options in `self.options`: the two
+limbs of the draft gate call the same activity with the same input and differ only
+in whether `result_type` is pinned, so the activity name alone cannot tell them
+apart.
+
+Shape copied deliberately from `tests/policy/test_case_policy_gate.py::_Runtime`
+(:308) and `tests/test_support_template_review_gate.py::_Runtime` (:152).
+
+### The module still has exactly one failure, and it is no longer the AttributeError
+
+```
+$ PYTHONPATH=...\src ...python.exe -m pytest tests/test_cumulative_support_outcomes.py -q
+FAILED tests/test_cumulative_support_outcomes.py::test_a_rejected_return_still_opens_no_work_item
+1 failed, 50 passed in 1.72s
+```
+
+```
+$ ...pytest tests/test_cumulative_support_outcomes.py::test_a_rejected_return_still_opens_no_work_item -q
+src\return_platform\workflows\return_case_workflow.py:2371: in _template_review_gate
+    drafted: TemplateReviewDraftSet = await workflow.execute_activity(
+E           temporalio.exceptions.ActivityError: 'record_template_draft'
+1 failed in 1.56s
+```
+
+`patched` now works -- the run got past 2247 and 2294 -- and a **second** staleness
+in the same test is uncovered underneath it. Diagnosed in step 3.
+
+Next step: the second staleness, then the coverage the fix unblocks.
