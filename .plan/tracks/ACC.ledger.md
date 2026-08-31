@@ -757,3 +757,51 @@ new failures**, which the new CI gate requires. `ruff check` / `ruff format` cle
 
 **Next step:** step:04 — the review-gate group (items 3–6) including
 AMENDMENT-5's two, verifying in-slice coverage rather than duplicating it.
+
+---
+
+## step:04 — AMENDMENT-3: the three surfaces coexist *in the published document*
+
+**Files:** `backend/tests/acceptance/test_amendment_3_three_support_surfaces_coexist.py`,
+`.plan/acceptance/amendment-3-coexistence.md` (both new).
+
+**In-slice coverage read first, and not duplicated.**
+`tests/api/test_api_route_paths_are_unique.py` covers the declaration side
+thoroughly — exact path, no `(method, path)` declared twice across every router
+with parameters normalised, and the associate path claimed **by name**.
+`tests/test_openapi_contract_drift.py` pins the four committed documents to the
+code. **Neither asserts the document carries all three operations**, and the
+failure AMENDMENT-3 actually produced was a *document* describing neither
+surface. Code declares them + document matches code is a transitive argument
+across two suites — `merge.md`'s "nobody stands at the seam". The integration
+agent checked it by hand; this makes it permanent.
+
+Asserts the **handler** behind each operation, not just path presence: a
+document answering POST on the associate path with the ingress handler is the
+amendment's exact state, and presence cannot distinguish them. A fourth test
+pins the snapshot list against `test_openapi_contract_drift.JSON_SNAPSHOTS` so
+the chain has no free end.
+
+**Injections:**
+
+| # | fault | result |
+| --- | --- | --- |
+| INJ-A3a | the amendment's failure reproduced in all four documents | 9 failed, 5 passed |
+| INJ-A3b | one document only, one `operationId` swapped | 1 failed, 13 passed — the injected document named in the failure id |
+
+**INJ-A3b found a defect in my own instrument.** The document fixture was
+parametrised by `path.name`, and **three of the four snapshots share the
+basename `return-platform.openapi.json`** — so the ids collapsed and every
+lookup resolved to the first file. The test reported four documents and read
+two. The tell was that a fault written into one file failed *three* parameter
+sets, which is impossible if they are distinct documents. Re-parametrised on the
+repository-relative path; INJ-A3b then failed exactly one, and INJ-A3a was
+re-run so the numbers above are the corrected instrument's. Same shape as
+step:03's INJ-13b, in a different costume: green because the inputs could not
+exercise the property.
+
+**Commands:** `python -m pytest tests/acceptance -q` → **23 passed**.
+`ruff check` / `ruff format` clean. No production file modified.
+
+**Next step:** step:05 — AMENDMENT-4's "never atomically" half, then the
+remaining groups. See the halt/scope note at the end of this ledger.
