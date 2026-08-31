@@ -296,3 +296,105 @@ run on this branch is red before an auditor starts.
 
 Only 1 of the 51 tests in the file reaches `_open_support`, which is why it
 presents as a single failure rather than a wedged module.
+
+---
+
+## step:04 — items 3–6, the review gate. Four injections; the category-B row points at the wrong file.
+
+**Note on provenance:** INJ-B6…B9 were first executed before a session
+interruption and were *not* in the ledger. Rather than transcribe them from
+recollection, all four were **re-executed from a clean tree** and the outputs
+below are the re-runs. (The interruption arrived with `git diff -- backend/src/`
+already empty, confirmed before anything was applied.)
+
+Target set, and why it is three files rather than STATUS's two: step:02's lesson
+— ask whether the suite STATUS names is the suite where the guarantee lives.
+`GATE` = `tests/test_support_template_review_gate.py` +
+`tests/api/test_case_panel_and_reviews.py` (the two STATUS names) +
+`tests/operations/test_review_aggregate.py` (S2's own, which STATUS never names).
+
+```
+$ ./.venv/Scripts/python.exe -m pytest $GATE -q
+147 passed, 1 warning in 22.93s
+```
+
+The mechanism: `operations/review_aggregate.py` `approve()` verifies three things
+before a review may leave `OPEN` — `draft_version` (line 747),
+`canonical_edit_version` (751), and the canonical payload hash (778). Broken
+**one at a time**, per the rule that a test failing only when all three break is
+pinning the conjunction rather than the parts.
+
+### INJ-B6 — `draft_version` check removed
+
+```
+FAILED tests/api/test_case_panel_and_reviews.py::test_a_stale_draft_version_is_409_with_the_field_named
+FAILED tests/api/test_case_panel_and_reviews.py::test_a_hash_from_a_panel_read_before_the_draft_moved_is_refused
+FAILED tests/operations/test_review_aggregate.py::test_approval_refuses_a_stale_draft_version
+3 failed, 144 passed, 1 warning in 17.40s
+```
+
+**CAUGHT**, individually, and by a test that names the field.
+
+### INJ-B7 — `canonical_edit_version` check removed. **The category-B row is wrong here.**
+
+Run first against **only the two files STATUS names**:
+
+```
+$ ./.venv/Scripts/python.exe -m pytest tests/test_support_template_review_gate.py tests/api/test_case_panel_and_reviews.py -q
+96 passed, 1 warning in 11.09s
+```
+
+**All 96 green with the check gone.** Then with S2's own suite added:
+
+```
+$ ./.venv/Scripts/python.exe -m pytest $GATE -q
+FAILED tests/operations/test_review_aggregate.py::test_approval_refuses_a_stale_canonical_edit_version
+1 failed, 146 passed, 1 warning in 17.76s
+```
+
+The property **is** covered — and by exactly one test, in a file STATUS's
+category-B row for items 3–6 does not mention. This is step:02's finding a
+second time: *a category-B row pointing at the wrong file makes the real
+coverage invisible in both directions.* Read literally, STATUS says "93 tests
+cover the review gate"; those 93 do not contain this guarantee at all.
+
+### INJ-B8 — payload hash check removed
+
+```
+FAILED tests/api/test_case_panel_and_reviews.py::test_a_wrong_payload_hash_is_409
+FAILED tests/operations/test_review_aggregate.py::test_approval_refuses_a_hash_of_bytes_the_store_does_not_hold
+2 failed, 145 passed, 1 warning in 18.34s
+```
+
+**CAUGHT**, individually, by both layers.
+
+### INJ-B9 — `hold` takes the auto-send branch
+
+`workflows/return_case_workflow.py:2759`, `if policy == "auto_send"` widened to
+`if policy in ("auto_send", "hold")`, so a timed-out review under the default
+`hold` policy is approved as `SYSTEM` and sent.
+
+```
+FAILED tests/test_support_template_review_gate.py::test_nobody_answering_parks_the_case_and_sends_nothing
+FAILED tests/test_support_template_review_gate.py::test_a_revision_naming_an_unheld_review_is_still_ignored_without_supersedes
+FAILED tests/test_support_template_review_gate.py::test_a_supersedes_naming_a_review_this_case_never_held_is_refused
+FAILED tests/test_support_template_review_gate.py::test_an_approved_request_is_sent_while_another_is_still_being_read
+FAILED tests/test_support_template_review_gate.py::test_a_notice_naming_another_review_is_ignored
+FAILED tests/test_support_template_review_gate.py::test_the_wait_runs_on_the_deadline_in_state_not_the_one_it_started_with
+FAILED tests/test_support_template_review_gate.py::test_every_state_the_gate_can_close_over_ends_with_a_legal_exit
+7 failed, 140 passed, 1 warning in 19.41s
+```
+
+**CAUGHT**, headlined by `test_nobody_answering_parks_the_case_and_sends_nothing`
+— the test that owns the guarantee, failing on the guarantee's own wording. The
+six others are collateral from the default-policy path changing shape, which is
+expected and is not what earns the verdict.
+
+### Verdict so far on 3–6
+
+`hold`-never-auto-sends and all three approval checks are **individually
+load-bearing → A**. The correction to carry into STATUS is not about a blind
+test but about a **mis-pointed category-B row**: one of the four guarantees is
+pinned by a single test in a file the row omits.
+
+Reverted after each; `git diff --stat -- src/` empty.
