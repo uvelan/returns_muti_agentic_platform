@@ -573,3 +573,99 @@ integration agent's file. Rewriting someone's historical record to keep a number
 current would be an ownership breach and would also destroy the record. **Named for
 the orchestrator; untouched.** The stale pointer *to* it lived in
 `known_test_failures.json`'s comment, and that pointer is gone (step 5).
+
+---
+
+## Step 7 — the integration tip moved mid-flight; rebased and re-measured
+
+Files touched: none (rebase + re-verification).
+
+`refactor/unified-return-platform` advanced from `02f8d45e` to `2d0e3d65` (29 commits
+— ACC phase 3, four CI-ENV review rounds, the HARNESS-1 review) while this branch was
+being written. Contracts §3 requires branching from the *latest* RV-approved
+integration commit, and the same failure mode it warns about applies to a branch that
+was current when it started and is not when it lands.
+
+```
+$ git log --oneline -1 refactor/unified-return-platform
+2d0e3d65 docs(merge): two orchestrator errors -- a misroute, and a merge on a stale verdict
+
+$ git diff --name-only 02f8d45e..refactor/unified-return-platform
+.plan/acceptance/STATUS.md
+.plan/acceptance/category-b-audit.md
+.plan/merge.md
+.plan/reviews/{ACC3-1,ACC3-2,ACC3-3,CI-ENV-1..4,CI-LINT-1,CI-LINT-2,HARNESS-1}.md
+.plan/tracks/ACC3.ledger.md
+backend/tests/api/test_case_clarification_answer_route.py
+backend/tests/operations/test_artifact_binding.py
+backend/tests/operations/test_support_template_gate.py
+backend/tests/operations/test_support_template_renderer.py
+```
+
+No overlap with this branch's three files. `.plan/reviews/HARNESS-1.md` is a different
+harness slice (`feat/live-harness-registration`, live-infra probe registration), not
+this one.
+
+Worth recording as corroboration rather than as a claim of mine: `e00a532c (ACC3)
+step:10 RV ACC3-1 F1: no patch gate is exercised, not one branch of one` reaches the
+same conclusion step 1 reached independently, from the acceptance side.
+
+```
+$ git rebase refactor/unified-return-platform
+Successfully rebased and updated refs/heads/feat/runtime-patch-double.
+
+$ git diff --name-only 2d0e3d65..HEAD
+.plan/tracks/RUNTIME.ledger.md
+backend/tests/test_cumulative_support_outcomes.py
+scripts/ci/known_test_failures.json
+```
+
+### Everything re-measured on the new base
+
+Both runs use the same method as step 5 — the two changed files checked back to the
+base, run, restored — so the only difference between them is this branch's diff.
+
+Before (`2d0e3d65`):
+
+```
+FAILED tests/test_cumulative_support_outcomes.py::test_a_rejected_return_still_opens_no_work_item
+1 failed, 5239 passed, 11 skipped, 514 deselected, 2 warnings in 330.98s (0:05:30)
+```
+
+After (`42c8fda0`, pre-rebase sha; identical tree):
+
+```
+5245 passed, 11 skipped, 514 deselected, 2 warnings in 247.63s (0:04:07)
+```
+
+`5239 + 1 = 5240` before, `5245` after: one red turned green, five tests added, same
+11 skips and same 514 deselections.
+
+```
+$ python scripts/ci/assert_known_failures.py --suite backend --report /tmp/after2.xml
+5256 tests ran, 0 failed, 0 allowlisted
+only the 0 known, still-failing tests failed
+exit=0
+
+$ python scripts/ci/test_assert_known_failures.py
+all negative controls passed
+```
+
+### One pre-existing red found on the new tip, and it is not mine
+
+```
+$ python -m ruff check .
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests\operations\test_support_template_renderer.py:14:1
+Found 1 error.
+```
+
+That file is not in this branch's diff, and its last commit is `d6a08097 (merge) ACC
+phase 3: the category-B audit -- RV PASS ACC3-3`. So `checks.yml`'s backend lint job
+— the job rule 13 was written for — **is red on trunk right now**, arrived with the
+ACC3 merge, and is a one-command fix (`ruff check --fix`) for whoever owns that file.
+Reported, not fixed: it is another slice's file and silently tidying it would put an
+unrelated change in this diff.
+
+`backend/src/` remains untouched (`git diff --name-only 2d0e3d65..HEAD` above). No
+test was skipped, xfailed, weakened or deleted.
