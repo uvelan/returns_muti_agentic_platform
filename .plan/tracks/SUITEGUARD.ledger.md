@@ -525,3 +525,140 @@ All checks passed!
 $ python -c "import yaml; yaml.safe_load(open('.github/workflows/checks.yml'))"
 checks.yml parses
 ```
+
+---
+
+## step:04 — RV CHANGES_REQUIRED: the precedence I argued three times and ran zero times
+
+Review `.plan/reviews/SUITEGUARD-1.md` (`30c3c6da`). Three fixes, all accepted;
+no design call was disputed. The main finding is my own rule 13 turned on my own
+design, and it is worth stating plainly rather than softening.
+
+### The finding
+
+RV **mutation-tested** rather than counting controls: eight mutations, six
+reddened a control, two survived. The one that matters:
+
+> demoting the size check below the allowlist verdict leaves all 35 controls
+> green.
+
+I had argued that precedence in three separate comments — the comparator
+docstring, `_check_size`'s docstring, and the `checks.yml` block — and never once
+executed it. **By rule 13, an argument is a comment until something runs it.** I
+wrote that sentence into the workflow and then failed to apply it to the ordering
+I had just introduced.
+
+Why the existing controls could not catch it, which is the instructive part. The
+"short AND legitimately red" control has failures that are ALL allowlisted, so
+`unexpected`, `repaired` and `missing` are all empty, the allowlist verdict is
+clean, and **both orderings fall through to the size check and both answer 2.**
+The control is not weak; it is aimed elsewhere.
+
+The distinguishing case is a short run that dropped a file carrying an
+allowlisted id — and as RV noted, that is not exotic, it is the *most likely*
+real truncation, because a dropped allowlisted id is exactly when `missing`
+fires:
+
+| ordering | allowlist verdict | size verdict | returned | `status -gt 1` |
+|---|---|---|---|---|
+| size first (correct) | 1 | 2 | **2** | job fails |
+| allowlist first (mutant) | 1 | 2 | **1** | **tolerated — CI green** |
+
+Control added: `size-short-drops-allowlisted.xml` keeps `KNOWN_FRONTEND` failing
+and removes `KNOWN_BACKEND`'s file entirely, so `missing` is non-empty AND the
+run is short. It asserts exit **2**, that the allowlist did have a verdict to
+give (`"was not collected"`), and that the size check overrode it.
+
+### I mutation-tested the fix rather than asserting it
+
+Re-applying RV's surviving mutation to a copy of the comparator:
+
+```
+$ python - <<'EOF'   # swap the two return blocks in main()
+MUTATION APPLIED: size check demoted below the allowlist verdict
+EOF
+$ python <scratchpad>/mut/test_assert_known_failures.py
+  [FAIL] a short run that also lost an allowlisted test exits 2, not 1 -- ::error::THE SUITE SHRANK: 31 test cases reported, but the recorded floor is 52 -- 21 did not report.
+1 FAILED: a short run that also lost an allowlisted test exits 2, not 1
+EXIT=1
+```
+
+Dead, and killed by exactly the new control and nothing else.
+
+### Minor 1 — a control that passed for the wrong reason
+
+RV: the zero-floor control passes via the **restake** branch, not the guard it
+names. Confirmed, and the mechanism is worth recording: with `baseline = 0`,
+`count < baseline` is false, but `count > 0 * 1.25` is true, so deleting
+`baseline <= 0` still yields exit 2 — via a different branch, with a different
+message, testing nothing the control claims to test.
+
+The fix is to assert the REASON, not only the exit code. Applied to all the
+malformed-floor controls, and one added for `True` (a `bool` is an `int` in
+Python, so without the explicit `isinstance(baseline, bool)` clause a floor of
+`true` reads as a floor of 1 and passes anything).
+
+Verified by mutation rather than by inspection:
+
+```
+$ # `baseline <= 0` removed
+  [FAIL]   (via the unusable-floor guard, not the restake branch) -- ::error::the floor has fallen behind: 50 test cases ran against a recorded floor of 0.
+  [FAIL]   (and NOT via restake)
+2 FAILED
+
+$ # `isinstance(baseline, bool)` removed
+1 FAILED:   (booleans are ints in Python; the guard says so)
+
+$ # `count < baseline` slackened to `count < baseline * 0.5`
+11 FAILED: REJECTS an all-green run that is missing a fifth of its files, ... rejects a run missing a single file, catches five duplicate-named tests vanishing
+```
+
+Note the first two: the `code == 2` assertions still pass under those mutations.
+Only the reason assertions redden. That is the whole of RV's point.
+
+### Minor 2 — an orchestrator's stale premise, outliving the conversation in a file
+
+`suite_size_floor.json` still said the backend accident "is not even available in
+principle: a suite whose allowlist is empty". The backend allowlist is **not**
+empty — it holds one id, and has on every ref I have checked. I flagged this in
+step:00 and again in my report, and it still reached the committed artifact,
+because I wrote the JSON's prose before checking and then corrected only the
+`.py` and `.yml` when the framing was rewritten in step:03.
+
+The coordinator has since owned the error's origin (true only on the unmerged
+`feat/runtime-patch-double`). The part that is mine is that a claim I had already
+disproved survived into a file. A conversation corrects itself; a file does not.
+
+Rewritten to say what is true, and to make the point stronger rather than weaker:
+the accident's strength *scales with* the allowlist — today three ids across two
+suites — and a self-pruning allowlist is always travelling towards empty. Also
+carried the "this is not a defect in the allowlist" framing into the JSON, which
+previously had it only in the other two files.
+
+### The lesson RV asked for a line on
+
+**35 controls is a number, not a proof.** The count went up by 27 in step:01–02
+and the ordering was still untested; the gap was found by mutating the
+implementation and asking which control noticed, not by reading the list and
+finding it long. Control counts measure how much was written. Mutation measures
+how much is load-bearing. Every guard added here from now on gets the second
+treatment — and the four mutations above are the standard, not a one-off for this
+review.
+
+### Final state
+
+```
+$ python scripts/ci/test_assert_known_failures.py
+all negative controls passed                          (41 controls)
+$ cd backend && python ../scripts/ci/assert_known_failures.py --suite backend --report junit-backend.xml
+suite size held: 441 test files/modules, 5251 test cases (floor 441 / 5251)   exit=0
+$ cd frontend && python ../scripts/ci/assert_known_failures.py --suite frontend --report junit-frontend.xml
+suite size held: 61 test files/modules, 860 test cases (floor 61 / 860)       exit=0
+$ # truncated, both suites
+backend truncated exit=2
+frontend truncated exit=2
+$ python -m ruff check ../scripts/ci/
+All checks passed!
+```
+
+No backend suite was run in this step. Saved artifacts only, as instructed.

@@ -278,6 +278,40 @@ def main() -> int:
         check("rejects a run that is short AND legitimately red", code == 2, out)
         check("the shortfall outranks the allowlist's verdict", "THE SUITE SHRANK" in out, out)
 
+        # ------------------------------------------------------------------
+        # The size verdict must OUTRANK the allowlist verdict, not merely
+        # coexist with it. This control exists because the ordering survived a
+        # mutation: moving the size check below the `unexpected or repaired or
+        # missing` return left every other control in this file green.
+        #
+        # The control above cannot catch that, and the reason is worth stating.
+        # Its failures are ALL allowlisted, so the allowlist verdict is clean,
+        # both orderings fall through to the size check, and both answer 2.
+        #
+        # The distinguishing case is a short run that dropped a file carrying an
+        # allowlisted id -- which is not an exotic case but the MOST LIKELY real
+        # truncation, because a dropped allowlisted id is precisely when
+        # `missing` fires. There the allowlist verdict is 1 and the size verdict
+        # is 2, so the orderings disagree:
+        #
+        #   size first (correct) -> 2 -> `status -gt 1` -> the job fails
+        #   allowlist first      -> 1 -> tolerated       -> CI GREEN over a
+        #                                                   fraction of the suite
+        #
+        # 1 is the code this workflow reserves for "the tests have an opinion",
+        # and a suite that did not run has no opinion to report.
+        short_and_missing_allowlisted = write(
+            "size-short-drops-allowlisted.xml",
+            # KNOWN_FRONTEND is here and still failing; KNOWN_BACKEND's file is
+            # gone entirely, exactly as a dead worker would take it. So
+            # `missing` is non-empty AND the run is short.
+            [*suite_of(6, 5), (*KNOWN_FRONTEND, "failure")],
+        )
+        code, out = run(allowlist, short_and_missing_allowlisted, floor={"cases": 52, "files": 12})
+        check("a short run that also lost an allowlisted test exits 2, not 1", code == 2, out)
+        check("  (the allowlist DID have a verdict to give)", "was not collected" in out, out)
+        check("  (and the size check overrode it)", "THE SUITE SHRANK" in out, out)
+
         # A single missing file, not a collapse. The floor has no slack by design:
         # these are integer counts, not gzip bytes, and there is no measurement
         # noise for an allowance to absorb -- so any slack would be a hole of
@@ -321,14 +355,33 @@ def main() -> int:
         check("rejects a missing floor file", code == 2, out)
         check("says a check with no floor is not a check", "is not a check" in out, out)
 
+        # These three assert the REASON, not just the exit code, and that is not
+        # belt-and-braces. A floor of 0 fails the exit-code assertion even with
+        # the `baseline <= 0` guard deleted, because 50 > 0 * 1.25 sends it down
+        # the RESTAKE branch instead -- so on the code alone this control passes
+        # while testing nothing it names, and would go on passing after the guard
+        # it exists for was removed. A control that passes for the wrong reason is
+        # a control you do not have. Naming the expected message is what ties each
+        # one to the branch it is about.
         code, out = run(empty_allowlist, full, floor={"cases": 0, "files": 10})
         check("rejects a floor of zero", code == 2, out)
+        check("  (via the unusable-floor guard, not the restake branch)", "no usable" in out, out)
+        check("  (and NOT via restake)", "fallen behind" not in out, out)
 
         code, out = run(empty_allowlist, full, floor={"files": 10})
         check("rejects a floor with a missing count", code == 2, out)
+        check("  (naming the absent key)", "no usable demo.cases floor" in out, out)
 
         code, out = run(empty_allowlist, full, floor={"cases": "50", "files": 10})
         check("rejects a floor that is not a number", code == 2, out)
+        check("  (naming the unusable key)", "no usable demo.cases floor" in out, out)
+
+        # `True` is an `int` in Python, which is why the guard tests
+        # `isinstance(baseline, bool)` separately. Without that clause a floor of
+        # `true` would be read as a floor of 1 and would silently pass anything.
+        code, out = run(empty_allowlist, full, floor={"cases": True, "files": 10})
+        check("rejects a boolean floor", code == 2, out)
+        check("  (booleans are ints in Python; the guard says so)", "no usable" in out, out)
 
         no_suite = root / "floor-no-suite.json"
         no_suite.write_text(json.dumps({"suites": {"other": {"cases": 1, "files": 1}}}), "utf-8")
