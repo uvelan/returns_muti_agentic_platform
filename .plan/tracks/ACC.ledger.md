@@ -678,3 +678,82 @@ and opens nothing). `ruff check` / `ruff format` clean.
 **Next step:** step:03 — the business-time scenarios (items 13, 19), each
 asserting `calendar_applied is True` / `not …is_continuous` per dispatch
 condition 1.
+
+---
+
+## step:03 — items 13 and 19: the cadence, on a calendar that actually shuts
+
+**Files:** `backend/tests/acceptance/conftest.py`,
+`backend/tests/acceptance/test_items_13_19_reminder_cadence_in_business_time.py`,
+`.plan/acceptance/items-13-19-business-time.md` (all new).
+
+**The gap, stated exactly.** `tests/test_support_template_review_gate.py`
+already drives this loop, but its `resolve_business_deadline` is a double that
+does `start + working_seconds` and returns `calendar_applied=True` **as a
+literal**. A grep for `with_business_calendar` outside `tests/harness/` returned
+nothing, so before this step **no test in the repository had run the reminder
+cadence on a calendar that closes**. Dispatch condition 1's failure mode was not
+hypothetical here; it was the state of the suite.
+
+This module keeps that harness — same runtime substitution, same real
+`SupportTemplateGateService` over the real `ReviewAggregateStore` — and replaces
+one thing: the **real** `resolve_business_deadline` activity over a release
+carrying the Mon–Fri 09:00–17:00 desk from ACC phase 1's fixture.
+
+**Assert, not assume.** `_assert_business_time_was_actually_used` runs in every
+business-time scenario: `not desk.is_continuous`, the run points at *this*
+calendar, and `calendar_applied is True` on **every** resolution rather than the
+first — a fallback taken on one leg would leave the early ones true.
+
+**Measured.** From Friday 16:30 local, the legs land Monday 10:30/12:30/14:30/16:30
+and three reminders fire. Nothing on Saturday, nothing bunched. A **control**
+scenario runs the identical wait on the shipped 24/7 calendar and asserts its
+first reminder lands the same Friday evening — without it, the weekend
+assertions could be passing on the calendar rather than because of it.
+
+**Injections — four, each read back before running:**
+
+| # | fault | result |
+| --- | --- | --- |
+| INJ-19a | wall-clock reminder tick in `_await_template_reviews` | 1 failed — "a reminder was scheduled for **Friday 18:30** — outside desk hours"; the 24/7 control stays green, correctly |
+| INJ-13a | cap multiplied by the open-review count (a per-review cadence) | 2 failed — both two-review scenarios; every one-review scenario green |
+| INJ-13b | a reminder charged on the satisfied-predicate path | 1 failed — "6 reminders with wakes against 3 without" |
+| INJ-13c | the calendar fixture forgotten (`desk_configuration` returns the release unchanged) | 4 failed — every business-time scenario, loudly |
+
+**INJ-13b caught a scenario of mine that could not fail, and it was rewritten.**
+Its first form asserted a *ceiling* (`sent <= max_reminders`) and its "wake" left
+the gate's predicate false — so the harness raised `TimeoutError` exactly as if
+nothing had arrived, and the injection left **all nine tests green**. Two defects
+at once: the wake path was never entered, and a ceiling is unfalsifiable when the
+cap clamps the count whatever charges it. Rewritten as a **comparison** — the
+same case run twice, identical but for the wakes, counts must match — with a wake
+that puts a notice for a review the case does not hold into
+`pending_template_notices`, which genuinely satisfies the predicate, is drained,
+is ignored, and leaves the review open. The re-run then failed with its own
+message. Both `merge.md` shapes ("green because the inputs can't exercise the
+property"; "proves the right thing is asked for, not that the wrong thing is
+refused"), found in my own instrument by my own injection.
+
+Also changed for a reason worth keeping: the reminder instant is read from the
+**runtime clock at the moment the reminder is logged**, not from the recorded
+`resolve_business_deadline` answers. The latter does not survive INJ-19a — a
+wall-clock implementation stops asking for legs, so the list empties and the red
+reads "nothing was resolved" instead of "a reminder fired outside desk hours".
+Not the instrument flattening into the answer: the test never chooses how far the
+clock moves; the runtime advances by the timeout the gate passes, computed from
+the deadline the gate resolved.
+
+**AMENDMENT-5 rule 2 is re-asserted on this path** — a weekend-spanning wait that
+closes leaves every review in `HELD_FOR_OPERATIONS`, and the *absence* of a
+stranded state is asserted against the set of states that have a legal exit
+(`OPEN` and `APPROVING` deliberately excluded — that is the trap the amendment
+closed).
+
+**Commands:** `python -m pytest tests/acceptance -q` → **9 passed**.
+`python -m pytest tests -q` → **5195 passed, 1 failed, 10 skipped, 512
+deselected** (4:20) — the failure is `test_a_rejected_return_still_opens_no_work_item`,
+the known pre-existing one named in `scripts/ci/known_test_failures.json`. **Zero
+new failures**, which the new CI gate requires. `ruff check` / `ruff format` clean.
+
+**Next step:** step:04 — the review-gate group (items 3–6) including
+AMENDMENT-5's two, verifying in-slice coverage rather than duplicating it.
