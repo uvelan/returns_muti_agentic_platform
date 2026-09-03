@@ -58,19 +58,33 @@ class OpenAICompatibleProvider(HTTPProvider):
             ),
         }
         if request.response_schema is not None:
-            if "nemotron" in self.model.lower():
-                # Nemotron models via the NVIDIA integrate API reliably support json_object
-                # mode but not strict JSON-schema constraints, so fall back to plain JSON.
-                payload["response_format"] = {"type": "json_object"}
-            else:
-                payload["response_format"] = {
-                    "type": "json_schema",
-                    "json_schema": {
-                        "name": "agent_action",
-                        "schema": request.response_schema,
-                        "strict": True,
-                    },
-                }
+            # Every model gets the strict schema, nemotron included.
+            #
+            # Nemotron used to be excepted here on the grounds that it supports
+            # `json_object` but not strict JSON-schema constraints. Measured
+            # against nemotron-3-super-120b on the real narrowing prompt, that
+            # is no longer true and the exception was costing more than it
+            # saved: the NVIDIA integrate API answers `json_schema` with 200,
+            # returns the correct flat AgentAction envelope, and does it in
+            # 31.7s against 71.3s for the same call under `json_object`.
+            #
+            # Unconstrained, the model invents its own envelope -- action_type
+            # beside a `payload` wrapper that AgentAction does not have, with
+            # the required `business_capability` missing. That is not a near
+            # miss the correction pass can repair, it is a different document,
+            # and it is what made both NVIDIA STANDARD routes structurally
+            # unable to serve a schema-bound task. Constrained, what is left is
+            # an omitted conditional block -- the payload a given action_type
+            # requires, which no JSON Schema can express -- and that is exactly
+            # what `validationError` and `invalidActionJson` feed back for.
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "agent_action",
+                    "schema": request.response_schema,
+                    "strict": True,
+                },
+            }
 
         data = await self._post(
             f"{self._base_url}/chat/completions",
