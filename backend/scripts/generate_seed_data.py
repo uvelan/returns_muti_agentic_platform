@@ -221,6 +221,20 @@ class Person:
     def digits(self) -> str:
         return "".join(character for character in self.phone if character.isdigit())
 
+    @property
+    def subscriber(self) -> str:
+        """The seven digits after the area code, which is how Ferguson stores it.
+
+        `salesInv.customer.address[].phoneNumber` holds a SUBSCRIBER number and
+        carries no `phoneAreaCode` beside it: 93 of the 103 real values are
+        seven digits. Writing the full ten here made the generated corpus
+        disagree with the real rows in the one field the clarification policy
+        ranks second, so a phone an associate reads off a record matched the
+        2,774 generated contacts and silently missed the 92 faithful ones.
+        """
+        _, _, subscriber = self.phone.partition("-")
+        return subscriber.replace("-", "")
+
 
 class PersonDirectory:
     """Distinct people, drawn without replacement so variety is guaranteed.
@@ -335,6 +349,48 @@ _COLLECTION_FILES = {
 }
 
 
+#: Strings the upstream ERP writes where it means "no value". They arrive as
+#: text, so every consumer downstream treats them as a value: `"nullnull"` is a
+#: phone number the copilot will offer to search on, `"null"` is a city it will
+#: print back to an associate, and `"-"` is an email address a notification
+#: would be addressed to.
+#:
+#: Measured in `fixtures/real_ferguson_source/`, not guessed: 8 `nullnull`
+#: phone numbers and one wholly `"null"` address across the 101 real orders,
+#: 492 `"null"` delivery/status/returnCode fields and 68 `"-"` emails across the
+#: 100 real shipments, plus `"."`, `"-"` and `"NONE"` standing in for an absent
+#: PO number or job name.
+_SENTINEL_STRINGS = frozenset(
+    {"null", "nullnull", "undefined", "nan", "none", "nil", "n/a", ".", "-", "--", "?"}
+)
+
+#: `_id` is excluded because it is an identifier, never a value: a document
+#: keyed `"NONE"` is a document, and nulling its key would lose it.
+_SENTINEL_EXEMPT_KEYS = frozenset({"_id"})
+
+
+def _normalise_sentinels[T](value: T, *, key: str | None = None) -> T:
+    """Replace the ERP's textual "no value" markers with a real null.
+
+    Applied where the real corpus ENTERS the pipeline rather than to the files
+    in `fixtures/real_ferguson_source/`, which the backup README fixes as "the
+    authority on what the originals said". Editing those would discard the only
+    record of what Ferguson actually sent, and the point here is not to pretend
+    the junk was never there -- it is to stop it being mistaken for data.
+    """
+    if isinstance(value, dict):
+        return {k: _normalise_sentinels(v, key=k) for k, v in value.items()}  # type: ignore[return-value]
+    if isinstance(value, list):
+        return [_normalise_sentinels(v, key=key) for v in value]  # type: ignore[return-value]
+    if (
+        isinstance(value, str)
+        and key not in _SENTINEL_EXEMPT_KEYS
+        and value.strip().lower() in _SENTINEL_STRINGS
+    ):
+        return None  # type: ignore[return-value]
+    return value
+
+
 class RealCorpus:
     """The genuine Ferguson documents, loaded from the on-disk backup.
 
@@ -345,10 +401,10 @@ class RealCorpus:
     """
 
     def __init__(self, documents: Mapping[str, list[dict[str, Any]]]) -> None:
-        self.orders = documents["orders"]
-        self.customers = documents["customers"]
-        self.products = documents["products"]
-        self.shipments = documents["shipments"]
+        self.orders = _normalise_sentinels(documents["orders"])
+        self.customers = _normalise_sentinels(documents["customers"])
+        self.products = _normalise_sentinels(documents["products"])
+        self.shipments = _normalise_sentinels(documents["shipments"])
 
     def identifiers(self, kind: str) -> set[Any]:
         return {document["_id"] for document in getattr(self, kind)}
@@ -1387,7 +1443,7 @@ def _generate_orders(
                             "postalCode": address["zipCode"],
                             "county": address["county"],
                             "country": "US",
-                            "phoneNumber": person.digits,
+                            "phoneNumber": person.subscriber,
                             "email": person.email,
                         },
                         {
@@ -1399,7 +1455,7 @@ def _generate_orders(
                             "postalCode": address["zipCode"],
                             "county": address["county"],
                             "country": "US",
-                            "phoneNumber": person.digits,
+                            "phoneNumber": person.subscriber,
                         },
                     ]
                 },
@@ -1638,12 +1694,25 @@ def _generate_warehouses(
 
 def _verify(
     schema: ActiveSchema,
-    order: Mapping[str, Any],
-    customer: Mapping[str, Any],
-    product: Mapping[str, Any],
-    shipment: Mapping[str, Any],
+    orders: Sequence[Mapping[str, Any]],
+    customers: Sequence[Mapping[str, Any]],
+    products: Sequence[Mapping[str, Any]],
+    shipments: Sequence[Mapping[str, Any]],
 ) -> None:
-    """Every declared path must resolve, or the entity silently vanishes.
+    """Every declared path must resolve on AT LEAST ONE document of its kind.
+
+    At least one, not "on the first one". A field the builders write
+    CONDITIONALLY is absent from most documents by design -- `fleetwiseStatus`
+    only exists on a deliverable order and `podSigTd` only once that order has
+    been delivered -- so checking `order_documents[0]` asks an optional field to
+    be mandatory and fails or passes on which order happened to sort first. That
+    is the same shape as the bug the product sample below already documents, and
+    it left this script unable to run at all: both delivery fields were declared
+    on 2026-08-28 and the pristine generator has refused every run since.
+
+    The guarantee is unchanged and is the one that matters -- a path that
+    resolves on NOTHING is still a defect, because the projection it feeds would
+    be silently empty. What is dropped is only the accident of sampling.
 
     Checked here rather than left to a graph build: a missing path produces an
     empty projection, and an empty projection is indistinguishable from a source
@@ -1656,37 +1725,54 @@ def _verify(
     computed from a sibling that is checked.
     """
     by_source = {
-        "source_sales": order,
-        "source_customers": customer,
-        "source_products": product,
-        "source_shipments": shipment,
+        "source_sales": orders,
+        "source_customers": customers,
+        "source_products": products,
+        "source_shipments": shipments,
     }
+
+    def _walk(node: Any, path: Sequence[str]) -> Any:
+        for part in path:
+            node = node.get(part) if isinstance(node, dict) else None
+        return node
+
+    def _records(document: Mapping[str, Any], record_path: Sequence[str]) -> list[Any]:
+        """Every exploded record, not just the first: an optional field may sit
+        on the fourth line of an order whose first three do not carry it."""
+        bases: list[Any] = [document]
+        for part in record_path:
+            nxt: list[Any] = []
+            for base in bases:
+                value = base.get(part) if isinstance(base, dict) else None
+                nxt.extend(value) if isinstance(value, list) else nxt.append(value)
+            bases = [b for b in nxt if b is not None]
+        return bases
+
     missing: list[str] = []
     for entity_id, entity in schema.entities.items():
-        document = by_source.get(entity.source_asset_id)
-        if document is None:
+        documents = by_source.get(entity.source_asset_id)
+        if not documents:
             continue
         record_path = entity.record_path if entity.explode else ()
-        base: Any = document
-        for part in record_path:
-            base = base.get(part) if isinstance(base, dict) else None
-            if isinstance(base, list):
-                base = base[0] if base else None
-        if base is None:
+        if not any(_records(document, record_path) for document in documents):
             missing.append(f"{entity_id}: record_path {tuple(record_path)} absent")
             continue
         for field_id, field in entity.fields.items():
             if field.physical_path is None:
                 continue
             if field.path_origin is PathOrigin.CURRENT_RECORD:
-                node: Any = base
+                resolved = any(
+                    _walk(base, field.physical_path) is not None
+                    for document in documents
+                    for base in _records(document, record_path)
+                )
             elif field.path_origin is PathOrigin.ROOT_DOCUMENT:
-                node = document
+                resolved = any(
+                    _walk(document, field.physical_path) is not None for document in documents
+                )
             else:
                 continue
-            for part in field.physical_path:
-                node = node.get(part) if isinstance(node, dict) else None
-            if node is None:
+            if not resolved:
                 missing.append(f"{entity_id}.{field_id} at {'.'.join(field.physical_path)}")
     if missing:
         raise SystemExit(
@@ -1839,16 +1925,16 @@ async def _run(config: Mapping[str, Any], config_name: str) -> None:
         print("\nverifying every declared path resolves against a generated document...")
         _verify(
             schema,
-            order_documents[0],
-            customer_documents[0],
+            order_documents,
+            customer_documents,
             # `is True`, not truthiness. A product derived from a real order
             # line carries `__seed: "DERIVED_FROM_ORDER_LINE"`, which is also
             # truthy -- so this picked one of those, and then failed the whole
             # run because a derived product deliberately states no vendor, no
             # department and no UPC. The verification wants a fully generated
             # document, which is the one marked exactly `True`.
-            next(document for document in product_documents if document.get("__seed") is True),
-            shipment_documents[0],
+            [document for document in product_documents if document.get("__seed") is True],
+            shipment_documents,
         )
         print("all declared paths resolve.\n")
 
