@@ -29,6 +29,19 @@ def raise_for_provider_status(response: httpx.Response) -> None:
         raise ProviderError("RATE_LIMITED")
     if response.status_code == 404:
         raise ProviderError("MODEL_UNAVAILABLE")
+    # 410 is how NVIDIA's integrate API retires a model: the body says
+    # `{"status":410,"title":"Gone","detail":"The model 'openai/gpt-oss-120b' has
+    # reached its end of life on 2026-09-03T08:00:00Z and is no longer
+    # available."}`. Without this branch it fell through to `raise_for_status()`
+    # and was reported as RESPONSE_INVALID, which reads as "the model sent us
+    # garbage" and -- worse -- is not a route-level unavailability, so the router
+    # never opened the model circuit and kept spending the retry budget on a
+    # model that no longer exists. Four models went end-of-life in a single day
+    # on 2026-09-03 (meta/llama-3.1-8b-instruct, meta/llama-3.1-70b-instruct,
+    # nvidia/llama-3.3-nemotron-super-49b-v1, openai/gpt-oss-120b), so this is
+    # the ordinary retirement path, not an edge case.
+    if response.status_code == 410:
+        raise ProviderError("MODEL_UNAVAILABLE")
     if response.status_code in {408, 504}:
         raise ProviderError("TIMEOUT")
     if response.status_code in {413, 422}:
