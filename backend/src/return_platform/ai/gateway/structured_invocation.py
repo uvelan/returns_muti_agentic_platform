@@ -30,13 +30,25 @@ about the answer they are being asked to improve on. `describe_parse_failure`
 turns the parse exception into the same `validationError` field the Order Agent's
 guard-rejection path already fills, so both kinds of "that answer was not usable"
 reach the operator console the same way.
+
+**And the route that produced it is asked to fix it.** Diagnosing the rejection
+was only half of it: the diagnosis still travelled to the *next* route, so a model
+that returned a structurally correct envelope one conditional field short of valid
+had its whole answer discarded and never heard about the defect. That is the exact
+shape of the failure this path sees most -- a `model_validator` on `AgentAction`
+raising `missing payload for action type GRAPH_QUERY` inside
+`parse_structured_response`, before any `AgentAction` object exists for the Order
+Agent's own CORRECT_ACTION path to repair. `FinalDispatcher` now grants one extra
+attempt on the same route whenever the diagnosis hook actually rebuilt the
+payload, and `invoke` takes `on_response_invalid` so the caller decides what that
+rebuilt payload says.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 from uuid import uuid4
@@ -49,6 +61,7 @@ from return_platform.ai.gateway.final_dispatch import (
     DispatchRequest,
     FinalDispatcher,
     InterceptionPolicy,
+    ResponseDiagnosis,
 )
 from return_platform.ai.gateway.telemetry import (
     AIAttemptRecorder,
@@ -244,6 +257,31 @@ class _InvokerObserver(DispatchObserver):
             ),
         )
 
+    async def on_correction_retry(
+        self, *, route: AIRoute, attempt: int, error: BaseException | None
+    ) -> None:
+        # INFO, not WARNING: the warning was already written by
+        # `on_attempt_failed` above, and a second one would double-count the
+        # rejection in every alert built on warning volume. What this line adds is
+        # the fact that the *next* attempt on the same provider is a repair
+        # request -- without it, two consecutive `_model_attempt_started` lines
+        # naming one model read as a blind duplicate retry, which is the
+        # misreading `breakdown=RESPONSE_INVALIDx2` produced for a whole
+        # investigation.
+        self._logger.info(
+            f"{self._prefix}_response_correction_retry provider=%s model=%s error_type=%s",
+            route.provider_name,
+            route.model,
+            type(error).__name__ if error is not None else "None",
+            extra=self._extra(
+                attempt=attempt,
+                provider=route.provider_name,
+                model=route.model,
+                credential_id=route.credential_id,
+                error_type=type(error).__name__ if error is not None else "None",
+            ),
+        )
+
     async def on_tier_escalation(self, *, attempts: int, last_error: str) -> None:
         self._logger.warning(
             f"{self._prefix}_tier_escalation_started",
@@ -371,8 +409,8 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         return self._dispatcher
 
     def _diagnosis_hook(
-        self, task: TaskConfiguration
-    ) -> Callable[[Mapping[str, Any], BaseException], Mapping[str, Any]] | None:
+        self, task: TaskConfiguration, override: ResponseDiagnosis | None
+    ) -> ResponseDiagnosis | None:
         """How a rejected response is described to whoever answers next.
 
         **Gated on the task's own declared input contract.** `allowedInputKeys`
@@ -386,12 +424,36 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         Returning `None` rather than a no-op callable so that "this task cannot
         carry a diagnosis" is visible at the boundary as an absent hook, and so
         a dispatch for such a task does exactly what it did before -- no extra
-        call, no rebuilt payload, no second redaction pass.
+        call, no rebuilt payload, no second redaction pass. That absence is now
+        load-bearing twice over: `FinalDispatcher` reads "the payload changed"
+        as the licence to ask the failed route once more, so a task with no
+        declared diagnosis key also buys no correction retry, and its failover
+        is byte-for-byte the failover it had.
+
+        `override` is a caller's own diagnosis, and it wins where one is given.
+        The generic version below can only say *that* the answer was rejected and
+        why, because those are the only two things true of every task. A caller
+        that has declared richer keys -- the Order Agent's `mode` and
+        `invalidActionJson`, which turn the retry into the CORRECT_ACTION call its
+        own prompt already documents -- knows its vocabulary and this file must
+        not. The `allowedInputKeys` gate still applies to it: a task that does not
+        declare it accepts a diagnosis does not get one by supplying a callable.
         """
         if VALIDATION_ERROR_KEY not in task.allowedInputKeys:
             return None
+        if override is not None:
+            return override
 
-        def diagnose(payload: Mapping[str, Any], error: BaseException) -> Mapping[str, Any]:
+        def diagnose(
+            *, payload: Mapping[str, Any], error: BaseException, response_text: str
+        ) -> Mapping[str, Any]:
+            # `response_text` is ignored here on purpose. Handing a task the
+            # rejected body means naming a payload key for it, and there is no key
+            # every task declares -- inventing one would put a field in front of a
+            # model whose prompt has never mentioned it, which is the same defect
+            # as the `validationError: ""` this method was written to fix. A caller
+            # with such a key passes `override`.
+            del response_text
             # A *replacement* payload rather than a mutation: `FinalDispatcher`
             # hands over the payload the failed attempt sent, and the next
             # attempt must differ from it in exactly this one field. Overwriting
@@ -410,6 +472,7 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         log_context: Mapping[str, Any],
         prompt_addendum: str | None = None,
         correlation: InvocationCorrelation | None = None,
+        on_response_invalid: ResponseDiagnosis | None = None,
     ) -> StructuredInvocation[ResponseT]:
         """Send `payload`, returning the parsed `response_model`.
 
@@ -433,6 +496,13 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
         `correlation` is which piece of business work this call serves. It is
         recorded, never sent: it does not enter the payload, the prompt or the
         size probe, and no provider ever sees it.
+
+        `on_response_invalid` replaces the generic diagnosis with the caller's
+        own, for a caller whose task declares payload keys richer than
+        `validationError`. Per-invocation rather than per-invoker because the
+        rebuilt payload has to be expressed in the vocabulary of *this* payload,
+        which only the code that built it knows -- and because the same invoker
+        serves a first call and a correction of it.
         """
         correlation = correlation or InvocationCorrelation()
         trace_id = str(uuid4())
@@ -493,7 +563,7 @@ class StructuredOutputInvoker[ResponseT: BaseModel]:
             temperature=0.0,
             response_schema=self._response_model.model_json_schema(),
             allow_tier_escalation=task.allowTierEscalation,
-            on_response_invalid=self._diagnosis_hook(task),
+            on_response_invalid=self._diagnosis_hook(task, on_response_invalid),
         )
 
         if not safety.allowed:

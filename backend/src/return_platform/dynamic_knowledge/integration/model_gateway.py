@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 from return_platform.ai.gateway.final_dispatch import FinalDispatcher
@@ -37,6 +38,7 @@ from return_platform.ai.gateway.interception_policy import (
 from return_platform.ai.gateway.structured_invocation import (
     StructuredInvocationUnavailable,
     StructuredOutputInvoker,
+    describe_parse_failure,
 )
 from return_platform.ai.gateway.telemetry import AIAttemptRecorder, InvocationCorrelation
 from return_platform.ai.interception.store import InterceptionStore
@@ -60,6 +62,70 @@ from return_platform.dynamic_knowledge.order_agent.temporal_grounding import (
 )
 
 logger = logging.getLogger("return_platform.dynamic_knowledge.model_gateway")
+
+#: How much of a rejected reply is fed back for repair.
+#:
+#: Generous on purpose, and the reason is asymmetric with `validationError`'s
+#: 2,000: a truncated *diagnosis* still reads, while a truncated *action body* is
+#: no longer JSON and is worse than sending none at all -- the model would be
+#: asked to repair a fragment. So the ceiling has to sit well above a real
+#: `AgentAction` (a large one with a full query plan and observed facts runs a few
+#: thousand characters) while still being a ceiling: a payload field that can grow
+#: without bound is a payload field that can push a 200,000-token request over the
+#: limit, and a model that ignored the schema entirely can return arbitrarily much
+#: prose.
+_MAX_REJECTED_ACTION_CHARS = 20_000
+
+
+def _parse_failure_diagnosis(
+    *, payload: Mapping[str, Any], error: BaseException, response_text: str
+) -> Mapping[str, Any]:
+    """Turn the failed request into the CORRECT_ACTION request for the same route.
+
+    **Why this lives here and not in the invoker.** The generic diagnosis in
+    `structured_invocation` can only fill `validationError`, because that is the
+    one key every task that opted in has declared. But the Order Agent already
+    owns a whole correction *mode*: `invalidActionJson` and
+    `CORRECT_ACTION` are in `allowedInputKeys` for the base task and all five
+    stage tasks, and the packaged prompt already ends `not-asking-twice` with "In
+    correction modes, repair only the validation error supplied." Nothing new has
+    to be configured or prompted -- the vocabulary is here, and only this module
+    speaks it.
+
+    **The gap it closes.** `correct_action` was reachable only from
+    `graph_nodes`, and all three of its call sites pass an `AgentAction` that
+    already parsed and then failed a *business* check. A pydantic
+    `ValidationError` raised inside `AgentAction.model_validate` -- `missing
+    payload for action type GRAPH_QUERY`, `query_plan references a
+    candidate_set_id but selected_candidate_id is missing` -- produces no
+    `AgentAction` at all, so that path could not be entered and the reply was
+    thrown away as a failed provider attempt. Observed live: a STANDARD route
+    spent 37.9 seconds on a correct envelope one conditional field short of valid,
+    and the router moved to a different route without ever mentioning the field.
+    (The route is named in `final_dispatch`, which is inside the AI lane; naming
+    it here would trip `test_no_provider_or_model_literals_in_the_agent_lane`,
+    whose whole point is that nothing in this package knows which model answers.)
+
+    `response_text` is passed through as `invalidActionJson` verbatim, not
+    re-serialised: it *is* the action JSON the model produced, and re-encoding
+    something that failed to parse is not possible. Redaction is not attempted
+    here -- `FinalDispatcher._diagnosed` masks whatever this returns before it is
+    sent or sealed, and a second pass in a caller is how one of the two masks
+    comes to be forgotten.
+    """
+    return {
+        **payload,
+        # The mode the prompt's correction rule is written against. Left as
+        # DECIDE, the model would be re-asked the original question with two extra
+        # fields its prompt gives it no instruction about.
+        "mode": "CORRECT_ACTION",
+        "invalidActionJson": response_text[:_MAX_REJECTED_ACTION_CHARS],
+        # `describe_parse_failure` and not `str(error)`: the exception *type* is
+        # the difference between "that was not JSON" and "that was JSON the schema
+        # rejected", which call for different repairs and read almost identically
+        # in the message alone. It applies its own 2,000-character ceiling.
+        "validationError": describe_parse_failure(error),
+    }
 
 
 class StandardReasoningUnavailable(StructuredInvocationUnavailable):
@@ -313,6 +379,12 @@ class RoutePoolReasoningModelGateway:
                 # the retry asked a brand new question.
                 turn_id=context.client_turn_id,
             ),
+            # Reached only when the response failed to parse, and it is what makes
+            # the failed route worth asking again: `FinalDispatcher` grants one
+            # extra attempt precisely when the diagnosis rebuilt the payload. A
+            # correction of a correction is not special-cased -- the second
+            # rejection finds the budget spent and fails over exactly as before.
+            on_response_invalid=_parse_failure_diagnosis,
         )
         return ModelInvocationResult(
             action=invocation.value,

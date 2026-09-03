@@ -396,11 +396,20 @@ async def test_the_retry_after_a_bad_answer_tells_the_operator_what_was_wrong() 
     """D5. A parse failure used to be retried with a byte-identical payload.
 
     On a keyless deployment the "next route" after a rejected answer is the same
-    person: MANUAL at STANDARD is exhausted, the task escalates, and MANUAL at
-    LIGHTWEIGHT opens a second hold. That second hold used to arrive with
-    `validationError: ""` -- so the operator was being asked to improve on an
-    answer whose defect the platform knew precisely and did not pass on. Two
-    turns of the live E2E died `RESPONSE_INVALIDx2` exactly this way.
+    person, so the second hold is the only way the operator hears what was wrong
+    with the first answer. It used to arrive with `validationError: ""` -- the
+    operator being asked to improve on an answer whose defect the platform knew
+    precisely and did not pass on. Two turns of the live E2E died
+    `RESPONSE_INVALIDx2` exactly this way.
+
+    **Where the second hold comes from changed, and the reason is worth knowing.**
+    It used to be the *tier escalation*: MANUAL at STANDARD was exhausted, the
+    task escalated, and MANUAL at LIGHTWEIGHT re-queued the same person. It is now
+    the correction retry inside `_attempt_routes` -- the route that produced the
+    rejected answer is asked once more, at its own tier, and the escalation no
+    longer re-queues a route that has already spent that retry. So there are still
+    exactly two asks of one operator, and neither of them is now a tier
+    escalation pretending to be a different model.
 
     What is asserted is that the diagnosis is *real*: the pydantic error names
     the field the malformed answer was missing. A plausible-sounding message
@@ -417,7 +426,11 @@ async def test_the_retry_after_a_bad_answer_tells_the_operator_what_was_wrong() 
         operator.cancel()
 
     held = list(store.payloads.values())
-    assert len(held) > 1, "the escalation must have opened a second hold to diagnose"
+    # Exactly two, not "more than one". Two is the whole budget an operator's time
+    # gets: the question, and one repair request. A third hold would be the same
+    # question in front of the same person for a third time, which is the cost the
+    # route-suppression in `dispatch` exists to refuse.
+    assert len(held) == 2, "the rejected answer must earn exactly one repair request"
 
     first, second = held[0]["userPayload"], held[1]["userPayload"]
     # The first hold is the original question and carries no diagnosis, because
@@ -430,9 +443,17 @@ async def test_the_retry_after_a_bad_answer_tells_the_operator_what_was_wrong() 
     assert diagnosis.startswith("ValidationError:")
     assert "business_capability" in diagnosis
     assert "action_type" in diagnosis
-    # Everything else about the request is unchanged -- the retry is the same
-    # question plus the news, not a different question.
-    assert second["mode"] == first["mode"]
+    # The second hold is the Order Agent's own CORRECT_ACTION request, which is
+    # what the packaged prompt's "In correction modes, repair only the validation
+    # error supplied" is written for. It arrives with the rejected text attached,
+    # so the operator is looking at the paste being complained about rather than
+    # reconstructing it from a log -- and `mode` says which of the two jobs they
+    # are doing.
+    assert first["mode"] == "DECIDE"
+    assert second["mode"] == "CORRECT_ACTION"
+    assert second["invalidActionJson"] == '{"not":"an AgentAction"}'
+    # The question itself is untouched: a repair request that also moved the
+    # goalposts would be a second turn wearing the first one's identity.
     assert second["contextJson"] == first["contextJson"]
 
 

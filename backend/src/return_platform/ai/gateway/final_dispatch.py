@@ -68,7 +68,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Protocol
 
 from return_platform.ai.gateway.redaction import redact_payload
 from return_platform.ai.gateway.telemetry import (
@@ -104,6 +104,7 @@ __all__ = [
     "InterceptionPolicy",
     "InterceptionVerdict",
     "ResponseDecision",
+    "ResponseDiagnosis",
     "ResponseVerdict",
 ]
 
@@ -236,6 +237,43 @@ ALLOW_ALL = InterceptionPolicy()
 _NO_CORRELATION = InvocationCorrelation()
 
 
+class ResponseDiagnosis(Protocol):
+    """Rebuilds a caller's payload after its own `validate` rejected a response.
+
+    Keyword-only, and a Protocol rather than a bare `Callable`, because the three
+    arguments are a `Mapping`, an exception and a string -- a positional triple
+    nobody reading a call site could order correctly from memory, and one mypy
+    would happily let a caller transpose. The names are the documentation.
+
+    `response_text` is the rejected reply verbatim, as the provider returned it
+    and after `inspect_output` passed it. It is offered because the cheapest
+    possible correction is a patch of the text the model already produced: the
+    live failure this exists for was a structurally correct 37.9-second
+    `AgentAction` envelope one conditional field short of valid, and asking the
+    model to re-derive the whole thing from the question alone throws that work
+    away. A caller whose task declares no input key for a rejected body simply
+    ignores the argument.
+
+    Whatever comes back is redacted by `_diagnosed` before it is sent or sealed,
+    so an implementation must not attempt its own masking.
+    """
+
+    def __call__(
+        self, *, payload: Mapping[str, Any], error: BaseException, response_text: str
+    ) -> Mapping[str, Any]: ...
+
+
+#: How many *extra* asks of one route a rejected parse may buy, on top of
+#: `retry.maximumAttemptsPerRoute`.
+#:
+#: One, and the number is the design. See the block above the grant in
+#: `_attempt_routes`: the second ask is a different question (it carries the
+#: diagnosis), so it is worth making; a third would be the same question again,
+#: because a model that could not repair its own output when told exactly what
+#: was wrong with it will not repair it when told twice.
+_CORRECTION_ATTEMPTS_PER_ROUTE = 1
+
+
 @dataclass(frozen=True, slots=True)
 class DispatchRequest:
     """Everything the boundary needs, and nothing about who is asking.
@@ -279,8 +317,8 @@ class DispatchRequest:
     #: quota lives: it must not be spent on a request a human intercepted.
     precondition: Callable[[], Awaitable[str | None]] | None = None
     #: Rebuilds the payload after `validate` rejected a response, given the
-    #: payload that produced it and the exception that rejected it. What comes
-    #: back is what every *subsequent* attempt sends.
+    #: payload that produced it, the exception that rejected it and the rejected
+    #: text. What comes back is what every *subsequent* attempt sends.
     #:
     #: This exists because retrying an identical payload on the next route makes
     #: the second route repeat the first one's mistake with no way of knowing
@@ -288,6 +326,15 @@ class DispatchRequest:
     #: person. A human answering a hold that carries no diagnosis is being asked
     #: to correct a response they were never shown, which is what
     #: `breakdown=RESPONSE_INVALIDx2` looked like from the operator console.
+    #:
+    #: **Supplying it also buys one extra ask of the route that just failed.**
+    #: `RESPONSE_INVALID` is in `_TERMINAL_FOR_ROUTE`, whose whole premise is
+    #: "this route will fail the same way if asked again" -- true of a
+    #: byte-identical retry and false the moment this hook exists, because the
+    #: retry is no longer the same question. `_attempt_routes` grants
+    #: `_CORRECTION_ATTEMPTS_PER_ROUTE` extra attempts, and only when this hook
+    #: actually changed the payload, so a dispatch without one behaves exactly as
+    #: it always did.
     #:
     #: Caller-supplied because the boundary must not learn any caller's payload
     #: vocabulary; the boundary owns *when* it fires, that the result is
@@ -300,9 +347,7 @@ class DispatchRequest:
     #: identity from -- so a diagnosis appended between attempts must not split
     #: one turn into two identities, which would have the resumed call open a
     #: second interception and ask a human the same question twice.
-    on_response_invalid: Callable[[Mapping[str, Any], BaseException], Mapping[str, Any]] | None = (
-        None
-    )
+    on_response_invalid: ResponseDiagnosis | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -366,6 +411,18 @@ class DispatchObserver:
         error: BaseException | None,
     ) -> None: ...
 
+    async def on_correction_retry(
+        self, *, route: AIRoute, attempt: int, error: BaseException | None
+    ) -> None:
+        """The same route is being asked again, with the diagnosis attached.
+
+        Its own hook rather than a flag on `on_attempt_started`, because this is
+        the one event that explains why two consecutive attempt lines name the
+        same provider and model. Without it, the log of a correction reads as a
+        blind duplicate retry -- which is exactly what a reader concluded from
+        `breakdown=RESPONSE_INVALIDx2` before the diagnosis existed at all.
+        """
+
     async def on_tier_escalation(self, *, attempts: int, last_error: str) -> None: ...
 
     async def on_exhausted(
@@ -380,6 +437,15 @@ class DispatchObserver:
 
 #: Errors that mean "this route will fail the same way if asked again". Retrying
 #: the same route on any of them spends the global deadline to learn nothing.
+#:
+#: `RESPONSE_INVALID` is the one member whose premise has an exception, and the
+#: exception is narrow and checked rather than assumed. "The same way" holds only
+#: while the *question* is the same, and `on_response_invalid` exists precisely to
+#: change it: a route asked again with `validationError` filled in is being asked
+#: something it has not been asked. So `_attempt_routes` grants one extra attempt
+#: before consulting this set, and only when the hook genuinely rebuilt the
+#: payload. Membership here is still correct for every other case -- a hookless
+#: dispatch, and the second rejection of an already-corrected answer.
 #:
 #: The two review codes are here for a sharper version of the same reason. Asking
 #: the same model the same question again would produce the same answer and put
@@ -741,6 +807,18 @@ class FinalDispatcher:
             if state.last_error == "TIMEOUT":
                 attempted = {route.route_id for route in candidates}
                 escalated = tuple(route for route in escalated if route.route_id not in attempted)
+            # And never a route that already answered the corrected question
+            # wrongly. This is the same suppression as above, for the case the
+            # comment above deliberately exempted: the second ask *has now
+            # happened*, on the route itself, carrying `validationError` -- so the
+            # two-asks-per-route ceiling that comment defends is already spent,
+            # and escalating would be the third. Routes that never earned a
+            # correction (no diagnosis hook, or a first failure that was not a
+            # rejected parse) are untouched and escalate exactly as before.
+            if state.corrected_routes:
+                escalated = tuple(
+                    route for route in escalated if route.route_id not in state.corrected_routes
+                )
             if escalated:
                 await watcher.on_tier_escalation(
                     attempts=state.attempts, last_error=state.last_error
@@ -803,7 +881,22 @@ class FinalDispatcher:
         """The only failover loop. Returns an outcome, or `None` if exhausted."""
         retry = self.configuration.retry
         for route in candidates:
-            for route_attempt in range(retry.maximumAttemptsPerRoute):
+            # A `while` over an explicit index rather than `range(...)`, because
+            # the ceiling is no longer fixed for the life of the route: a
+            # rejected parse that produced a corrected question raises it by
+            # `_CORRECTION_ATTEMPTS_PER_ROUTE`, once. Both counters are per route
+            # and are deliberately *not* on `_LoopState`: the correction budget
+            # belongs to the route that nearly answered, and carrying it across
+            # routes would let one bad candidate spend the allowance of the next.
+            corrections_used = 0
+            route_attempt = 0
+            while route_attempt < retry.maximumAttemptsPerRoute + corrections_used:
+                # Both global ceilings are re-checked at the top of every
+                # iteration, so a correction attempt is bounded by exactly what
+                # bounds an ordinary one: `maximumTotalAttempts` below and
+                # PLATFORM_AI_GLOBAL_TIMEOUT_SECONDS via `deadline` next. An
+                # extra ask that could outrun the turn's budget would trade a
+                # 503 the caller can retry for a request that never returns.
                 if state.attempts >= retry.maximumTotalAttempts:
                     return None
                 remaining = deadline - time.monotonic()
@@ -841,6 +934,13 @@ class FinalDispatcher:
                 await observer.on_attempt_started(route=route, attempt=state.attempts)
 
                 error: BaseException | None = None
+                # The reply `validate` was actually handed, kept so a rejection
+                # can be diagnosed against the bytes that were judged rather than
+                # against the question that produced them. Empty on every path
+                # that never got a reply -- a timeout, a transport failure -- so a
+                # diagnosis hook can tell "the model said something unusable" from
+                # "the model said nothing".
+                rejected_text = ""
                 # Bound only on the success path, and read only there. A tuple
                 # rather than four separately-initialised locals so "the attempt
                 # produced a usable answer" is one condition a reader can see.
@@ -915,6 +1015,10 @@ class FinalDispatcher:
                     output_safety = inspect_output(response.text)
                     if not output_safety.allowed:
                         raise ProviderError("POLICY_BLOCKED")
+                    # Assigned before `validate` runs and after the review point,
+                    # so it is the post-edit text a human approved when there was
+                    # a human, and the model's own text when there was not.
+                    rejected_text = response.text
                     produced = (
                         response,
                         validate(response),
@@ -996,16 +1100,70 @@ class FinalDispatcher:
                 # provider, or the operator holding the next MANUAL request --
                 # is told what was wrong with the last answer.
                 if state.last_error == "RESPONSE_INVALID" and error is not None:
-                    state.payload = self._diagnosed(request, state.payload, error)
+                    diagnosed = self._diagnosed(
+                        request, state.payload, error, response_text=rejected_text
+                    )
+                    # Identity, not equality: `_diagnosed` returns the payload it
+                    # was given -- the same object -- when there is no hook or the
+                    # hook raised, and a rebuilt mapping otherwise. So this is
+                    # exactly "the question changed", which is the only condition
+                    # under which asking this route again is not asking it the
+                    # same thing twice.
+                    corrected = diagnosed is not state.payload
+                    state.payload = diagnosed
+                    if corrected and corrections_used < _CORRECTION_ATTEMPTS_PER_ROUTE:
+                        # **The failover this repairs.** A model that returns a
+                        # structurally correct envelope one conditional field
+                        # short of valid was being discarded outright: the parse
+                        # raised inside `validate`, `RESPONSE_INVALID` is terminal
+                        # for the route, and the loop moved to a *different*
+                        # provider. Observed live -- nemotron-3-super-120b spent
+                        # 37.9 seconds producing an `AgentAction` that failed one
+                        # `model_validator`, and was never asked to fix it, while
+                        # the Order Agent's own CORRECT_ACTION path could not
+                        # reach the case at all: every `correct_action` call site
+                        # passes an `AgentAction` object, and a parse failure has
+                        # none to pass.
+                        #
+                        # One extra ask of *this* route rather than a rebuilt
+                        # dispatch, because the route is the thing that nearly
+                        # answered: it holds the prompt cache, it has already
+                        # demonstrated it can produce the envelope, and its next
+                        # reply is the cheapest correct answer available. Route
+                        # selection is not re-run, so this cannot resurrect a
+                        # circuit-broken or rate-limited candidate -- the
+                        # `try_acquire` at the top of the loop still gates it.
+                        #
+                        # No backoff before it. Backoff exists to let a
+                        # rate-limited or flapping route recover; this route
+                        # answered promptly and correctly-shaped, and delaying the
+                        # correction would spend the turn's global deadline to
+                        # improve nothing.
+                        corrections_used += 1
+                        route_attempt += 1
+                        # Remembered for the tier escalation in `dispatch`, which
+                        # must not re-queue a route that has already been asked
+                        # the corrected question and failed it.
+                        state.corrected_routes.add(route.route_id)
+                        await observer.on_correction_retry(
+                            route=route, attempt=state.attempts, error=error
+                        )
+                        continue
 
                 if state.last_error in _TERMINAL_FOR_ROUTE:
                     break
-                if route_attempt + 1 < retry.maximumAttemptsPerRoute:
-                    await asyncio.sleep(self._backoff_seconds(route_attempt))
+                route_attempt += 1
+                if route_attempt < retry.maximumAttemptsPerRoute + corrections_used:
+                    await asyncio.sleep(self._backoff_seconds(route_attempt - 1))
         return None
 
     def _diagnosed(
-        self, request: DispatchRequest, payload: Mapping[str, Any], error: BaseException
+        self,
+        request: DispatchRequest,
+        payload: Mapping[str, Any],
+        error: BaseException,
+        *,
+        response_text: str,
     ) -> Mapping[str, Any]:
         """The payload the next attempt sends, carrying why the last one failed.
 
@@ -1024,10 +1182,24 @@ class FinalDispatcher:
         if request.on_response_invalid is None:
             return payload
         try:
-            return redact_payload(dict(request.on_response_invalid(payload, error)))
+            rebuilt = request.on_response_invalid(
+                payload=payload, error=error, response_text=response_text
+            )
         except Exception:  # noqa: BLE001 - a diagnosis must never break failover
             logger.exception("ai_dispatch_diagnosis_failed", extra={"task_id": request.task_id})
             return payload
+        rebuilt_payload = redact_payload(dict(rebuilt))
+        # The *same object* comes back whenever nothing actually changed -- both
+        # failure paths above, and a rebuild that is equal to what it was handed.
+        # `_attempt_routes` reads that identity as "the question is unchanged" when
+        # it decides whether the route has earned another ask, so this comparison
+        # is what stops a hook that adds nothing from doubling every caller's
+        # attempt count on a bad day. Compared after redaction, because the payload
+        # it is compared against is redacted too and a mask applied twice must not
+        # read as an edit.
+        if rebuilt_payload == dict(payload):
+            return payload
+        return rebuilt_payload
 
     async def _reviewed(
         self, request: DispatchRequest, response: ProviderResponse
@@ -1094,6 +1266,15 @@ class _LoopState:
     #: the attempt count does: the escalated pass must continue the diagnosis the
     #: standard pass accumulated, not start again from the original question.
     payload: Mapping[str, Any]
+    #: Routes that have already spent their correction attempt and failed it,
+    #: by `route_id`. Carried across the escalation for the same reason the
+    #: payload is: a tier is a request for a *different* model, and where both
+    #: tiers resolve to one route -- every MANUAL deployment -- re-queueing a
+    #: route that has already been asked the corrected question would ask a third
+    #: time. On a keyless deployment that third ask is a third hold in front of
+    #: the same operator, which is precisely the cost the TIMEOUT filter in
+    #: `dispatch` was added to stop paying.
+    corrected_routes: set[str] = field(default_factory=set)
 
 
 def _elapsed_ms(started: float) -> int:
