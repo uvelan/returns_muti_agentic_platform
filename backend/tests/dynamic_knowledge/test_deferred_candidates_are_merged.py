@@ -54,7 +54,7 @@ def _planned(label: str, ceiling: float) -> PlannedSearch:
             result_fields=("customer_id", "customer_name"),
             value_form="AS_TYPED",
             applies_when=None,
-            narrow_with=None,
+            narrowings=(),
             fulltext_index="contact_name_search_v1",
             only_when_nothing_found=True,
             match_label=label,

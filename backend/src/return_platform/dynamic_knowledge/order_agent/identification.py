@@ -36,6 +36,7 @@ from dataclasses import field as dataclass_field
 from enum import StrEnum
 from typing import Any
 
+from return_platform.dynamic_knowledge.knowledge.query_plan import TraversalStep
 from return_platform.dynamic_knowledge.schema import ActiveSchema, IdentifierLikelihood
 
 #: Strategies that are ordinary schema operators, mapped straight onto a
@@ -91,6 +92,19 @@ def normalize_value(value: Any, normalization: str) -> str:
 
 
 @dataclass(frozen=True, slots=True)
+class ResolvedNarrowing:
+    """One companion signal of a search, and where its filter applies.
+
+    `entity_id` is the entity the companion's own search reads -- the searched
+    entity when `path` is empty, the entity the path starts from otherwise.
+    """
+
+    intent_key: str
+    entity_id: str
+    path: tuple[TraversalStep, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class ResolvedSearch:
     """One configured graph read that the active schema can actually answer."""
 
@@ -101,7 +115,10 @@ class ResolvedSearch:
     result_fields: tuple[str, ...]
     value_form: str
     applies_when: re.Pattern[str] | None
-    narrow_with: str | None
+    #: The companion signals that narrow this search when present, each with
+    #: the walk from its entity to `entity_id` already in the plan's own
+    #: vocabulary. See `ResolvedNarrowing`.
+    narrowings: tuple[ResolvedNarrowing, ...]
     fulltext_index: str | None
     only_when_nothing_found: bool = False
     match_label: str = ""
@@ -161,6 +178,9 @@ class IdentificationField:
     clarification_priority: int
     searches: tuple[ResolvedSearch, ...]
     unusable: tuple[UnusableSearch, ...] = ()
+    #: The signal this one is a question about, when it is never searched on
+    #: its own. See `IdentificationFieldConfiguration.searches_only_with`.
+    searches_only_with: str | None = None
 
     @property
     def is_date_bound(self) -> bool:
@@ -228,6 +248,10 @@ class IdentificationField:
             described["aliases"] = list(self.aliases)
         if self.clarification_priority:
             described["clarificationPriority"] = self.clarification_priority
+        if self.searches_only_with is not None:
+            # Stated, so the model knows a value here searches nothing by
+            # itself, and that the companion is what to ask for next.
+            described["searchesOnlyWith"] = self.searches_only_with
         if not self.is_usable:
             # Stated, so the model does not spend a clarifying question asking
             # for something no search can use.
@@ -360,6 +384,84 @@ def _compiled(pattern: str | None) -> re.Pattern[str] | None:
     return re.compile(pattern)
 
 
+def _resolve_path(
+    schema: ActiveSchema, steps: tuple[Any, ...], *, arrives_at: str, named: str
+) -> tuple[tuple[TraversalStep, ...], str, str | None]:
+    """Walk one companion's configured path to find the entity it starts from.
+
+    The configuration names each hop by the relationship and the entity it
+    arrives at; the entity it *leaves* is implied by the declared relationship
+    and the direction it is walked. Walking the whole path here pins down the
+    start entity -- the one the companion filter must apply to -- and refuses a
+    path that does not connect, at startup and in one sentence, rather than as
+    a compiler error inside a turn.
+
+    Returns the steps in the plan's vocabulary, the start entity id, and the
+    reason the path is unusable when it is.
+    """
+    resolved: list[TraversalStep] = []
+    start_entity: str | None = None
+    current: str | None = None
+    for step in steps:
+        relationship = schema.graph.relationships.get(step.relationship)
+        if relationship is None:
+            return (), "", f"{named} names unknown relationship {step.relationship!r}"
+        if step.direction == "OUTBOUND":
+            leaves, arrives = relationship.source_entity_id, relationship.target_entity_id
+        else:
+            leaves, arrives = relationship.target_entity_id, relationship.source_entity_id
+        if arrives != step.target:
+            return (
+                (),
+                "",
+                f"{named} hop {step.relationship!r} walked {step.direction} arrives at "
+                f"{arrives!r}, not {step.target!r}",
+            )
+        if current is None:
+            start_entity = leaves
+        elif leaves != current:
+            return (
+                (),
+                "",
+                f"{named} hop {step.relationship!r} leaves {leaves!r} but the previous "
+                f"hop arrived at {current!r}",
+            )
+        current = arrives
+        resolved.append(
+            TraversalStep(
+                relationship_id=step.relationship,
+                direction=step.direction,
+                target_entity_id=step.target,
+            )
+        )
+    if current != arrives_at:
+        return (), "", f"{named} arrives at {current!r}, not the searched {arrives_at!r}"
+    assert start_entity is not None
+    return tuple(resolved), start_entity, None
+
+
+def _resolve_narrowings(
+    schema: ActiveSchema, search: Any
+) -> tuple[tuple[ResolvedNarrowing, ...], str | None]:
+    """Every companion of a search, each bound to the entity its filter reads."""
+    narrowings: list[ResolvedNarrowing] = []
+    for configured in getattr(search, "narrow_with", ()) or ():
+        steps = tuple(configured.path or ())
+        if not steps:
+            narrowings.append(ResolvedNarrowing(configured.intent_key, search.entity))
+            continue
+        path, start_entity, problem = _resolve_path(
+            schema,
+            steps,
+            arrives_at=search.entity,
+            named=f"narrow_with {configured.intent_key!r} path",
+        )
+        if problem is not None:
+            return (), problem
+        narrowings.append(ResolvedNarrowing(configured.intent_key, start_entity, path))
+    return tuple(narrowings), None
+
+
 def _resolve_search(
     schema: ActiveSchema,
     search: Any,
@@ -398,6 +500,9 @@ def _resolve_search(
         return None, UnusableSearch(
             search.entity, search.field, f"unknown result fields: {sorted(unknown_results)}"
         )
+    narrowings, path_problem = _resolve_narrowings(schema, search)
+    if path_problem is not None:
+        return None, UnusableSearch(search.entity, search.field, path_problem)
     return (
         ResolvedSearch(
             entity_id=search.entity,
@@ -407,7 +512,7 @@ def _resolve_search(
             result_fields=tuple(search.result_fields),
             value_form=search.value_form,
             applies_when=_compiled(search.applies_when_pattern),
-            narrow_with=search.narrow_with,
+            narrowings=narrowings,
             fulltext_index=(
                 (search.fulltext_index or default_fulltext_index)
                 if search.strategy == FULLTEXT_STRATEGY
@@ -477,6 +582,7 @@ def build_identification_catalogue(
                 clarification_priority=configured.clarification_priority,
                 searches=tuple(searches),
                 unusable=tuple(unusable),
+                searches_only_with=getattr(configured, "searches_only_with", None),
             )
         )
     return IdentificationCatalogue(fields=tuple(fields), unresolved=tuple(unresolved))

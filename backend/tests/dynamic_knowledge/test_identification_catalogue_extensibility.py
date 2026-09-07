@@ -342,44 +342,37 @@ def test_colour_needs_only_a_search_entry_to_become_searchable(
 ) -> None:
     """DISC-02, dissolved rather than special-cased.
 
-    Colour is already an ordinary catalogue entry -- same shape, same
-    normalization, same ranking weight, same clarification priority as every
-    other field. It is unsearchable today for one reason and the catalogue says
-    which: no property in the active knowledge graph records a colour. Nothing
-    about colour is hardcoded anywhere, so the day one exists an operator adds a
-    `searches` entry and colour works.
+    Colour is an ordinary catalogue entry -- same shape, same normalization,
+    same ranking weight, same clarification priority as every other field, and
+    nothing about it is hardcoded anywhere. Whether it can be searched is
+    decided by one thing: a `searches` entry naming a property the graph has.
 
-    Proven by doing exactly that, against a property the schema really has.
+    Proven both ways against the shipped configuration. Strip the entry and
+    the catalogue says colour is unusable and why; the shipped entry, reading
+    `product.colour_finish`, makes it usable again with no other change.
     """
-    shipped = _catalogue(shipped_discovery, production_schema)
-    colour = shipped.field_for("colors")
-    assert colour is not None
-    assert not colour.is_usable
-
     payload = shipped_discovery.model_dump(mode="json")
     for entry in payload["identification_fields"]:
         if entry["field_id"] == "product_colour":
-            entry["searches"] = [
-                {
-                    "entity": "order_line",
-                    "field": "product_description",
-                    "strategy": "CONTAINS",
-                    "limit": 5,
-                    "result_fields": [
-                        "sales_order_number",
-                        "product_description",
-                        "ordered_quantity",
-                    ],
-                }
-            ]
-    enabled = _catalogue(DiscoveryConfiguration.model_validate(payload), production_schema)
+            entry["searches"] = []
+    stripped = _catalogue(DiscoveryConfiguration.model_validate(payload), production_schema)
+    colour = stripped.field_for("colors")
+    assert colour is not None
+    assert not colour.is_usable
+    assert build_search_program(_intent(colors=["chrome"]), stripped).parsed.unusable_signals == (
+        "colors",
+    )
 
-    field = enabled.field_for("colors")
+    shipped = _catalogue(shipped_discovery, production_schema)
+    field = shipped.field_for("colors")
     assert field is not None and field.is_usable
-    program = build_search_program(_intent(colors=["chrome"]), enabled)
-    assert len(program.primary) == 1
-    assert program.primary[0].plan.filters[0].field_id == "product_description"
+    program = build_search_program(_intent(colors=["chrome"], productNames=["LAV FCT"]), shipped)
     assert program.parsed.unusable_signals == ()
+    (planned,) = program.primary
+    assert {(f.entity_id, f.field_id) for f in planned.plan.filters} == {
+        ("order_line", "product_description"),
+        ("product", "colour_finish"),
+    }
 
 
 def test_a_zip_code_goes_through_the_same_generic_catalogue(

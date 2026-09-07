@@ -74,6 +74,13 @@ class LogicalQueryPlan(BaseModel):
     fields: tuple[str, ...] = ()
     filters: tuple[QueryCondition, ...] = ()
     traversal: tuple[TraversalStep, ...] = ()
+    #: Which entity on the path the rows are read from. Defaults to the last
+    #: one the traversal reaches, which is what every plan meant before a path
+    #: could continue *past* the entity of interest -- a product search
+    #: narrowed by a customer name and a colour walks customer -> order ->
+    #: line -> product and still returns order lines. Must be the start entity
+    #: or one the traversal arrives at.
+    return_entity_id: str | None = None
     aggregation_field_id: str | None = None
     group_by_field_ids: tuple[str, ...] = ()
     sort: tuple[QuerySort, ...] = ()
@@ -88,6 +95,25 @@ class LogicalQueryPlan(BaseModel):
     fulltext_field_id: str | None = None
     fulltext_query: str | None = None
     limit: int = Field(default=20, ge=1, le=1000)
+
+    @property
+    def target_entity_id(self) -> str:
+        """The entity whose rows the plan returns."""
+        if self.return_entity_id is not None:
+            return self.return_entity_id
+        return self.traversal[-1].target_entity_id if self.traversal else self.start_entity_id
+
+    @model_validator(mode="after")
+    def validate_return_entity(self) -> LogicalQueryPlan:
+        if self.return_entity_id is None:
+            return self
+        reachable = {self.start_entity_id, *(step.target_entity_id for step in self.traversal)}
+        if self.return_entity_id not in reachable:
+            raise ValueError(
+                f"return_entity_id {self.return_entity_id!r} is neither the start entity nor "
+                "one the traversal reaches"
+            )
+        return self
 
     @model_validator(mode="after")
     def validate_operation_shape(self) -> LogicalQueryPlan:

@@ -35,12 +35,14 @@ from return_platform.dynamic_knowledge.knowledge.query_plan import (
     LogicalQueryPlan,
     QueryCondition,
     QueryOperation,
+    TraversalStep,
 )
 from return_platform.dynamic_knowledge.order_agent.contracts import OrderSearchIntent
 from return_platform.dynamic_knowledge.order_agent.identification import (
     FULLTEXT_STRATEGY,
     IdentificationCatalogue,
     ParsedIntent,
+    ResolvedNarrowing,
     ResolvedSearch,
     SignalValues,
     apply_value_form,
@@ -188,6 +190,10 @@ class SearchProgram:
     parsed: ParsedIntent
     primary: tuple[PlannedSearch, ...] = ()
     deferred: tuple[PlannedSearch, ...] = ()
+    #: Signals this turn carried that search only beside another one that the
+    #: turn did not carry: `(signal, the signal it needs)`. A colour without a
+    #: product is the shipped case, and the companion is what to ask for next.
+    needs_companion: tuple[tuple[str, str], ...] = ()
 
 
 def build_search_program(
@@ -227,9 +233,22 @@ def build_search_program(
     # Two passes over the same signals fix it without a precedence rule to
     # maintain: a deferred search can only ever claim a question no primary
     # wanted, which is what "runs only when everything else failed" already means.
+    needs_companion: list[tuple[str, str]] = []
+    for signal in parsed.searchable:
+        required = signal.field.searches_only_with
+        if required is None:
+            continue
+        companion = parsed.by_key(required)
+        if companion is None or not companion.values:
+            needs_companion.append((signal.field.intent_key, required))
+
     for deferred_pass in (False, True):
         for signal in parsed.searchable:
             if signal.field.is_date_bound:
+                continue
+            if signal.field.searches_only_with is not None:
+                # Never a search of its own: consulted only as a narrowing on
+                # the companion's searches, by `_narrowing_conditions`.
                 continue
             for planned in _plans_for_signal(
                 signal, parsed, policy=policy, asked=asked, deferred=deferred_pass
@@ -266,10 +285,16 @@ def build_search_program(
     # query budget truncates the set -- which is precisely the case where the
     # order decides whether the one pass that could have answered the associate
     # ever ran.
+    if needs_companion:
+        logger.info(
+            "order_search_signal_needs_companion",
+            extra={"signals": needs_companion, "search_mode": intent.searchMode},
+        )
     return SearchProgram(
         parsed=parsed,
         primary=order_searches_by_discrimination(primary, catalogue),
         deferred=tuple(deferred),
+        needs_companion=tuple(needs_companion),
     )
 
 
@@ -282,27 +307,114 @@ def _condition_for(search: ResolvedSearch, value: Any) -> QueryCondition:
     )
 
 
-def _narrowing_condition(search: ResolvedSearch, parsed: ParsedIntent) -> QueryCondition | None:
-    """The companion filter that turns a weak signal into a real narrowing.
+def _narrowing_conditions(
+    search: ResolvedSearch, parsed: ParsedIntent
+) -> list[tuple[ResolvedNarrowing, QueryCondition]]:
+    """The companion filters that turn a weak signal into a real narrowing.
 
     A quantity on its own matches thousands of order lines. A quantity together
-    with a product description is a search. When the companion is absent the
-    quantity pass still runs -- losing it entirely would be worse than running
-    it broad.
+    with a product description is a search. When a companion is absent the pass
+    still runs without it -- losing it entirely would be worse than running it
+    broad.
+
+    Each companion's own search says which entity and property it reads, and
+    the narrowing says where that is relative to this search: the searched
+    entity itself, or the start of a configured path. The customer name that
+    narrows an order-line search is a filter on `customer`, three hops away;
+    the colour that narrows it is a filter on `product`, one hop the other way.
     """
-    if search.narrow_with is None:
-        return None
-    companion = parsed.by_key(search.narrow_with)
-    if companion is None or not companion.values:
-        return None
-    for companion_search in companion.field.searches:
-        if (
-            companion_search.entity_id == search.entity_id
-            and companion_search.strategy != FULLTEXT_STRATEGY
-        ):
-            value = apply_value_form(companion.values[0], companion_search.value_form)
-            return _condition_for(companion_search, value)
-    return None
+    conditions: list[tuple[ResolvedNarrowing, QueryCondition]] = []
+    for narrowing in search.narrowings:
+        companion = parsed.by_key(narrowing.intent_key)
+        if companion is None or not companion.values:
+            continue
+        for companion_search in companion.field.searches:
+            if (
+                companion_search.entity_id == narrowing.entity_id
+                and companion_search.strategy != FULLTEXT_STRATEGY
+            ):
+                value = apply_value_form(companion.values[0], companion_search.value_form)
+                conditions.append((narrowing, _condition_for(companion_search, value)))
+                break
+    return conditions
+
+
+def _flip(direction: str) -> str:
+    return "INBOUND" if direction == "OUTBOUND" else "OUTBOUND"
+
+
+def _chain(
+    search: ResolvedSearch, narrowings: list[tuple[ResolvedNarrowing, QueryCondition]]
+) -> tuple[str, tuple[TraversalStep, ...], str | None, list[QueryCondition]]:
+    """One linear walk that visits every present companion's entity.
+
+    The compiler chains each hop from the one before it, so companions on
+    different sides of the searched entity have to be laid end to end: the
+    first path is walked as declared, from its companion to the searched
+    entity, and every further path is walked *backwards* from the searched
+    entity out to its companion. Customer -> order -> line, then line ->
+    product, returns lines: `return_entity_id` names the searched entity when
+    the walk continues past it.
+
+    A companion whose entity the walk already visits gets its filter on that
+    visit and no further hops. A companion whose path would revisit an entity
+    the walk has already been through cannot be expressed as one chain and is
+    left out of this turn's narrowing -- broader, never wrong -- and logged.
+    """
+    conditions: list[QueryCondition] = []
+    on_entity = [c for n, c in narrowings if not n.path]
+    with_path = [(n, c) for n, c in narrowings if n.path]
+    conditions.extend(on_entity)
+    if not with_path:
+        return search.entity_id, (), None, conditions
+
+    first, first_condition = with_path[0]
+    start_entity_id = first.entity_id
+    steps: list[TraversalStep] = list(first.path)
+    visited: list[str] = [first.entity_id, *(step.target_entity_id for step in first.path)]
+    conditions.append(first_condition)
+
+    for narrowing, condition in with_path[1:]:
+        if narrowing.entity_id in visited:
+            conditions.append(condition)
+            continue
+        entities = [narrowing.entity_id, *(step.target_entity_id for step in narrowing.path)]
+        reversed_steps = [
+            TraversalStep(
+                relationship_id=step.relationship_id,
+                direction=_flip(step.direction),
+                target_entity_id=entities[index],
+            )
+            for index, step in reversed(list(enumerate(narrowing.path)))
+        ]
+        # `entities[-1]` is the searched entity, already visited; everything
+        # the reversed walk arrives at must be new, or the chain would fork.
+        if any(step.target_entity_id in visited for step in reversed_steps):
+            logger.warning(
+                "order_search_narrowing_not_chainable",
+                extra={
+                    "search": (search.entity_id, search.field_id),
+                    "companion": narrowing.intent_key,
+                },
+            )
+            continue
+        if visited[-1] != search.entity_id:
+            # The walk has already turned away from the searched entity for an
+            # earlier companion; a third direction cannot be chained either.
+            logger.warning(
+                "order_search_narrowing_not_chainable",
+                extra={
+                    "search": (search.entity_id, search.field_id),
+                    "companion": narrowing.intent_key,
+                },
+            )
+            continue
+        steps.extend(reversed_steps)
+        visited.extend(step.target_entity_id for step in reversed_steps)
+        conditions.append(condition)
+
+    return_entity_id = search.entity_id if visited[-1] != search.entity_id else None
+    return start_entity_id, tuple(steps), return_entity_id, conditions
 
 
 def _plans_for_signal(
@@ -345,7 +457,8 @@ def _plans_for_signal(
             asked.add(question)
             planned.append(fulltext)
             continue
-        narrowing = _narrowing_condition(search, parsed)
+        narrowings = _narrowing_conditions(search, parsed)
+        start_entity_id, traversal, return_entity_id, companion_filters = _chain(search, narrowings)
         for value in signal.values:
             if not search.accepts(value):
                 continue
@@ -356,16 +469,16 @@ def _plans_for_signal(
             if question in asked:
                 continue
             asked.add(question)
-            filters = [_condition_for(search, shaped)]
-            if narrowing is not None:
-                filters.append(narrowing)
+            filters = [_condition_for(search, shaped), *companion_filters]
             planned.append(
                 PlannedSearch(
                     plan=LogicalQueryPlan(
                         operation=QueryOperation.SEARCH,
-                        start_entity_id=search.entity_id,
+                        start_entity_id=start_entity_id,
                         fields=search.result_fields,
                         filters=tuple(filters),
+                        traversal=traversal,
+                        return_entity_id=return_entity_id,
                         limit=search.limit,
                     ),
                     search=search,
@@ -681,6 +794,12 @@ def rank_search_results(
         "unsupported_signals": list(program.parsed.unusable_signals),
         "unrecognized_signals": list(program.parsed.unknown_keys),
         "invalid_signals": list(program.parsed.invalid_signals),
+        # A signal that searches only beside another, given without it. The
+        # companion is what to ask for next, and this is where the model reads
+        # that from.
+        "signals_needing_companion": [
+            {"signal": signal, "needs": needed} for signal, needed in program.needs_companion
+        ],
     }
 
 

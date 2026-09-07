@@ -21,7 +21,10 @@ from typing import Any
 
 import pytest
 
-from return_platform.configuration.return_configuration import load_return_configuration
+from return_platform.configuration.return_configuration import (
+    DiscoveryConfiguration,
+    load_return_configuration,
+)
 from return_platform.dynamic_knowledge.config_loader import load_active_schema
 from return_platform.dynamic_knowledge.order_agent.contracts import OrderSearchIntent
 from return_platform.dynamic_knowledge.order_agent.identification import (
@@ -381,14 +384,30 @@ def test_a_signal_whose_value_was_invalid_is_asked_for_again(
 
 
 def test_a_signal_nothing_can_search_is_never_suggested(
-    catalogue: IdentificationCatalogue,
+    production_schema: ActiveSchema,
 ) -> None:
-    """Colour is reported as unusable to the associate; it is not asked for.
+    """A signal without a usable search is reported as unusable; it is not asked for.
 
     Suggesting a question whose answer no configured search can use would be a
     worse failure than dropping the signal silently -- the associate would be
-    asked for something and then told it did not help.
+    asked for something and then told it did not help. Colour with its search
+    entry stripped is the honest example: it is the state of every deployment
+    whose graph records no colour.
     """
+    discovery = load_return_configuration(
+        REPOSITORY_BACKEND / "config/returns/production.yaml"
+    ).configuration.discovery
+    payload = discovery.model_dump(mode="json")
+    for entry in payload["identification_fields"]:
+        if entry["intent_key"] == "colors":
+            entry["searches"] = []
+    stripped = DiscoveryConfiguration.model_validate(payload)
+    catalogue = build_identification_catalogue(
+        stripped.identification_fields,
+        production_schema,
+        default_fulltext_index=stripped.progressive.customer_fulltext_index,
+    )
+
     ranked = rank_discriminators(catalogue, _parsed(catalogue), limit=50)
 
     assert "colors" not in {item.intent_key for item in ranked}

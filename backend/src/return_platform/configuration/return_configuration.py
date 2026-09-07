@@ -9,7 +9,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 from return_platform.configuration.context_assembly_configuration import (
     ContextAssemblyConfiguration,
@@ -181,6 +188,35 @@ class ProgressiveDiscoveryConfiguration(StrictConfigModel):
         return self
 
 
+class NarrowPathStep(StrictConfigModel):
+    """One hop of the traversal that carries a companion filter onto a search.
+
+    `target` is the logical entity the hop arrives at; `relationship` is the
+    logical relationship id the active schema declares between the entity the
+    hop leaves and that target, and `direction` says which way the declared
+    relationship is being walked. Validated against the schema at resolve time,
+    like the search entry it belongs to.
+    """
+
+    relationship: NonBlank
+    direction: Literal["OUTBOUND", "INBOUND"] = "OUTBOUND"
+    target: NonBlank
+
+
+class NarrowingConfiguration(StrictConfigModel):
+    """One companion signal that narrows a search when it is present.
+
+    `path` is the walk from the companion's entity to the searched entity, in
+    hop order, and is empty when the companion sits on the searched entity
+    itself. Several narrowings on one search are one query: a product search
+    narrowed by a customer name and a colour reads lines that carry the product
+    on that customer's orders whose catalogue entry carries that colour.
+    """
+
+    intent_key: NonBlank
+    path: tuple[NarrowPathStep, ...] = ()
+
+
 class IdentificationSearchConfiguration(StrictConfigModel):
     """One graph read that can answer one identification signal.
 
@@ -195,11 +231,21 @@ class IdentificationSearchConfiguration(StrictConfigModel):
     and only CONTAINS finds it. Both are entries; the pattern decides which is
     issued.
 
-    `narrow_with` names another intent key whose value is added as a second
-    filter on the same entity when it is present. A quantity alone matches
-    thousands of lines; a quantity and a product description together are a
-    real narrowing, and skipping the pass entirely when the companion is absent
+    `narrow_with` names the companion signals whose values are added as
+    further filters when they are present. A quantity alone matches thousands
+    of lines; a quantity and a product description together are a real
+    narrowing, and skipping the pass entirely when the companion is absent
     would lose the quantity-only search that is still worth running.
+
+    A companion usually lives on the same entity. When it does not, its `path`
+    is the traversal from the companion's entity to this one, and the search
+    runs as one query that walks every present companion's path and returns
+    this entity's rows. Without it, two signals on two entities are two
+    independent searches whose rows can never meet: a customer name and a
+    product description found five customers and five strangers' orders, and
+    the one order that carried both was in neither list.
+
+    A bare intent key is accepted as shorthand for a companion on this entity.
     """
 
     entity: NonBlank
@@ -216,7 +262,7 @@ class IdentificationSearchConfiguration(StrictConfigModel):
     #: `DIGITS` (punctuation stripped) or `LOWERCASE`.
     value_form: NonBlank = "AS_TYPED"
     applies_when_pattern: str | None = None
-    narrow_with: NonBlank | None = None
+    narrow_with: tuple[NarrowingConfiguration, ...] = ()
     #: A last resort rather than an ordinary pass: issued only when every other
     #: search in the turn came back empty. This is how the misspelling recovery
     #: for customer names is expressed -- an indexed approximate search is
@@ -227,6 +273,17 @@ class IdentificationSearchConfiguration(StrictConfigModel):
     #: match standing in for an exact one must not present as strongly as the
     #: thing it stood in for -- the associate still has to confirm it.
     deferred_score_ceiling_millionths: int = Field(default=600_000, ge=0, le=1_000_000)
+
+    @field_validator("narrow_with", mode="before")
+    @classmethod
+    def accept_bare_intent_keys(cls, value: Any) -> Any:
+        """`narrow_with: productNames` is a companion on this entity with no path."""
+        if value is None:
+            return ()
+        if isinstance(value, str):
+            value = [value]
+        return tuple({"intent_key": item} if isinstance(item, str) else item for item in value)
+
     #: What a match from this search is called in a candidate's `matches` list.
     #: Defaults to `<field>_<strategy>`. Named explicitly where a label is part
     #: of an existing contract -- `customer_name_fuzzy` is one the reasoning
@@ -292,6 +349,15 @@ class IdentificationFieldConfiguration(StrictConfigModel):
     #: Mirrors `clarification_policy.fields[].priority`.
     clarification_priority: int = Field(default=0, ge=0, le=10_000)
     searches: tuple[IdentificationSearchConfiguration, ...] = ()
+    #: A signal that is a question about another one. A colour is a question
+    #: about a product: "the white one" means nothing until the product is
+    #: known, and searched on its own it returns every white item in the
+    #: catalogue. Naming the companion here means this field's searches are
+    #: never planned by themselves -- they are consulted only as narrowings on
+    #: the companion's searches -- and a turn that carries this signal without
+    #: the companion reports which signal is needed, so the agent's next
+    #: question is for the product rather than for anything else.
+    searches_only_with: NonBlank | None = None
 
     @model_validator(mode="after")
     def validate_field(self) -> IdentificationFieldConfiguration:
@@ -301,11 +367,28 @@ class IdentificationFieldConfiguration(StrictConfigModel):
                     f"identification field {self.field_id!r} is a date bound and cannot be multiple"
                 )
         for search in self.searches:
-            if search.strategy == "FULLTEXT" and search.narrow_with is not None:
+            if search.strategy == "FULLTEXT" and search.narrow_with:
                 raise ValueError(
                     f"identification field {self.field_id!r} cannot narrow a FULLTEXT search: "
                     "the index is the predicate"
                 )
+            companions = [narrowing.intent_key for narrowing in search.narrow_with]
+            if len(companions) != len(set(companions)):
+                raise ValueError(
+                    f"identification field {self.field_id!r} names a companion twice in narrow_with"
+                )
+            for narrowing in search.narrow_with:
+                if narrowing.path and narrowing.path[-1].target != search.entity:
+                    raise ValueError(
+                        f"identification field {self.field_id!r} narrows with "
+                        f"{narrowing.intent_key!r} along a path that ends at "
+                        f"{narrowing.path[-1].target!r} but the search reads "
+                        f"{search.entity!r}: the path must arrive at the searched entity"
+                    )
+        if self.searches_only_with is not None and self.searches_only_with == self.intent_key:
+            raise ValueError(
+                f"identification field {self.field_id!r} cannot search only with itself"
+            )
         return self
 
 
@@ -340,11 +423,17 @@ class DiscoveryConfiguration(StrictConfigModel):
         known_keys = set(intent_keys)
         for item in self.identification_fields:
             for search in item.searches:
-                if search.narrow_with is not None and search.narrow_with not in known_keys:
-                    raise ValueError(
-                        f"identification field {item.field_id!r} narrows with unknown intent key "
-                        f"{search.narrow_with!r}"
-                    )
+                for narrowing in search.narrow_with:
+                    if narrowing.intent_key not in known_keys:
+                        raise ValueError(
+                            f"identification field {item.field_id!r} narrows with unknown "
+                            f"intent key {narrowing.intent_key!r}"
+                        )
+            if item.searches_only_with is not None and item.searches_only_with not in known_keys:
+                raise ValueError(
+                    f"identification field {item.field_id!r} searches only with unknown "
+                    f"intent key {item.searches_only_with!r}"
+                )
         extractor_types = [item.anchor_type for item in self.anchor_extractors]
         if len(extractor_types) != len(set(extractor_types)):
             raise ValueError("discovery anchor extractor types must be unique")

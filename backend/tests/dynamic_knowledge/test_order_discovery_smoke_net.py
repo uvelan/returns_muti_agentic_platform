@@ -784,17 +784,16 @@ async def test_an_email_or_phone_becomes_a_search_instead_of_a_dead_answer(
         assert knowledge.compiled, f"{intent} produced no compiled query"
 
 
-async def test_a_colour_is_named_back_to_the_model_rather_than_dropped(
+async def test_a_colour_alone_asks_the_graph_nothing_and_names_what_it_needs(
     schema: ActiveSchema,
 ) -> None:
-    """The one signal that is still unsupported, and the reason that is safe.
+    """A colour is a question about a product, and there is no product yet.
 
-    No entity carries a colour property, and matching "blue" against
-    `product_description` would put "Blue Ridge Faucet" in front of someone who
-    said the tap was blue, with no sign the colour had been matched loosely. So
-    the colour is deliberately not searched -- but the model is told, in the
-    evidence the next `decide` reads, so a search that came back empty can be
-    explained instead of just being empty.
+    Matching "chrome" against `product_description` would put "Chrome Ridge
+    Faucet" in front of someone who said the tap was chrome; searching the
+    catalogue's colour alone would put every chrome item in front of them. So
+    the graph is not asked, and the evidence the next `decide` reads says which
+    signal is needed -- the product -- so that is the next question.
 
     A regression here is silent from every other angle: the turn still
     completes, the response still reads well, and the associate is told nothing.
@@ -803,13 +802,16 @@ async def test_a_colour_is_named_back_to_the_model_rather_than_dropped(
         schema, "it was the chrome one", [_search(colors=["chrome"]), _respond()]
     )
 
-    assert not knowledge.compiled, "a colour must not be guessed at against another field"
-    reported = [
-        signal
+    assert not knowledge.plans, "a colour without a product must not be searched"
+    needed = [
+        item
         for evidence in model.contexts[1].query_evidence
-        for signal in evidence.result["unsupported_signals"]
+        for item in evidence.result["signals_needing_companion"]
     ]
-    assert "colors" in reported
+    assert needed == [{"signal": "colors", "needs": "productNames"}]
+    assert not any(
+        evidence.result["unsupported_signals"] for evidence in model.contexts[1].query_evidence
+    )
 
 
 async def test_replan_clears_evidence_and_returns_to_decide(schema: ActiveSchema) -> None:

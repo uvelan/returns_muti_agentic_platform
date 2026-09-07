@@ -143,9 +143,7 @@ class SchemaQueryGuard:
                 raise GuardRejected(
                     "REJECT_UNAUTHORIZED_FIELD", "The field is not available to this role."
                 )
-        target_entity_id = (
-            plan.traversal[-1].target_entity_id if plan.traversal else plan.start_entity_id
-        )
+        target_entity_id = plan.target_entity_id
         target_entity = schema.entities[target_entity_id]
         selected_fields = set(plan.fields)
         if plan.aggregation_field_id:

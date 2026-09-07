@@ -211,7 +211,7 @@ class CypherCompiler:
         if where_parts:
             clauses.append("WHERE " + " AND ".join(where_parts))
 
-        target_entity_id = current_entity
+        target_entity_id = plan.target_entity_id
         target_alias = aliases[target_entity_id]
         target_entity = schema.entities[target_entity_id]
         return_clause = self._return_clause(schema, plan, target_entity, target_alias)

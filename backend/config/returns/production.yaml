@@ -183,10 +183,26 @@ discovery:
       ranking_weight_millionths: 300000
       clarification_priority: 85
       searches:
+        # When the associate also names a product, this becomes "customers of
+        # this name who have that product on an order" -- one query from the
+        # order line up to the customer -- rather than every customer of this
+        # name. Without the path the two signals were two searches whose rows
+        # could never meet: five ACOSTAs and five strangers' orders, and the one
+        # ACOSTA order carrying the product in neither. When no product is
+        # given the search runs broad, exactly as before.
         - entity: customer
           field: customer_name
           strategy: CONTAINS
           limit: 5
+          narrow_with:
+            - intent_key: productNames
+              path:
+                - relationship: order_has_line
+                  direction: INBOUND
+                  target: sales_order
+                - relationship: customer_placed_order
+                  direction: INBOUND
+                  target: customer
         # The misspelling recovery. Deferred, so it runs only when every exact
         # and partial search in the turn came back empty: an indexed approximate
         # match is imprecise next to an exact one and would dilute it. The index
@@ -480,11 +496,39 @@ discovery:
       clarification_priority: 65
       searches:
         # Read from order_line so the order the line belongs to comes back too.
+        #
+        # The mirror of the customer_name narrowing above: with a customer name
+        # in hand this is "lines carrying the product on that customer's
+        # orders", starting at the customer and walking down to the line. The
+        # limit is 25 rather than 5 because a description alone can match
+        # dozens of lines ("STRT LGTH PEX-B POT" matched 81) and the read
+        # carries no sort, so 5 was an arbitrary five and the associate's order
+        # was as likely to be cut as kept. account_id is returned so the panel
+        # can show which branch the order sits on beside the customer rows.
         - entity: order_line
           field: product_description
           strategy: CONTAINS
-          limit: 5
-          result_fields: [sales_order_number, product_description, ordered_quantity]
+          limit: 25
+          result_fields: [sales_order_number, account_id, product_description, ordered_quantity]
+          narrow_with:
+            - intent_key: customerNames
+              path:
+                - relationship: customer_placed_order
+                  direction: OUTBOUND
+                  target: sales_order
+                - relationship: order_has_line
+                  direction: OUTBOUND
+                  target: order_line
+            # A colour is a question about the product, so it narrows this
+            # search and nothing else: the line's catalogue entry must carry
+            # the colour. Walked from `product` back to the line, one hop.
+            # Whether a colour may ever search on its own is decided on the
+            # colour field (`searches_only_with`), not here.
+            - intent_key: colors
+              path:
+                - relationship: line_references_product
+                  direction: INBOUND
+                  target: order_line
 
     - field_id: ordered_quantity
       intent_key: quantities
@@ -559,19 +603,30 @@ discovery:
       intent_key: colors
       label: "product colour"
       description: >-
-        The colour of the item. Configured and enabled; whether it can be
-        searched depends on the active knowledge-graph schema carrying a colour
-        property. It does not today, so this signal is reported back to the
-        associate as one that could not be used rather than silently dropped --
-        and matching a colour word against product_description instead would put
-        "Blue Ridge Faucet" in front of someone who said the tap was blue.
-        The day a colour property is projected, one `searches` entry here turns
-        it on.
+        The colour of the item, matched against the colour the product
+        catalogue records for it (`product.colour_finish`, the first entry of
+        `eco.colorFinish`). A colour is a question about a product and is
+        searched only beside one: "the white one" narrows the product search
+        to lines whose catalogue entry is white, and on its own it searches
+        nothing -- the next question is the product. Never matched against
+        product_description, which would put "Blue Ridge Faucet" in front of
+        someone who said the tap was blue.
       aliases: [colour, color, finish, shade]
       normalization: LOWER_ALPHANUMERIC
       ranking_weight_millionths: 100000
       clarification_priority: 56
-      searches: []
+      # Operator-configurable: remove this line and the search below runs on
+      # its own, returning every product of that colour.
+      searches_only_with: productNames
+      searches:
+        # Consulted only as the `colors` narrowing on product_description's
+        # search (see `narrow_with` there); never planned by itself while
+        # `searches_only_with` is set.
+        - entity: product
+          field: colour_finish
+          strategy: CONTAINS
+          limit: 10
+          result_fields: [sku, product_description, colour_finish]
 
     - field_id: free_text
       intent_key: freeTextTerms

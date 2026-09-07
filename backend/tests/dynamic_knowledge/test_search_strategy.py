@@ -18,7 +18,10 @@ from typing import Any
 
 import pytest
 
-from return_platform.configuration.return_configuration import load_return_configuration
+from return_platform.configuration.return_configuration import (
+    DiscoveryConfiguration,
+    load_return_configuration,
+)
 from return_platform.dynamic_knowledge.config_loader import load_active_schema
 from return_platform.dynamic_knowledge.knowledge.cypher_compiler import (
     FULLTEXT_SCORE_FIELD,
@@ -78,6 +81,31 @@ def catalogue(production_schema: ActiveSchema) -> IdentificationCatalogue:
     )
 
 
+@pytest.fixture(scope="module")
+def catalogue_without_colour(production_schema: ActiveSchema) -> IdentificationCatalogue:
+    """The shipped configuration on a graph that records no colour.
+
+    Colour is searchable in the shipped configuration now that `product`
+    carries `colour_finish`; the tests that use this fixture are about what
+    happens to a signal the graph cannot answer, and colour with its search
+    entry removed is the honest way to have one -- it is exactly the state
+    every deployment was in before the property was projected.
+    """
+    discovery = load_return_configuration(
+        REPOSITORY_BACKEND / "config/returns/production.yaml"
+    ).configuration.discovery
+    payload = discovery.model_dump(mode="json")
+    for entry in payload["identification_fields"]:
+        if entry["intent_key"] == "colors":
+            entry["searches"] = []
+    stripped = DiscoveryConfiguration.model_validate(payload)
+    return build_identification_catalogue(
+        stripped.identification_fields,
+        production_schema,
+        default_fulltext_index=stripped.progressive.customer_fulltext_index,
+    )
+
+
 def _guard_context(schema: ActiveSchema) -> GuardContext:
     return GuardContext(
         schema=schema,
@@ -131,13 +159,20 @@ def test_the_shipped_catalogue_resolves_completely_against_the_shipped_schema(
 
 
 def test_every_configured_signal_is_answerable_or_says_why_not(
-    catalogue: IdentificationCatalogue,
+    catalogue: IdentificationCatalogue, catalogue_without_colour: IdentificationCatalogue
 ) -> None:
-    """A field with no usable search is allowed -- being quiet about it is not."""
-    unusable = [item.intent_key for item in catalogue.fields if not item.is_usable]
+    """A field with no usable search is allowed -- being quiet about it is not.
 
+    Every shipped signal is answerable now that colour reads a real property.
+    The second catalogue is what a deployment without that property looks
+    like, and what it must say about it.
+    """
+    assert [item.intent_key for item in catalogue.fields if not item.is_usable] == []
+    assert all(item["searchable"] for item in catalogue.describe())
+
+    unusable = [item.intent_key for item in catalogue_without_colour.fields if not item.is_usable]
     assert unusable == ["colors"]
-    described = {item["intentKey"]: item for item in catalogue.describe()}
+    described = {item["intentKey"]: item for item in catalogue_without_colour.describe()}
     assert described["colors"]["searchable"] is False
     assert "unsearchableReason" in described["colors"]
 
@@ -304,7 +339,7 @@ def test_an_empty_intent_asks_for_nothing(catalogue: IdentificationCatalogue) ->
 
 
 def test_colour_is_reported_rather_than_guessed_at(
-    catalogue: IdentificationCatalogue, caplog: pytest.LogCaptureFixture
+    catalogue_without_colour: IdentificationCatalogue, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Matching a colour against product_description would surface a wrong order.
 
@@ -315,7 +350,9 @@ def test_colour_is_reported_rather_than_guessed_at(
     the same sentence as an address is the ordinary case.
     """
     with caplog.at_level("WARNING"):
-        program = _program(catalogue, streetAddresses=["18 Main Street"], colors=["blue"])
+        program = _program(
+            catalogue_without_colour, streetAddresses=["18 Main Street"], colors=["blue"]
+        )
 
     assert ("contact_point", "address_line1", "CONTAINS") in _asked(program)
     assert program.parsed.unusable_signals == ("colors",)
@@ -560,13 +597,37 @@ def test_a_date_window_match_is_scored(catalogue: IdentificationCatalogue) -> No
     assert "order_date_between" in ranked[0]["matches"]
 
 
-def test_ranking_reports_what_it_could_not_use(catalogue: IdentificationCatalogue) -> None:
+def test_ranking_reports_what_it_could_not_use(
+    catalogue_without_colour: IdentificationCatalogue,
+) -> None:
     intent = _intent(orderNumbers=["10001"], colors=["blue"], somethingElse=["x"])
-    program = build_search_program(intent, catalogue)
+    program = build_search_program(intent, catalogue_without_colour)
     result = rank_search_results(intent, [], program=program)
 
     assert result["unsupported_signals"] == ["colors"]
     assert result["unrecognized_signals"] == ["somethingElse"]
+
+
+def test_colour_narrows_the_product_search_and_never_searches_alone(
+    catalogue: IdentificationCatalogue,
+) -> None:
+    """The shipped shape: a colour is a question about a product.
+
+    Beside a product description it is one more predicate on that search --
+    the line's catalogue entry must carry the colour. On its own it plans no
+    search at all, and the program says which signal it needs, so the next
+    question is the product rather than a page of white items.
+    """
+    mixed = _program(catalogue, productNames=["LAV FCT"], colors=["white"])
+    (planned,) = mixed.primary
+    assert planned.intent_key == "productNames"
+    assert ("product", "colour_finish") in {(f.entity_id, f.field_id) for f in planned.plan.filters}
+    assert mixed.needs_companion == ()
+
+    alone = _program(catalogue, colors=["matte black"])
+    assert alone.primary == () and alone.deferred == ()
+    assert alone.needs_companion == (("colors", "productNames"),)
+    assert alone.parsed.unusable_signals == ()
 
 
 # --- the indexed customer-name search (SRCH-01, now catalogue-configured) -----
