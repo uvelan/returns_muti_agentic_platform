@@ -44,6 +44,7 @@ from return_platform.operations.review_aggregate import (
     ensure_review_indexes,
 )
 from return_platform.operations.support_events import canonical_payload_digest
+from return_platform.operations.support_handoff import compose_support_handoff
 from return_platform.operations.support_template_draft import SAMPLE_CASE, draft_facts
 from return_platform.operations.support_template_gate import (
     PAYLOAD_BODY_OVERRIDE,
@@ -819,6 +820,113 @@ async def test_delivering_twice_posts_once(
     assert first.state == second.state == ReviewState.SENT.value
     assert len(support.posted) == 1
     assert len(facts.named(fact_names.SUPPORT_SENT_SNAPSHOT_REF)) == 1
+
+
+@_async
+async def test_the_delivered_message_carries_the_structured_handoff(
+    reviews: ReviewAggregateStore,
+    mongo: FakeClient,
+    test_settings: Settings,
+    configuration: ReturnPlatformConfiguration,
+) -> None:
+    """The regression this argument exists for.
+
+    `SupportAutoResponder` selects the handoff by
+    `businessPayload["schemaVersion"] == "support-handoff-v1"`, and this path
+    used to post the render alone -- whose only item data is `selected_items`,
+    one preformatted string. The agent therefore returned `SKIPPED_NO_HANDOFF`
+    on every templated deployment and created no RMA, silently, because that
+    branch exits before it acknowledges, posts or records.
+    """
+    support = _Support(created=True)
+    service = _service(reviews, mongo, test_settings, configuration, support=support)
+    await _approved_review(reviews, service)
+    handoff = compose_support_handoff(**SAMPLE_CASE)
+
+    await service.deliver_approved(
+        case_id=CASE_ID,
+        review_id=REVIEW_ID,
+        tenant_id="default",
+        principal_id="p-1",
+        fact_id_seed="seed-1",
+        handoff_payload=handoff.payload,
+    )
+
+    delivered = support.ensured[0]["business_payload"]
+    assert delivered["schemaVersion"] == "support-handoff-v1"
+    assert delivered["order"]["items"][0]["lineReference"] == "10"
+    assert delivered["order"]["items"][0]["sku"] == "SAMPLE-SKU-1"
+    assert delivered["order"]["items"][0]["quantity"] == 2
+    # Both halves, on one message: the prose a person reads and the data a
+    # screen or an agent reads, never one recovered from the other.
+    assert delivered[PAYLOAD_SECTIONS], "the render travels too"
+    assert delivered[PAYLOAD_TEXT] == payload_text(
+        canonical_review_payload(await reviews.get_review(case_id=CASE_ID, review_id=REVIEW_ID))
+    )
+
+
+@_async
+async def test_the_approved_render_wins_a_key_the_handoff_also_defines(
+    reviews: ReviewAggregateStore,
+    mongo: FakeClient,
+    test_settings: Settings,
+    configuration: ReturnPlatformConfiguration,
+) -> None:
+    """What a person signed off is what is sent.
+
+    The structured half is composed from the case at send time, so it can carry
+    a value the approved render does not -- and where both name a key, the
+    approved one stands. Anything else would let a late case edit rewrite a
+    message a reviewer had already read.
+    """
+    support = _Support(created=True)
+    service = _service(reviews, mongo, test_settings, configuration, support=support)
+    await _approved_review(reviews, service)
+
+    await service.deliver_approved(
+        case_id=CASE_ID,
+        review_id=REVIEW_ID,
+        tenant_id="default",
+        principal_id="p-1",
+        fact_id_seed="seed-1",
+        handoff_payload={
+            "schemaVersion": "support-handoff-v1",
+            PAYLOAD_TEXT: "not what was approved",
+        },
+    )
+
+    delivered = support.ensured[0]["business_payload"]
+    assert delivered[PAYLOAD_TEXT] != "not what was approved"
+    assert delivered["schemaVersion"] == "support-handoff-v1"
+
+
+@_async
+async def test_delivery_without_a_handoff_still_sends_the_render(
+    reviews: ReviewAggregateStore,
+    mongo: FakeClient,
+    test_settings: Settings,
+    configuration: ReturnPlatformConfiguration,
+) -> None:
+    """A payload that could not be assembled must not fail an approved send.
+
+    The reviewer is waiting on a message whose prose is already signed off, and
+    the render alone is exactly the behaviour that shipped before this argument
+    existed.
+    """
+    support = _Support(created=True)
+    service = _service(reviews, mongo, test_settings, configuration, support=support)
+    await _approved_review(reviews, service)
+
+    outcome = await service.deliver_approved(
+        case_id=CASE_ID,
+        review_id=REVIEW_ID,
+        tenant_id="default",
+        principal_id="p-1",
+        fact_id_seed="seed-1",
+    )
+
+    assert outcome.state == ReviewState.SENT.value
+    assert "schemaVersion" not in support.ensured[0]["business_payload"]
 
 
 # --------------------------------------------------------------------------- #

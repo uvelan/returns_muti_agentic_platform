@@ -684,6 +684,7 @@ class SupportTemplateGateService:
         principal_id: str,
         fact_id_seed: str,
         queue: str | None = None,
+        handoff_payload: Mapping[str, Any] | None = None,
     ) -> DeliveryOutcome:
         """Post the frozen payload on the case thread and settle the review.
 
@@ -693,6 +694,21 @@ class SupportTemplateGateService:
         case; and `post_support_message` is deduped on the stored `delivery_id`
         so a retry that the receiver already holds comes back `absorbed=True`
         -- **which is a success, and the review still reaches `SENT`**.
+
+        `handoff_payload` is the `support-handoff-v1` block -- the same facts
+        the message states, as data -- and it is what `ensure_case_support_thread`
+        documents its `business_payload` to be. It is a separate argument rather
+        than a key of the review payload because the review payload round-trips
+        through the reviewer's browser on every field edit, and the structured
+        half a downstream agent creates an RMA from may not be client-supplied.
+
+        Without it the composed path and the templated path deliver different
+        contracts: `draft_support_request` persists `handoff.payload` on the
+        opening message, while this path used to persist only the render, whose
+        `selected_items` is one preformatted string. `SupportAutoResponder`
+        selects on `schemaVersion == "support-handoff-v1"`, so a templated
+        deployment returned `SKIPPED_NO_HANDOFF` and created no RMA -- silently,
+        because that branch exits before it acknowledges, posts or records.
         """
         review = await self._reviews.get_review(case_id=case_id, review_id=review_id)
         state = ReviewState(str(review["state"]))
@@ -715,13 +731,18 @@ class SupportTemplateGateService:
         subject = _text(payload.get(PAYLOAD_SUBJECT)) or None
         delivery_id = _text(review.get("deliveryId"))
 
+        # The approved render wins every key it defines: what a person read and
+        # signed off is what is sent, and the structured half only fills in the
+        # fields the render has no key for.
+        message_payload = {**dict(handoff_payload or {}), **dict(payload)}
+
         thread = await self._support.ensure_case_support_thread(
             case_id=case_id,
             tenant_id=tenant_id,
             principal_id=principal_id,
             support_draft=body,
             idempotency_key=f"support:{case_id}",
-            business_payload=dict(payload),
+            business_payload=message_payload,
             subject=subject,
             queue=queue,
         )
@@ -737,7 +758,7 @@ class SupportTemplateGateService:
                     work_item_id=thread.workItemId,
                     message_text=body,
                     delivery_id=delivery_id,
-                    business_payload=dict(payload),
+                    business_payload=message_payload,
                 )
         except Exception as error:  # noqa: BLE001 - classified, then recorded
             code = type(error).__name__[:128]

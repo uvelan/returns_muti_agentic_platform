@@ -1321,7 +1321,11 @@ class ReturnCaseActivities:
         result says so, and none of it stops the handoff. A return that cannot be
         described is still a return Support has to be told about.
         """
-        handoff = compose_support_handoff(**await self._handoff_arguments(request))
+        handoff = compose_support_handoff(
+            **await self._handoff_arguments(
+                case_id=request.case_id, work_item_id=request.work_item_id
+            )
+        )
         facts = await self._handoff_facts(request.case_id)
         return SupportRequestDraft(
             text=handoff.text + await self._drafted_note(request.case_id, facts),
@@ -1333,7 +1337,7 @@ class ReturnCaseActivities:
         latest = await self._repository.latest_case_facts(case_id)
         return {name: fact.get("value") for name, fact in latest.items()}
 
-    async def _handoff_arguments(self, request: DraftSupportRequestInput) -> dict[str, Any]:
+    async def _handoff_arguments(self, *, case_id: str, work_item_id: str | None) -> dict[str, Any]:
         """Everything `compose_support_handoff` is called with, assembled once.
 
         Lifted out of `draft_support_request` unchanged, and the extraction is
@@ -1352,10 +1356,10 @@ class ReturnCaseActivities:
         # requirement table to do it; the handoff needs the case's own row, its
         # fact log and its unassigned items, and reading exactly those keeps the
         # activity doubleable and its dependencies legible.
-        case = await self._repository.get_case(request.case_id) or {}
-        latest = await self._repository.latest_case_facts(request.case_id)
+        case = await self._repository.get_case(case_id) or {}
+        latest = await self._repository.latest_case_facts(case_id)
         facts = {name: fact.get("value") for name, fact in latest.items()}
-        selected = await self._selected_items(request.case_id)
+        selected = await self._selected_items(case_id)
 
         order_reference = _stated(facts, "confirmed_order_reference") or _text_of(
             case.get("confirmedOrderReference")
@@ -1389,9 +1393,7 @@ class ReturnCaseActivities:
         # activity double, a narrower port. The outstanding list is then empty
         # rather than guessed, because "we cannot tell" must never render as
         # "nothing is outstanding".
-        known, _business_complete, awaiting, _revision = await self._assess_completion(
-            request.case_id
-        )
+        known, _business_complete, awaiting, _revision = await self._assess_completion(case_id)
         outstanding_support_dimensions = tuple(awaiting) if known else ()
         required_details_complete = _associate_described_the_return(
             selected, reason_required=self._reason_is_published()
@@ -1400,8 +1402,8 @@ class ReturnCaseActivities:
         item_methods = self._derive_item_methods(selected, details)
 
         return dict(
-            case_id=request.case_id,
-            work_item_id=request.work_item_id,
+            case_id=case_id,
+            work_item_id=work_item_id,
             created_at=_moment_of(case.get("updatedAt")),
             workflow_status=_text_of(case.get("status")),
             customer=SupportHandoffCustomer(
@@ -1427,7 +1429,7 @@ class ReturnCaseActivities:
             ),
             return_details=SupportHandoffReturn(
                 method=_stated(facts, "return_method")
-                or await self._derive_return_method(request.case_id, selected, details),
+                or await self._derive_return_method(case_id, selected, details),
                 requested_resolution=_stated(facts, "requested_resolution"),
                 product_presence=_stated(facts, "product_presence"),
                 associate_notes=_stated(facts, "associate_notes"),
@@ -1689,11 +1691,7 @@ class ReturnCaseActivities:
             key: dict(value) for key, value in scoped.items()
         }
         arguments = await self._handoff_arguments(
-            DraftSupportRequestInput(
-                case_id=request.case_id,
-                configuration_release_id=request.configuration_release_id,
-                work_item_id=request.work_item_id,
-            )
+            case_id=request.case_id, work_item_id=request.work_item_id
         )
         facts.update(snapshot_as_facts(support_template_snapshot(**arguments)))
         records = tuple(await self._return_records(request.case_id))
@@ -1923,6 +1921,36 @@ class ReturnCaseActivities:
             )
         return HoldUnsettledReviewsResult(held_review_ids=held)
 
+    async def _handoff_payload(self, request: SnapshotSentTemplateInput) -> dict[str, Any]:
+        """The `support-handoff-v1` block for the message about to be posted.
+
+        The same assembly the draft read, so the structured half and the prose
+        state one set of facts rather than two -- `_handoff_arguments` exists to
+        be the single read, and calling it here is what keeps the templated path
+        on the contract `draft_support_request` already holds: the message
+        carries the facts as data, and a screen or an agent never parses the
+        text back into fields.
+
+        Best-effort, like every other read behind this message. A payload that
+        cannot be assembled leaves the render to travel on its own -- which is
+        exactly today's behaviour -- rather than failing a delivery whose prose
+        is already approved and whose reviewer is waiting on it.
+        """
+        try:
+            handoff = compose_support_handoff(
+                **await self._handoff_arguments(
+                    case_id=request.case_id, work_item_id=request.work_item_id
+                )
+            )
+        except Exception:  # noqa: BLE001 - see the docstring
+            logger.warning(
+                "support_handoff_payload_unavailable",
+                extra={"case_id": request.case_id, "review_id": request.review_id},
+                exc_info=True,
+            )
+            return {}
+        return dict(handoff.payload)
+
     @activity.defn(name="snapshot_sent_template")
     async def snapshot_sent_template(
         self, request: SnapshotSentTemplateInput
@@ -1949,6 +1977,7 @@ class ReturnCaseActivities:
                 principal_id=request.principal_id,
                 fact_id_seed=request.fact_id_seed,
                 queue=request.queue,
+                handoff_payload=await self._handoff_payload(request),
             )
         except ReviewStateError as refusal:
             # The review is not `APPROVING`. A signal arrived for a review

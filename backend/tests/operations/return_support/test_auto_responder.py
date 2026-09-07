@@ -19,6 +19,8 @@ from return_platform.operations.return_support.service import (
     SupportWorkItemStatus,
     SupportWorkItemView,
 )
+from return_platform.operations.support_handoff import compose_support_handoff
+from return_platform.operations.support_template_draft import SAMPLE_CASE
 
 CONFIG = Path(__file__).resolve().parents[3] / "config" / "returns" / "production.yaml"
 
@@ -201,3 +203,47 @@ async def test_progressed_work_is_not_talked_over() -> None:
     assert outcome.outcome == "SKIPPED_STATUS"
     assert service.posted == []
     assert store.recorded == []
+
+
+@pytest.mark.asyncio
+async def test_the_payload_the_template_gate_delivers_is_one_this_agent_can_plan_from() -> None:
+    """The drift guard the earlier tests could not be.
+
+    Every case above hand-writes its `support-handoff-v1` payload, so all of
+    them passed while the templated path delivered a payload this agent could
+    not read: the render alone, whose only item data is `selected_items`, one
+    preformatted string. The result was `SKIPPED_NO_HANDOFF` on a live case --
+    no acknowledgement, no reply on the thread, no RMA, and a 200 on the way
+    out because that exit is a decision rather than an error.
+
+    So this one composes the payload the way delivery composes it, from
+    `compose_support_handoff`, and merges the render over the top exactly as
+    `deliver_approved` does. If the two shapes part again, this fails here
+    rather than on a desk.
+    """
+    handoff = compose_support_handoff(**SAMPLE_CASE)
+    # The render half as the gate stores it. Only its *keys* matter here -- the
+    # question this test asks is whether the handoff half survives beside them.
+    rendered_half = {
+        "template_id": "support-handoff",
+        "variant_id": "default",
+        "subject": "Return SAMPLE-ORDER-1",
+        "text": "RETURN SUPPORT REQUEST ...",
+        "sections": [],
+        "gaps": [],
+    }
+    delivered = {**dict(handoff.payload), **rendered_half}
+
+    message = _handoff_message()
+    message.businessPayload.clear()
+    message.businessPayload.update(delivered)
+    service = FakeService(_work_item(SupportWorkItemStatus.NEW), [message])
+    store = FakeEventStore()
+
+    outcome = await _responder(service, store).respond("wi-1")
+
+    assert outcome.outcome != "SKIPPED_NO_HANDOFF", (
+        "the delivered payload no longer carries a handoff this agent can read"
+    )
+    assert service.actions == ["ACKNOWLEDGE"]
+    assert service.posted, "the agent answers on the thread"

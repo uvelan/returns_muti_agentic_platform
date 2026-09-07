@@ -897,6 +897,12 @@ class SnapshotSentTemplateInput:
     workflow_id: str
     queue: str | None = None
     approve_as_system: bool = False
+    #: The id the thread is opened under, so the structured half of the message
+    #: can name the work item a reader is looking at -- the same replay-stable
+    #: id `DraftSupportRequestInput` carries, for the same reason. Optional so a
+    #: history written before this field replays with the composed path's `None`
+    #: rather than failing to deserialise.
+    work_item_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -2657,7 +2663,7 @@ class ReturnCaseWorkflow:
                 continue
 
             await self._send_reviewed_template(
-                request_id, notice.review_id, notice.signal_id, timings
+                request_id, notice.review_id, notice.signal_id, timings, intended_work_item_id
             )
 
     async def _send_reviewed_template(
@@ -2666,6 +2672,7 @@ class ReturnCaseWorkflow:
         review_id: str,
         signal_id: str,
         timings: ReturnCaseTimings,
+        intended_work_item_id: str,
         *,
         approve_as_system: bool = False,
     ) -> None:
@@ -2683,6 +2690,7 @@ class ReturnCaseWorkflow:
                 workflow_id=return_case_workflow_id(workflow_input.case_id),
                 queue=self._state.support_queue,
                 approve_as_system=approve_as_system,
+                work_item_id=intended_work_item_id,
             ),
             result_type=TemplateDeliveryResult,
             start_to_close_timeout=_PERSIST_TIMEOUT,
@@ -2764,6 +2772,7 @@ class ReturnCaseWorkflow:
                     review_id,
                     f"auto-send:{review_id}",
                     timings,
+                    intended_work_item_id,
                     approve_as_system=True,
                 )
             if self._reviews_settled():
@@ -2784,7 +2793,6 @@ class ReturnCaseWorkflow:
                     self._require_input().case_id,
                     ", ".join(pending),
                 )
-        del intended_work_item_id
         self._state.parked_reason = reason
         await self._set_status(ReturnCaseStatus.AWAITING_TEMPLATE_REVIEW, fact_value=reason)
 
