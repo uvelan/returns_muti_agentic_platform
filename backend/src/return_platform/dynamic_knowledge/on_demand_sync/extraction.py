@@ -292,6 +292,18 @@ def _apply_derive(
         if derivation.index >= len(parts):
             return None
         return parts[derivation.index]
+    if derivation.operation is DeriveOperation.FIRST_ITEM:
+        # A scalar where an array was expected is the source being lax, not
+        # missing: a colour recorded as "White" rather than ["White"] is still
+        # the colour. An empty list or a blank first entry is no value at all.
+        if isinstance(source_value, (list, tuple)):
+            if not source_value:
+                return None
+            source_value = source_value[0]
+        if source_value is None:
+            return None
+        text = str(source_value).strip()
+        return text or None
     if derivation.operation is DeriveOperation.CONTACT_LOOKUP_DIGEST:
         assert derivation.contact_kind is not None and derivation.key_reference is not None
         text = str(source_value).strip()

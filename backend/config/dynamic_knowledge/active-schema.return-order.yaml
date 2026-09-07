@@ -2081,6 +2081,65 @@ entities:
           searchable_by:
           - '*'
           masking: null
+      colour_finish_values:
+        field_id: colour_finish_values
+        description: The catalogue's colour/finish list for the product, as recorded --
+          `eco.colorFinish` is an array ("Sandtone", "Polished Chrome") and is present
+          on roughly a quarter of products. Carried raw so `colour_finish` can derive
+          from it; not searched or shown itself.
+        physical_path:
+        - eco
+        - colorFinish
+        graph_property: colour_finish_values
+        data_type: ARRAY
+        nullable: true
+        capabilities:
+          searchable: false
+          filterable: false
+          distinct: false
+          aggregatable: false
+          displayable: false
+          on_demand_sync_anchor: false
+          operators: []
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
+      colour_finish:
+        field_id: colour_finish
+        description: The product's colour or finish, when the catalogue records one --
+          the first entry of `eco.colorFinish`. Absent on products the catalogue does
+          not describe a colour for, which is most of them; nothing reads a colour off
+          the description text, so a product whose description ends in WHIT and whose
+          catalogue entry carries no colour reports no colour.
+        derive:
+          operation: FIRST_ITEM
+          source_field: colour_finish_values
+        graph_property: colour_finish
+        data_type: STRING
+        nullable: true
+        capabilities:
+          searchable: true
+          filterable: true
+          distinct: true
+          aggregatable: false
+          displayable: true
+          on_demand_sync_anchor: false
+          operators:
+          - EXACT
+          - EQUALS
+          - PREFIX
+          - CONTAINS
+          aggregations: []
+        permissions:
+          displayable_by:
+          - '*'
+          searchable_by:
+          - '*'
+          masking: null
       vendor_name:
         field_id: vendor_name
         description: Supplier name.
@@ -4888,6 +4947,8 @@ graph:
       - product_description
       - product_long_description
       - web_display_name
+      - colour_finish_values
+      - colour_finish
       - vendor_name
       - brand_type
       - unit_of_measure
@@ -5255,4 +5316,4 @@ agent_policies:
     max_clarifications: 10
     max_replans: 2
     max_targeted_syncs_per_turn: 3
-configuration_checksum: 53ff55fffc8235ece9201dd945e56a8a88ed837cc27f393778e4b195cc717c45
+configuration_checksum: a4a72797813922e4765370e9cab0267e3ffc4143ad6456a53df48d98decbdd90

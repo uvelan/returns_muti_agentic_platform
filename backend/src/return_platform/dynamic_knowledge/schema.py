@@ -274,6 +274,13 @@ class DeriveOperation(StrEnum):
     SPLIT_PART = "SPLIT_PART"
     CONTACT_LOOKUP_DIGEST = "CONTACT_LOOKUP_DIGEST"
     COALESCE = "COALESCE"
+    #: The first entry of an array-valued source field, as a scalar. A source
+    #: that records a product's colour as `["White"]` cannot be searched as a
+    #: string until something takes the string out of the list; the compiler's
+    #: CONTAINS is `toLower(prop) CONTAINS`, and `toLower` of a list is a type
+    #: error inside a turn. Only the first entry is taken and the rest are left
+    #: alone -- which is what the catalogue documents about `eco.colorFinish`.
+    FIRST_ITEM = "FIRST_ITEM"
 
 
 class ContactDigestKind(StrEnum):
@@ -307,9 +314,10 @@ class FieldDerivation(BaseModel):
     the caller and supplied to the extractor as an already-resolved value, the
     same never-log-the-secret posture as KeyResolution's DETERMINISTIC_HMAC.
 
-    SPLIT_PART and CONTACT_LOOKUP_DIGEST take one source_field; COALESCE takes
-    an ordered list of candidate fields and resolves to the first non-null one
-    -- the two shapes are mutually exclusive per operation, never combined.
+    SPLIT_PART, FIRST_ITEM and CONTACT_LOOKUP_DIGEST take one source_field;
+    COALESCE takes an ordered list of candidate fields and resolves to the first
+    non-null one -- the two shapes are mutually exclusive per operation, never
+    combined.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -338,6 +346,9 @@ class FieldDerivation(BaseModel):
         if self.operation is DeriveOperation.SPLIT_PART:
             if self.delimiter is None or self.index is None:
                 raise ValueError("SPLIT_PART derive requires delimiter and index")
+        elif self.operation is DeriveOperation.FIRST_ITEM:
+            if self.delimiter is not None or self.index is not None:
+                raise ValueError("FIRST_ITEM derive takes only source_field")
         else:
             if self.contact_kind is None:
                 raise ValueError("CONTACT_LOOKUP_DIGEST derive requires contact_kind")

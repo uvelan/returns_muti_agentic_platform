@@ -364,3 +364,77 @@ def test_missing_natural_key_field_produces_no_mutation(active_schema: ActiveSch
         read_scope=ProjectionReadScope.COMPLETE_SOURCE_DOCUMENT,
     )
     assert mutations == ()
+
+
+def _first_item_schema(active_schema: ActiveSchema) -> ActiveSchema:
+    """`finishes` is the source's array; `finish` is its first entry as a string."""
+    raw = active_schema.model_dump(mode="json")
+    raw["entities"]["entity_a"]["fields"]["finishes"] = {
+        "field_id": "finishes",
+        "physical_path": ["eco", "colorFinish"],
+        "graph_property": "finishes",
+        "data_type": "ARRAY",
+        "capabilities": {"searchable": False, "filterable": False, "displayable": False},
+    }
+    raw["entities"]["entity_a"]["fields"]["finish"] = {
+        "field_id": "finish",
+        "physical_path": None,
+        "derive": {"operation": "FIRST_ITEM", "source_field": "finishes"},
+        "graph_property": "finish",
+        "data_type": "STRING",
+        "capabilities": {"searchable": True, "filterable": True, "operators": ["CONTAINS"]},
+        "permissions": {"searchable_by": ["associate"]},
+    }
+    raw["graph"]["nodes"]["node_a"]["property_fields"].extend(["finishes", "finish"])
+    return ActiveSchema.model_validate(raw)
+
+
+def _first_item_values(active_schema: ActiveSchema, eco: object) -> dict[str, object]:
+    document: dict[str, object] = {"configured_id": "A-1", "configured_name": "n"}
+    if eco is not None:
+        document["eco"] = eco
+    mutations = GenericSourceRecordExtractor().extract(
+        schema=_first_item_schema(active_schema),
+        source_asset_id="source_a",
+        page=_page(document),
+        read_scope=ProjectionReadScope.COMPLETE_SOURCE_DOCUMENT,
+    )
+    assert len(mutations) == 1 and mutations[0].record is not None
+    return dict(mutations[0].record.values)
+
+
+def test_first_item_derive_takes_the_first_entry_of_an_array(active_schema: ActiveSchema) -> None:
+    """A colour recorded as `["Polished Chrome", "Chrome"]` is Polished Chrome as a string.
+
+    The compiler's CONTAINS is `toLower(prop) CONTAINS ...`, and `toLower` of a
+    list is a type error inside a turn -- which is why the list cannot simply
+    be projected and searched.
+    """
+    values = _first_item_values(active_schema, {"colorFinish": ["Polished Chrome", "Chrome"]})
+    assert values["finishes"] == ["Polished Chrome", "Chrome"]
+    assert values["finish"] == "Polished Chrome"
+
+
+def test_first_item_derive_accepts_a_scalar_where_an_array_was_expected(
+    active_schema: ActiveSchema,
+) -> None:
+    values = _first_item_values(active_schema, {"colorFinish": "White"})
+    assert values["finish"] == "White"
+
+
+@pytest.mark.parametrize("eco", [None, {}, {"colorFinish": []}, {"colorFinish": ["  "]}])
+def test_first_item_derive_is_omitted_when_the_source_records_no_entry(
+    active_schema: ActiveSchema, eco: object
+) -> None:
+    """No colour is no colour: the property is absent, never an empty string."""
+    values = _first_item_values(active_schema, eco)
+    assert "finish" not in values
+
+
+def test_first_item_derive_takes_only_a_source_field() -> None:
+    from return_platform.dynamic_knowledge.schema import FieldDerivation
+
+    with pytest.raises(ValueError, match="FIRST_ITEM derive takes only source_field"):
+        FieldDerivation(operation="FIRST_ITEM", source_field="finishes", delimiter=",", index=0)
+    with pytest.raises(ValueError, match="requires source_field"):
+        FieldDerivation(operation="FIRST_ITEM")
