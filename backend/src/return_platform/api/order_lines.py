@@ -55,6 +55,10 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from return_platform.api.case_recovery_access import (
+    execution_is_gone,
+    recover_after_late_event,
+)
 from return_platform.configuration.return_configuration import (
     LoadedReturnConfiguration,
     ReturnPlatformConfiguration,
@@ -771,6 +775,15 @@ async def _notify_case_workflow(
     delivered leaves the case waiting for the timeout it was already bounded by;
     failing this request instead would refuse a selection that is already
     recorded, which is worse in both directions.
+
+    One failure is different: the execution is *gone*. A case whose associate
+    answered after `return_details_wait_seconds` has an execution that
+    completed parked on `RETURN_DETAILS_NOT_RECORDED`, and Temporal refuses the
+    signal with NOT_FOUND. Retrying into a closed execution can never deliver
+    it; what the case is owed is a new execution, which is what recovery
+    starts. Observed: a selection recorded 33 minutes after confirmation was
+    saved, logged as undelivered, and the case sat at RECOVERY_REQUIRED until
+    someone found the relaunch route.
     """
     if items <= 0:
         return
@@ -784,12 +797,17 @@ async def _notify_case_workflow(
     try:
         handle = client.get_workflow_handle(return_case_workflow_id(case_id))
         await handle.signal("return_details_recorded")
-    except Exception:  # noqa: BLE001 - see the docstring
-        logger.warning(
-            "case_workflow_not_notified_of_return_details",
-            extra={"case_id": case_id},
-            exc_info=True,
-        )
+    except Exception as error:  # noqa: BLE001 - see the docstring
+        if execution_is_gone(error):
+            await recover_after_late_event(
+                request, case_id=case_id, event="return_details_recorded"
+            )
+        else:
+            logger.warning(
+                "case_workflow_not_notified_of_return_details",
+                extra={"case_id": case_id},
+                exc_info=True,
+            )
 
     await _end_the_conversations_wait(request, case_id=case_id, conversation_id=conversation_id)
 

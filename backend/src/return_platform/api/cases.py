@@ -36,6 +36,7 @@ from typing import Any, Literal, cast
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from return_platform.api.case_recovery_access import recovery_service_from
 from return_platform.configuration.return_configuration import (
     LoadedReturnConfiguration,
     build_return_method_requirement_table,
@@ -80,7 +81,6 @@ from return_platform.workflows.return_case_recovery import (
     CaseRecoveryOutcome,
     RecoveryAction,
     ReturnCaseRecoveryService,
-    build_case_recovery_service,
 )
 from return_platform.workflows.return_case_workflow import (
     PolicyOverrideNotice,
@@ -670,11 +670,15 @@ class CaseRecoveryResult(BaseModel):
 def _recovery_service(request: Request) -> ReturnCaseRecoveryService:
     """The one service, assembled from what this process already holds.
 
-    Built by `build_case_recovery_service` rather than here, so the route and
-    the background sweep are provably the same object with the same guards -- a
-    handler that assembled its own launcher would be a second place the
-    duplicate-execution rule lives.
+    Built by `recovery_service_from` rather than here, so the route, the
+    background sweep and a write path that meets a closed execution are
+    provably the same object with the same guards -- a handler that assembled
+    its own launcher would be a second place the duplicate-execution rule
+    lives. This route is the one caller that refuses to proceed without it.
     """
+    service = recovery_service_from(request)
+    if service is not None:
+        return service
     resources = getattr(request.app.state, "resources", None)
     temporal = resources.temporal if isinstance(resources, RuntimeResources) else None
     if not isinstance(resources, RuntimeResources) or temporal is None:
@@ -689,28 +693,16 @@ def _recovery_service(request: Request) -> ReturnCaseRecoveryService:
                 "retryable": True,
             },
         )
-    loaded = getattr(request.app.state, "return_configuration", None)
-    if not isinstance(loaded, LoadedReturnConfiguration):
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={
-                "code": "RETURN_CONFIGURATION_UNAVAILABLE",
-                "message": (
-                    "No return configuration is active, so a recovered case has no "
-                    "timings to be restarted with."
-                ),
-                "retryable": True,
-            },
-        )
-    settings = resources.settings
-    mongo = resources.mongo
-    return build_case_recovery_service(
-        temporal=temporal,
-        repository=resolve_operational_repository(request),
-        database=None if mongo is None else mongo[settings.mongo_database],
-        timings=loaded.configuration.return_case,
-        gate=loaded.configuration.support_gate,
-        task_queue=settings.return_workflow_task_queue,
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail={
+            "code": "RETURN_CONFIGURATION_UNAVAILABLE",
+            "message": (
+                "No return configuration is active, so a recovered case has no "
+                "timings to be restarted with."
+            ),
+            "retryable": True,
+        },
     )
 
 

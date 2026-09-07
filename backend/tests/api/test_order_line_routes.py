@@ -958,3 +958,117 @@ def test_a_contact_may_not_be_stated_on_a_line() -> None:
         {"items": [{"orderLineReference": "1", "quantity": 1, "name": "D. Reyes"}]},
     )
     assert response.status_code == 422
+
+
+# --- a selection that arrives after the case's execution has parked -----------
+
+
+class _ClosedExecutionTemporal:
+    """Every signal is refused the way Temporal refuses a completed execution."""
+
+    def get_workflow_handle(self, workflow_id: str) -> Any:
+        from temporalio.service import RPCError, RPCStatusCode
+
+        class _Handle:
+            async def signal(self, name: str, *args: Any) -> None:
+                raise RPCError("workflow execution already completed", RPCStatusCode.NOT_FOUND, b"")
+
+        return _Handle()
+
+
+class _FlakyTemporal:
+    """Every signal fails for some other reason -- the host is unreachable."""
+
+    def get_workflow_handle(self, workflow_id: str) -> Any:
+        from temporalio.service import RPCError, RPCStatusCode
+
+        class _Handle:
+            async def signal(self, name: str, *args: Any) -> None:
+                raise RPCError("connection refused", RPCStatusCode.UNAVAILABLE, b"")
+
+        return _Handle()
+
+
+class _RecoveryDouble:
+    """Records which cases were reconciled, and answers what a relaunch answers."""
+
+    def __init__(self) -> None:
+        from return_platform.workflows.return_case_recovery import RecoveryAction
+
+        self.reconciled: list[str] = []
+        self.action = RecoveryAction.RELAUNCHED
+
+    async def reconcile_case(self, case_id: str, *, commands: Any = None) -> Any:
+        self.reconciled.append(case_id)
+        return SimpleNamespace(action=self.action)
+
+
+def test_a_late_selection_relaunches_the_execution_that_parked_waiting_for_it(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The associate answered after the wait; the case is owed an execution, not a warning.
+
+    Observed: a selection recorded 33 minutes after confirmation. The
+    execution had completed parked on RETURN_DETAILS_NOT_RECORDED, Temporal
+    refused the signal with NOT_FOUND, and the case sat at RECOVERY_REQUIRED
+    until someone found the relaunch route. Retrying the signal cannot help --
+    there is nothing to receive it -- so the write drives recovery itself.
+    """
+    repository = StubRepository(case=_case(), sales=_sales_document())
+    recovery = _RecoveryDouble()
+
+    for client in _client(repository, temporal=_ClosedExecutionTemporal()):
+        client.app.state.case_recovery_service = recovery  # type: ignore[attr-defined]
+        with caplog.at_level("INFO"):
+            response = client.post(
+                f"/api/cases/{CASE}/selected-items",
+                json={"items": [{"orderLineReference": "1", "quantity": 1}]},
+            )
+        assert response.status_code == 200, response.text
+
+    assert recovery.reconciled == [CASE]
+    driven = [r for r in caplog.records if r.getMessage() == "case_recovery_driven_by_late_event"]
+    assert len(driven) == 1 and driven[0].__dict__["action"] == "RELAUNCHED"
+    assert not any(
+        r.getMessage() == "case_workflow_not_notified_of_return_details" for r in caplog.records
+    )
+
+
+def test_any_other_signal_failure_is_still_a_warning_and_not_a_relaunch(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An unreachable host is not a missing execution: the case keeps its timeout."""
+    repository = StubRepository(case=_case(), sales=_sales_document())
+    recovery = _RecoveryDouble()
+
+    for client in _client(repository, temporal=_FlakyTemporal()):
+        client.app.state.case_recovery_service = recovery  # type: ignore[attr-defined]
+        with caplog.at_level("WARNING"):
+            response = client.post(
+                f"/api/cases/{CASE}/selected-items",
+                json={"items": [{"orderLineReference": "1", "quantity": 1}]},
+            )
+        assert response.status_code == 200, response.text
+
+    assert recovery.reconciled == []
+    assert any(
+        r.getMessage() == "case_workflow_not_notified_of_return_details" for r in caplog.records
+    )
+
+
+def test_a_process_without_recovery_says_so_and_still_records_the_selection(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    repository = StubRepository(case=_case(), sales=_sales_document())
+
+    for client in _client(repository, temporal=_ClosedExecutionTemporal()):
+        with caplog.at_level("WARNING"):
+            response = client.post(
+                f"/api/cases/{CASE}/selected-items",
+                json={"items": [{"orderLineReference": "1", "quantity": 1}]},
+            )
+        assert response.status_code == 200, response.text
+
+    assert any(
+        r.getMessage() == "case_recovery_unavailable_after_late_event" for r in caplog.records
+    )
