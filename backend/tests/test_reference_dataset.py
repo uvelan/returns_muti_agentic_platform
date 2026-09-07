@@ -209,3 +209,64 @@ def test_every_order_can_reach_a_customer(orders: list[dict[str, Any]]) -> None:
     referenced = {str(order["salesHdr"]["salesHdrData"]["custId"]) for order in orders}
     assert referenced <= bridged
     assert referenced
+
+
+def test_every_product_records_a_colour_the_description_agrees_with(
+    orders: list[dict[str, Any]],
+) -> None:
+    """`product.colour_finish` is a searchable signal, so every seed product carries one.
+
+    The template is one real product with `eco.colorFinish: ["White"]`, and
+    copying it put white on all of them. The finish the line states wins where
+    it states one -- `... PEX-B POT WHIT` is white and `... P TRAP BN` is
+    brushed nickel -- and the loader and the large generator resolve the rest
+    through the same tiers (`seed_ferguson_idiom.resolve_colour`).
+    """
+    load = _module("load_reference_dataset")
+    idiom = _module("seed_ferguson_idiom")
+    template = json.loads((DATASET / "lkpSearchProduct.json").read_text(encoding="utf-8"))
+    products = load._products(orders, template)
+
+    colours = {product["_id"]: product["eco"]["colorFinish"] for product in products}
+    assert all(
+        isinstance(value, list) and len(value) == 1 and value[0] for value in colours.values()
+    )
+    assert len({value[0] for value in colours.values()}) > 1, "every product read the template's"
+
+    by_description = {
+        product["_id"]: product["masterProduct"]["productDesc"] for product in products
+    }
+    for product_id, description in by_description.items():
+        tokens = description.upper().split()
+        stated = next(
+            (
+                idiom.FINISH_TOKENS[token]
+                for token in reversed(tokens)
+                if token in idiom.FINISH_TOKENS
+            ),
+            None,
+        )
+        if stated is not None:
+            assert colours[product_id] == [stated], (product_id, description)
+        assert colours[product_id] == [idiom.resolve_colour(description, product_id=product_id)]
+
+
+def test_resolve_colour_reads_the_finish_last_and_never_a_reducer() -> None:
+    idiom = _module("seed_ferguson_idiom")
+    assert idiom.resolve_colour("1-1/4 17GA BRS SJ P TRAP BN") == "Brushed Nickel"
+    assert idiom.resolve_colour("3/4X1/2 CU RED COUP") == "Copper"
+    assert idiom.resolve_colour("1/2X20 STRT LGTH PEX-B POT WHIT") == "White"
+    assert idiom.resolve_colour("16X25 SILV FLEX AIR DUCT R8.0") == "Silver"
+    assert (
+        idiom.resolve_colour("12X5 FT 30GA SNLK RND PIPE", category_key="duct_fittings")
+        == "Galvanized"
+    )
+    # Tier three is a function of the id alone, so the corpus stays reproducible.
+    assert idiom.resolve_colour("3T 14 SEER2 H/P", product_id="4000123") == idiom.resolve_colour(
+        "3T 14 SEER2 H/P", product_id="4000123"
+    )
+    assert all(
+        category.key in idiom.CATEGORY_COLOURS
+        for category in idiom.CATEGORIES
+        if not category.finishes
+    ), "a generated category with no finish and no material colour would ship uncoloured"

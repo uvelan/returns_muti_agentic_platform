@@ -840,3 +840,146 @@ def expand(abbreviated: str) -> str:
         else:
             words.append(token.title())
     return " ".join(words)
+
+
+# ---------------------------------------------------------------------------
+# A colour for every product -- an operator decision for the test corpus.
+#
+# The section above says emptiness is the point: a flex duct has no finish and
+# writing one would fabricate an attribute. That is the right posture for a
+# catalogue that claims to be what the ERP said. This corpus is not that: it
+# exists to exercise the copilot, and the colour signal is now searchable
+# (`product.colour_finish`), so on 2026-09-07 the decision was taken to put
+# every seed product behind it rather than the quarter that the trade
+# vocabularies covered. The three tiers below are ranked by how much they
+# fabricate, and a product takes the first that applies:
+#
+#   1. the finish the description already states, in the ERP's abbreviation --
+#      `... P TRAP BN` is brushed nickel. Scanned from the end, because the
+#      finish is the last token where one is present and a material token
+#      earlier in the line (`17GA BRS`) is the body, not the colour;
+#   2. the colour of the material the description names -- copper is copper,
+#      PVC is white, black iron is black;
+#   3. the category's material, for generated goods whose description says
+#      neither; and for the real order-line products, which carry no category,
+#      a neutral shade chosen deterministically from the product id, so the
+#      corpus stays reproducible from `generation.yaml` alone.
+#
+# `resolve_colour` is a table lookup and consumes no random draws, which is
+# what keeps the rest of the corpus byte-identical to the run before it.
+# ---------------------------------------------------------------------------
+
+#: Finish abbreviations as the order lines write them, mapped to the finish
+#: name the catalogue records. `S/S` and `STNLS` are stainless; `BROW`, `BRWN`
+#: and `BRN` are the three spellings of brown the real lines carry.
+FINISH_TOKENS: dict[str, str] = {
+    "WHIT": "White",
+    "WHT": "White",
+    "WHITE": "White",
+    "CP": "Polished Chrome",
+    "CHR": "Polished Chrome",
+    "CHROME": "Polished Chrome",
+    "BN": "Brushed Nickel",
+    "PN": "Polished Nickel",
+    "MB": "Matte Black",
+    "ORB": "Oil Rubbed Bronze",
+    "SS": "Stainless",
+    "S/S": "Stainless",
+    "STNLS": "Stainless",
+    "BIS": "Biscuit",
+    "BONE": "Bone",
+    "BLK": "Black",
+    "BLACK": "Black",
+    "BRN": "Brown",
+    "BRWN": "Brown",
+    "BROW": "Brown",
+    "SAND": "Sandtone",
+    "SILV": "Silver",
+    "GALV": "Galvanized",
+    "ALUM": "Aluminum",
+    "YEL": "Yellow",
+    "GRY": "Gray",
+    "GRAY": "Gray",
+}
+
+#: Materials whose colour is the material's own. `RED` is deliberately absent:
+#: on an order line it is a reducing fitting (`CU RED COUP`), not a colour.
+MATERIAL_TOKENS: dict[str, str] = {
+    "CU": "Copper",
+    "COP": "Copper",
+    "COPPER": "Copper",
+    "BRS": "Brass",
+    "BRASS": "Brass",
+    "BRZ": "Bronze",
+    "BRNZ": "Bronze",
+    "BRONZE": "Bronze",
+    "PVC": "White",
+    "CPVC": "Cream",
+    "ABS": "Black",
+    "PEX": "White",
+    "PEX-A": "White",
+    "PEX-B": "White",
+    "PLAS": "White",
+    "RUB": "Black",
+    "IRON": "Black",
+    "CI": "Gray",
+    "STL": "Silver",
+    "THHN": "Black",
+}
+
+#: The material colour of each generated category whose goods carry no finish.
+#: Categories with a finish vocabulary always draw one and never reach here.
+CATEGORY_COLOURS: dict[str, str] = {
+    "pvc_dwv": "White",
+    "pvc_fittings": "White",
+    "plastic_pipe": "White",
+    "copper_fittings": "Copper",
+    "copper_tube": "Copper",
+    "pex": "White",
+    "steel_pipe": "Black",
+    "bronze_valves": "Bronze",
+    "water_heater": "Gray",
+    "pumps": "Black",
+    "hangers": "Galvanized",
+    "chemicals": "Clear",
+    "waterworks": "Brass",
+    "backflow": "Bronze",
+    "flex_duct": "Silver",
+    "duct_fittings": "Galvanized",
+    "duct_insulation": "Silver",
+    "air_filters": "White",
+    "thermostats": "White",
+    "condensing_units": "Gray",
+    "furnaces": "Gray",
+    "hvac_parts": "Black",
+    "refrigeration": "Copper",
+    "gas_train": "Yellow",
+    "drains": "Nickel Bronze",
+    "traps": "White",
+    "disposals": "Gray",
+    "expansion": "Blue",
+    "tape_and_sundries": "White",
+}
+
+#: Tier three for a real order-line product: neutral shades an unbranded part
+#: plausibly comes in, picked by product id rather than drawn.
+NEUTRAL_SHADES: tuple[str, ...] = ("Gray", "Black", "White", "Silver")
+
+
+def resolve_colour(
+    description: str, *, category_key: str | None = None, product_id: str = ""
+) -> str:
+    """The colour a seed product records, by the tiers described above."""
+    tokens = description.upper().split()
+    for token in reversed(tokens):
+        finish = FINISH_TOKENS.get(token)
+        if finish is not None:
+            return finish
+    for token in tokens:
+        material = MATERIAL_TOKENS.get(token)
+        if material is not None:
+            return material
+    if category_key is not None and category_key in CATEGORY_COLOURS:
+        return CATEGORY_COLOURS[category_key]
+    digest = sum(ord(character) for character in product_id)
+    return NEUTRAL_SHADES[digest % len(NEUTRAL_SHADES)]

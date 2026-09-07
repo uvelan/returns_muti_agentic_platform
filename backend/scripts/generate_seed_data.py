@@ -118,6 +118,7 @@ from seed_ferguson_idiom import (
     Category,
     GeneratedProduct,
     expand,
+    resolve_colour,
 )
 
 from return_platform.configuration.settings import BACKEND_ROOT, Settings
@@ -800,7 +801,11 @@ def _mine_real_products(orders: Iterable[Mapping[str, Any]]) -> list[GeneratedPr
                 brand_type="",
                 upc_code="",
                 list_price=float(data.get("listPrice") or 0.0),
-                colour_finish=None,
+                # The finish the line states where it states one, the material's
+                # colour where it names one, a neutral shade otherwise -- see
+                # `seed_ferguson_idiom.resolve_colour` for why every product now
+                # carries one.
+                colour_finish=resolve_colour(description, product_id=key),
                 category_key="from_order_line",
                 real=True,
             )
@@ -843,8 +848,10 @@ def _generate_products(
 ) -> list[GeneratedProduct]:
     """Catalogue entries in the mined idiom: size, spec, abbreviated noun.
 
-    A finish is appended to the description and written to `eco.colorFinish`
-    only for the categories that have one. `_id` is drawn from a numeric band
+    A finish is appended to the description for the categories that have one;
+    `eco.colorFinish` is written for every product -- the drawn finish where
+    there is one, the category's material colour otherwise (see
+    `seed_ferguson_idiom.resolve_colour`). `_id` is drawn from a numeric band
     disjoint from every real `masterProductId`, and asserted against `taken`, so
     a generated product can never shadow a real one.
     """
@@ -921,7 +928,8 @@ def _generate_products(
                 brand_type="Own Brand" if vendor == "PROSELECT" else "National Brand",
                 upc_code=f"{rng.randint(10**11, 10**12 - 1)}",
                 list_price=round(rng.uniform(low, high), 2),
-                colour_finish=finish_name,
+                colour_finish=finish_name
+                or resolve_colour(description, category_key=category.key, product_id=product_id),
                 category_key=category.key,
             )
         )
@@ -931,12 +939,10 @@ def _generate_products(
 def _product_document(product: GeneratedProduct, generated_at: datetime) -> dict[str, Any]:
     """A `lkpSearchProduct` document shaped like the real one.
 
-    `eco.colorFinish` is the path the real document carries its finish on, and
-    it is written only where a finish exists. **The active schema declares no
-    colour field on `product`**, so the value reaches Mongo but not the graph;
-    it is searchable today only through the description and the display name,
-    both of which state it. Declaring a `color_finish` field is a schema change
-    and out of this script's scope.
+    `eco.colorFinish` is the path the real document carries its finish on. The
+    active schema projects its first entry as `product.colour_finish`, which is
+    what the `colors` identification signal searches, so every product here is
+    given one (`seed_ferguson_idiom.resolve_colour`).
     """
     document: dict[str, Any] = {
         "_id": product.product_id,

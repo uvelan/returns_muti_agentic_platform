@@ -42,6 +42,10 @@ if str(BACKEND_ROOT / "src") not in sys.path:
 os.chdir(REPOSITORY_ROOT)
 
 from return_platform.configuration.settings import Settings  # noqa: E402
+
+sys.path.insert(0, str(BACKEND_ROOT / "scripts"))
+from seed_ferguson_idiom import resolve_colour  # noqa: E402
+
 from return_platform.data_platform.operational_generation.deterministic_values import (  # noqa: E402  # noqa: E402
     build_synthetic_email,
     get_synthetic_name,
@@ -210,6 +214,14 @@ def _products(orders: list[dict[str, Any]], template: dict[str, Any]) -> list[di
             document["masterProduct"]["prodLongDesc"] = display_name
             document["masterProduct"]["vendorProdCode"] = vendor_code
             document["masterProduct"]["upcCode"] = _upc_a(key)
+            # The template is one real product and carries its finish, so
+            # without this every derived product read `White`. The description
+            # states the finish where the line had one; the rest take the
+            # material's colour or a neutral shade, the same tiers the large
+            # generator uses, so the two seed paths agree.
+            document.setdefault("eco", {})["colorFinish"] = [
+                resolve_colour(description, product_id=key)
+            ]
             document["fld"]["baseModelNumber"] = vendor_code
             document["fopt"]["mfgPartNum"] = vendor_code
             document["fopt"]["mstrProdId"] = f"{key}*19635"
