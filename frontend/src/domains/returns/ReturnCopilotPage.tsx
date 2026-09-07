@@ -940,6 +940,18 @@ export function ReturnCopilotPage() {
     setCandidates([]);
     setCandidateTotal(null);
     versionRef.current = 0;
+    // The mutation's own error outlives everything cleared above, because it
+    // lives in React Query and not in this component's state. Without this an
+    // associate who cancels a slow turn and then starts a new return is shown
+    // "The API request was cancelled." against an empty conversation they never
+    // sent anything in -- the failure of the return they walked away from,
+    // reported as if it belonged to the one in front of them.
+    send.reset();
+    // The withdrawn turn's controller must not outlive its conversation either.
+    // `stopWaiting` clears it, but reaching here by any other route -- the
+    // history pane, a restored identity -- would leave a live controller whose
+    // `abort()` could only ever reach a turn it does not belong to.
+    abortRef.current = null;
   }
 
   // The case's own order wins over a search that may be several conversations

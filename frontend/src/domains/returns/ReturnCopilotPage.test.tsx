@@ -410,6 +410,23 @@ describe("the discovery copilot", () => {
     expect(screen.getByText(/let's find that order/)).toBeInTheDocument();
   });
 
+  it("does not carry a cancelled turn's error into the next return", async () => {
+    // The error lives in React Query, not in this component's state, so every
+    // `setX([])` in `resetToFreshReturn` left it untouched. An associate who
+    // gave up on a slow turn and started a new return was shown "The API
+    // request was cancelled." against an empty conversation they had not sent
+    // anything in -- the previous return's failure, attributed to this one.
+    mocks.sendTurn.mockRejectedValue(new Error("The API request was cancelled."));
+    const { container } = render(<ReturnCopilotPage />, { wrapper });
+
+    fire(container, "melgon heating");
+    expect(await screen.findByText(/The API request was cancelled/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "New return" }));
+    expect(screen.queryByText(/The API request was cancelled/)).not.toBeInTheDocument();
+    expect(screen.getByText(/let's find that order/)).toBeInTheDocument();
+  });
+
   it("lists previous returns and reopens one", async () => {
     mocks.listConversations.mockResolvedValue([
       {
