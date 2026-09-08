@@ -38,14 +38,20 @@ import { readObject, readObjects, readString } from "./supportPanelPayloads";
  * carry-forward, not worked around here.
  */
 
-/** The one kind V2 appends. `message_classification.py::SUPPORT_UPDATE_ENTRY_KIND`. */
+/** The kind V2's classify path appends. `message_classification.py::SUPPORT_UPDATE_ENTRY_KIND`. */
 export const SUPPORT_UPDATE_ENTRY_KIND = "SUPPORT_UPDATE";
+/** The item pane recorded the associate's answer. `relay.py::SELECTION_RECORDED_ENTRY_KIND`. */
+export const SELECTION_RECORDED_ENTRY_KIND = "SELECTION_RECORDED";
+/** Support issued or updated an RMA. `relay.py::RETURN_RECORD_ISSUED_ENTRY_KIND`. */
+export const RETURN_RECORD_ISSUED_ENTRY_KIND = "RETURN_RECORD_ISSUED";
 
 export type SupportSystemEntry = {
   readonly entryId: string;
   readonly kind: string;
   readonly returnReference: string | null;
   readonly intent: string | null;
+  /** What the entry is labelled in the transcript. Says who is speaking. */
+  readonly kicker: string;
   /** The composed sentence. Platform-written; no support text is folded in. */
   readonly text: string;
   readonly recordedAtIso: string | null;
@@ -108,22 +114,140 @@ export function readSupportSystemEntries(source: unknown): readonly SupportSyste
   return readObjects(source, "systemEntries").flatMap((entry) => {
     const entryId = readString(entry, "entryId");
     if (entryId === null) return [];
+    const kind = readString(entry, "kind") ?? SUPPORT_UPDATE_ENTRY_KIND;
     const payload = readObject(entry, "payload");
-    const intent = readString(payload, "intent");
     const reference = readString(payload, "returnReference");
-    const multiRecord = readObject(entry, "payload")?.multiRecord === true;
+    const recordedAtIso = readString(entry, "recordedAt");
+    if (kind === SELECTION_RECORDED_ENTRY_KIND) {
+      return [
+        {
+          entryId,
+          kind,
+          returnReference: null,
+          intent: null,
+          kicker: RECORDED_FROM_PANE_KICKER,
+          text: selectionSentence(payload),
+          recordedAtIso,
+        },
+      ];
+    }
+    if (kind === RETURN_RECORD_ISSUED_ENTRY_KIND) {
+      return [
+        {
+          entryId,
+          kind,
+          returnReference: reference,
+          intent: null,
+          kicker: SUPPORT_UPDATE_KICKER,
+          text: returnRecordSentence(payload, reference),
+          recordedAtIso,
+        },
+      ];
+    }
+    const intent = readString(payload, "intent");
+    const multiRecord = payload?.multiRecord === true;
     return [
       {
         entryId,
-        kind: readString(entry, "kind") ?? SUPPORT_UPDATE_ENTRY_KIND,
+        kind,
         returnReference: reference,
         intent,
+        kicker: SUPPORT_UPDATE_KICKER,
         text: sentenceFor(intent, reference, multiRecord, readString(payload, "framingPromptKey")),
-        recordedAtIso: readString(entry, "recordedAt"),
+        recordedAtIso,
       },
     ];
   });
 }
+
+/**
+ * The pane's answer, said back. Line, quantity and reason are the associate's
+ * own selection and the released vocabulary's words; the description is the
+ * catalogue's. All go through `readString`/`readNumber` so they are collapsed
+ * and typed before they reach the sentence.
+ */
+function selectionSentence(payload: Record<string, unknown> | null): string {
+  // An item with neither a line nor a description is not described: the
+  // sentence says less rather than standing in a placeholder for it.
+  const lines = readObjects(payload, "items").flatMap((item) => {
+    const line = readString(item, "orderLineReference");
+    const description = readString(item, "description");
+    if (line === null && description === null) return [];
+    const quantity = readNumber(item, "quantity");
+    const reason = readString(item, "reason");
+    const words: string[] = [];
+    if (quantity !== null) words.push(`${String(quantity)} ×`);
+    if (description !== null) words.push(description);
+    if (line !== null) words.push(description === null ? `line ${line}` : `(line ${line})`);
+    if (reason !== null) words.push(`, ${reasonWords(reason)}`);
+    return [words.join(" ").replace(" ,", ",")];
+  });
+  const details = readObject(payload, "returnDetails");
+  const method = readString(details, "returnMethod");
+  const parts = ["Recorded from the item pane."];
+  if (lines.length > 0) parts[0] = `Recorded from the item pane: ${lines.join("; ")}.`;
+  if (method !== null) parts.push(`Return method ${methodWords(method)}.`);
+  return parts.join(" ");
+}
+
+/**
+ * The RMA, said back. Every value is an identifier Support issued -- the
+ * reference, the carrier, the label and tracking references -- and each is the
+ * thing a carrier desk or a warehouse ticket is keyed by, which is why they
+ * appear where Support's *prose* never does.
+ */
+function returnRecordSentence(
+  payload: Record<string, unknown> | null,
+  reference: string | null,
+): string {
+  const method = readString(payload, "returnMethod");
+  const carrier = readString(payload, "carrier");
+  const tracking = readString(payload, "trackingReference");
+  const label = readString(payload, "labelReference");
+  const location = readString(payload, "returnLocation");
+  const lines = readStrings(payload, "orderLineReferences");
+  const parts = ["Support has issued a return authorisation."];
+  if (reference !== null) parts.push(`RMA ${reference}.`);
+  const how: string[] = [];
+  if (method !== null) how.push(methodWords(method));
+  if (carrier !== null) how.push(`via ${carrier}`);
+  if (how.length > 0) parts.push(`${capitalise(how.join(" "))}.`);
+  if (lines.length > 0) parts.push(`Covers line ${lines.join(", ")}.`);
+  if (label !== null) parts.push(`Label ${label}.`);
+  if (tracking !== null) parts.push(`Tracking ${tracking}.`);
+  if (location !== null) parts.push(`Return to ${location}.`);
+  return parts.join(" ");
+}
+
+function readNumber(source: unknown, key: string): number | null {
+  if (typeof source !== "object" || source === null) return null;
+  const value = (source as Record<string, unknown>)[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readStrings(source: unknown, key: string): readonly string[] {
+  if (typeof source !== "object" || source === null) return [];
+  const value = (source as Record<string, unknown>)[key];
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => (typeof item === "string" && item.trim() ? [item.trim()] : []));
+}
+
+/** A released vocabulary code, in words: `SHIPPING_DAMAGE` reads "shipping damage". */
+function reasonWords(code: string): string {
+  return code.toLowerCase().replaceAll("_", " ");
+}
+
+/** A return method code, in words: `PREPAID_PARCEL` reads "prepaid parcel". */
+function methodWords(code: string): string {
+  return code.toLowerCase().replaceAll("_", " ");
+}
+
+function capitalise(text: string): string {
+  return text.length === 0 ? text : text[0].toUpperCase() + text.slice(1);
+}
+
+/** What a pane-recorded selection is labelled. The associate said it, in the pane. */
+export const RECORDED_FROM_PANE_KICKER = "Recorded from the item pane";
 
 /**
  * What the entry is labelled in the transcript.

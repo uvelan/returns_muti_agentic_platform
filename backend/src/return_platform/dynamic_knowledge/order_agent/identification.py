@@ -43,6 +43,9 @@ from return_platform.dynamic_knowledge.schema import ActiveSchema, IdentifierLik
 #: `QueryCondition.operator`. `FULLTEXT` is the exception and is handled as its
 #: own plan shape (see `search_strategy.build_progressive_plans`).
 FULLTEXT_STRATEGY = "FULLTEXT"
+#: The partial-match strategy. Named so a narrowing can prefer it over an
+#: exact search the same companion also declares.
+CONTAINS_STRATEGY = "CONTAINS"
 
 #: Value types whose signal is one bound of a date window rather than a value to
 #: match. Kept as a set rather than as three `if` branches so the planner can

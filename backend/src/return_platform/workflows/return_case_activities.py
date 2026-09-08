@@ -81,6 +81,7 @@ from return_platform.operations.return_support.clarification import (
 from return_platform.operations.return_support.clarification import (
     relay_clarification_to_support as post_clarification_answer_to_support,
 )
+from return_platform.operations.return_support.relay import RETURN_RECORD_ISSUED_ENTRY_KIND
 from return_platform.operations.review_aggregate import (
     SYSTEM_ACTOR,
     PendingRevisionError,
@@ -290,6 +291,20 @@ class _RecordPlan:
     #: The subset of `merged` that is new information. Empty for a redelivery,
     #: which is what makes a replay write nothing and bump no revision.
     changed: dict[str, Any]
+
+
+class TranscriptRelayPort(Protocol):
+    """`SupportTranscriptRelay`, structurally: append one typed entry, once."""
+
+    async def append_system_entry(
+        self,
+        *,
+        case_id: str,
+        support_event_id: str,
+        entry_kind: str,
+        return_record_id: str | None,
+        payload: Mapping[str, Any],
+    ) -> bool: ...
 
 
 class SupportDraftPort:
@@ -523,6 +538,7 @@ class ReturnCaseActivities:
         configuration: Callable[[], ReturnPlatformConfiguration | None] | None = None,
         shipment_tracking: Any | None = None,
         template_gate: SupportTemplateGateService | None = None,
+        transcript_relay: TranscriptRelayPort | None = None,
     ) -> None:
         self._repository = repository
         self._support = support_service
@@ -546,6 +562,11 @@ class ReturnCaseActivities:
         #: review is misconfigured, and an activity that quietly did nothing
         #: would leave the case waiting on a review nobody created.
         self._gate_service = template_gate
+        #: The B->A relay (DR-3): typed entries on the associate's conversation.
+        #: Optional so every existing worker and test double keeps constructing;
+        #: without it an RMA is applied to the case and the chat is not told,
+        #: which is what it did before the port existed.
+        self._transcript_relay = transcript_relay
 
     async def _append_fact_once(self, **fact: Any) -> bool:
         """Append one derived-id fact, treating an existing one as already done.
@@ -1996,6 +2017,13 @@ class ReturnCaseActivities:
                 },
             )
             return TemplateDeliveryResult(review_id=request.review_id, state=refusal.state.value)
+        if outcome.work_item_id and outcome.state == ReviewState.SENT.value:
+            # A sent review is a case that is with Support. Say so on the
+            # record, exactly as the straight-through path does, or the next
+            # relaunch will not know and will ask Support again. A failed
+            # delivery is not "with Support", however the thread was opened,
+            # so it leaves the record alone and the recovery surface decides.
+            await self._link_work_item_to_case(request.case_id, str(outcome.work_item_id))
         return TemplateDeliveryResult(
             review_id=outcome.review_id,
             state=outcome.state,
@@ -2168,16 +2196,30 @@ class ReturnCaseActivities:
             basis = SupportSlaBasis.SUPPORT_ACKNOWLEDGEMENT
         work_item_id = await self._support.open_case_thread(**arguments)
         await self._record_support_sla_basis(request.case_id, basis)
-        case = await self._repository.get_case(request.case_id)
-        if case is not None and case.get("channelBWorkItemId") != work_item_id:
-            # The link that makes a support outcome reachable from the
-            # associate's conversation.
-            await self._repository.update_case(
-                request.case_id,
-                {"channelBWorkItemId": work_item_id},
-                expected_version=int(case["version"]),
-            )
+        await self._link_work_item_to_case(request.case_id, str(work_item_id))
         return str(work_item_id)
+
+    async def _link_work_item_to_case(self, case_id: str, work_item_id: str) -> None:
+        """Record on the case which Support thread it is talking on.
+
+        The link that makes a support outcome reachable from the associate's
+        conversation -- and, since the review gate, the link that tells a
+        relaunch where the case *was*. Recovery reads `channelBWorkItemId` to
+        decide between "resume with Support" and "run from the top"; a sent
+        request with no link here was relaunched from the top, drafted a
+        **second** request to Support, and buffered Support's answer to the
+        first behind a review nobody should have been asked for. Both paths
+        that open a thread -- the straight-through one above and the gate's
+        delivery -- write it, through this one method.
+        """
+        case = await self._repository.get_case(case_id)
+        if case is None or case.get("channelBWorkItemId") == work_item_id:
+            return
+        await self._repository.update_case(
+            case_id,
+            {"channelBWorkItemId": work_item_id},
+            expected_version=int(case["version"]),
+        )
 
     def _support_accepts_queue(self) -> bool:
         return self._support_accepts("queue")
@@ -2349,6 +2391,7 @@ class ReturnCaseActivities:
 
         await self._seed_return_shipments(request, plans)
         await self._record_support_answer(request, issued=bool(plans))
+        await self._tell_the_conversation(request, plans)
         completion = await self._assess_completion(request.case_id)
         return SupportOutcomeReceipt(
             record_ids=tuple(plan.record_id for plan in plans),
@@ -2515,6 +2558,52 @@ class ReturnCaseActivities:
             source_system="RETURN_SUPPORT",
             source_path="SUPPORT_REPLY",
         )
+
+    async def _tell_the_conversation(
+        self, request: RecordSupportOutcomeInput, plans: Sequence[_RecordPlan]
+    ) -> None:
+        """One typed entry per RMA on the associate's chat (DR-3).
+
+        The case panel already shows the record; this is the transcript half.
+        Without it a return's whole fulfilment -- RMA, label, tracking --
+        happened off-screen from the conversation that raised it, and the chat
+        ended on a question the associate had answered in the pane.
+
+        Best-effort and after every write that matters: an entry that could
+        not be appended is a chat one line short, and failing the outcome over
+        it would strand the RMA that just committed. Only a plan that *changed*
+        something relays, so a redelivered notice tells the associate nothing
+        twice; the relay's derived id is the second line of that.
+        """
+        if self._transcript_relay is None:
+            return
+        for plan in plans:
+            if not plan.changed:
+                continue
+            record = plan.incoming
+            try:
+                await self._transcript_relay.append_system_entry(
+                    case_id=request.case_id,
+                    support_event_id=request.support_event_id or request.work_item_id,
+                    entry_kind=RETURN_RECORD_ISSUED_ENTRY_KIND,
+                    return_record_id=plan.record_id,
+                    payload={
+                        "returnReference": record.return_reference,
+                        "returnMethod": record.return_method,
+                        "carrier": record.carrier,
+                        "trackingReference": record.tracking_reference,
+                        "labelReference": record.label_reference,
+                        "returnLocation": record.return_location,
+                        "orderLineReferences": list(record.order_line_references),
+                        "changedFields": sorted(plan.changed),
+                    },
+                )
+            except Exception:  # noqa: BLE001 - see the docstring
+                logger.warning(
+                    "conversation_not_told_of_return_record",
+                    extra={"case_id": request.case_id, "record_id": plan.record_id},
+                    exc_info=True,
+                )
 
     async def _plan_support_outcome(self, request: RecordSupportOutcomeInput) -> list[_RecordPlan]:
         """Resolve each RMA of the notice against what the case already holds.

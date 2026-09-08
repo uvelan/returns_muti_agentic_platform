@@ -43,6 +43,17 @@ SYSTEM_ENTRY_LIMIT: Final = 200
 
 _ENTRY_NAMESPACE: Final = uuid.UUID("2b1f7d84-6a53-4c1e-9f02-7d5e3c6a8b91")
 
+#: The associate answered the agent's question in the item pane rather than
+#: in the chat. The pane writes the facts and posts no turn -- see
+#: `api/order_lines.py::_end_the_conversations_wait` -- so without this entry
+#: the transcript ended on a question the associate had already answered, and
+#: the case's whole fulfilment happened off-screen from the conversation.
+SELECTION_RECORDED_ENTRY_KIND: Final = "SELECTION_RECORDED"
+#: Support issued (or updated) a return record: the RMA, its method, carrier,
+#: label and tracking. One entry per record, like `SUPPORT_UPDATE`, for the
+#: same reason -- two RMAs going two places must not share one line.
+RETURN_RECORD_ISSUED_ENTRY_KIND: Final = "RETURN_RECORD_ISSUED"
+
 
 class ConversationScopeLike(Protocol):
     def filter(self) -> dict[str, str]: ...

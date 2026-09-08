@@ -10,6 +10,7 @@ import {
   type ConversationTranscript,
 } from "../../api/orderAgent";
 import {
+  CASE_POLL_INTERVAL_MS,
   caseLifecycle,
   caseRefetchInterval,
   caseRetry,
@@ -57,7 +58,6 @@ import { WarehouseReceivingMode } from "./modes/WarehouseReceivingMode";
 import { ReturnSettlementMode } from "./modes/ReturnSettlementMode";
 import { useElapsedSeconds } from "../../hooks/useElapsedSeconds";
 import {
-  SUPPORT_UPDATE_KICKER,
   readSupportSystemEntries,
 } from "./panes/casePanel/support/supportSystemEntries";
 // V2's panel sections register at import time. One side-effect import per screen
@@ -519,10 +519,43 @@ function restoredHistory(transcript: ConversationTranscript): ChatHistoryEntry[]
   const updates: ChatHistoryEntry[] = readSupportSystemEntries(transcript).map((entry) => ({
     role: "system" as const,
     id: entry.entryId,
-    kicker: SUPPORT_UPDATE_KICKER,
+    kicker: entry.kicker,
     text: entry.text,
   }));
   return [...spoken, ...updates];
+}
+
+/**
+ * The chat plus whatever platform entries have landed since it was drawn.
+ *
+ * Pure: the same `history` and the same transcript give the same list, which
+ * is what lets it run on every render without an effect. Entries already in
+ * the history -- restored with it on open, or appended by an earlier poll's
+ * render -- are skipped by id, so nothing is drawn twice.
+ */
+function platformEntriesKey(conversationId: string) {
+  return ["order-agent", "transcript", conversationId, "system-entries"] as const;
+}
+
+function withPlatformEntries(
+  history: readonly ChatHistoryEntry[],
+  transcript: ConversationTranscript | undefined,
+): readonly ChatHistoryEntry[] {
+  if (transcript === undefined) return history;
+  const arrived = readSupportSystemEntries(transcript);
+  if (arrived.length === 0) return history;
+  const drawn = new Set(history.map((entry) => entry.id));
+  const fresh = arrived.filter((entry) => !drawn.has(entry.entryId));
+  if (fresh.length === 0) return history;
+  return [
+    ...history,
+    ...fresh.map((entry) => ({
+      role: "system" as const,
+      id: entry.entryId,
+      kicker: entry.kicker,
+      text: entry.text,
+    })),
+  ];
 }
 
 export function ReturnCopilotPage() {
@@ -642,6 +675,41 @@ export function ReturnCopilotPage() {
   // route swap, or a decode that failed, must read as "no lifecycle" instead of
   // asserting a stage that is not there.
   const lifecycle = caseLifecycle(caseRead.data);
+
+  /**
+   * The platform's own entries on this conversation, kept current (DR-3).
+   *
+   * The transcript is read once on open and the chat is local state from then
+   * on -- which was right while everything that landed on it was a turn the
+   * associate had just sent. It is not right for what the *case* does after the
+   * associate stops typing: the pane recording their selection, Support issuing
+   * the RMA. Those arrive as typed system entries on the conversation record,
+   * on the case's own clock, and a chat that only re-read them on reload showed
+   * a return's whole fulfilment happening off-screen from the conversation
+   * that raised it.
+   *
+   * Same cadence as the case read and the same stopping rule: a terminal case
+   * has nothing further to say. The entries are *derived* onto the chat at
+   * render rather than written into `history`: only ids the chat has not drawn
+   * are appended, after what is there, so a poll never re-orders what is on
+   * screen and a state write never races a turn landing.
+   */
+  const platformEntries = useQuery({
+    queryKey: platformEntriesKey(conversationId),
+    // Not before there is a chat to append to. On a reload the open path reads
+    // the transcript, restores the history and seeds this key with what it
+    // read, in that order -- so a poll that started on an empty history would
+    // be the second read of the same document in the same breath. The
+    // interval is the only thing that re-reads it.
+    queryFn:
+      caseId === null || history.length === 0
+        ? skipToken
+        : () => orderAgentApi.readTranscript(conversationId),
+    refetchInterval: lifecycle?.isTerminal === true ? false : CASE_POLL_INTERVAL_MS,
+    staleTime: CASE_POLL_INTERVAL_MS,
+    retry: caseRetry,
+  });
+  const chatHistory = withPlatformEntries(history, platformEntries.data);
 
   const historyAnchor = historySearchKey(candidates);
   const returnHistory = useQuery({
@@ -826,9 +894,10 @@ export function ReturnCopilotPage() {
         raisedCase: caseList.at(0) ?? null,
       };
     },
-    onSuccess: ({ transcript, raisedCase }) => {
+    onSuccess: ({ transcript, raisedCase }, { id }) => {
       setShowHistory(false);
       setHistory(restoredHistory(transcript));
+      queries.setQueryData(platformEntriesKey(id), transcript);
       setTurn(null);
       // The *previous* conversation's results used to survive here, which was
       // wrong, and clearing outright was wrong in the other direction: a past
@@ -859,8 +928,9 @@ export function ReturnCopilotPage() {
    */
   const restore = useMutation({
     mutationFn: (id: string) => orderAgentApi.readTranscript(id),
-    onSuccess: (transcript) => {
+    onSuccess: (transcript, id) => {
       setHistory(restoredHistory(transcript));
+      queries.setQueryData(platformEntriesKey(id), transcript);
       restoreCandidates(transcript);
       // The turn itself, not only what was derived from it. Everything the
       // Progress pane's "Extracted & Verified Facts" shows reads off
@@ -991,7 +1061,7 @@ export function ReturnCopilotPage() {
       <ReturnCopilotShell
         conversationPane={
           <ConversationPane
-            history={history}
+            history={chatHistory}
             draft={draft}
             onDraftChange={setDraft}
             onSubmit={submit}

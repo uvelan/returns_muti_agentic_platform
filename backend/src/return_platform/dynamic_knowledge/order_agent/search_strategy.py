@@ -39,6 +39,7 @@ from return_platform.dynamic_knowledge.knowledge.query_plan import (
 )
 from return_platform.dynamic_knowledge.order_agent.contracts import OrderSearchIntent
 from return_platform.dynamic_knowledge.order_agent.identification import (
+    CONTAINS_STRATEGY,
     FULLTEXT_STRATEGY,
     IdentificationCatalogue,
     ParsedIntent,
@@ -328,14 +329,23 @@ def _narrowing_conditions(
         companion = parsed.by_key(narrowing.intent_key)
         if companion is None or not companion.values:
             continue
-        for companion_search in companion.field.searches:
-            if (
-                companion_search.entity_id == narrowing.entity_id
-                and companion_search.strategy != FULLTEXT_STRATEGY
-            ):
-                value = apply_value_form(companion.values[0], companion_search.value_form)
-                conditions.append((narrowing, _condition_for(companion_search, value)))
-                break
+        # The companion's most forgiving non-fulltext search on that entity. An
+        # email or a phone declares an exact search before a partial one, and
+        # a narrowing that took the exact form would turn "the associate gave
+        # part of the address" into no match at all -- the union it replaces
+        # at least found the customer. Partial where the companion offers it,
+        # exact where that is all it has (a state, a ZIP).
+        candidates = [
+            companion_search
+            for companion_search in companion.field.searches
+            if companion_search.entity_id == narrowing.entity_id
+            and companion_search.strategy != FULLTEXT_STRATEGY
+        ]
+        if not candidates:
+            continue
+        chosen = next((c for c in candidates if c.strategy == CONTAINS_STRATEGY), candidates[0])
+        value = apply_value_form(companion.values[0], chosen.value_form)
+        conditions.append((narrowing, _condition_for(chosen, value)))
     return conditions
 
 

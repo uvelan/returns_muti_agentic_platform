@@ -52,6 +52,7 @@ describe("reading the relay's entries", () => {
         kind: "SUPPORT_UPDATE",
         returnReference: "the first return",
         intent: "rma_issued",
+        kicker: "Update from the platform",
         text: "Support has issued a return authorisation. This is about the first return.",
         recordedAtIso: "2026-08-30T10:00:00Z",
       },

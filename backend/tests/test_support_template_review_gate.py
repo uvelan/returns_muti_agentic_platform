@@ -224,6 +224,38 @@ class _Support:
         return _Post()
 
 
+class _CaseRecord:
+    """The one field of the case record the send activity writes.
+
+    `channelBWorkItemId` is what recovery reads to know a case is with
+    Support. A sent review that left it unset was relaunched from the top and
+    asked Support a second time, so the link is asserted here, on the gate's
+    own send, rather than assumed from the straight-through path that always
+    wrote it.
+    """
+
+    def __init__(self) -> None:
+        self.document: dict[str, Any] = {
+            "caseId": CASE_ID,
+            "version": 1,
+            "channelBWorkItemId": None,
+        }
+        self.updates: list[dict[str, Any]] = []
+
+    async def get_case(self, case_id: str) -> dict[str, Any] | None:
+        return dict(self.document) if case_id == CASE_ID else None
+
+    async def update_case(
+        self, case_id: str, changes: dict[str, Any], *, expected_version: int
+    ) -> dict[str, Any]:
+        assert case_id == CASE_ID
+        assert expected_version == self.document["version"], "a stale write is a lost link"
+        self.document.update(changes)
+        self.document["version"] += 1
+        self.updates.append(dict(changes))
+        return dict(self.document)
+
+
 class _GateActivities:
     """The four activity names, over the real service.
 
@@ -242,6 +274,7 @@ class _GateActivities:
         request_ids: tuple[str, ...] = (REQUEST_ID,),
     ) -> None:
         self._gate = gate
+        self.case_record = _CaseRecord()
         self._facts = facts if facts is not None else draft_facts(**SAMPLE_CASE)
         #: What the grouping resolved to. Parameterised so the map-based wait
         #: can be driven with two requests, which is the only way "a held
@@ -355,7 +388,7 @@ class _GateActivities:
         from return_platform.workflows.return_case_activities import ReturnCaseActivities
 
         activities = ReturnCaseActivities(
-            repository=cast(Any, None),
+            repository=cast(Any, self.case_record),
             support_service=cast(Any, None),
             template_gate=self._gate,
         )
@@ -537,6 +570,11 @@ async def test_an_approved_review_is_sent_and_no_work_item_is_opened_first(
     assert len(support.posted) == 1, "the approved draft actually left the platform"
     reviews = await store.list_reviews(CASE_ID)
     assert ReviewState(str(reviews[0]["state"])) is ReviewState.SENT
+    # And the case knows it is with Support. Recovery reads this to resume a
+    # relaunched case beside its thread rather than from the top -- without
+    # it, a sent request was followed by a second one Support never asked for.
+    assert activities.case_record.document["channelBWorkItemId"] == "wi-gate-1"
+    assert activities.case_record.updates == [{"channelBWorkItemId": "wi-gate-1"}]
 
 
 @_async

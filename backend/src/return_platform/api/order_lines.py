@@ -66,6 +66,12 @@ from return_platform.configuration.return_configuration import (
 )
 from return_platform.configuration.settings import Settings
 from return_platform.dynamic_knowledge.config_loader import resolve_active_schema
+from return_platform.dynamic_knowledge.integration.mongo_store import (
+    MongoAtomicConversationStore,
+)
+from return_platform.dynamic_knowledge.order_agent.conversation_repository import (
+    ConversationScope,
+)
 from return_platform.dynamic_knowledge.release_store import SchemaReleaseStore
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 from return_platform.operations.models import FactAcquisition, FactChannel
@@ -82,6 +88,10 @@ from return_platform.operations.order_lines import (
     resolve_product_colours,
 )
 from return_platform.operations.repository import resolve_operational_repository
+from return_platform.operations.return_support.relay import (
+    SELECTION_RECORDED_ENTRY_KIND,
+    SupportTranscriptRelay,
+)
 from return_platform.operations.seed_manifest import (
     SOURCE_PRODUCTS_DATASET,
     SOURCE_SALES_DATASET,
@@ -812,6 +822,75 @@ async def _notify_case_workflow(
     await _end_the_conversations_wait(request, case_id=case_id, conversation_id=conversation_id)
 
 
+async def _tell_the_conversation_what_was_selected(
+    request: Request,
+    *,
+    case_id: str,
+    revision: int,
+    selections: tuple[LineSelection, ...],
+    lines: tuple[SourceOrderLine, ...],
+    return_details: Any,
+) -> None:
+    """A typed entry on the chat saying what the pane recorded (DR-3).
+
+    The pane deliberately posts no *turn* -- see `_end_the_conversations_wait`
+    -- so the transcript ended on the agent's question with the answer given
+    somewhere the conversation could not see. This is the answer, as the
+    platform's own entry rather than as words in anybody's mouth: the lines,
+    their quantities, the reason, and the return method where one was stated.
+
+    Keyed on the case revision the write produced, so a re-sent identical
+    selection (which moves no revision and is not `changed`) appends nothing,
+    and a genuinely different selection appends its own line. Best-effort and
+    after the write, like the signal beside it: a chat one line short is not a
+    reason to refuse a recorded selection.
+    """
+    resources = getattr(request.app.state, "resources", None)
+    settings = getattr(request.app.state, "settings", None)
+    mongo = resources.mongo if isinstance(resources, RuntimeResources) else None
+    if mongo is None or not isinstance(settings, Settings):
+        return
+    described = {line.line_reference: line for line in lines}
+    items = [
+        {
+            "orderLineReference": selection.order_line_reference,
+            "quantity": selection.quantity,
+            "reason": selection.reason,
+            "condition": selection.condition,
+            "description": (
+                described[selection.order_line_reference].description
+                if selection.order_line_reference in described
+                else None
+            ),
+        }
+        for selection in selections
+    ]
+    details = (
+        return_details.model_dump(mode="json", exclude_none=True)
+        if return_details is not None and hasattr(return_details, "model_dump")
+        else {}
+    )
+    relay = SupportTranscriptRelay(
+        store=MongoAtomicConversationStore(mongo, settings.mongo_database),
+        cases=resolve_operational_repository(request),
+        scope_factory=ConversationScope,
+    )
+    try:
+        await relay.append_system_entry(
+            case_id=case_id,
+            support_event_id=f"selection:{revision}",
+            entry_kind=SELECTION_RECORDED_ENTRY_KIND,
+            return_record_id=None,
+            payload={"items": items, "returnDetails": details},
+        )
+    except Exception:  # noqa: BLE001 - best-effort, see the docstring
+        logger.warning(
+            "conversation_not_told_of_selection",
+            extra={"case_id": case_id},
+            exc_info=True,
+        )
+
+
 async def _end_the_conversations_wait(
     request: Request, *, case_id: str, conversation_id: str | None
 ) -> None:
@@ -1036,6 +1115,15 @@ async def replace_case_selected_items(
         # case raised in the Support console has none, and nothing is signalled.
         conversation_id=_text_or_none(case.get("channelAConversationId")),
     )
+    if outcome.changed:
+        await _tell_the_conversation_what_was_selected(
+            request,
+            case_id=case_id,
+            revision=outcome.revision,
+            selections=selections,
+            lines=lines,
+            return_details=payload.returnDetails,
+        )
 
     return APIResponse(
         data=SelectedItems(

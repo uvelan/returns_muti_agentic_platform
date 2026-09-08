@@ -630,6 +630,48 @@ def test_colour_narrows_the_product_search_and_never_searches_alone(
     assert alone.parsed.unusable_signals == ()
 
 
+def test_a_customer_name_and_a_street_are_one_question(
+    catalogue: IdentificationCatalogue,
+) -> None:
+    """The shipped shape: a street is a question about WHICH customer of that name.
+
+    Before the paths, "SERGIO on CURRY road" was two searches whose rows could
+    only be unioned: five SERGIOs plus everyone on CURRY road, and the panel
+    drew all of them. Now the customer search starts at the contact point that
+    carries the street and walks up to the customer, and the street search
+    starts at the customer of that name and walks down to its contact point --
+    so both primary plans answer the intersection, and the candidate set has
+    one member.
+    """
+    program = _program(catalogue, customerNames=["SERGIO"], streetAddresses=["CURRY"])
+    by_key = {item.intent_key: item for item in program.primary}
+
+    customer = by_key["customerNames"].plan
+    assert customer.start_entity_id == "contact_point"
+    assert [step.target_entity_id for step in customer.traversal] == ["customer"]
+    assert ("contact_point", "address_line1") in {
+        (f.entity_id, f.field_id) for f in customer.filters
+    }
+
+    street = by_key["streetAddresses"].plan
+    assert street.start_entity_id == "customer"
+    assert [step.target_entity_id for step in street.traversal] == ["contact_point"]
+    assert ("customer", "customer_name") in {(f.entity_id, f.field_id) for f in street.filters}
+
+
+def test_a_partial_email_narrows_by_containment_not_exactly(
+    catalogue: IdentificationCatalogue,
+) -> None:
+    """Email declares an exact search before a partial one; the narrowing must
+    take the partial, or "the associate gave part of the address" becomes no
+    match at all -- worse than the union it replaces."""
+    program = _program(catalogue, customerNames=["SERGIO"], emails=["sandoval@"])
+    customer = next(item for item in program.primary if item.intent_key == "customerNames").plan
+    email_filters = [f for f in customer.filters if f.field_id == "email"]
+    assert len(email_filters) == 1
+    assert email_filters[0].operator == "CONTAINS"
+
+
 # --- the indexed customer-name search (SRCH-01, now catalogue-configured) -----
 
 

@@ -32,6 +32,9 @@ from return_platform.dynamic_knowledge.config_loader import resolve_active_schem
 from return_platform.dynamic_knowledge.integration.bay_observations import (
     GraphWarehouseBayObservations,
 )
+from return_platform.dynamic_knowledge.integration.mongo_store import (
+    MongoAtomicConversationStore,
+)
 from return_platform.dynamic_knowledge.integration.order_placement_observations import (
     GraphOrderPlacementObservations,
 )
@@ -40,10 +43,14 @@ from return_platform.dynamic_knowledge.integration.shipment_state_sync import Gr
 from return_platform.dynamic_knowledge.integration.targeted_sync import (
     build_targeted_graph_access,
 )
+from return_platform.dynamic_knowledge.order_agent.conversation_repository import (
+    ConversationScope,
+)
 from return_platform.dynamic_knowledge.release_store import SchemaReleaseStore
 from return_platform.operations.case_commands import DurableCaseCommandStore
 from return_platform.operations.order_lines.case_detail import SourceOrderLineDetails
 from return_platform.operations.repository import OperationalRepository
+from return_platform.operations.return_support.relay import SupportTranscriptRelay
 from return_platform.operations.return_support.service import ReturnSupportService
 from return_platform.operations.review_aggregate import ReviewAggregateStore
 from return_platform.operations.seed_manifest import (
@@ -231,6 +238,15 @@ async def _run() -> None:
                 configuration=lambda: (
                     activation.state.return_configuration.configuration.shipment_tracking
                 ),
+            ),
+            # DR-3's transcript half for the structured outcome path. The
+            # free-text classify path already relays through the same adapter
+            # (`return_support/composition.py`); an RMA issued through the
+            # structured responder reached the case and never the chat.
+            transcript_relay=SupportTranscriptRelay(
+                store=MongoAtomicConversationStore(mongo, settings.mongo_database),
+                cases=operational_repository,
+                scope_factory=ConversationScope,
             ),
         )
         worker = create_return_workflow_worker(

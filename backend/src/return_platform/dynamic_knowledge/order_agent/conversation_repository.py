@@ -53,6 +53,13 @@ class ConversationTranscript(BaseModel):
     conversationVersion: int
     messages: tuple[dict[str, str], ...]
     lastResultTurn: AgentTurnResult | None = None
+    #: The platform's own typed entries on this conversation (DR-3): what
+    #: Support said, what the item pane recorded, what RMA was issued. Served
+    #: beside the transcript and never inside it -- `_transcript_of` zips
+    #: `messages` against `turns` positionally, and an entry in that list would
+    #: read as somebody speaking. Each carries `entryId`, `kind`, `payload`
+    #: and `recordedAt`; the console composes the words per kind.
+    systemEntries: tuple[dict[str, Any], ...] = ()
 
 
 class ConversationScope(BaseModel):
@@ -170,6 +177,7 @@ class AtomicConversationRepository:
             conversationVersion=int(document.get("version", 0)),
             messages=_transcript_of(document),
             lastResultTurn=_last_result_turn(document),
+            systemEntries=_system_entries_of(document),
         )
 
     async def commit_turn(
@@ -305,6 +313,24 @@ def _last_result_turn(document: dict[str, Any]) -> AgentTurnResult | None:
                 exc_info=True,
             )
     return None
+
+
+def _system_entries_of(document: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """The relay's entries, in the order they were recorded, shape-checked.
+
+    Read from `state["systemEntries"]` -- the key `SupportTranscriptRelay`
+    writes -- and never from the transcript. An entry without an id or a kind
+    is dropped rather than served half-formed: the console keys on both.
+    """
+    state = document.get("state")
+    stored = state.get("systemEntries") if isinstance(state, dict) else None
+    if not isinstance(stored, list):
+        return ()
+    return tuple(
+        dict(entry)
+        for entry in stored
+        if isinstance(entry, dict) and entry.get("entryId") and entry.get("kind")
+    )
 
 
 def _transcript_of(document: dict[str, Any]) -> tuple[dict[str, str], ...]:

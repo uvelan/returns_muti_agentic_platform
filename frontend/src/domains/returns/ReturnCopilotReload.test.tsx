@@ -357,7 +357,7 @@ describe("a reload at each stage of the lifecycle", () => {
       ["POLICY_EVALUATION", "Evaluation"],
       ["CARRIER_TRANSIT", "Carrier Transit"],
       ["WAREHOUSE_RECEIVING", "Warehouse Dock"],
-      ["COMPLETED", "Settlement"],
+      ["COMPLETED", "Completion"],
     ] as const) {
       reloadAt("?conversationId=disc-old&caseId=case-7");
       mocks.readCase.mockResolvedValue(caseBody({ stage }));
