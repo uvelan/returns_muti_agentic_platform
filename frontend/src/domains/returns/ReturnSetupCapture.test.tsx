@@ -1072,10 +1072,10 @@ describe("the candidate table is a page, and says so", () => {
 
   it("shows the branch on a customer row instead of swallowing it", () => {
     // A customer search yields rows carrying only the account, the ids and the
-    // name. `account_id` is the Customer column's last-resort alias, so it was
-    // counted as already drawn even though `customer_name` is what rendered --
-    // and it then appeared nowhere. The branch is exactly what tells five
-    // customers of the same name apart.
+    // name. The account once stood in for the name under the Customer header
+    // and was otherwise swallowed as "already drawn". It is no column now: it
+    // lives in the row's details, and it must be there -- the branch is
+    // exactly what tells five customers of the same name apart.
     render(
       <CandidateOrderMode
         candidates={[
@@ -1094,6 +1094,7 @@ describe("the candidate table is a page, and says so", () => {
     );
 
     expect(screen.getByText("SERGIO MALLORY")).toBeInTheDocument();
+    expect(screen.queryByText("LAKEWOOD")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /More/ }));
     expect(screen.getByText("LAKEWOOD")).toBeInTheDocument();
     // Still withheld: the internal ERP number and the extract's own timestamp

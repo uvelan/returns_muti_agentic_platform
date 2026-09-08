@@ -91,12 +91,26 @@ const PRIMARY_COLUMNS: readonly { label: string; fields: readonly string[] }[] =
   { label: "Order", fields: ["sales_order_number", "order_number"] },
   { label: "Product", fields: ["product_description", "product_name", "description"] },
   { label: "Colour", fields: ["colour", "product_colour", "color"] },
-  // `account_id` is the last resort, not a peer: a customer search returns
-  // rows that carry nothing but the account, and a row with no identity
-  // column at all cannot be chosen from.
-  { label: "Customer", fields: ["customer_name", "company_name", "ship_to_name", "account_id"] },
+  // A name, and only a name. The account used to be this column's last
+  // resort, so every order line on a resolved customer's orders read "ORL"
+  // under a header that promised a person. See `ACCOUNT_COLUMN`.
+  { label: "Customer", fields: ["customer_name", "company_name", "ship_to_name"] },
   { label: "Qty", fields: ["ordered_quantity", "quantity", "confirmed_quantity"] },
 ];
+
+/**
+ * The account, drawn only when nothing else on the page identifies a row.
+ *
+ * By the time rows carry an order, a product or a name, the branch is a
+ * detail: the customer is resolved or being resolved by what is in front of
+ * the associate, and a column of identical "ORL"s says nothing. It belongs
+ * under `More`, where `detailFields` puts every field no column drew. But a
+ * page of rows that carry *only* the account -- a customer search whose
+ * names the extract withheld -- would otherwise have no identity column at
+ * all, and a row with nothing on it cannot be chosen from. Then, and only
+ * then, the account is the column.
+ */
+const ACCOUNT_COLUMN = { label: "Account", fields: ["account_id", "branch_id"] } as const;
 
 /** The first alias this row actually carries, or null. */
 function primaryField(row: Record<string, unknown>, fields: readonly string[]): string | null {
@@ -157,9 +171,14 @@ export function CandidateOrderMode({
   // identity columns when it does not.
   const primaryColumns = configuredColumns.length > 0 ? configuredColumns : PRIMARY_COLUMNS;
   // Only the identity columns the page's rows actually carry.
-  const activeColumns = primaryColumns.filter((column) =>
+  const identityColumns = primaryColumns.filter((column) =>
     shown.some((row) => primaryValue(row, column.fields) !== null),
   );
+  const activeColumns =
+    identityColumns.length === 0 &&
+    shown.some((row) => primaryValue(row, ACCOUNT_COLUMN.fields) !== null)
+      ? [ACCOUNT_COLUMN]
+      : identityColumns;
   /**
    * The fields a column actually drew *for this row*, which is not the same as
    * the fields it could have drawn.

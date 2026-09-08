@@ -230,6 +230,30 @@ class CapturedFact:
         return described
 
 
+def _refines(previous: Any, current: Any) -> bool:
+    """Whether a later value completes an earlier one rather than contradicting it.
+
+    "LIONEL" and then "LIONEL MATHIS" is one customer said twice -- the second
+    time in full, because the agent narrowed to that customer and the
+    associate confirmed it by name. Merging the two as rivals read as
+    `CONFLICTING`, which asked the associate again for a name they had just
+    given, and marked the fact re-askable on every later turn. A refinement
+    is the later value carrying every token of the earlier one, in order, as
+    whole tokens: "LIONEL" refines to "LIONEL MATHIS" and to "MATHIS LIONEL",
+    but not to "LIONELLA", and "SMITH" never refines to "JONES".
+
+    The comparison is on tokens, case-folded, so a partial the associate gave
+    in any case is completed by the full value in any case. It is one-way:
+    a later value that drops tokens is a different statement, and stays the
+    conflict it is.
+    """
+    before = [token for token in str(previous or "").casefold().split() if token]
+    after = [token for token in str(current or "").casefold().split() if token]
+    if not before or not after or len(after) <= len(before):
+        return False
+    return all(token in after for token in before)
+
+
 def _flatten(values: Any) -> tuple[Any, ...]:
     """Search signals arrive as scalars or as lists of them; both are values."""
     if isinstance(values, (str, bytes)) or not isinstance(values, Iterable):
@@ -290,7 +314,11 @@ class FactCatalogue:
             ambiguous = bool(getattr(statement, "ambiguous", False))
             previous = merged.get(name)
             values: list[Any] = [value]
-            if previous is not None and FactStatus(previous.status) not in SUPERSEDABLE:
+            if (
+                previous is not None
+                and FactStatus(previous.status) not in SUPERSEDABLE
+                and not _refines(previous.value, value)
+            ):
                 values.insert(0, previous.value)
             status = definition.status_for(
                 values, ambiguous=ambiguous, observed_at=as_of, as_of=as_of

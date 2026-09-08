@@ -178,6 +178,42 @@ def test_a_conflicting_restatement_is_raised_again(catalogue: FactCatalogue) -> 
     assert reason.describe()["askAgainBecause"] == FactStatus.CONFLICTING.value
 
 
+def test_completing_a_name_is_a_refinement_not_a_conflict(catalogue: FactCatalogue) -> None:
+    """ "LIONEL", then "LIONEL MATHIS": one customer, said in full the second time.
+
+    The agent narrowed to that customer and the associate confirmed them by
+    name. Merging the two as rivals read `CONFLICTING` and asked again for a
+    name the associate had just given; the fuller value carries every token of
+    the earlier one, so it completes it and stands as the value.
+    """
+    first, _ = _capture(
+        catalogue,
+        (ObservedFact(fact="customer_name", value="LIONEL", source_message_id="m1"),),
+    )
+    completed, _ = _capture(
+        catalogue,
+        (ObservedFact(fact="customer_name", value="LIONEL MATHIS", source_message_id="m2"),),
+        existing=first,
+        turn_id="turn-2",
+    )
+    fact = _by_name(completed)["customer_name"]
+    assert fact.status == FactStatus.USABLE.value
+    assert fact.value == "LIONEL MATHIS"
+
+    # The other direction is still a contradiction: a later value that drops
+    # tokens, or a different name altogether, is not a completion of the first.
+    for later in ("LIONEL", "MATHIS", "LIONELLA MATHIS", "SERGIO MATHIS"):
+        again, _ = _capture(
+            catalogue,
+            (ObservedFact(fact="customer_name", value=later, source_message_id="m3"),),
+            existing=completed,
+            turn_id="turn-3",
+        )
+        status = _by_name(again)["customer_name"].status
+        expected = FactStatus.USABLE if later == "LIONEL MATHIS" else FactStatus.CONFLICTING
+        assert status == expected.value, later
+
+
 def test_resolving_an_ambiguous_value_is_not_a_conflict(catalogue: FactCatalogue) -> None:
     """The narrowing path, which the conflict rule used to make unfinishable.
 

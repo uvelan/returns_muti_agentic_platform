@@ -261,6 +261,10 @@ describe("the discovery copilot", () => {
     fire(container, "Atlas");
 
     expect(await screen.findByText("CQ363350")).toBeInTheDocument();
+    // The order identifies the row, so the branch is a detail rather than a
+    // column: on `More`, not beside the order number.
+    expect(screen.queryByText("CHARLOTTE")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /More/ }));
     expect(screen.getByText("CHARLOTTE")).toBeInTheDocument();
     expect(screen.getByText("Candidates (1)")).toBeInTheDocument();
   });

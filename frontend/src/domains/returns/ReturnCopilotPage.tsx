@@ -9,6 +9,7 @@ import {
   type CapturedFact,
   type ConversationTranscript,
 } from "../../api/orderAgent";
+import { APIError } from "../../api/client";
 import {
   CASE_POLL_INTERVAL_MS,
   caseLifecycle,
@@ -537,6 +538,17 @@ function platformEntriesKey(conversationId: string) {
   return ["order-agent", "transcript", conversationId, "system-entries"] as const;
 }
 
+/** The platform's own "the document moved" refusal, and nothing else. */
+function isVersionConflict(error: unknown): boolean {
+  if (!(error instanceof APIError) || error.status !== 409) return false;
+  const detail = error.detail;
+  return (
+    typeof detail === "object" &&
+    detail !== null &&
+    (detail as { code?: unknown }).code === "CONVERSATION_VERSION_CONFLICT"
+  );
+}
+
 function withPlatformEntries(
   history: readonly ChatHistoryEntry[],
   transcript: ConversationTranscript | undefined,
@@ -800,7 +812,7 @@ export function ReturnCopilotPage() {
   }
 
   const send = useMutation({
-    mutationFn: (message: string) => {
+    mutationFn: async (message: string) => {
       // Fail closed. `submit` already refuses, so reaching here means a caller
       // bypassed it -- and sending a guessed id would spend a real turn to
       // learn what this branch already knows.
@@ -812,13 +824,36 @@ export function ReturnCopilotPage() {
       // no estimate and no way out.
       const controller = new AbortController();
       abortRef.current = controller;
-      return orderAgentApi.sendTurn({
-        conversationId,
-        expectedConversationVersion: versionRef.current,
-        message,
-        agentId,
-        signal: controller.signal,
-      });
+      const attempt = (expectedConversationVersion: number) =>
+        orderAgentApi.sendTurn({
+          conversationId,
+          expectedConversationVersion,
+          message,
+          agentId,
+          signal: controller.signal,
+        });
+      // The conversation's version moves without a turn now: every platform
+      // entry the case appends (the pane's selection, Support's RMA) is a
+      // compare-and-set on the same document, so a version held since the
+      // associate's last turn is stale the moment the case does anything.
+      // Sent with the newest version the page has seen -- the poll carries
+      // it -- and, if the platform still answers "updated by another
+      // request", re-read once and resend. The check runs before the model
+      // is asked and the server marks it retryable, so nothing is spent
+      // twice; and "another request" here was the case itself, not a person.
+      const known = Math.max(
+        versionRef.current,
+        platformEntries.data?.conversationVersion ?? 0,
+      );
+      try {
+        return await attempt(known);
+      } catch (error) {
+        if (!isVersionConflict(error) || controller.signal.aborted) throw error;
+        const latest = await orderAgentApi.readTranscript(conversationId);
+        versionRef.current = latest.conversationVersion;
+        queries.setQueryData(platformEntriesKey(conversationId), latest);
+        return attempt(latest.conversationVersion);
+      }
     },
     onSuccess: (result) => {
       versionRef.current = result.conversation_version;
@@ -854,6 +889,42 @@ export function ReturnCopilotPage() {
           status: result.response.status,
         },
       ]);
+    },
+  });
+
+  /**
+   * Book the goods in. The producer of the warehouse receipt, which is what
+   * completes a physical return now that a carrier's "delivered" scan no
+   * longer does: the scan moves the stage to the dock, this says somebody
+   * there counted the goods. The quantity is what Support authorised across
+   * the case's RMAs; a warehouse that received fewer corrects it here later.
+   * Keyed on the case revision, so a double press books in once.
+   */
+  const receipt = useMutation({
+    mutationFn: () => {
+      if (caseId === null || projection === null) {
+        throw new Error("There is no case to receive against.");
+      }
+      const authorised = caseRecords(projection).flatMap((record) =>
+        (record.approvedItems ?? []).flatMap((item) =>
+          typeof item.quantityApproved === "number" ? [item.quantityApproved] : [],
+        ),
+      );
+      const selected = (projection.selectedItems ?? []).flatMap((item) =>
+        typeof item.quantity === "number" ? [item.quantity] : [],
+      );
+      const counted = (authorised.length > 0 ? authorised : selected).reduce(
+        (sum, quantity) => sum + quantity,
+        0,
+      );
+      return casesApi.recordReceipt(caseId, {
+        receivedQuantity: counted,
+        warehouseStatus: "RECEIVED",
+        idempotencyKey: `receipt:${caseId}:${String(projection.revision)}`,
+      });
+    },
+    onSuccess: async () => {
+      await queries.invalidateQueries({ queryKey: ["cases", caseId] });
     },
   });
 
@@ -985,42 +1056,6 @@ export function ReturnCopilotPage() {
     setDraft("");
     send.mutate(trimmed);
   }
-
-  /**
-   * Book the goods in. The producer of the warehouse receipt, which is what
-   * completes a physical return now that a carrier's "delivered" scan no
-   * longer does: the scan moves the stage to the dock, this says somebody
-   * there counted the goods. The quantity is what Support authorised across
-   * the case's RMAs; a warehouse that received fewer corrects it here later.
-   * Keyed on the case revision, so a double press books in once.
-   */
-  const receipt = useMutation({
-    mutationFn: () => {
-      if (caseId === null || projection === null) {
-        throw new Error("There is no case to receive against.");
-      }
-      const authorised = caseRecords(projection).flatMap((record) =>
-        (record.approvedItems ?? []).flatMap((item) =>
-          typeof item.quantityApproved === "number" ? [item.quantityApproved] : [],
-        ),
-      );
-      const selected = (projection.selectedItems ?? []).flatMap((item) =>
-        typeof item.quantity === "number" ? [item.quantity] : [],
-      );
-      const counted = (authorised.length > 0 ? authorised : selected).reduce(
-        (sum, quantity) => sum + quantity,
-        0,
-      );
-      return casesApi.recordReceipt(caseId, {
-        receivedQuantity: counted,
-        warehouseStatus: "RECEIVED",
-        idempotencyKey: `receipt:${caseId}:${String(projection.revision)}`,
-      });
-    },
-    onSuccess: async () => {
-      await queries.invalidateQueries({ queryKey: ["cases", caseId] });
-    },
-  });
 
   function resetToFreshReturn() {
     setShowHistory(false);
