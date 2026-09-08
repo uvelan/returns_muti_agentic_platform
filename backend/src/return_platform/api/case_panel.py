@@ -24,6 +24,7 @@ on ACC's load test at that volume; nothing here assumes a cache hit.
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -93,7 +94,7 @@ async def compose_case_panel(request: Request, case_id: str) -> CasePanelView:
     flagged = set(cast(list[str], marker.get("reviewIds") or []))
 
     execution, timers = await _execution(request, case_id)
-    commands = await _accepted_commands(dependencies, case_id)
+    commands = await _accepted_commands(dependencies, case_id, reviews)
     sections = await _sections(request, case_id)
     records = await _return_records(request, case_id)
 
@@ -265,14 +266,34 @@ async def _execution(request: Request, case_id: str) -> tuple[PanelExecutionView
     return answered
 
 
-async def _accepted_commands(dependencies: Any, case_id: str) -> tuple[AcceptedCommandView, ...]:
+#: The review states that mean a review command has done its work. A command
+#: is "applied" when the review it names has left the state the command was
+#: pressed in -- an approval that reached `SENT` (or failed trying), a cancel
+#: that reached `CANCELLED`. Nothing writes an `applied` flag on the command
+#: record itself, so without this the panel read every command as pending
+#: forever and told the associate "an action you took is still being applied"
+#: on a case that had closed.
+_REVIEW_COMMAND_SETTLED_STATES: frozenset[str] = frozenset(
+    {"SENT", "DELIVERY_FAILED", "HELD_FOR_OPERATIONS", "CANCELLED", "ABANDONED"}
+)
+
+
+async def _accepted_commands(
+    dependencies: Any, case_id: str, reviews: Sequence[Mapping[str, Any]] = ()
+) -> tuple[AcceptedCommandView, ...]:
     """Commands the platform accepted, unfiltered by actor.
 
     This is what answers "I pressed Send and nothing has happened": the command
     is durable, the signal has not landed, and the panel says so rather than
     showing an unchanged review and letting the associate press it again.
+
+    `applied` is derived, for a review command, from the review's own state
+    (see `_REVIEW_COMMAND_SETTLED_STATES`): the review is the thing the command
+    moves, and its state is the durable record of whether it moved. A command
+    naming no review keeps whatever the record says.
     """
     records = await dependencies.commands.list_commands(case_id)
+    review_states = {str(review.get("_id")): str(review.get("state", "")) for review in reviews}
     return tuple(
         AcceptedCommandView(
             signal_id=str(record.get("signalId", "")),
@@ -280,7 +301,9 @@ async def _accepted_commands(dependencies: Any, case_id: str) -> tuple[AcceptedC
             actor_id=str(record.get("actorId", "")),
             review_id=_text(record.get("reviewId")),
             recorded_at_iso=_instant(record.get("createdAt")),
-            applied=bool(record.get("applied", False)),
+            applied=bool(record.get("applied", False))
+            or review_states.get(str(record.get("reviewId") or ""), "")
+            in _REVIEW_COMMAND_SETTLED_STATES,
         )
         for record in records
     )

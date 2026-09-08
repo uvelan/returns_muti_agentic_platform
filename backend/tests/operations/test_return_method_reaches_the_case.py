@@ -378,7 +378,9 @@ async def test_an_approved_prepaid_parcel_case_reaches_business_complete(
     """The end-to-end proof, through the writer rather than a hand-placed fact.
 
     An approved case, one RMA, a label and a tracking number -- the three things
-    `PREPAID_PARCEL` requires -- sent as one Support reply carrying the method.
+    `PREPAID_PARCEL` requires of Support -- sent as one Support reply carrying
+    the method. The fourth, the warehouse's receipt of the goods, is on the
+    fixture already: it is the warehouse's fact to write, not Support's.
     `awaiting` and `businessComplete` are computed by the shipped `project_case`
     over the shipped requirement table.
 

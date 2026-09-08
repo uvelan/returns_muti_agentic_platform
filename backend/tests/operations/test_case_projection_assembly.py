@@ -967,17 +967,21 @@ def test_settlement_is_always_not_integrated_on_an_assembled_case() -> None:
 def test_settlement_never_awaits_and_never_blocks_an_assembled_case() -> None:
     """Asserted on the assembled path, not only on a hand-built state.
 
-    The `PREPAID_PARCEL` return below has its RMA, its label and its tracking,
-    so nothing but settlement could hold it back -- and it completes, because
-    `businessComplete` is completion within configured platform responsibility
-    and settlement is outside that boundary.
+    The `PREPAID_PARCEL` return below has its RMA, its label, its tracking and
+    its warehouse receipt, so nothing but settlement could hold it back -- and
+    it completes, because `businessComplete` is completion within configured
+    platform responsibility and settlement is outside that boundary.
     """
     projection = project_case(
         assemble_case_projection_state(
             CaseAggregateDocuments(
                 case=case_document(status=CaseStatus.RMA_RECEIVED.value),
                 facts=policy_facts(
-                    extra=(fact_document("return_method", "PREPAID_PARCEL"),),
+                    extra=(
+                        fact_document("return_method", "PREPAID_PARCEL"),
+                        fact_document("warehouse_received_at", "2026-08-28T14:05:00+00:00"),
+                        fact_document("warehouse_status", "RECEIVED"),
+                    ),
                 ),
                 return_records=(
                     record_document(

@@ -278,13 +278,39 @@ def parcel_record(**overrides: Any) -> ReturnRecordProjection:
 
 
 def approved_case(**overrides: Any) -> CaseProjectionState:
-    """Approved, one RMA, one fully-papered parcel. The completion happy path."""
+    """Approved, one RMA, one fully-papered parcel, goods not yet back.
+
+    The paperwork is complete and the parcel is still on the counter -- so this
+    is the `AUTHORIZED_RMA` stage, and one `RECEIPT` short of complete. The stage
+    tests build on it for the first reason; the completion tests build on
+    `received_case` below.
+    """
     defaults: dict[str, Any] = {
         "status": ReturnCaseStatus.PROCESSING_RETURN,
         "policyEvaluation": evaluation(EligibilityDecision.APPROVE),
         "returnRecords": (parcel_record(),),
     }
     return case(**{**defaults, **overrides})
+
+
+def warehouse_receipt() -> WarehouseProjection:
+    """The warehouse booking the goods in: what `POST /api/cases/{id}/receipt` writes.
+
+    `receivedAt` and `warehouseStatus` are two of the four fields `has_receipt`
+    reads. No bay: a receipt and a placement are different facts, and the
+    completion tests must not pass on the strength of the wrong one.
+    """
+    return WarehouseProjection(receivedAt=NOW, warehouseStatus="RECEIVED")
+
+
+def received_case(**overrides: Any) -> CaseProjectionState:
+    """`approved_case` with the goods back. The completion happy path.
+
+    Everything a `PREPAID_PARCEL` return needs -- RMA, label, tracking, and now
+    the receipt -- so a test that starts here and takes one thing away is
+    testing that one thing.
+    """
+    return approved_case(**{"warehouse": warehouse_receipt(), **overrides})
 
 
 # --------------------------------------------------------------------------
@@ -1193,14 +1219,30 @@ def test_every_enumerated_regression_reason_is_reachable_or_deliberately_not() -
 # --------------------------------------------------------------------------
 
 _EXPECTED_REQUIREMENTS: dict[str, frozenset[AwaitingDimension]] = {
+    # `RECEIPT` on every row whose goods come back to us, and on no other.
     "PREPAID_PARCEL": frozenset(
-        {AwaitingDimension.RMA, AwaitingDimension.LABEL, AwaitingDimension.TRACKING}
+        {
+            AwaitingDimension.RMA,
+            AwaitingDimension.LABEL,
+            AwaitingDimension.TRACKING,
+            AwaitingDimension.RECEIPT,
+        }
     ),
     "BRANCH_UPS": frozenset(
-        {AwaitingDimension.RMA, AwaitingDimension.LABEL, AwaitingDimension.TRACKING}
+        {
+            AwaitingDimension.RMA,
+            AwaitingDimension.LABEL,
+            AwaitingDimension.TRACKING,
+            AwaitingDimension.RECEIPT,
+        }
     ),
     "BRANCH_LTL": frozenset(
-        {AwaitingDimension.RMA, AwaitingDimension.BOL, AwaitingDimension.PICKUP}
+        {
+            AwaitingDimension.RMA,
+            AwaitingDimension.BOL,
+            AwaitingDimension.PICKUP,
+            AwaitingDimension.RECEIPT,
+        }
     ),
     "OFFSITE_PARCEL": frozenset(
         {
@@ -1208,6 +1250,7 @@ _EXPECTED_REQUIREMENTS: dict[str, frozenset[AwaitingDimension]] = {
             AwaitingDimension.LABEL,
             AwaitingDimension.TRACKING,
             AwaitingDimension.RETURN_LOCATION,
+            AwaitingDimension.RECEIPT,
         }
     ),
     "OFFSITE_LTL": frozenset(
@@ -1216,6 +1259,7 @@ _EXPECTED_REQUIREMENTS: dict[str, frozenset[AwaitingDimension]] = {
             AwaitingDimension.BOL,
             AwaitingDimension.PICKUP,
             AwaitingDimension.RETURN_LOCATION,
+            AwaitingDimension.RECEIPT,
         }
     ),
     "DIRECT_VENDOR": frozenset({AwaitingDimension.RMA, AwaitingDimension.RETURN_LOCATION}),
@@ -1322,20 +1366,83 @@ def test_a_method_with_no_physical_leg_completes_on_the_rma_alone(method: str) -
     assert not assessment.is_terminal
 
 
-def test_a_prepaid_parcel_completes_on_rma_label_and_tracking() -> None:
-    assessment = resolve_completion(approved_case(), requirements=BASELINE)
+def test_a_prepaid_parcel_completes_on_rma_label_tracking_and_receipt() -> None:
+    assessment = resolve_completion(received_case(), requirements=BASELINE)
     assert assessment.awaiting == ()
     assert assessment.business_complete
 
 
+def test_a_prepaid_parcel_with_its_paperwork_done_still_awaits_the_receipt() -> None:
+    """The paperwork being complete is not the return being complete.
+
+    RMA, label and tracking are all on the case and the parcel is still on the
+    counter. Before `RECEIPT` joined the row this was `businessComplete`, and a
+    return the customer never handed over closed itself. What clears it is the
+    warehouse booking the goods in -- and only that: a recommended bay is where
+    the goods are *to be* put, which is exactly the recommendation-as-receipt
+    reading `has_receipt` refuses.
+    """
+    papered = approved_case()
+    assessment = resolve_completion(papered, requirements=BASELINE)
+    assert assessment.completion_profile_resolved
+    assert assessment.awaiting == (AwaitingDimension.RECEIPT,)
+    assert not assessment.business_complete
+
+    placed = approved_case(
+        warehouse=WarehouseProjection(
+            facilityId="WH-ATL-01", bayId="BAY-3", bayReason="RECOMMENDED"
+        )
+    )
+    assert resolve_completion(placed, requirements=BASELINE).awaiting == (
+        AwaitingDimension.RECEIPT,
+    )
+    assert not resolve_completion(placed, requirements=BASELINE).business_complete
+
+    received = approved_case(warehouse=warehouse_receipt())
+    complete = resolve_completion(received, requirements=BASELINE)
+    assert complete.awaiting == ()
+    assert complete.business_complete
+
+
+def test_a_delivered_package_is_not_a_receipt() -> None:
+    """The carrier's "delivered" scan does not complete the return.
+
+    It says a parcel reached a dock, not that anybody opened it, counted it or
+    put it anywhere. A case that closed on the scan skipped the warehouse step
+    entirely -- "Reached warehouse" never lit on a return that had been received
+    -- so the scan moves the *stage* to `WAREHOUSE_RECEIVING` and leaves
+    `RECEIPT` outstanding until the warehouse books the goods in.
+    """
+    for arrived in (ShipmentStatus.DELIVERED, ShipmentStatus.RECEIVED):
+        state = approved_case(
+            returnRecords=(
+                parcel_record(shipments=(shipment(status=arrived, tracking="TRK-SHP-1"),)),
+            ),
+        )
+        assessment = resolve_completion(state, requirements=BASELINE)
+        assert assessment.awaiting == (AwaitingDimension.RECEIPT,), arrived
+        assert not assessment.business_complete, arrived
+
+    booked_in = approved_case(
+        returnRecords=(
+            parcel_record(
+                shipments=(shipment(status=ShipmentStatus.DELIVERED, tracking="TRK-SHP-1"),)
+            ),
+        ),
+        warehouse=warehouse_receipt(),
+    )
+    assert resolve_completion(booked_in, requirements=BASELINE).awaiting == ()
+
+
 def test_the_prepaid_parcel_sequence_drains_awaiting_one_signal_at_a_time() -> None:
-    """Gate 4, as the plan states it: RMA, then tracking, then label."""
+    """Gate 4, as the plan states it: RMA, then tracking, then label -- then the goods."""
     method = NormalizedReturnMethod.PREPAID_PARCEL.value
 
     rma_only = approved_case(returnRecords=(record(method=method),))
     assert set(resolve_completion(rma_only, requirements=BASELINE).awaiting) == {
         AwaitingDimension.TRACKING,
         AwaitingDimension.LABEL,
+        AwaitingDimension.RECEIPT,
     }
 
     with_tracking = approved_case(
@@ -1343,6 +1450,7 @@ def test_the_prepaid_parcel_sequence_drains_awaiting_one_signal_at_a_time() -> N
     )
     assert resolve_completion(with_tracking, requirements=BASELINE).awaiting == (
         AwaitingDimension.LABEL,
+        AwaitingDimension.RECEIPT,
     )
 
     with_label = approved_case(
@@ -1354,21 +1462,35 @@ def test_the_prepaid_parcel_sequence_drains_awaiting_one_signal_at_a_time() -> N
             ),
         )
     )
-    complete = resolve_completion(with_label, requirements=BASELINE)
+    assert resolve_completion(with_label, requirements=BASELINE).awaiting == (
+        AwaitingDimension.RECEIPT,
+    )
+
+    with_receipt = received_case(
+        returnRecords=(
+            record(
+                method=method,
+                shipments=(shipment(tracking="TRK-1"),),
+                artifacts=(artifact(ReturnArtifactType.SHIPPING_LABEL, shipment_id="SHP-1"),),
+            ),
+        )
+    )
+    complete = resolve_completion(with_receipt, requirements=BASELINE)
     assert complete.awaiting == ()
     assert complete.business_complete
 
 
-def test_an_offsite_freight_return_waits_on_bol_pickup_and_location() -> None:
+def test_an_offsite_freight_return_waits_on_bol_pickup_location_and_receipt() -> None:
     method = NormalizedReturnMethod.OFFSITE_LTL.value
     waiting = approved_case(returnRecords=(record(method=method, shipments=(shipment(),)),))
     assert set(resolve_completion(waiting, requirements=BASELINE).awaiting) == {
         AwaitingDimension.BOL,
         AwaitingDimension.PICKUP,
         AwaitingDimension.RETURN_LOCATION,
+        AwaitingDimension.RECEIPT,
     }
 
-    done = approved_case(
+    done = received_case(
         returnRecords=(
             record(
                 method=method,
@@ -1383,7 +1505,7 @@ def test_an_offsite_freight_return_waits_on_bol_pickup_and_location() -> None:
 
 
 def test_a_parcel_label_does_not_satisfy_a_bill_of_lading() -> None:
-    state = approved_case(
+    state = received_case(
         returnRecords=(
             record(
                 method=NormalizedReturnMethod.BRANCH_LTL.value,
@@ -1397,7 +1519,7 @@ def test_a_parcel_label_does_not_satisfy_a_bill_of_lading() -> None:
 
 
 def test_a_pickup_that_is_only_requested_is_not_scheduled() -> None:
-    state = approved_case(
+    state = received_case(
         returnRecords=(
             record(
                 method=NormalizedReturnMethod.BRANCH_LTL.value,
@@ -1412,7 +1534,7 @@ def test_a_pickup_that_is_only_requested_is_not_scheduled() -> None:
 
 def test_a_second_unlabelled_package_keeps_the_case_open() -> None:
     """Every package, not any package. `labels[0]` in a different shape."""
-    state = approved_case(
+    state = received_case(
         returnRecords=(
             record(
                 shipments=(
@@ -1433,7 +1555,7 @@ def test_one_packages_label_does_not_paper_another() -> None:
     invited: a label reachable from the wrong shipment completes a parcel that
     has nothing on it.
     """
-    both = approved_case(
+    both = received_case(
         returnRecords=(
             record(
                 shipments=(parcel_shipment("SHP-1"), parcel_shipment("SHP-2")),
@@ -1443,7 +1565,7 @@ def test_one_packages_label_does_not_paper_another() -> None:
     )
     assert resolve_completion(both, requirements=BASELINE).business_complete
 
-    misattributed = approved_case(
+    misattributed = received_case(
         returnRecords=(
             record(
                 shipments=(parcel_shipment("SHP-1"), parcel_shipment("SHP-2")),
@@ -1466,7 +1588,7 @@ def test_one_packages_label_does_not_paper_another() -> None:
 
 
 def test_a_superseded_label_does_not_satisfy_the_label_requirement() -> None:
-    state = approved_case(
+    state = received_case(
         returnRecords=(
             record(
                 shipments=(shipment(tracking="TRK-1"),),
@@ -1491,7 +1613,7 @@ def test_awaiting_is_stable_in_declaration_order() -> None:
 
 
 def test_settlement_never_enters_awaiting_and_never_blocks_completion() -> None:
-    state = approved_case(settlement=SettlementProjection(status=SettlementStatus.NOT_INTEGRATED))
+    state = received_case(settlement=SettlementProjection(status=SettlementStatus.NOT_INTEGRATED))
     assessment = resolve_completion(state, requirements=BASELINE)
     assert assessment.awaiting == ()
     assert assessment.business_complete
@@ -1504,7 +1626,7 @@ def test_settlement_never_enters_awaiting_and_never_blocks_completion() -> None:
 
 def _fully_satisfied(**overrides: Any) -> CaseProjectionState:
     """Everything a `PREPAID_PARCEL` return needs, so only the guard can fail it."""
-    return approved_case(**overrides)
+    return received_case(**overrides)
 
 
 def test_the_guard_baseline_actually_completes() -> None:
@@ -1660,14 +1782,15 @@ VERIFICATION_ROUTES = [PolicyRoute.WARRANTY, PolicyRoute.DELIVERY_CLAIM]
 def verified_case(route: PolicyRoute, **overrides: Any) -> CaseProjectionState:
     """A routed case Support has answered: the RMA is the recorded verification.
 
-    Deliberately the same artifacts as `approved_case` -- one RMA, one fully
-    papered parcel -- so the A/B against the standard route compares completion
-    and nothing else.
+    Deliberately the same artifacts as `received_case` -- one RMA, one fully
+    papered parcel, goods booked in -- so the A/B against the standard route
+    compares completion and nothing else.
     """
     defaults: dict[str, Any] = {
         "status": ReturnCaseStatus.PROCESSING_RETURN,
         "policyEvaluation": evaluation(None, route=route),
         "returnRecords": (parcel_record(),),
+        "warehouse": warehouse_receipt(),
     }
     return case(**{**defaults, **overrides})
 
@@ -1678,9 +1801,9 @@ def test_a_verified_route_completes_exactly_as_the_standard_route(route: PolicyR
 
     Asserted as an A/B rather than as three literals, because the claim is not
     "a warranty case can complete" but "a verified warranty case is the standard
-    route": the same RMA, label and tracking produce the same assessment.
+    route": the same RMA, label, tracking and receipt produce the same assessment.
     """
-    standard = resolve_completion(approved_case(), requirements=BASELINE)
+    standard = resolve_completion(received_case(), requirements=BASELINE)
     verified = resolve_completion(verified_case(route), requirements=BASELINE)
 
     assert verified == standard
@@ -1733,11 +1856,15 @@ def test_a_verified_route_with_no_method_awaits_the_method_and_never_policy(
 
 @pytest.mark.parametrize("route", VERIFICATION_ROUTES)
 def test_a_verified_route_rejoins_the_requirement_table(route: PolicyRoute) -> None:
-    """An RMA with no paperwork owes what the table says it owes, not a verification."""
+    """An RMA with no paperwork and no goods owes what the table says it owes, not a verification."""
     assessment = resolve_completion(
-        verified_case(route, returnRecords=(record(),)), requirements=BASELINE
+        verified_case(route, returnRecords=(record(),), warehouse=None), requirements=BASELINE
     )
-    assert set(assessment.awaiting) == {AwaitingDimension.LABEL, AwaitingDimension.TRACKING}
+    assert set(assessment.awaiting) == {
+        AwaitingDimension.LABEL,
+        AwaitingDimension.TRACKING,
+        AwaitingDimension.RECEIPT,
+    }
     assert assessment.business_complete is False
 
 
@@ -1830,6 +1957,7 @@ def test_a_suspended_gate_lets_a_fulfilled_return_complete() -> None:
     state = case(
         status=ReturnCaseStatus.PROCESSING_RETURN,
         returnRecords=(parcel_record(),),
+        warehouse=warehouse_receipt(),
         facts=(gate_suspended(),),
     )
     assessment = resolve_completion(state, requirements=BASELINE)
@@ -1891,7 +2019,7 @@ def test_a_verification_route_is_unaffected_by_the_gate_fact() -> None:
 
 
 def test_an_overridden_review_resolves_the_completion_profile() -> None:
-    state = approved_case(
+    state = received_case(
         policyEvaluation=evaluation(
             EligibilityDecision.REVIEW_REQUIRED, override=supervisor_override()
         )
@@ -1930,8 +2058,10 @@ def test_an_override_to_reject_does_not_complete_an_approved_evaluation() -> Non
 
 
 def test_project_case_derives_all_four_values() -> None:
-    projection = project_case(approved_case(), requirements=BASELINE)
-    assert projection.stage is CopilotStage.AUTHORIZED_RMA
+    projection = project_case(received_case(), requirements=BASELINE)
+    # The receipt that completes the case is the same fact that lights the
+    # receiving pane, so a complete parcel return is never still `AUTHORIZED_RMA`.
+    assert projection.stage is CopilotStage.WAREHOUSE_RECEIVING
     assert projection.awaiting == ()
     assert projection.businessComplete
     assert not projection.isTerminal

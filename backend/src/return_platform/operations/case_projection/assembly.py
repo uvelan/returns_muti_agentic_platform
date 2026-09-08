@@ -111,6 +111,7 @@ from return_platform.operations.case_projection.status_mapping import project_ca
 from return_platform.operations.case_projection.vocabulary import (
     ReturnArtifactType,
     SettlementStatus,
+    ShipmentStatus,
     SupportOutcome,
 )
 from return_platform.operations.models import normalize_utc_datetime
@@ -712,16 +713,14 @@ def project_shipments(record: Mapping[str, Any]) -> tuple[ShipmentProjection, ..
                      grain either; an outbound estimate is not this package's,
                      and `shippingPathExpectation` -- the return-method enum the
                      audit found rendered as "Est. Delivery" -- is not a date.
-    shipmentStatus   None -- still no producer this may read. A carrier update
-                     does carry a status, and it is deliberately not mapped
-                     here: `ShipmentUpdateRequest.shipmentStatus` is documented
-                     as un-enumerable because "the carrier's status vocabulary
-                     is the carrier's", while `ShipmentStatus` is a closed five,
-                     so any mapping would either drop the statuses it did not
-                     recognise or guess at them. The platform's own reading of
-                     that status already reaches the case honestly, as the
-                     `fulfillment_status` fact `ReturnShipmentStateService`
-                     writes beside the parcel.
+    shipmentStatus   the release's placement of the rung the carrier (or the
+                     console) last filed -- `shipment_tracking.statuses[]
+                     .projection_status`, applied by `ReturnShipmentStateService`
+                     and written on the entry by `record_case_shipment`. The
+                     carrier's own vocabulary is still never mapped by guess:
+                     a rung the operator has not placed leaves the field as it
+                     was, and the platform's reading of the parcel reaches the
+                     case as the `fulfillment_status` fact beside it.
     ```
 
     The three are left to their declared `None` rather than written out as
@@ -761,11 +760,26 @@ def project_shipments(record: Mapping[str, Any]) -> tuple[ShipmentProjection, ..
             # every parcel under it -- unlike a case-level carrier, which would
             # be a statement about a different RMA's parcels too.
             carrier=_text(entry.get("carrier")) or record_carrier,
+            # The release's placement of the ladder rung the carrier (or the
+            # console) last filed, written by `record_case_shipment` from the
+            # mapping `ReturnShipmentStateService` applies. Only the closed
+            # vocabulary is served; anything else on the entry is not a status.
+            shipmentStatus=_shipment_status(entry.get("shipmentStatus")),
             createdAt=_moment(entry.get("createdAt")),
             updatedAt=_moment(entry.get("updatedAt")),
         )
 
     return tuple(parcels.values()) or None
+
+
+def _shipment_status(value: Any) -> ShipmentStatus | None:
+    text = _text(value)
+    if text is None:
+        return None
+    try:
+        return ShipmentStatus(text)
+    except ValueError:
+        return None
 
 
 def _approved_items(

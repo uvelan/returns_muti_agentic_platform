@@ -126,6 +126,19 @@ def _approved_prepaid_parcel() -> dict[str, dict[str, Any]]:
     )
 
 
+def _received_prepaid_parcel() -> dict[str, dict[str, Any]]:
+    """The same case, with the goods booked in.
+
+    The two facts `POST /api/cases/{id}/receipt` writes and `has_receipt`
+    reads. `PREPAID_PARCEL` requires `RECEIPT`, so without these the paperwork
+    alone leaves the return one dimension short of complete.
+    """
+    return {
+        **_approved_prepaid_parcel(),
+        **_facts(warehouse_received_at="2026-08-28T14:05:00+00:00", warehouse_status="RECEIVED"),
+    }
+
+
 def _record(
     *,
     record_id: str = "rec-1",
@@ -295,14 +308,12 @@ def test_a_case_projects_end_to_end_through_the_route() -> None:
     assert body["isTerminal"] is False
 
     # Derived by `project_case`, not by the handler. `PREPAID_PARCEL` needs an
-    # RMA, a label and a tracking number; this case has all three, and the label
-    # is on the package rather than merely on the RMA -- so nothing is
-    # outstanding and the return is complete within platform responsibility.
-    #
-    # **Complete is not terminal.** The workflow has not been told yet, and it
-    # is the workflow that moves the status. Causal order, never the reverse.
-    assert body["awaiting"] == []
-    assert body["businessComplete"] is True
+    # RMA, a label, a tracking number and the receipt of the goods; this case
+    # has the three Support produces, and the label is on the package rather
+    # than merely on the RMA -- so what is outstanding is the parcel itself,
+    # and the return is not complete until the warehouse says it arrived.
+    assert body["awaiting"] == ["RECEIPT"]
+    assert body["businessComplete"] is False
 
     # The nesting is the contract. One RMA, one package, and the label
     # attributed to that package rather than floating on the case.
@@ -314,6 +325,33 @@ def test_a_case_projects_end_to_end_through_the_route() -> None:
     # The package's id is its tracking number: the only handle persistence holds
     # on a parcel, and the one that stays that parcel's when a second arrives.
     assert artifact["shipmentId"] == "1Z999"
+
+
+def test_a_received_case_completes_through_the_route() -> None:
+    """The same case once the warehouse has booked the goods in.
+
+    Nothing is outstanding and the return is complete within platform
+    responsibility. The receipt that completes it is the same fact that lights
+    the receiving pane, so the stage moves with it.
+
+    **Complete is not terminal.** The workflow has not been told yet, and it
+    is the workflow that moves the status. Causal order, never the reverse.
+    """
+    response = _read(
+        StubRepository(
+            case=_case(),
+            facts=_received_prepaid_parcel(),
+            records=[_record(label="LBL-OPS01", tracking="1Z999")],
+        )
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()["data"]
+    assert body["stage"] == "WAREHOUSE_RECEIVING"
+    assert body["awaiting"] == []
+    assert body["businessComplete"] is True
+    assert body["isTerminal"] is False
+    assert body["warehouse"]["warehouseStatus"] == "RECEIVED"
 
 
 def test_blocks_the_platform_has_not_computed_are_null_not_empty_objects() -> None:
@@ -462,7 +500,7 @@ def test_the_same_case_is_incomplete_under_the_shipped_table() -> None:
     )
 
     body = response.json()["data"]
-    assert body["awaiting"] == ["LABEL", "TRACKING"]
+    assert body["awaiting"] == ["LABEL", "TRACKING", "RECEIPT"]
     assert body["businessComplete"] is False
 
 
@@ -558,9 +596,10 @@ def test_an_rma_with_a_label_and_no_tracking_serves_the_label_and_still_awaits_t
 
     # And the case still says the package is missing. `LABEL` is outstanding for
     # the same reason: the requirement is that every package is papered, and
-    # there is no package to paper.
+    # there is no package to paper. `RECEIPT` too: a parcel nobody has tendered
+    # is a parcel nobody has received.
     assert "TRACKING" in body["awaiting"]
-    assert body["awaiting"] == ["LABEL", "TRACKING"]
+    assert body["awaiting"] == ["LABEL", "TRACKING", "RECEIPT"]
     assert body["businessComplete"] is False
     assert body["isTerminal"] is False
 

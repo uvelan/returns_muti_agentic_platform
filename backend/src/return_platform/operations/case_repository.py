@@ -614,6 +614,7 @@ class CaseRepository:
         return_record_id: str,
         tracking_reference: str,
         carrier: str | None = None,
+        shipment_status: str | None = None,
     ) -> bool:
         """Record one parcel on one RMA, and move the case revision with it.
 
@@ -659,39 +660,52 @@ class CaseRepository:
         entry = {
             "trackingReference": tracking_reference,
             "carrier": carrier,
+            "shipmentStatus": shipment_status,
             "createdAt": now,
             "updatedAt": now,
+        }
+        # The parcel-level fields a later event may correct. The carrier was
+        # the only one; `shipmentStatus` joins it under the same rule -- only
+        # ever *to* a value, never to `None`. A feed that files a scan without
+        # a carrier code, or a rung the catalogue has not placed in the
+        # projection's vocabulary, has said nothing about that field, and
+        # applying that silence over a value already recorded would delete it
+        # (the merge rule `RETURN_RECORD_MERGED_FIELDS` states for the carrier,
+        # and the reason `008_return_record_carrier.sql` gives for a later reply
+        # not blanking an earlier answer).
+        #
+        # The status is the release's placement of the carrier's rung
+        # (`shipment_tracking.statuses[].projection_status`), mapped by
+        # `ReturnShipmentStateService` before it reaches here. The carrier's
+        # own open vocabulary is still never stored on the projection; its
+        # reading reaches the case as the `fulfillment_status` fact.
+        corrections = {
+            field: value
+            for field, value in (("carrier", carrier), ("shipmentStatus", shipment_status))
+            if value is not None
         }
 
         async def _write(session: AsyncClientSession) -> bool:
             written = False
-            # The parcel is already here and the carrier the feed filed differs
-            # from the one stored. Correcting it is the only field-level change
-            # this writer can make; the carrier's *status* is deliberately not
-            # stored, because the projection has no honest home for an open
-            # carrier vocabulary and the reading of it reaches the case as the
-            # `fulfillment_status` fact instead.
-            #
-            # Only ever *to* a carrier, never to `None`. A feed that files a scan
-            # without a carrier code has said nothing about the carrier, and
-            # applying that silence over one already recorded would delete it --
-            # the merge rule `RETURN_RECORD_MERGED_FIELDS` states for exactly
-            # this field, and the reason `008_return_record_carrier.sql` gives
-            # for a later reply not blanking an earlier answer.
-            if carrier is not None:
+            if corrections:
                 corrected = await self.return_records.update_one(
                     {
                         "returnRecordId": return_record_id,
                         RETURN_RECORD_SHIPMENTS_FIELD: {
                             "$elemMatch": {
                                 "trackingReference": tracking_reference,
-                                "carrier": {"$ne": carrier},
+                                "$or": [
+                                    {field: {"$ne": value}} for field, value in corrections.items()
+                                ],
                             }
                         },
                     },
                     {
                         "$set": {
-                            f"{RETURN_RECORD_SHIPMENTS_FIELD}.$.carrier": carrier,
+                            **{
+                                f"{RETURN_RECORD_SHIPMENTS_FIELD}.$.{field}": value
+                                for field, value in corrections.items()
+                            },
                             f"{RETURN_RECORD_SHIPMENTS_FIELD}.$.updatedAt": now,
                             "updatedAt": now,
                         },

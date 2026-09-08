@@ -49,28 +49,48 @@ from return_platform.operations.case_projection import (
 from return_platform.policy import EligibilityDecision, PolicyRoute
 
 #: The table the plan states, plus the four rows inferred from the catalogue
-#: when it moved out of code. Written out here rather than read from the YAML so
+#: when it moved out of code, plus `RECEIPT` on every row whose goods come back
+#: to us: the paperwork being complete is not the return being complete, and a
+#: case that closed on RMA, label and tracking alone closed with the parcel
+#: still on the counter. Written out here rather than read from the YAML so
 #: that this is an assertion about *content* -- a row edited in the release
 #: without anyone deciding to fails here, which is the point of pinning it.
 EXPECTED_ROWS: dict[str, set[AwaitingDimension]] = {
-    # --- Stated verbatim in the remediation plan (sect. 6.4).
-    "PREPAID_PARCEL": {AwaitingDimension.RMA, AwaitingDimension.LABEL, AwaitingDimension.TRACKING},
-    "BRANCH_LTL": {AwaitingDimension.RMA, AwaitingDimension.BOL, AwaitingDimension.PICKUP},
+    # --- Stated verbatim in the remediation plan (sect. 6.4), plus the receipt.
+    "PREPAID_PARCEL": {
+        AwaitingDimension.RMA,
+        AwaitingDimension.LABEL,
+        AwaitingDimension.TRACKING,
+        AwaitingDimension.RECEIPT,
+    },
+    "BRANCH_LTL": {
+        AwaitingDimension.RMA,
+        AwaitingDimension.BOL,
+        AwaitingDimension.PICKUP,
+        AwaitingDimension.RECEIPT,
+    },
     "OFFSITE_LTL": {
         AwaitingDimension.RMA,
         AwaitingDimension.BOL,
         AwaitingDimension.PICKUP,
         AwaitingDimension.RETURN_LOCATION,
+        AwaitingDimension.RECEIPT,
     },
     "CUSTOMER_KEEP": {AwaitingDimension.RMA},
     "NO_PHYSICAL_RETURN": {AwaitingDimension.RMA},
     # --- Inferred, and flagged in the YAML as needing operator review.
-    "BRANCH_UPS": {AwaitingDimension.RMA, AwaitingDimension.LABEL, AwaitingDimension.TRACKING},
+    "BRANCH_UPS": {
+        AwaitingDimension.RMA,
+        AwaitingDimension.LABEL,
+        AwaitingDimension.TRACKING,
+        AwaitingDimension.RECEIPT,
+    },
     "OFFSITE_PARCEL": {
         AwaitingDimension.RMA,
         AwaitingDimension.LABEL,
         AwaitingDimension.TRACKING,
         AwaitingDimension.RETURN_LOCATION,
+        AwaitingDimension.RECEIPT,
     },
     "DIRECT_VENDOR": {AwaitingDimension.RMA, AwaitingDimension.RETURN_LOCATION},
     "FIELD_SCRAP": {AwaitingDimension.RMA},
@@ -240,7 +260,8 @@ def test_a_method_with_no_row_leaves_the_case_awaiting_return_method(
 def test_the_released_table_maps_the_same_method(
     shipped_configuration: ReturnPlatformConfiguration,
 ) -> None:
-    """The contrast case: with the row present the profile resolves and waits on artifacts."""
+    """The contrast case: with the row present the profile resolves and waits on
+    the artifacts and the receipt."""
     assessment = resolve_completion(
         _approved_case(NormalizedReturnMethod.PREPAID_PARCEL),
         requirements=build_return_method_requirement_table(shipped_configuration),
@@ -251,6 +272,7 @@ def test_the_released_table_maps_the_same_method(
         AwaitingDimension.RMA,
         AwaitingDimension.LABEL,
         AwaitingDimension.TRACKING,
+        AwaitingDimension.RECEIPT,
     }
 
 

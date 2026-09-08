@@ -242,6 +242,43 @@ async def test_field_mapping_renames_the_stored_keys() -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_source_mirror_writes_the_shape_the_graph_reads() -> None:
+    """A seeded return shipment must be findable by the targeted sync.
+
+    The graph's `shipment` entity reads the carrier feed's nested paths; a
+    document the console seeded under its own flat names sat in the same
+    collection invisible to the sync, and the case's reading of the parcel
+    never left AWAITING_HANDOFF. The mirror is configuration: each dotted path
+    names the logical field it echoes, and constants carry what the feed's
+    shape wants and the console has no field for. An event moves the mirror
+    with the rung, as a dotted `$set` so siblings survive.
+    """
+    catalog = _catalog(
+        source_mirror={
+            "shipmentInfoEventData.trkNum": "tracking_reference",
+            "shipmentInfoEventData.currentStatus": "current_status",
+            "shipmentInfoEventMeta.lastUpdateTs": "updated_at",
+        },
+        source_constants={"shipmentInfoEventData.srcSystem": "RETURN_PLATFORM"},
+    )
+    store, collection = _store(catalog)
+    seeded = await store.seed(_seed())
+    assert seeded is not None
+    document = collection.documents[0]
+    assert document["shipmentInfoEventData"]["trkNum"] == "TRK-1"
+    assert document["shipmentInfoEventData"]["currentStatus"] == "label_created"
+    assert document["shipmentInfoEventData"]["srcSystem"] == "RETURN_PLATFORM"
+    assert document["shipmentInfoEventMeta"]["lastUpdateTs"] == document["updated_at"]
+
+    await store.append_event(seeded["shipment_id"], status="picked_up", actor="tester")
+    updated = collection.documents[0]
+    # The fake applies `$set` keys verbatim, so the dotted path is what the
+    # store asked Mongo for; on a real collection it lands nested.
+    assert updated["shipmentInfoEventData.currentStatus"] == "picked_up"
+    assert "shipmentInfoEventData.trkNum" not in updated, "an event does not re-write the key"
+
+
+@pytest.mark.asyncio
 async def test_lookup_by_every_identifier() -> None:
     store, _collection = _store()
     await store.seed(

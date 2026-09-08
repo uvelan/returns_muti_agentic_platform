@@ -6433,7 +6433,7 @@
         "type": "object"
       },
       "AwaitingDimension": {
-        "description": "What the platform is still waiting for before the return is complete.\n\nTwo kinds of member, and the difference matters:\n\n* **Unresolved** -- `POLICY`, `RETURN_METHOD`, `RECOVERY`, and the two\n  verification dimensions. These say the completion *profile* cannot be\n  computed yet, so no requirement set has been consulted at all.\n* **Required** -- `RMA`, `LABEL`, `TRACKING`, `BOL`, `PICKUP`,\n  `RETURN_LOCATION`. These come out of the return-method requirement table\n  and are the only members a table row may name.\n\nSettlement is deliberately absent. It never enters `awaiting` and never\nblocks completion (plan sect. 13, Phase 9): a case whose settlement is\n`NOT_INTEGRATED` reaches `COMPLETED_EXTERNAL_SETTLEMENT`, it does not hang.",
+        "description": "What the platform is still waiting for before the return is complete.\n\nTwo kinds of member, and the difference matters:\n\n* **Unresolved** -- `POLICY`, `RETURN_METHOD`, `RECOVERY`, and the two\n  verification dimensions. These say the completion *profile* cannot be\n  computed yet, so no requirement set has been consulted at all.\n* **Required** -- `RMA`, `LABEL`, `TRACKING`, `BOL`, `PICKUP`,\n  `RETURN_LOCATION`, `RECEIPT`. These come out of the return-method\n  requirement table and are the only members a table row may name.\n  `RECEIPT` is the goods arriving: a physical return is not finished when\n  its paperwork is, and a case that closed on RMA, label and tracking alone\n  reported itself complete with the parcel still on the counter.\n\nSettlement is deliberately absent. It never enters `awaiting` and never\nblocks completion (plan sect. 13, Phase 9): a case whose settlement is\n`NOT_INTEGRATED` reaches `COMPLETED_EXTERNAL_SETTLEMENT`, it does not hang.",
         "enum": [
           "POLICY",
           "RETURN_METHOD",
@@ -6445,7 +6445,8 @@
           "TRACKING",
           "BOL",
           "PICKUP",
-          "RETURN_LOCATION"
+          "RETURN_LOCATION",
+          "RECEIPT"
         ],
         "title": "AwaitingDimension",
         "type": "string"
@@ -8241,6 +8242,15 @@
               "type": "object"
             },
             "title": "Messages",
+            "type": "array"
+          },
+          "systemEntries": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Systementries",
             "type": "array"
           }
         },
@@ -27422,6 +27432,88 @@
           }
         },
         "summary": "Abandon Review",
+        "tags": [
+          "Case reviews"
+        ]
+      }
+    },
+    "/api/v1/cases/{case_id}/reviews/{review_id}/recovery/reopen": {
+      "post": {
+        "description": "`HELD_FOR_OPERATIONS -> OPEN`, and the case gets its execution back.\n\nA held review is one nobody answered before the gate closed (or one the\ngate closed over for another reason). **Nothing was sent**: the draft is\nexactly as the reviewer left it, versions intact, and reopening puts it\nback in front of them. This is the exit `_RETRY_REFUSALS_BY_STATE` names\nfor a held review, and until now it was named without existing.\n\nThe second half is what makes the first useful. The gate that held this\nreview has, in the ordinary case, parked the case and closed its\nexecution, so an approval on the reopened review would CAS it to\n`APPROVING` with nothing listening -- the trap AMENDMENT-5's rule 2 was\nwritten to close. So the reopen drives recovery the way a late return\ndetail does: classify, relaunch only when the execution is closed and the\ncase is not terminal, refuse otherwise. The relaunched run re-enters the\nreview gate, finds the live `OPEN` review (`create_review` is idempotent\nover non-terminal attempts) and waits for the approval it was originally\nwaiting for. A live execution is left alone -- it is already holding the\nreview.\n\nRecovery being unreachable does not undo the reopen. The review is\ncorrectly `OPEN` either way; what is missing is an execution, and the\noperator's relaunch route or the reconciliation sweep supplies one.",
+        "operationId": "reopen_held_review_api_v1_cases__case_id__reviews__review_id__recovery_reopen_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoveryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_ReviewActionResult_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "No such case, or no such review on it."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRefusal"
+                }
+              }
+            },
+            "description": "The store's truth moved under this request."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reopen Held Review",
         "tags": [
           "Case reviews"
         ]

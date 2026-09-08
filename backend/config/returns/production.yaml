@@ -1212,12 +1212,17 @@ return_policy:
   # Dimensions: RMA, LABEL, TRACKING, BOL, PICKUP, RETURN_LOCATION.
   return_method_requirements:
     # --- Stated verbatim in the remediation plan (sect. 6.4).
+    # RECEIPT on every row whose goods come back to us: the paperwork being
+    # complete is not the return being complete, and a case that closed on
+    # RMA, label and tracking alone closed with the parcel still on the
+    # counter. Satisfied by the warehouse receipt (`POST /api/cases/{id}/receipt`)
+    # or a package reading delivered/received; never by a bay recommendation.
     - method: PREPAID_PARCEL
-      requires: [RMA, LABEL, TRACKING]
+      requires: [RMA, LABEL, TRACKING, RECEIPT]
     - method: BRANCH_LTL
-      requires: [RMA, BOL, PICKUP]
+      requires: [RMA, BOL, PICKUP, RECEIPT]
     - method: OFFSITE_LTL
-      requires: [RMA, BOL, PICKUP, RETURN_LOCATION]
+      requires: [RMA, BOL, PICKUP, RETURN_LOCATION, RECEIPT]
     - method: CUSTOMER_KEEP
       requires: [RMA]
     - method: NO_PHYSICAL_RETURN
@@ -1234,11 +1239,11 @@ return_policy:
     #     no return location to establish, but there is still a label to print
     #     and a number to follow.
     - method: BRANCH_UPS
-      requires: [RMA, LABEL, TRACKING]
+      requires: [RMA, LABEL, TRACKING, RECEIPT]
     #     A parcel from a customer site -- BRANCH_UPS plus the location, for the
     #     same reason OFFSITE_LTL is BRANCH_LTL plus one.
     - method: OFFSITE_PARCEL
-      requires: [RMA, LABEL, TRACKING, RETURN_LOCATION]
+      requires: [RMA, LABEL, TRACKING, RETURN_LOCATION, RECEIPT]
     #     Straight back to the vendor. Somebody has to say where; the carrier
     #     paperwork is the vendor's, not ours.
     - method: DIRECT_VENDOR
@@ -1415,9 +1420,14 @@ omc:
 
 bay:
   authority_mode: PROJECTION
-  require_physical_receipt: true
-  allow_prearrival_reservation: false
+  # Pre-arrival placement is allowed: the case asks for a bay at creation, so
+  # the recommendation has to be producible before the goods exist to
+  # receive. `AWAITING_RECEIPT` is the pre-arrival status
+  # (`case_placement.PRE_ARRIVAL_STATUS`) and is eligible for the same reason.
+  require_physical_receipt: false
+  allow_prearrival_reservation: true
   eligible_statuses:
+    - AWAITING_RECEIPT
     - WAREHOUSE_RECEIVED
     - INSPECTION_COMPLETE
 
@@ -1991,39 +2001,64 @@ shipment_tracking:
     - OFFSITE_LTL
   collection: shipmentInfo
   fields: {}
+  # The graph reads this collection as the carrier feed (`source_shipments`,
+  # active schema entity `shipment`): tracking under
+  # shipmentInfoEventData.trkNum, status under .currentStatus, the change
+  # cursor under shipmentInfoEventMeta.lastUpdateTs. A return shipment the
+  # console seeds is mirrored into that shape so the targeted sync finds it
+  # and the case's own reading of the parcel can move past AWAITING_HANDOFF.
+  source_mirror:
+    shipmentInfoEventData.trkNum: tracking_reference
+    shipmentInfoEventData.currentStatus: current_status
+    shipmentInfoEventData.shipmentId: shipment_id
+    shipmentInfoEventData.trilOrdNum: rma_reference
+    shipmentInfoEventMeta.lastUpdateTs: updated_at
+  source_constants:
+    shipmentInfoEventData.srcSystem: RETURN_PLATFORM
   statuses:
     # ---- parcel ladder -----------------------------------------------------
     - code: label_created
+      projection_status: AWAITING_HANDOFF
       label: Label created
       ladder: parcel
       ordinal: 0
       color_token: progress
       allowed_next: [picked_up, exception, return_to_sender]
     - code: picked_up
+      projection_status: IN_TRANSIT
       label: Picked up
       ladder: parcel
       ordinal: 1
       color_token: progress
       allowed_next: [in_transit, exception, return_to_sender]
     - code: in_transit
+      projection_status: IN_TRANSIT
       label: In transit
       ladder: parcel
       ordinal: 2
       color_token: progress
       allowed_next: [arrived_at_facility, out_for_delivery, exception, return_to_sender]
+    # The carrier's sort hub, not our warehouse: a parcel can arrive here more
+    # than once on a multi-leg journey (hence `in_transit` in allowed_next),
+    # and it is still moving as far as the case is concerned. The last leg to
+    # warehouse 628 is `out_for_delivery`, and arrival at our dock is
+    # `delivered`. Labelled to say so, because "facility" read as ours.
     - code: arrived_at_facility
-      label: Arrived at facility
+      projection_status: IN_TRANSIT
+      label: At carrier hub
       ladder: parcel
       ordinal: 3
       color_token: progress
       allowed_next: [in_transit, out_for_delivery, exception, return_to_sender]
     - code: out_for_delivery
+      projection_status: IN_TRANSIT
       label: Out for delivery
       ladder: parcel
       ordinal: 4
       color_token: progress
       allowed_next: [delivered, delivery_attempted, exception, return_to_sender]
     - code: delivered
+      projection_status: DELIVERED
       label: Delivered
       ladder: parcel
       ordinal: 5
@@ -2031,6 +2066,7 @@ shipment_tracking:
       color_token: success
       allowed_next: []
     - code: delivery_attempted
+      projection_status: IN_TRANSIT
       label: Delivery attempted
       ladder: parcel
       ordinal: 4
@@ -2038,14 +2074,21 @@ shipment_tracking:
       color_token: warning
       allowed_next: [out_for_delivery, in_transit, exception, return_to_sender]
     - code: exception
+      projection_status: IN_TRANSIT
       label: Exception
       ladder: parcel
       ordinal: 2
       exception_state: true
       color_token: error
       allowed_next: [picked_up, in_transit, arrived_at_facility, out_for_delivery, return_to_sender]
+    # The carrier could not deliver -- refused, undeliverable, damaged in
+    # transit -- and is carrying the parcel back to whoever tendered it: the
+    # customer or the branch. Terminal for this parcel and CANCELLED to the
+    # case, which therefore keeps awaiting receipt until a new parcel is
+    # tendered under the same RMA or the return is closed another way.
     - code: return_to_sender
-      label: Return to sender
+      projection_status: CANCELLED
+      label: Sent back to sender
       ladder: parcel
       ordinal: 5
       terminal: true
@@ -2053,48 +2096,56 @@ shipment_tracking:
       allowed_next: []
     # ---- freight / LTL ladder ----------------------------------------------
     - code: bol_created
+      projection_status: AWAITING_HANDOFF
       label: BOL created
       ladder: freight
       ordinal: 0
       color_token: progress
       allowed_next: [pending_pickup, exception]
     - code: pending_pickup
+      projection_status: AWAITING_HANDOFF
       label: Pending pickup
       ladder: freight
       ordinal: 1
       color_token: progress
       allowed_next: [picked_up, exception]
     - code: picked_up
+      projection_status: IN_TRANSIT
       label: Picked up
       ladder: freight
       ordinal: 2
       color_token: progress
       allowed_next: [at_origin_terminal, exception, on_hand]
     - code: at_origin_terminal
+      projection_status: IN_TRANSIT
       label: At origin terminal
       ladder: freight
       ordinal: 3
       color_token: progress
       allowed_next: [in_transit, on_hand, exception]
     - code: in_transit
+      projection_status: IN_TRANSIT
       label: In transit
       ladder: freight
       ordinal: 4
       color_token: progress
       allowed_next: [at_destination_terminal, on_hand, exception]
     - code: at_destination_terminal
+      projection_status: IN_TRANSIT
       label: At destination terminal
       ladder: freight
       ordinal: 5
       color_token: progress
       allowed_next: [out_for_delivery, on_hand, exception]
     - code: out_for_delivery
+      projection_status: IN_TRANSIT
       label: Out for delivery
       ladder: freight
       ordinal: 6
       color_token: progress
       allowed_next: [delivered, on_hand, exception]
     - code: delivered
+      projection_status: DELIVERED
       label: Delivered
       ladder: freight
       ordinal: 7
@@ -2102,6 +2153,7 @@ shipment_tracking:
       color_token: success
       allowed_next: []
     - code: on_hand
+      projection_status: DELIVERED
       label: On hand at terminal
       ladder: freight
       ordinal: 4
@@ -2109,6 +2161,7 @@ shipment_tracking:
       color_token: warning
       allowed_next: [in_transit, at_destination_terminal, out_for_delivery, exception]
     - code: exception
+      projection_status: IN_TRANSIT
       label: Exception
       ladder: freight
       ordinal: 4

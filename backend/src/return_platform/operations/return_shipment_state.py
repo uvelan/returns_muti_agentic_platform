@@ -47,7 +47,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
@@ -140,6 +140,7 @@ class CaseWritePort(Protocol):
         return_record_id: str,
         tracking_reference: str,
         carrier: str | None = ...,
+        shipment_status: str | None = ...,
     ) -> bool: ...
 
     async def append_case_fact(
@@ -197,9 +198,17 @@ class ReturnShipmentStateService:
         business_state: ShipmentStatePort,
         repository: CaseWritePort,
         observations: ShipmentObservationPort | None = None,
+        projection_status_for: Callable[[str | None], str | None] | None = None,
     ) -> None:
         self._business_state = business_state
         self._repository = repository
+        # The release's placement of a ladder rung in the projection's closed
+        # vocabulary (`shipment_tracking.statuses[].projection_status`). A
+        # callable rather than a table, read per call, so a release that places
+        # a rung reaches parcels already moving. `None` -- or a rung the release
+        # has not placed -- leaves the parcel's projected status untouched,
+        # which is what `record_case_shipment` does with a `None` status.
+        self._projection_status_for = projection_status_for
         # Optional for the same reason the sync port is: a process may record
         # shipment updates without being able to read the graph, and refusing the
         # update over that would take the authoritative store down for a
@@ -353,6 +362,11 @@ class ReturnShipmentStateService:
                 return_record_id=return_record_id,
                 tracking_reference=tracking_reference,
                 carrier=_reference(row.get("carrier_code")),
+                shipment_status=(
+                    None
+                    if self._projection_status_for is None
+                    else self._projection_status_for(_reference(row.get("tracking_status")))
+                ),
             )
 
     async def _append_once(self, **fact) -> None:

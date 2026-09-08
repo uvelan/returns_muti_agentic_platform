@@ -38,8 +38,12 @@ const MODE_TITLES: Record<CopilotLifecycleMode, { title: string; subtitle: strin
     subtitle: "Receiving & Bay Routing",
   },
   RETURN_SETTLEMENT: {
-    title: "Settlement",
-    subtitle: "Credit & Completion",
+    // Named for what the platform does here -- close the return -- not for
+    // a credit it does not issue. `SettlementStatus.NOT_INTEGRATED` is the
+    // only value any deployment has produced, and a header that promised
+    // "Credit" over it was the fabrication this domain's guard exists for.
+    title: "Completion",
+    subtitle: "Return closed",
   },
 };
 

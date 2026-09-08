@@ -60,10 +60,11 @@ function banner(settlement: SettlementProjection | null): { title: string; detai
   if (settlement.status === "PENDING") {
     return { title: "Return Completed", detail: "Settlement is in progress." };
   }
-  return {
-    title: "Return Completed · Settlement Not Integrated",
-    detail: "Credit is issued outside this platform; no amount is available here.",
-  };
+  // Not integrated is the ordinary case, and it is not the associate's
+  // concern: the return is done. The credit is issued elsewhere and this pane
+  // says nothing about it, rather than announcing an integration that does
+  // not exist on every closed return.
+  return { title: "Return Completed", detail: "The return is closed on this platform." };
 }
 
 export function ReturnSettlementMode({

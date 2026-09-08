@@ -3186,6 +3186,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cases/{case_id}/reviews/{review_id}/recovery/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reopen Held Review
+         * @description `HELD_FOR_OPERATIONS -> OPEN`, and the case gets its execution back.
+         *
+         *     A held review is one nobody answered before the gate closed (or one the
+         *     gate closed over for another reason). **Nothing was sent**: the draft is
+         *     exactly as the reviewer left it, versions intact, and reopening puts it
+         *     back in front of them. This is the exit `_RETRY_REFUSALS_BY_STATE` names
+         *     for a held review, and until now it was named without existing.
+         *
+         *     The second half is what makes the first useful. The gate that held this
+         *     review has, in the ordinary case, parked the case and closed its
+         *     execution, so an approval on the reopened review would CAS it to
+         *     `APPROVING` with nothing listening -- the trap AMENDMENT-5's rule 2 was
+         *     written to close. So the reopen drives recovery the way a late return
+         *     detail does: classify, relaunch only when the execution is closed and the
+         *     case is not terminal, refuse otherwise. The relaunched run re-enters the
+         *     review gate, finds the live `OPEN` review (`create_review` is idempotent
+         *     over non-terminal attempts) and waits for the approval it was originally
+         *     waiting for. A live execution is left alone -- it is already holding the
+         *     review.
+         *
+         *     Recovery being unreachable does not undo the reopen. The review is
+         *     correctly `OPEN` either way; what is missing is an execution, and the
+         *     operator's relaunch route or the reconciliation sweep supplies one.
+         */
+        post: operations["reopen_held_review_api_v1_cases__case_id__reviews__review_id__recovery_reopen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/cases/{case_id}/reviews/{review_id}/recovery/retry": {
         parameters: {
             query?: never;
@@ -6040,15 +6082,18 @@ export interface components {
          *       verification dimensions. These say the completion *profile* cannot be
          *       computed yet, so no requirement set has been consulted at all.
          *     * **Required** -- `RMA`, `LABEL`, `TRACKING`, `BOL`, `PICKUP`,
-         *       `RETURN_LOCATION`. These come out of the return-method requirement table
-         *       and are the only members a table row may name.
+         *       `RETURN_LOCATION`, `RECEIPT`. These come out of the return-method
+         *       requirement table and are the only members a table row may name.
+         *       `RECEIPT` is the goods arriving: a physical return is not finished when
+         *       its paperwork is, and a case that closed on RMA, label and tracking alone
+         *       reported itself complete with the parcel still on the counter.
          *
          *     Settlement is deliberately absent. It never enters `awaiting` and never
          *     blocks completion (plan sect. 13, Phase 9): a case whose settlement is
          *     `NOT_INTEGRATED` reaches `COMPLETED_EXTERNAL_SETTLEMENT`, it does not hang.
          * @enum {string}
          */
-        AwaitingDimension: "POLICY" | "RETURN_METHOD" | "WARRANTY_VERIFICATION" | "DELIVERY_CLAIM_VERIFICATION" | "RECOVERY" | "RMA" | "LABEL" | "TRACKING" | "BOL" | "PICKUP" | "RETURN_LOCATION";
+        AwaitingDimension: "POLICY" | "RETURN_METHOD" | "WARRANTY_VERIFICATION" | "DELIVERY_CLAIM_VERIFICATION" | "RECOVERY" | "RMA" | "LABEL" | "TRACKING" | "BOL" | "PICKUP" | "RETURN_LOCATION" | "RECEIPT";
         /** BayAssessment */
         BayAssessment: {
             decision: components["schemas"]["AgentDecisionView"];
@@ -6904,6 +6949,13 @@ export interface components {
             /** Messages */
             messages: {
                 [key: string]: string;
+            }[];
+            /**
+             * Systementries
+             * @default []
+             */
+            systemEntries: {
+                [key: string]: unknown;
             }[];
         };
         /**
@@ -16255,6 +16307,60 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["CancelReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_ReviewActionResult_"];
+                };
+            };
+            /** @description No such case, or no such review on it. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
+                };
+            };
+            /** @description The store's truth moved under this request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewRefusal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reopen_held_review_api_v1_cases__case_id__reviews__review_id__recovery_reopen_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: string;
+                review_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoveryRequest"];
             };
         };
         responses: {

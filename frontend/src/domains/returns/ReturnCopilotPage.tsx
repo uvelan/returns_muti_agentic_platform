@@ -986,6 +986,42 @@ export function ReturnCopilotPage() {
     send.mutate(trimmed);
   }
 
+  /**
+   * Book the goods in. The producer of the warehouse receipt, which is what
+   * completes a physical return now that a carrier's "delivered" scan no
+   * longer does: the scan moves the stage to the dock, this says somebody
+   * there counted the goods. The quantity is what Support authorised across
+   * the case's RMAs; a warehouse that received fewer corrects it here later.
+   * Keyed on the case revision, so a double press books in once.
+   */
+  const receipt = useMutation({
+    mutationFn: () => {
+      if (caseId === null || projection === null) {
+        throw new Error("There is no case to receive against.");
+      }
+      const authorised = caseRecords(projection).flatMap((record) =>
+        (record.approvedItems ?? []).flatMap((item) =>
+          typeof item.quantityApproved === "number" ? [item.quantityApproved] : [],
+        ),
+      );
+      const selected = (projection.selectedItems ?? []).flatMap((item) =>
+        typeof item.quantity === "number" ? [item.quantity] : [],
+      );
+      const counted = (authorised.length > 0 ? authorised : selected).reduce(
+        (sum, quantity) => sum + quantity,
+        0,
+      );
+      return casesApi.recordReceipt(caseId, {
+        receivedQuantity: counted,
+        warehouseStatus: "RECEIVED",
+        idempotencyKey: `receipt:${caseId}:${String(projection.revision)}`,
+      });
+    },
+    onSuccess: async () => {
+      await queries.invalidateQueries({ queryKey: ["cases", caseId] });
+    },
+  });
+
   function resetToFreshReturn() {
     setShowHistory(false);
     // The one place a new id is minted. The agent's memory is scoped to the
@@ -1231,7 +1267,17 @@ export function ReturnCopilotPage() {
               <CarrierTransitMode shipments={caseShipments(projection)} />
             )}
             {activeMode === "WAREHOUSE_RECEIVING" && (
-              <WarehouseReceivingMode warehouse={projection?.warehouse ?? null} />
+              <WarehouseReceivingMode
+                warehouse={projection?.warehouse ?? null}
+                onConfirmDockReceipt={
+                  projection?.warehouse?.receivedAt == null
+                    ? () => {
+                        receipt.mutate();
+                      }
+                    : undefined
+                }
+                isProcessing={receipt.isPending}
+              />
             )}
             {activeMode === "RETURN_SETTLEMENT" && (
               <ReturnSettlementMode

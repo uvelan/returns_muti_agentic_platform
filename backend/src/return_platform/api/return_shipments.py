@@ -43,6 +43,7 @@ the identical update is safe and answers DUPLICATE.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
@@ -50,6 +51,7 @@ from typing import cast
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from return_platform.configuration.return_configuration import LoadedReturnConfiguration
 from return_platform.dynamic_knowledge.integration.shipment_observations import (
     GraphShipmentObservations,
 )
@@ -242,7 +244,27 @@ async def _service(request: Request) -> ReturnShipmentStateService:
         # write is the same write every other case surface makes.
         repository=resolve_operational_repository(request),
         observations=ports.observations,
+        projection_status_for=_projection_status_mapper(request),
     )
+
+
+def _projection_status_mapper(request: Request) -> Callable[[str | None], str | None]:
+    """The release's placement of ladder rungs in the projection's vocabulary.
+
+    Read off `app.state.return_configuration` per call rather than captured,
+    so a release that places a rung reaches parcels already moving. A process
+    with no return configuration mounted records the parcel without a
+    projected status, which is what the projection served before the mapping
+    existed.
+    """
+
+    def mapper(code: str | None) -> str | None:
+        loaded = getattr(request.app.state, "return_configuration", None)
+        if not isinstance(loaded, LoadedReturnConfiguration):
+            return None
+        return loaded.configuration.shipment_tracking.projection_status_for(code)
+
+    return mapper
 
 
 def _reading_view(reading: CaseShipmentReading | None) -> ShipmentReadingView | None:

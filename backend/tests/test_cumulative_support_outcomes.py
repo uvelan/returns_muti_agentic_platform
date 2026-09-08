@@ -470,6 +470,7 @@ def _fixture(
     *,
     approved: bool = True,
     route: str = "STANDARD_RETURN",
+    received: bool = True,
     configuration: Any = SHIPPED_CONFIGURATION,
 ) -> _Fixture:
     repository = _Repository()
@@ -483,6 +484,14 @@ def _fixture(
         if route == "STANDARD_RETURN":
             repository.seed_fact("policy_decision", "APPROVE")
             repository.seed_fact("policy_effective_decision", "APPROVE")
+    if received:
+        # The goods are back. Seeded as the receipt facts
+        # `POST /api/cases/{id}/receipt` writes, because every row whose goods
+        # return to us now requires `RECEIPT`, and what these tests are about is
+        # Support's paperwork reaching the case -- not the warehouse. A test
+        # that needs the parcel still on the counter passes `received=False`.
+        repository.seed_fact("warehouse_received_at", "2026-08-28T14:05:00+00:00")
+        repository.seed_fact("warehouse_status", "RECEIVED")
     return_store = _ReturnStore()
     graph_sync = _GraphSync()
     support = _SupportService()
@@ -772,10 +781,11 @@ async def test_an_approved_prepaid_parcel_case_reaches_business_complete() -> No
 
     Not by hand-placing a fact. The method arrives on the notice, the activity
     writes it, and the shipped projection then resolves the completion profile
-    and finds nothing outstanding. Before this, `returnMethod` had no
-    persistence anywhere in the case aggregate, so `awaiting` always held
-    `RETURN_METHOD` and `businessComplete` could never become true for any
-    Copilot case.
+    and finds nothing outstanding -- the goods themselves having been booked in
+    by the fixture, since a receipt is the warehouse's to write and not
+    Support's. Before this, `returnMethod` had no persistence anywhere in the
+    case aggregate, so `awaiting` always held `RETURN_METHOD` and
+    `businessComplete` could never become true for any Copilot case.
     """
     fixture = _fixture()
     receipt = await _deliver(
@@ -1059,7 +1069,8 @@ async def test_a_partial_rma_leaves_the_case_incomplete() -> None:
     """An RMA and a method and nothing else. The label and the number are owed.
 
     The requirement table decides, not a hardcoded rule: `PREPAID_PARCEL`
-    requires `RMA`, `LABEL` and `TRACKING`, and two of those are outstanding.
+    requires `RMA`, `LABEL`, `TRACKING` and `RECEIPT`, and with the goods
+    already booked in two of those are outstanding.
     """
     fixture = _fixture()
     receipt = await _deliver(

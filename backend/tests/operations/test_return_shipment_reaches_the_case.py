@@ -398,8 +398,41 @@ async def test_an_applied_update_puts_the_parcel_on_the_case_record() -> None:
     await _service(business_state, repository, _Observations(_observed())).record_update(_update())
 
     assert repository.parcels == [
-        {"return_record_id": "rec-1", "tracking_reference": TRACKING, "carrier": "UPS"}
+        {
+            "return_record_id": "rec-1",
+            "tracking_reference": TRACKING,
+            "carrier": "UPS",
+            # No release placed this rung, so the parcel's projected status is
+            # left as it was: the write carries `None`, which the repository
+            # never applies over a value.
+            "shipment_status": None,
+        }
     ]
+
+
+@pytest.mark.asyncio
+async def test_the_releases_placement_of_the_rung_reaches_the_parcel() -> None:
+    """The projected status is the release's word for the carrier's rung.
+
+    The carrier's vocabulary is open and the projection's is a closed five, so
+    the bridge is configuration: `shipment_tracking.statuses[].projection_status`.
+    The service applies it to the rung the authoritative row holds and the
+    repository writes it on the parcel. A rung the release has not placed
+    reaches the parcel as `None`, which the repository never applies over a
+    value -- so an unplaced rung leaves the last placed one standing.
+    """
+    business_state, repository = _BusinessState(), _Repository()
+    placements = {"in_transit": "IN_TRANSIT", "delivered": "DELIVERED"}
+    service = ReturnShipmentStateService(
+        business_state=business_state,
+        repository=repository,
+        observations=_Observations(_observed()),
+        projection_status_for=lambda code: placements.get((code or "").lower()),
+    )
+
+    await service.record_update(_update())
+
+    assert [parcel["shipment_status"] for parcel in repository.parcels] == ["IN_TRANSIT"]
 
 
 @pytest.mark.asyncio

@@ -53,21 +53,45 @@ def production_configuration() -> ReturnPlatformConfiguration:
 
 
 @pytest.fixture
-def prearrival_allowed(
+def prearrival_refused(
     production_configuration: ReturnPlatformConfiguration,
 ) -> ReturnPlatformConfiguration:
-    """Production, with the one flag that governs the case path turned on.
+    """Production, with the case path's gates set the way they used to ship.
 
     `allow_prearrival_reservation` is the configured answer to "may a case get
-    a bay before the goods arrive". Production says no, so most scenarios below
-    record a physical status instead; this fixture exists for the scenario that
-    asserts the flag itself is read.
+    a bay before the goods arrive". Production now says yes -- the case asks for
+    a bay at creation, before anything exists to receive -- so the refusal path
+    is no longer reachable from the released file. This copy turns the flag
+    back off, restores `require_physical_receipt`, and drops the pre-arrival
+    status from `eligible_statuses`, so the scenarios that assert the flag
+    itself is read still have a configuration that refuses.
     """
     return production_configuration.model_copy(
         update={
             "bay": production_configuration.bay.model_copy(
-                update={"allow_prearrival_reservation": True}
+                update={
+                    "allow_prearrival_reservation": False,
+                    "require_physical_receipt": True,
+                    "eligible_statuses": ("WAREHOUSE_RECEIVED", "INSPECTION_COMPLETE"),
+                }
             )
+        }
+    )
+
+
+@pytest.fixture
+def prearrival_half_allowed(
+    prearrival_refused: ReturnPlatformConfiguration,
+) -> ReturnPlatformConfiguration:
+    """The refusing configuration with only the first of its two gates opened.
+
+    `allow_prearrival_reservation` on, `require_physical_receipt` still on: the
+    contradiction a deployment lands in when it flips one flag and not the
+    other, kept so the reason that names it stays proven.
+    """
+    return prearrival_refused.model_copy(
+        update={
+            "bay": prearrival_refused.bay.model_copy(update={"allow_prearrival_reservation": True})
         }
     )
 
@@ -371,19 +395,19 @@ async def test_a_recorded_warehouse_outranks_the_order(
     assert observations.observed == [WAREHOUSE]
 
 
-async def test_production_refuses_a_pre_arrival_case_and_says_why(
-    production_configuration: ReturnPlatformConfiguration,
+async def test_a_configuration_that_forbids_pre_arrival_refuses_and_says_why(
+    prearrival_refused: ReturnPlatformConfiguration,
 ) -> None:
     """Bay runs before anything is received, and configuration governs that.
 
-    `allow_prearrival_reservation` is false in production, so the answer is a
-    stated refusal rather than a recommendation -- and it is given before any
-    targeted sync, because configuration has already answered.
+    With `allow_prearrival_reservation` false the answer is a stated refusal
+    rather than a recommendation -- and it is given before any targeted sync,
+    because configuration has already answered.
     """
     repository = FakeCaseRepository()
     observations = FakeObservations(_observed(_bay("B-1", capacity=4)))
 
-    result = await _placement(production_configuration, repository, observations).recommend(CASE_ID)
+    result = await _placement(prearrival_refused, repository, observations).recommend(CASE_ID)
 
     assert result.reason == "PRE_ARRIVAL_NOT_ALLOWED"
     assert result.bay_reference is None
@@ -391,34 +415,66 @@ async def test_production_refuses_a_pre_arrival_case_and_says_why(
     assert observations.observed == [], "no warehouse sync was paid for"
 
 
-async def test_enabling_pre_arrival_reservation_changes_the_answer_with_no_code_edit(
-    prearrival_allowed: ReturnPlatformConfiguration,
+async def test_production_lets_a_pre_arrival_case_past_the_gate(
+    production_configuration: ReturnPlatformConfiguration,
 ) -> None:
-    """The flag was declared and read by nothing until the case path needed it.
+    """The released file allows pre-arrival placement, so the gate is not the answer.
 
-    With pre-arrival allowed, production's `require_physical_receipt` still
-    refuses -- two configured gates that contradict each other. That is
-    surfaced by its own name rather than folded into `NO_ELIGIBLE_BAY`, because
-    the fix is a configuration change and nothing about the estate.
+    The same bare case that the refusing configuration turns away before
+    reading anything is, under production, read: the warehouse sync is paid
+    for, and what comes back names the state of the estate rather than the
+    flag. Here that is the case carrying no warehouse reference at all.
     """
     repository = FakeCaseRepository()
     observations = FakeObservations(_observed(_bay("B-1", capacity=4)))
 
-    result = await _placement(prearrival_allowed, repository, observations).recommend(CASE_ID)
+    result = await _placement(production_configuration, repository, observations).recommend(CASE_ID)
 
-    assert result.reason == "PHYSICAL_RECEIPT_REQUIRED"
+    assert result.reason != "PRE_ARRIVAL_NOT_ALLOWED"
+    assert result.reason != "PHYSICAL_RECEIPT_REQUIRED"
+    assert result.reason == "WAREHOUSE_ABSENT_NO_WAREHOUSE_REFERENCE"
     assert result.bay_reference is None
 
 
-async def test_pre_arrival_placement_recommends_when_both_gates_agree(
-    prearrival_allowed: ReturnPlatformConfiguration,
+async def test_disabling_pre_arrival_reservation_changes_the_answer_with_no_code_edit(
+    production_configuration: ReturnPlatformConfiguration,
+    prearrival_refused: ReturnPlatformConfiguration,
+    prearrival_half_allowed: ReturnPlatformConfiguration,
 ) -> None:
-    """The configuration a deployment that wants pre-arrival bays would set."""
-    configuration = prearrival_allowed.model_copy(
-        update={
-            "bay": prearrival_allowed.bay.model_copy(update={"require_physical_receipt": False})
-        }
+    """The flag was declared and read by nothing until the case path needed it.
+
+    Three configurations, one case, three answers, and no code between them.
+    Production recommends. With the flag turned off the case is refused at the
+    gate. With the flag on but `require_physical_receipt` left on, the two
+    configured gates contradict each other -- surfaced by its own name rather
+    than folded into `NO_ELIGIBLE_BAY`, because the fix is a configuration
+    change and nothing about the estate.
+    """
+    repository = FakeCaseRepository({FACT_WAREHOUSE: WAREHOUSE})
+    observations = FakeObservations(_observed(_bay("B-1", capacity=4)))
+
+    recommended = await _placement(production_configuration, repository, observations).recommend(
+        CASE_ID
     )
+    assert recommended.reason == "RECOMMENDED"
+    assert recommended.bay_reference == "B-1"
+
+    refused = await _placement(prearrival_refused, repository, observations).recommend(CASE_ID)
+    assert refused.reason == "PRE_ARRIVAL_NOT_ALLOWED"
+    assert refused.bay_reference is None
+
+    contradicted = await _placement(prearrival_half_allowed, repository, observations).recommend(
+        CASE_ID
+    )
+    assert contradicted.reason == "PHYSICAL_RECEIPT_REQUIRED"
+    assert contradicted.bay_reference is None
+
+
+async def test_pre_arrival_placement_recommends_when_both_gates_agree(
+    production_configuration: ReturnPlatformConfiguration,
+) -> None:
+    """The configuration a deployment that wants pre-arrival bays sets -- and production does."""
+    configuration = production_configuration
     repository = FakeCaseRepository({FACT_WAREHOUSE: WAREHOUSE})
     observations = FakeObservations(_observed(_bay("B-1", capacity=4)))
 

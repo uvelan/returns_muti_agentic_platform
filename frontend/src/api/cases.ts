@@ -155,6 +155,7 @@ export type WarehouseProjection = Served<components["schemas"]["WarehouseProject
  * a case whose label nobody has asked about yet.
  */
 export type CaseProjection = Served<components["schemas"]["CaseProjection"]>;
+export type CaseReceiptRequest = components["schemas"]["CaseReceiptRequest"];
 
 /** Everything the platform has computed about a case, before deriving anything. */
 export type CaseProjectionState = Omit<
@@ -309,6 +310,7 @@ const AWAITING_DIMENSIONS: readonly string[] = [
   "BOL",
   "PICKUP",
   "RETURN_LOCATION",
+  "RECEIPT",
 ];
 
 function isProjectionRecord(value: unknown): value is Record<string, unknown> {
@@ -468,6 +470,27 @@ export const casesApi = {
   async readProjection(caseId: string): Promise<CaseProjection> {
     const response = await apiClient<CaseProjection>(`/api/cases/${encodeURIComponent(caseId)}`);
     if (!response.data) throw new Error("The case could not be read.");
+    return response.data;
+  },
+
+  /**
+   * The goods arrived: `POST /api/cases/{caseId}/receipt`.
+   *
+   * The producer of the four warehouse fields `hasReceipt` reads, and since
+   * completion keys on the warehouse's receipt rather than the carrier's
+   * scan, the write that finishes a physical return. Idempotent on the key
+   * the caller supplies, so a double press books the goods in once.
+   */
+  async recordReceipt(caseId: string, body: CaseReceiptRequest): Promise<CaseProjection> {
+    const response = await apiClient<CaseProjection>(
+      `/api/cases/${encodeURIComponent(caseId)}/receipt`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    );
+    if (!response.data) throw new Error("The receipt could not be recorded.");
     return response.data;
   },
 };

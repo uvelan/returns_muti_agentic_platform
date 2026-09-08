@@ -192,6 +192,7 @@ class ShipmentTrackingStore:
             # absent, and the BOL is the lookup key Support issued.
             document[f("pro_number")] = seed.tracking_reference or None
             document[f("bol_reference")] = seed.bol_reference
+        self._mirror_into_source_shape(document)
         identity_field, identity_value = (
             ("tracking_reference", seed.tracking_reference)
             if seed.tracking_reference
@@ -216,6 +217,36 @@ class ShipmentTrackingStore:
             )
             return None
         return document
+
+    def _mirror_into_source_shape(self, target: dict[str, Any], *, flatten: bool = False) -> None:
+        """Write the release's `source_mirror` beside the console's own fields.
+
+        On a seed the mirror is nested into the document (`{"shipmentInfoEventData":
+        {"trkNum": ...}}`), because `$setOnInsert` takes a whole document. On an
+        event it is written as dotted `$set` keys, which is how Mongo updates one
+        nested field without replacing its siblings. Only logical fields the
+        target actually carries are mirrored, so a `$set` that changes the status
+        mirrors the status and leaves the tracking number alone.
+        """
+        config = self._config()
+        f = self._f
+        values: dict[str, Any] = {}
+        for path, logical in config.source_mirror.items():
+            physical = f(logical)
+            if physical in target:
+                values[path] = target[physical]
+        if not flatten:
+            for path, literal in config.source_constants.items():
+                values[path] = literal
+        for path, value in values.items():
+            if flatten:
+                target[path] = value
+                continue
+            node = target
+            parts = path.split(".")
+            for part in parts[:-1]:
+                node = node.setdefault(part, {})
+            node[parts[-1]] = value
 
     def _to_logical(self, document: dict[str, Any]) -> dict[str, Any]:
         """The document under its logical names, whatever the release maps.
@@ -341,6 +372,9 @@ class ShipmentTrackingStore:
             sets[f("pro_number")] = pro_number
             sets[f("tracking_reference")] = pro_number
             event[f("pro_number")] = pro_number
+        # The graph-facing mirror moves with the rung, so the targeted sync
+        # that follows this event reads the status just filed.
+        self._mirror_into_source_shape(sets, flatten=True)
         updated = await self._collection().find_one_and_update(
             {f("kind"): "returnShipment", f("shipment_id"): shipment_id},
             {

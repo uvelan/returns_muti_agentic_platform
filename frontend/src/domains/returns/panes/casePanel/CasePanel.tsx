@@ -6,11 +6,13 @@ import {
   casePanelKeys,
   panelRefetchInterval,
   type CasePanelView,
+  type ReviewPanelView,
 } from "../../../../api/casePanel";
 import { COPILOT_TOKENS } from "../../copilotTokens";
 import { EMPTY_REPLY_NOTICE, readSupportReplyDraft } from "./sections/supportReplyDraft";
+import { readString } from "./support/supportPanelPayloads";
 import { StatusTimersSection } from "./StatusTimersSection";
-import { TemplateReviewSection } from "./TemplateReviewSection";
+import { ReviewStateBadge, TemplateReviewSection } from "./TemplateReviewSection";
 import { panelSectionRenderers, unrenderedSectionLabel } from "./panelSectionRegistry";
 
 /**
@@ -125,7 +127,9 @@ export function CasePanelBody({
         </p>
       ) : (
         panel.reviews.map((review) =>
-          readOnly ? (
+          isSettledAndAnswered(review, panel) ? (
+            <SentReviewLine key={review.review_id} review={review} />
+          ) : readOnly ? (
             <ReadOnlyReview key={review.review_id} review={review} />
           ) : (
             <TemplateReviewSection
@@ -219,5 +223,37 @@ function ReadOnlyReview({ review }: { readonly review: CasePanelView["reviews"][
         })}
       </ul>
     </section>
+  );
+}
+
+
+/**
+ * A message that went to Support and has been answered.
+ *
+ * Once Support has issued a return record against the case, the full draft
+ * of the request that produced it is history: every value in it is on the
+ * panel already, and re-drawing the whole request under the RMA it earned
+ * was the "too much data" the right pane was drowning in. It collapses to
+ * its subject and its state -- still there, still auditable, no longer the
+ * thing on screen. A sent request the case is *still waiting on* keeps its
+ * body, because the associate may need to see what Support was asked.
+ */
+function isSettledAndAnswered(review: ReviewPanelView, panel: CasePanelView): boolean {
+  return review.state === "SENT" && panel.return_records.length > 0;
+}
+
+function SentReviewLine({ review }: { readonly review: ReviewPanelView }) {
+  // The draft is an open payload on the wire; the subject is read the way
+  // every other support-derived value is, and absent it the line carries
+  // only the label and the state rather than a stand-in.
+  const subject = readString(review.draft, "subject");
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <span className={COPILOT_TOKENS.typography.caption}>
+        Message to Support
+        {subject !== null ? <> · {subject}</> : null}
+      </span>
+      <ReviewStateBadge state={review.state} />
+    </div>
   );
 }

@@ -211,7 +211,15 @@ const MILESTONES: readonly Milestone[] = [
     output: ({ projection }) =>
       pairs(
         ["Resolution", shown(projection?.status)],
-        ["Settlement", shown(projection?.settlement?.status)],
+        // Only when a settlement producer exists. `NOT_INTEGRATED` is the
+        // platform saying it issues no credit, and a row saying so on every
+        // closed return is noise about a feature nobody has.
+        [
+          "Settlement",
+          projection?.settlement?.status === "NOT_INTEGRATED"
+            ? null
+            : shown(projection?.settlement?.status),
+        ],
       ),
   },
 ];

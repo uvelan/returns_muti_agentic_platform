@@ -342,7 +342,10 @@ describe("Return Copilot 8-Mode Lifecycle Contract", () => {
 
     it("Mode 8: renders ReturnSettlementMode without inventing a credit", () => {
       render(<ReturnSettlementMode settlement={settlement()} caseStatus="COMPLETED_EXTERNAL_SETTLEMENT" />);
-      expect(screen.getByText("Return Completed · Settlement Not Integrated")).toBeInTheDocument();
+      // No credit line, no integration notice: the platform issues no credit
+      // and the closing pane says the return is closed, nothing more.
+      expect(screen.getByText("Return Completed")).toBeInTheDocument();
+      expect(screen.queryByText(/credit/i)).toBeNull();
       // Status, and only status. The ledger printed four lines plus a total,
       // all reading "Unavailable" because no producer computes any of them --
       // six rows that taught a reader about the platform's gaps and nothing

@@ -105,7 +105,25 @@ def test_fulfillment_never_treats_tender_as_pickup() -> None:
 
 
 def test_bay_agent_blocks_before_receipt() -> None:
-    result = registry().bay_assignment.assess(
+    """The readiness gate, on a configuration that still asks for one.
+
+    Production no longer requires physical receipt -- the case asks for a bay
+    at creation, before anything exists to receive -- so the gate is exercised
+    on a copy that turns the requirement back on. What is under test is that
+    the agent *reads* the flag, not what the released file says.
+    """
+    configuration = load_return_configuration(CONFIG).configuration
+    gated = configuration.model_copy(
+        update={
+            "bay": configuration.bay.model_copy(
+                update={
+                    "require_physical_receipt": True,
+                    "eligible_statuses": ("WAREHOUSE_RECEIVED", "INSPECTION_COMPLETE"),
+                }
+            )
+        }
+    )
+    result = AgentRegistry.build(gated).bay_assignment.assess(
         BayAssessmentRequest(
             physicalStatus="IN_TRANSIT",
             returnMethod=NormalizedReturnMethod.BRANCH_LTL,

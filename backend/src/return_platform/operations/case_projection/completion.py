@@ -152,6 +152,7 @@ REQUIREMENT_DIMENSIONS: Final[frozenset[AwaitingDimension]] = frozenset(
         AwaitingDimension.BOL,
         AwaitingDimension.PICKUP,
         AwaitingDimension.RETURN_LOCATION,
+        AwaitingDimension.RECEIPT,
     }
 )
 
@@ -305,6 +306,7 @@ DEFAULT_RETURN_METHOD_REQUIREMENTS: Final[ReturnMethodRequirementTable] = (
                     AwaitingDimension.RMA,
                     AwaitingDimension.LABEL,
                     AwaitingDimension.TRACKING,
+                    AwaitingDimension.RECEIPT,
                 ),
             ),
             ReturnMethodRequirement(
@@ -313,6 +315,7 @@ DEFAULT_RETURN_METHOD_REQUIREMENTS: Final[ReturnMethodRequirementTable] = (
                     AwaitingDimension.RMA,
                     AwaitingDimension.BOL,
                     AwaitingDimension.PICKUP,
+                    AwaitingDimension.RECEIPT,
                 ),
             ),
             ReturnMethodRequirement(
@@ -322,6 +325,7 @@ DEFAULT_RETURN_METHOD_REQUIREMENTS: Final[ReturnMethodRequirementTable] = (
                     AwaitingDimension.BOL,
                     AwaitingDimension.PICKUP,
                     AwaitingDimension.RETURN_LOCATION,
+                    AwaitingDimension.RECEIPT,
                 ),
             ),
             ReturnMethodRequirement(
@@ -342,6 +346,7 @@ DEFAULT_RETURN_METHOD_REQUIREMENTS: Final[ReturnMethodRequirementTable] = (
                     AwaitingDimension.RMA,
                     AwaitingDimension.LABEL,
                     AwaitingDimension.TRACKING,
+                    AwaitingDimension.RECEIPT,
                 ),
             ),
             #     A parcel from a customer site. `BRANCH_UPS` plus the location,
@@ -353,6 +358,7 @@ DEFAULT_RETURN_METHOD_REQUIREMENTS: Final[ReturnMethodRequirementTable] = (
                     AwaitingDimension.LABEL,
                     AwaitingDimension.TRACKING,
                     AwaitingDimension.RETURN_LOCATION,
+                    AwaitingDimension.RECEIPT,
                 ),
             ),
             #     Straight back to the vendor. Somebody has to say where; the
@@ -431,6 +437,24 @@ def _return_location_satisfied(case: CaseProjectionState, record: ReturnRecordPr
     return record.returnLocation is not None
 
 
+def _receipt_satisfied(case: CaseProjectionState, record: ReturnRecordProjection) -> bool:
+    """The goods came back, and the warehouse said so.
+
+    One producer: the warehouse recording a receipt (`POST /api/cases/{id}/
+    receipt`, which writes the four fields `has_receipt` reads). A carrier's
+    "delivered" scan is deliberately *not* enough. It says a parcel reached a
+    dock, not that anybody opened it, counted it or put it anywhere -- and a
+    case that closed on the scan skipped the warehouse step entirely, with
+    "Reached warehouse" never lit on a return that had been received. The scan
+    still moves the stage to `WAREHOUSE_RECEIVING` (`stage.py` reads the same
+    arrived states), which is the prompt to book the goods in; this is what
+    makes the booking-in the thing that completes the return. A recommended
+    bay is not a receipt either: it is where the goods are *to be* put.
+    """
+    del record
+    return case.warehouse is not None and case.warehouse.has_receipt
+
+
 #: One predicate per requirement dimension.
 #:
 #: Every package, not any package. An RMA covering two parcels with one label
@@ -446,6 +470,7 @@ _SATISFACTION: Final[
     AwaitingDimension.TRACKING: _tracking_satisfied,
     AwaitingDimension.PICKUP: _pickup_satisfied,
     AwaitingDimension.RETURN_LOCATION: _return_location_satisfied,
+    AwaitingDimension.RECEIPT: _receipt_satisfied,
 }
 
 if set(_SATISFACTION) != REQUIREMENT_DIMENSIONS:  # pragma: no cover - import-time guard

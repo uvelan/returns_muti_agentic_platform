@@ -119,6 +119,14 @@ def approved_prepaid_parcel() -> dict[str, dict[str, Any]]:
 
 def _element_matches(element: Mapping[str, Any], conditions: Mapping[str, Any]) -> bool:
     for field, condition in conditions.items():
+        if field == "$or":
+            # Mongo's `$or` inside `$elemMatch`: the element matches when any
+            # branch does. `record_case_shipment` corrects the carrier and the
+            # projected status in one positional write, and asks for an element
+            # where *either* differs.
+            if not any(_element_matches(element, branch) for branch in condition):
+                return False
+            continue
         actual = element.get(field)
         if isinstance(condition, dict):
             for operator, operand in condition.items():
@@ -397,10 +405,13 @@ async def test_the_polling_copilot_stops_waiting_for_tracking() -> None:
     projected = harness.projected()
     assert AwaitingDimension.TRACKING not in projected.awaiting
     # And `LABEL` with it: the label was already on the RMA, and it now has the
-    # one package it can honestly be attributed to.
+    # one package it can honestly be attributed to. What is left is the goods
+    # themselves: a tracking number says the parcel is on its way, not that it
+    # arrived, and `RECEIPT` waits for the warehouse (or a delivered scan) to
+    # say so.
     assert AwaitingDimension.LABEL not in projected.awaiting
-    assert projected.awaiting == ()
-    assert projected.businessComplete is True
+    assert projected.awaiting == (AwaitingDimension.RECEIPT,)
+    assert projected.businessComplete is False
 
 
 @pytest.mark.asyncio

@@ -928,6 +928,16 @@ class ShipmentStatusConfiguration(StrictConfigModel):
     #: its dropdown to this list; the API refuses anything else unless the
     #: caller sets the audited override flag.
     allowed_next: tuple[NonBlank, ...] = ()
+    #: What this rung means to the case projection, in the closed vocabulary
+    #: `ShipmentStatus` declares: AWAITING_HANDOFF, IN_TRANSIT, DELIVERED,
+    #: RECEIVED or CANCELLED. Optional and per rung, because the ladder is the
+    #: operator's and the projection's vocabulary is the platform's: a rung
+    #: with no mapping leaves the parcel's projected status as it was, which
+    #: is the honest answer for a rung the operator has not placed. Validated
+    #: at load time so a typo is a release error, not a parcel that never moves.
+    projection_status: (
+        Literal["AWAITING_HANDOFF", "IN_TRANSIT", "DELIVERED", "RECEIVED", "CANCELLED"] | None
+    ) = None
 
 
 class ShipmentTrackingConfiguration(StrictConfigModel):
@@ -952,6 +962,30 @@ class ShipmentTrackingConfiguration(StrictConfigModel):
     freight_methods: tuple[NonBlank, ...] = ()
     collection: NonBlank = "shipmentInfo"
     fields: dict[str, NonBlank] = Field(default_factory=dict)
+    #: The shape the *graph* reads this collection in, written beside the
+    #: console's own fields. The active schema's `shipment` entity reads the
+    #: carrier feed's nested paths (`shipmentInfoEventData.trkNum`, ...), and
+    #: a return shipment the console seeded under its own flat names sat in the
+    #: same collection invisible to the targeted sync -- so every carrier event
+    #: recorded, and the case's reading of the parcel stayed AWAITING_HANDOFF
+    #: with the graph reporting the shipment absent. Each entry maps a dotted
+    #: physical path to the logical field whose value it mirrors; `source_
+    #: constants` carries literals the feed's shape wants and the console has
+    #: no field for. Empty leaves the document as it always was.
+    source_mirror: dict[NonBlank, NonBlank] = Field(default_factory=dict)
+    source_constants: dict[NonBlank, NonBlank] = Field(default_factory=dict)
+
+    def projection_status_for(self, code: str | None) -> str | None:
+        """The projection's word for a ladder rung, or `None` for a rung the
+        release has not placed. Case-insensitive on the code, because the
+        console stores codes as declared and a carrier feed may not."""
+        if code is None:
+            return None
+        wanted = code.strip().lower()
+        for status in self.statuses:
+            if status.code.lower() == wanted:
+                return status.projection_status
+        return None
 
     @model_validator(mode="after")
     def validate_catalog(self) -> ShipmentTrackingConfiguration:

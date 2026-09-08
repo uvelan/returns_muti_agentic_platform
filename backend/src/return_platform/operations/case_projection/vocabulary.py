@@ -138,8 +138,11 @@ class AwaitingDimension(StrEnum):
       verification dimensions. These say the completion *profile* cannot be
       computed yet, so no requirement set has been consulted at all.
     * **Required** -- `RMA`, `LABEL`, `TRACKING`, `BOL`, `PICKUP`,
-      `RETURN_LOCATION`. These come out of the return-method requirement table
-      and are the only members a table row may name.
+      `RETURN_LOCATION`, `RECEIPT`. These come out of the return-method
+      requirement table and are the only members a table row may name.
+      `RECEIPT` is the goods arriving: a physical return is not finished when
+      its paperwork is, and a case that closed on RMA, label and tracking alone
+      reported itself complete with the parcel still on the counter.
 
     Settlement is deliberately absent. It never enters `awaiting` and never
     blocks completion (plan sect. 13, Phase 9): a case whose settlement is
@@ -169,6 +172,10 @@ class AwaitingDimension(StrEnum):
     BOL = "BOL"
     PICKUP = "PICKUP"
     RETURN_LOCATION = "RETURN_LOCATION"
+    #: The goods were received -- the warehouse booked them in, or a package
+    #: reads delivered or received. Satisfied by an arrival, never by a bay
+    #: recommendation, for the reason `WarehouseProjection.has_receipt` gives.
+    RECEIPT = "RECEIPT"
 
 
 class ShipmentStatus(StrEnum):

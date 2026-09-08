@@ -10,6 +10,7 @@ type SupportSection = (typeof SUPPORT_SECTIONS)[number];
 import { Bot, Inbox, PackageCheck, Plus, Send, Trash2, Truck, UserRound } from "lucide-react";
 
 import {
+  CASE_POLL_INTERVAL_MS,
   bayRecommendation,
   casesApi,
   hasBayResult,
@@ -86,20 +87,35 @@ export function SupportConsolePage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
 
+  /**
+   * The queue is a live surface, not a report. Requests arrive on the case's
+   * clock -- an associate approving a message in the copilot puts a work item
+   * here a second later -- and a list read once on mount showed it only after
+   * somebody reloaded the tab. Polled on the same cadence as the case
+   * projection, and re-read on focus, so a desk that tabs back sees what
+   * arrived while it was away. The detail and the thread poll too: Support's
+   * own reply or the agent's follow-up land on them the same way.
+   */
   const workItems = useQuery({
     queryKey: ["support", "work-items", queue],
     queryFn: () => supportApi.listWorkItems(queue),
     enabled: can("returns.session.read"),
+    refetchInterval: CASE_POLL_INTERVAL_MS,
+    refetchOnWindowFocus: true,
   });
 
   const detail = useQuery({
     queryKey: ["support", "work-item", selected],
     queryFn: selected === null ? skipToken : () => supportApi.readWorkItem(selected),
+    refetchInterval: CASE_POLL_INTERVAL_MS,
+    refetchOnWindowFocus: true,
   });
 
   const messages = useQuery({
     queryKey: ["support", "messages", selected],
     queryFn: selected === null ? skipToken : () => supportApi.listMessages(selected),
+    refetchInterval: CASE_POLL_INTERVAL_MS,
+    refetchOnWindowFocus: true,
   });
 
   const caseId = detail.data?.caseId ?? null;
