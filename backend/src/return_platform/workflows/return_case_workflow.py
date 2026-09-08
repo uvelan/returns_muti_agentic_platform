@@ -48,7 +48,7 @@ from __future__ import annotations
 
 import contextlib
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any, Final
 
@@ -2913,7 +2913,12 @@ class ReturnCaseWorkflow:
         started = self._state.lifetime_start_iso
         if started is None or timings.absolute_lifetime_seconds <= 0:
             return False
-        elapsed = workflow.now() - datetime.fromisoformat(started)
+        started_at = datetime.fromisoformat(started)
+        if started_at.tzinfo is None:
+            # A relaunched case carries `createdAt` as Mongo handed it back,
+            # which may be naive; the platform's clock is UTC, so read it so.
+            started_at = started_at.replace(tzinfo=UTC)
+        elapsed = workflow.now() - started_at
         return elapsed >= timedelta(seconds=timings.absolute_lifetime_seconds)
 
     async def _await_support(self, timings: ReturnCaseTimings, deadline: datetime) -> _Waited:

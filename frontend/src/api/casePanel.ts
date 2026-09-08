@@ -69,6 +69,15 @@ export function isRecoverable(review: ReviewPanelView): boolean {
   return review.state === "DELIVERY_FAILED" || review.state === "HELD_FOR_OPERATIONS";
 }
 
+/**
+ * A review the gate set aside without sending. Distinct from a failed
+ * delivery on purpose: nothing was tried, so "try again" is the wrong offer.
+ * The way back is to reopen it for review.
+ */
+export function isHeld(review: ReviewPanelView): boolean {
+  return review.state === "HELD_FOR_OPERATIONS";
+}
+
 /* -------------------------------------------------------------------------
  * The ETag cache
  * ---------------------------------------------------------------------- */
@@ -338,6 +347,17 @@ export const casePanelApi = {
     reason = "",
   ): Promise<ReviewActionResult> {
     return post<ReviewActionResult>(reviewPath(caseId, reviewId, "/recovery/retry"), { reason });
+  },
+
+  /**
+   * `HELD_FOR_OPERATIONS -> OPEN`. Nothing was sent; the draft goes back in
+   * front of the reviewer as they left it, and the case gets its execution
+   * back so the approval has something listening for it.
+   */
+  reopen(caseId: string, reviewId: string): Promise<ReviewActionResult> {
+    return post<ReviewActionResult>(reviewPath(caseId, reviewId, "/recovery/reopen"), {
+      reason: "",
+    });
   },
 
   abandon(caseId: string, reviewId: string, reason: string): Promise<ReviewActionResult> {

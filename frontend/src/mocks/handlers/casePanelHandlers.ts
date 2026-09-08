@@ -545,6 +545,16 @@ export const casePanelHandlers = [
     );
   }),
 
+  http.post("/api/v1/cases/:caseId/reviews/:reviewId/recovery/reopen", async ({ params }) => {
+    await delay(30);
+    const review = findReview(String(params.reviewId));
+    if (!review) return notFound(`Review ${String(params.reviewId)} does not exist.`);
+    review.state = "OPEN";
+    review.recovery_status = null;
+    review.hold_reason = null;
+    return HttpResponse.json(envelope(actionResult(review, null), "reopen"));
+  }),
+
   http.post("/api/v1/cases/:caseId/reviews/:reviewId/recovery/abandon", async ({ params, request }) => {
     await delay(30);
     const review = findReview(String(params.reviewId));

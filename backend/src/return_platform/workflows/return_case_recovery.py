@@ -1203,6 +1203,10 @@ def _resume_from_case(case: dict[str, Any]) -> CaseWorkflowResume:
         resumed_status = status.value
 
     created_at = case.get("createdAt")
+    if isinstance(created_at, datetime) and created_at.tzinfo is None:
+        # Mongo may hand `createdAt` back naive; the workflow subtracts it from
+        # an aware UTC clock, so the offset has to travel with the value.
+        created_at = created_at.replace(tzinfo=UTC)
     lifetime_start = created_at.isoformat() if isinstance(created_at, datetime) else None
 
     return CaseWorkflowResume(

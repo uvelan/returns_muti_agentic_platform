@@ -13,6 +13,7 @@ import {
 import {
   asReviewConflict,
   casePanelApi,
+  isHeld,
   isRecoverable,
   type ReviewPanelView,
 } from "../../../../api/casePanel";
@@ -27,9 +28,17 @@ import { applyEdits, fieldKey, useDraftEditor, type DraftSection } from "./useDr
  * **Everything a reviewer can do to a draft is here, and everything they can be
  * told about it.** The states are the aggregate's, not this file's invention:
  * `OPEN` is the only editable one, `APPROVING` is "approved by X, sending",
- * `DELIVERY_FAILED` and `HELD_FOR_OPERATIONS` offer recovery, and `SENT`,
- * `CANCELLED` and `ABANDONED` are terminal and still visible -- a review an
- * associate can no longer act on is frequently the one they most need to see.
+ * `DELIVERY_FAILED` offers a retry, `HELD_FOR_OPERATIONS` offers a reopen, and
+ * `SENT`, `CANCELLED` and `ABANDONED` are terminal and still visible -- a
+ * review an associate can no longer act on is frequently the one they most
+ * need to see.
+ *
+ * **Held is not failed.** A held review is one the gate set aside *without
+ * sending* -- the review window closed with nobody's approval on it, or the
+ * gate closed over it for another reason. Nothing was tried, so "try sending
+ * again" would tell the associate a send happened that never did, and the
+ * retry route refuses the state anyway. The way back is to reopen it for
+ * review, which is what the held bar offers.
  *
  * ---
  *
@@ -59,7 +68,7 @@ const STATE_WORDS: Record<string, string> = {
   APPROVING: "Sending",
   SENT: "Sent to Support",
   DELIVERY_FAILED: "Could not be sent",
-  HELD_FOR_OPERATIONS: "Held for operations",
+  HELD_FOR_OPERATIONS: "Set aside, not sent",
   CANCELLED: "Cancelled",
   ABANDONED: "Abandoned",
 };
@@ -73,6 +82,28 @@ const STATE_ICONS: Record<string, typeof Send> = {
   CANCELLED: CircleSlash,
   ABANDONED: CircleSlash,
 };
+
+/**
+ * Why the gate set a review aside, in the associate's words. The reasons are
+ * the aggregate's `TemplateReviewParkReason`; an unfamiliar one is shown as
+ * it came rather than guessed at.
+ */
+function holdExplanation(reason: string | null | undefined): string {
+  switch (reason) {
+    case "TEMPLATE_REVIEW_UNANSWERED":
+      return "Nobody approved it before the review window closed, so the platform set it aside for operations.";
+    case "TEMPLATE_REVIEW_CANCELLED":
+      return "The return stopped waiting on it before it was approved, so the platform set it aside for operations.";
+    case "TEMPLATE_REVIEW_GUARD_BLOCKED":
+      return "It could not go out as approved, so the platform set it aside for operations.";
+    case null:
+    case undefined:
+    case "":
+      return "The platform set it aside for operations before it was approved.";
+    default:
+      return `The platform set it aside for operations (${reason}).`;
+  }
+}
 
 function stateClass(state: string): string {
   const scale = COPILOT_TOKENS.review.state as Record<string, string>;
@@ -226,6 +257,17 @@ export function TemplateReviewSection({ caseId, review, onChanged }: Props) {
         <p className={COPILOT_TOKENS.typography.caption}>
           Approved by {review.approved_by}. Sending to Support now.
         </p>
+      ) : null}
+
+      {isHeld(review) ? (
+        <div className={COPILOT_TOKENS.review.gap}>
+          <p className="font-semibold">This message has not been sent to Support</p>
+          <p className="mt-1">{holdExplanation(review.hold_reason)}</p>
+          <p className="mt-1">
+            Reopen it to review and send it as you left it, or discard it if Support no longer
+            needs to be asked.
+          </p>
+        </div>
       ) : null}
 
       {gaps.length > 0 ? (
@@ -461,8 +503,11 @@ export function TemplateReviewSection({ caseId, review, onChanged }: Props) {
           onRetry={() => {
             void act(() => casePanelApi.retryDelivery(caseId, review.review_id));
           }}
+          onReopen={() => {
+            void act(() => casePanelApi.reopen(caseId, review.review_id));
+          }}
           onAbandon={() => {
-            setConfirming("abandon");
+            setConfirming(isHeld(review) ? "discard" : "abandon");
           }}
         />
       ) : (
@@ -490,7 +535,9 @@ export function TemplateReviewSection({ caseId, review, onChanged }: Props) {
               casePanelApi.abandon(
                 caseId,
                 review.review_id,
-                "Abandoned by the branch associate after a failed delivery.",
+                confirming === "discard"
+                  ? "Discarded by the branch associate after the review was set aside unsent."
+                  : "Abandoned by the branch associate after a failed delivery.",
               ),
             );
           }}
@@ -527,6 +574,7 @@ type ActionProps = {
   readonly onCancel: () => void;
   readonly onRedraft: () => void;
   readonly onRetry: () => void;
+  readonly onReopen: () => void;
   readonly onAbandon: () => void;
 };
 
@@ -541,6 +589,7 @@ function ReviewActions({
   onCancel,
   onRedraft,
   onRetry,
+  onReopen,
   onAbandon,
 }: ActionProps) {
   const sendRef = useRef<HTMLButtonElement | null>(null);
@@ -550,8 +599,35 @@ function ReviewActions({
   useEffect(() => {
     if (focusOnMount === "send") sendRef.current?.focus();
     if (focusOnMount === "cancel") cancelRef.current?.focus();
-    if (focusOnMount === "abandon") abandonRef.current?.focus();
+    if (focusOnMount === "abandon" || focusOnMount === "discard") abandonRef.current?.focus();
   }, [focusOnMount]);
+
+  if (isHeld(review)) {
+    return (
+      <div className={COPILOT_TOKENS.review.action.bar}>
+        <button
+          type="button"
+          className={COPILOT_TOKENS.review.action.primary}
+          aria-disabled={busy}
+          onClick={() => {
+            if (!busy) onReopen();
+          }}
+        >
+          <PenLine aria-hidden="true" className="size-3.5" />
+          Reopen for review
+        </button>
+        <button
+          ref={abandonRef}
+          type="button"
+          className={COPILOT_TOKENS.review.action.danger}
+          aria-disabled={busy}
+          onClick={onAbandon}
+        >
+          Discard this message
+        </button>
+      </div>
+    );
+  }
 
   if (isRecoverable(review)) {
     return (
@@ -641,7 +717,7 @@ function ReviewActions({
  * Confirming the three that cannot be taken back
  * ---------------------------------------------------------------------- */
 
-type ConfirmKind = "send" | "cancel" | "abandon";
+type ConfirmKind = "send" | "cancel" | "abandon" | "discard";
 
 /**
  * What each confirmation says, and the shape is the same every time: **what
@@ -674,6 +750,12 @@ const CONFIRMATIONS: Record<
     consequence:
       "The platform will make no further attempts. Your name and your reason are recorded against the decision.",
     confirm: "Stop trying",
+  },
+  discard: {
+    question: "Discard this message?",
+    consequence:
+      "It will never be sent to Support, and this return will need a fresh draft if Support still has to be asked. Your name is recorded against the decision.",
+    confirm: "Discard it",
   },
 };
 

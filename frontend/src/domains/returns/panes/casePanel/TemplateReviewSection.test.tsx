@@ -325,3 +325,111 @@ describe("clearing it", () => {
     expect(screen.queryByText("Settle the other edit first.")).toBeNull();
   });
 });
+
+/* -------------------------------------------------------------------------
+ * A review the gate set aside unsent
+ * ---------------------------------------------------------------------- */
+
+/**
+ * `HELD_FOR_OPERATIONS` is what the gate leaves behind when the review window
+ * closes with nobody's approval on it. **Nothing was sent.** Before this file
+ * covered it, the section rendered a held review with the same bar as a failed
+ * delivery -- "Try sending again" / "Stop trying to send" -- so an associate
+ * who had never pressed Send was told a send had failed, and the retry it
+ * offered was one the route refuses from that state.
+ */
+function heldPanel() {
+  const base = panel(false);
+  return {
+    ...base,
+    data: {
+      ...base.data,
+      execution: {
+        ...base.data.execution,
+        case_status: "AWAITING_SUPPORT",
+        parked_reason: "TEMPLATE_REVIEW_UNANSWERED",
+      },
+      reviews: [
+        {
+          ...review(false),
+          state: "HELD_FOR_OPERATIONS",
+          recovery_status: "HELD_FOR_OPERATIONS",
+          hold_reason: "TEMPLATE_REVIEW_UNANSWERED",
+        },
+      ],
+    },
+  };
+}
+
+describe("a review the gate set aside unsent", () => {
+  it("says it was not sent and why, and does not offer to send it again", async () => {
+    fixtureServer.use(
+      http.get("/api/v1/cases/:caseId/panel", () =>
+        HttpResponse.json(heldPanel(), {
+          headers: { ETag: '"held"', "Cache-Control": "private, no-cache" },
+        }),
+      ),
+    );
+
+    renderPanel();
+
+    expect(await screen.findByText("This message has not been sent to Support")).toBeVisible();
+    expect(screen.getByText(/Nobody approved it before the review window closed/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Reopen for review" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Discard this message" })).toBeVisible();
+    // The failed-delivery bar must not appear: it describes an attempt that never happened.
+    expect(screen.queryByRole("button", { name: "Try sending again" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Stop trying to send" })).toBeNull();
+  });
+
+  it("reopens through the reopen route, never the retry one, and the panel is re-read", async () => {
+    let reopened = false;
+    const calls: string[] = [];
+    fixtureServer.use(
+      http.get("/api/v1/cases/:caseId/panel", () =>
+        HttpResponse.json(reopened ? panel(false) : heldPanel(), {
+          headers: {
+            ETag: reopened ? '"open"' : '"held"',
+            "Cache-Control": "private, no-cache",
+          },
+        }),
+      ),
+      http.post("/api/v1/cases/:caseId/reviews/:reviewId/recovery/retry", ({ request }) => {
+        calls.push(request.url);
+        return HttpResponse.json({ detail: { code: "ReviewStateError" } }, { status: 409 });
+      }),
+      http.post("/api/v1/cases/:caseId/reviews/:reviewId/recovery/reopen", ({ request }) => {
+        reopened = true;
+        calls.push(request.url);
+        return HttpResponse.json({
+          data: {
+            review_id: REVIEW,
+            state: "OPEN",
+            draft_version: 1,
+            canonical_edit_version: 0,
+            signal_id: null,
+            duplicate: false,
+          },
+          meta: {
+            schema_version: "1.0",
+            request_id: "mock-reopen",
+            generated_at: new Date().toISOString(),
+            freshness: "LIVE",
+            partial: false,
+            warnings: [],
+          },
+        });
+      }),
+    );
+
+    renderPanel();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Reopen for review" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Awaiting your review")).toBeVisible();
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatch(/\/recovery\/reopen$/);
+  });
+});

@@ -124,6 +124,13 @@ const ROUTES: readonly Route[] = [
   },
   {
     method: "post",
+    handler: "/api/v1/cases/:caseId/reviews/:reviewId/recovery/reopen",
+    contract: "/api/v1/cases/{case_id}/reviews/{review_id}/recovery/reopen",
+    url: `/api/v1/cases/${CASE}/reviews/${REVIEW}/recovery/reopen`,
+    body: { reason: "" },
+  },
+  {
+    method: "post",
     handler: "/api/v1/cases/:caseId/reviews/:reviewId/recovery/abandon",
     contract: "/api/v1/cases/{case_id}/reviews/{review_id}/recovery/abandon",
     url: `/api/v1/cases/${CASE}/reviews/${REVIEW}/recovery/abandon`,

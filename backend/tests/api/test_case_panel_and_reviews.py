@@ -191,7 +191,7 @@ class _Temporal:
         status = self._status
 
         class _Handle:
-            async def query(self, _name: str) -> Any:
+            async def query(self, _name: str, **_kwargs: Any) -> Any:
                 raise RPCError(f"{workflow_id} is not answering", status, b"")
 
         return _Handle()
@@ -226,7 +226,7 @@ class _LiveExecution:
         state = self.state
 
         class _Handle:
-            async def query(self, _name: str) -> Any:
+            async def query(self, _name: str, **_kwargs: Any) -> Any:
                 return state
 
         return _Handle()
@@ -315,6 +315,65 @@ def test_the_panel_degrades_the_execution_rather_than_failing(
     assert view.timers.template_review_deadline_iso is None, (
         "a deadline the panel invented would be a countdown to nothing"
     )
+
+
+class _LiveExecutionAnsweringInDicts:
+    """A workflow host whose query answers arrive as plain dicts.
+
+    This is what the Temporal SDK hands back when a query is made without a
+    result type, and it is the shape the panel read with `getattr` for long
+    enough that every case showed no status, no work item and no review
+    deadline while the query itself succeeded. The reader must serve both.
+    """
+
+    def __init__(self, state: dict[str, Any]) -> None:
+        self.state = state
+
+    def get_workflow_handle(self, _workflow_id: str) -> Any:
+        state = self.state
+
+        class _Handle:
+            async def query(self, _name: str, **_kwargs: Any) -> Any:
+                return state
+
+        return _Handle()
+
+
+def test_the_panel_reads_the_execution_whatever_shape_the_query_answers_in(
+    store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
+) -> None:
+    """The status, the work item and the review deadline reach the panel."""
+    deadline = "2026-09-08T13:18:12.382195+00:00"
+    answered = {
+        "status": "AWAITING_TEMPLATE_REVIEW",
+        "work_item_id": "work-item-1",
+        "awaiting": ["RETURN_METHOD"],
+        "business_complete": False,
+        "parked_reason": None,
+        "template_review_deadline_iso": deadline,
+        "template_review_reminders_sent": 2,
+        "template_reviews": [[REQUEST_ID, REVIEW_ID]],
+    }
+    for host in (
+        _LiveExecutionAnsweringInDicts(answered),
+        _LiveExecution(holding=((REQUEST_ID, REVIEW_ID),)),
+    ):
+        with _client(mongo, test_settings, temporal=host) as client:
+            view = CasePanelView.model_validate(
+                client.get(f"/api/v1/cases/{CASE_ID}/panel").json()["data"]
+            )
+        assert view.execution.status == "ok"
+        assert view.execution.case_status == "AWAITING_TEMPLATE_REVIEW"
+
+    # The dict-shaped answer specifically, field by field.
+    with _client(mongo, test_settings, temporal=_LiveExecutionAnsweringInDicts(answered)) as client:
+        view = CasePanelView.model_validate(
+            client.get(f"/api/v1/cases/{CASE_ID}/panel").json()["data"]
+        )
+    assert view.execution.work_item_id == "work-item-1"
+    assert tuple(view.execution.awaiting) == ("RETURN_METHOD",)
+    assert view.timers.template_review_deadline_iso == deadline
+    assert view.timers.template_review_reminders_sent == 2
 
 
 def test_the_cache_headers_are_the_ones_the_contract_names(
@@ -1733,6 +1792,51 @@ async def test_a_parked_review_is_refused_definitively_even_when_the_host_is_dow
 
     after = await store.get_review(case_id=CASE_ID, review_id=REVIEW_ID)
     assert ReviewState(str(after["state"])) is ReviewState.HELD_FOR_OPERATIONS
+
+
+@pytest.mark.asyncio
+async def test_a_held_review_reopens_to_open_and_is_reviewable_again(
+    store: ReviewAggregateStore, mongo: FakeClient, test_settings: Settings
+) -> None:
+    """The exit the retry refusal names, existing.
+
+    A held review was never sent: the window closed with nobody's approval on
+    it. Reopening puts it back in front of the reviewer as they left it --
+    `OPEN`, versions intact, hold reason cleared -- and the panel says so. The
+    case's execution is recovered best-effort on the way; with no workflow host
+    wired here the reopen still commits, because the review's state is right
+    either way and an execution can be supplied afterwards.
+    """
+    await _failed_delivery(store, mongo, test_settings)
+    parked = await store.hold_for_operations(
+        case_id=CASE_ID,
+        review_id=REVIEW_ID,
+        reason=TemplateReviewParkReason.TEMPLATE_REVIEW_UNANSWERED,
+    )
+    assert ReviewState(str(parked["state"])) is ReviewState.HELD_FOR_OPERATIONS
+    before_version = int(parked["draftVersion"])
+
+    with _client(mongo, test_settings) as client:
+        answer = client.post(
+            f"/api/v1/cases/{CASE_ID}/reviews/{REVIEW_ID}/recovery/reopen",
+            json={"reason": ""},
+        )
+        view = CasePanelView.model_validate(
+            client.get(f"/api/v1/cases/{CASE_ID}/panel").json()["data"]
+        )
+        # Reopening twice is a state error, not a second reopen.
+        again = client.post(
+            f"/api/v1/cases/{CASE_ID}/reviews/{REVIEW_ID}/recovery/reopen",
+            json={"reason": ""},
+        )
+
+    assert answer.status_code == 200, answer.text
+    assert answer.json()["data"]["state"] == ReviewState.OPEN.value
+    assert answer.json()["data"]["draft_version"] == before_version
+    assert view.reviews[0].state == ReviewState.OPEN.value
+    assert view.reviews[0].hold_reason is None
+    assert view.reviews[0].recovery_status is None
+    assert again.status_code == 409
 
 
 @pytest.mark.asyncio

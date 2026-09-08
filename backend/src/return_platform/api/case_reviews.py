@@ -46,6 +46,7 @@ from typing import Annotated, Any, Final, cast
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from return_platform.api.case_recovery_access import recover_after_late_event
 from return_platform.api.execution_liveness import (
     ExecutionAnswer,
     classify_execution_failure,
@@ -86,7 +87,7 @@ from return_platform.security.capabilities import (
 )
 from return_platform.security.principal import Principal
 from return_platform.shared.contracts import APIResponse, ResponseMeta
-from return_platform.workflows.return_case_workflow import return_case_workflow_id
+from return_platform.workflows.return_case_workflow import ReturnCaseState, return_case_workflow_id
 
 logger = logging.getLogger("return_platform.api.case_reviews")
 
@@ -192,19 +193,19 @@ async def case_execution_state(
     if temporal is None:
         return None
     handle = temporal.get_workflow_handle(return_case_workflow_id(case_id))
-    state = await handle.query("execution_state")
+    state = await handle.query("execution_state", result_type=ReturnCaseState)
     return (
         PanelExecutionView(
             case_status=_attribute(state, "status"),
             work_item_id=_attribute(state, "work_item_id"),
-            awaiting=tuple(getattr(state, "awaiting", ()) or ()),
-            business_complete=bool(getattr(state, "business_complete", False)),
+            awaiting=tuple(_field(state, "awaiting") or ()),
+            business_complete=bool(_field(state, "business_complete")),
             parked_reason=_attribute(state, "parked_reason"),
         ),
         PanelTimersView(
             template_review_deadline_iso=_attribute(state, "template_review_deadline_iso"),
             template_review_reminders_sent=int(
-                getattr(state, "template_review_reminders_sent", 0) or 0
+                _field(state, "template_review_reminders_sent") or 0
             ),
         ),
     )
@@ -235,7 +236,7 @@ async def execution_holds_review(request: Request, case_id: str, review_id: str)
         return None
     try:
         handle = temporal.get_workflow_handle(return_case_workflow_id(case_id))
-        state = await handle.query("execution_state")
+        state = await handle.query("execution_state", result_type=ReturnCaseState)
     except Exception as error:
         answer = classify_execution_failure(error)
         if answer is None:
@@ -248,12 +249,28 @@ async def execution_holds_review(request: Request, case_id: str, review_id: str)
         # in thirty seconds. Collapsing it into "cannot tell" is what told an
         # operator to come back later about a workflow that does not exist.
         return False if answer is ExecutionAnswer.ABSENT else None
-    held = getattr(state, "template_reviews", ()) or ()
+    held = _field(state, "template_reviews") or ()
     return any(str(pair[1]) == review_id for pair in held if len(tuple(pair)) == 2)
 
 
+def _field(state: Any, name: str) -> Any:
+    """One field of the query's answer, whatever shape it arrived in.
+
+    `result_type=ReturnCaseState` asks the SDK for the dataclass, and the test
+    doubles answer with one. **Without a result type the SDK hands back a
+    plain `dict`**, and this surface read it with `getattr` for long enough
+    that every case's panel showed no status, no work item and no review
+    deadline while the query itself succeeded -- the associate was never told
+    the review window was closing. Reading both shapes is what stops the
+    panel going quietly blank again if the type hint is ever lost.
+    """
+    if isinstance(state, dict):
+        return state.get(name)
+    return getattr(state, name, None)
+
+
 def _attribute(state: Any, name: str) -> str | None:
-    value = getattr(state, name, None)
+    value = _field(state, name)
     if value is None:
         return None
     text = str(value).strip()
@@ -1143,6 +1160,68 @@ async def retry_review_delivery(
     except _CONFLICTS as error:
         raise _conflict(error) from None
     return APIResponse(data=_result(review, receipt), meta=_meta(request))
+
+
+@router.post(
+    "/{case_id}/reviews/{review_id}/recovery/reopen",
+    responses=_REFUSALS,
+    response_model=APIResponse[ReviewActionResult],
+)
+async def reopen_held_review(
+    case_id: str,
+    review_id: str,
+    request: Request,
+    body: Annotated[RecoveryRequest, Body()],
+    _actor: str = Depends(require_capability(RETURNS_REVIEW_RECOVERY)),
+) -> APIResponse[ReviewActionResult]:
+    """`HELD_FOR_OPERATIONS -> OPEN`, and the case gets its execution back.
+
+    A held review is one nobody answered before the gate closed (or one the
+    gate closed over for another reason). **Nothing was sent**: the draft is
+    exactly as the reviewer left it, versions intact, and reopening puts it
+    back in front of them. This is the exit `_RETRY_REFUSALS_BY_STATE` names
+    for a held review, and until now it was named without existing.
+
+    The second half is what makes the first useful. The gate that held this
+    review has, in the ordinary case, parked the case and closed its
+    execution, so an approval on the reopened review would CAS it to
+    `APPROVING` with nothing listening -- the trap AMENDMENT-5's rule 2 was
+    written to close. So the reopen drives recovery the way a late return
+    detail does: classify, relaunch only when the execution is closed and the
+    case is not terminal, refuse otherwise. The relaunched run re-enters the
+    review gate, finds the live `OPEN` review (`create_review` is idempotent
+    over non-terminal attempts) and waits for the approval it was originally
+    waiting for. A live execution is left alone -- it is already holding the
+    review.
+
+    Recovery being unreachable does not undo the reopen. The review is
+    correctly `OPEN` either way; what is missing is an execution, and the
+    operator's relaunch route or the reconciliation sweep supplies one.
+    """
+    del body
+    await require_case_access(request, case_id)
+    dependencies = panel_dependencies(request)
+    try:
+        review = await dependencies.reviews.resume_from_hold(
+            case_id=case_id,
+            review_id=review_id,
+            actor_id=_actor_of(request),
+        )
+    except ReviewNotFoundError as error:
+        raise _missing(error) from None
+    except _CONFLICTS as error:
+        raise _conflict(error) from None
+
+    action = await recover_after_late_event(request, case_id=case_id, event="review_reopened")
+    logger.info(
+        "review_reopened_from_hold",
+        extra={
+            "case_id": case_id,
+            "review_id": review_id,
+            "recovery_action": None if action is None else action.value,
+        },
+    )
+    return APIResponse(data=_result(review), meta=_meta(request))
 
 
 @router.post(
