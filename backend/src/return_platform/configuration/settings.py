@@ -298,6 +298,24 @@ class Settings(BaseSettings):
     #: exceed it -- so this bounds the runaway rather than pinning a number.
     #: `None` sends nothing and restores the old unbounded behaviour.
     google_thinking_budget: int | None = Field(default=2048, ge=0, le=24576)
+    #: Whether Gemini is sent the task's JSON schema as `responseSchema`, which
+    #: turns on constrained decoding. Off by default, on two live observations
+    #: from 2026-09-09 with the order agent's prompt, where the schema is also
+    #: spelled out in the system prompt:
+    #:
+    #:   - constrained decoding cannot emit a key the schema does not list, and
+    #:     `search_intent` carries its identifying signals as *extra* keys by
+    #:     design (`extra="allow"`), so every ORDER_SEARCH came back with no
+    #:     order number, name or product in it -- valid JSON, empty search;
+    #:   - one call in three degenerated into a single identifier repeated until
+    #:     `maxOutputTokens`, 183 s at the model's own ceiling, MAX_TOKENS.
+    #:
+    #: Without it, six of six calls answered in about 3 s, validated, carried
+    #: the order number, and thought first (`thoughtsTokenCount` 68-76, against
+    #: none at all under constrained decoding). `responseMimeType` stays
+    #: `application/json` either way; the schema in the prompt is what the
+    #: model follows.
+    google_response_schema: bool = False
 
     nvidia_api_keys: tuple[SecretStr, ...] = ()
     nvidia_lightweight_models: tuple[str, ...] = ()

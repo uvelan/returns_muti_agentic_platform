@@ -637,6 +637,18 @@ def make_decide_node(deps: GraphDependencies) -> Any:
     return decide
 
 
+#: What the model is told when it confirms an order the turn has already
+#: confirmed. Written as an instruction it can follow on the next attempt,
+#: because that attempt is the only thing a correction changes.
+_ALREADY_CONFIRMED_MESSAGE = (
+    "Order {order_reference} is already confirmed on this turn: case {case_id} exists and "
+    "contextJson.case_id names it. Do not send CONFIRM_ORDER again. Either CLARIFY under "
+    "return-context-collection, asking why the item is coming back, its condition and the "
+    "quantity, with status NEEDS_CLARIFICATION and a non-empty requested_input, or RESPOND "
+    "with status COMPLETE if captured_facts already hold those details."
+)
+
+
 def make_validate_action_node(deps: GraphDependencies) -> Any:
     async def validate_action(
         state: dict[str, Any], runtime: Runtime[TurnRuntimeContext]
@@ -672,6 +684,41 @@ def make_validate_action_node(deps: GraphDependencies) -> Any:
                     "capability_validated": False,
                 }
             raise OrderAgentFailure(exc.code, exc.message, retryable=False) from exc
+        if state.get("case_id") and action.action_type == ActionType.CONFIRM_ORDER:
+            # `confirm_order` hands control back to `decide` so the agent can tell
+            # the associate what it did and ask what is coming back. Left to
+            # itself a model answers that follow-up with the same CONFIRM_ORDER
+            # again -- fourteen times in a row on 2026-09-09, each one accepted
+            # as an idempotent repeat, until the step ceiling and the provider's
+            # rate limit ended it. The confirmation is done; saying so is a
+            # correction the model can act on, not a silent re-run.
+            if correction_attempts >= policy.max_correction_attempts:
+                raise OrderAgentFailure(
+                    "ORDER_AGENT_REPEATED_CONFIRMATION",
+                    "The order was already confirmed on this turn and the model kept "
+                    "confirming it instead of asking what is being returned.",
+                    retryable=True,
+                )
+            context = await _build_context(deps, state, guard_context)
+            invocation = await _invoke_correction(
+                deps,
+                context=context,
+                invalid_action=action,
+                validation_error=_ALREADY_CONFIRMED_MESSAGE.format(
+                    order_reference=action.order_confirmation.order_reference
+                    if action.order_confirmation is not None
+                    else "the order",
+                    case_id=state["case_id"],
+                ),
+            )
+            return {
+                "action": invocation.action.model_dump(mode="json"),
+                "last_provider": invocation.provider,
+                "last_model": invocation.model,
+                "correction_attempts": correction_attempts + 1,
+                "reasoning_steps_used": state.get("reasoning_steps_used", 0) + 1,
+                "capability_validated": False,
+            }
         captured, unknown = _capture_observed_facts(deps, state, action)
         await _record_on_the_case(deps, state, captured)
         if unknown:

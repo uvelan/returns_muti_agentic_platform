@@ -663,3 +663,97 @@ async def test_order_search_completes_and_caches_an_empty_result(
     assert final_state["final_response"]["status"] == "DISCOVERY_COMPLETE"
     assert final_state["order_search_cache"]["totalFound"] == 0
     assert len(final_state["evidence_refs"]) == 1
+
+
+class ConfirmAgainThenRespondModel:
+    """A model that, told the order is already confirmed, confirms it again --
+    the loop observed live on 2026-09-09 -- until the correction tells it not to."""
+
+    def __init__(self) -> None:
+        self.decide_calls = 0
+        self.correction_calls = 0
+        self.correction_errors: list[str] = []
+
+    @staticmethod
+    def _confirm() -> AgentAction:
+        from return_platform.dynamic_knowledge.order_agent.contracts import OrderConfirmation
+
+        return AgentAction(
+            business_capability="order-discovery",
+            action_type=ActionType.CONFIRM_ORDER,
+            decision_summary="Confirming the order the associate named.",
+            order_confirmation=OrderConfirmation(
+                candidate_set_id="set-1",
+                candidate_id="A-1",
+                order_reference="A-1",
+                order_line_references=["1"],
+            ),
+        )
+
+    async def decide(self, context: AgentTurnContext) -> ModelInvocationResult:
+        del context
+        self.decide_calls += 1
+        return ModelInvocationResult(
+            action=self._confirm(),
+            provider="provider-a",
+            model="standard-model",
+            prompt_tokens=5,
+            completion_tokens=5,
+        )
+
+    async def correct_action(self, **kwargs: Any) -> ModelInvocationResult:
+        self.correction_calls += 1
+        self.correction_errors.append(str(kwargs.get("validation_error", "")))
+        response = StructuredAgentResponse(
+            status="COMPLETE",
+            business_capability="order-discovery",
+            statements=(
+                ResponseStatement(
+                    statement_id="s1",
+                    statement_type=StatementType.REASONED_SUGGESTION,
+                    text="The return is open against order A-1, line 1.",
+                    evidence_refs=(),
+                ),
+            ),
+        )
+        return ModelInvocationResult(
+            action=AgentAction(
+                business_capability="order-discovery",
+                action_type=ActionType.RESPOND,
+                decision_summary="The order is already confirmed; closing the turn.",
+                response=response,
+            ),
+            provider="provider-a",
+            model="standard-model",
+            prompt_tokens=5,
+            completion_tokens=5,
+        )
+
+    async def correct_response(self, **kwargs: Any) -> ModelInvocationResult:
+        raise AssertionError("response correction not expected in this test")
+
+
+@pytest.mark.asyncio
+async def test_confirming_an_already_confirmed_order_is_corrected_not_rerun(
+    active_schema: ActiveSchema,
+) -> None:
+    """Once `case_id` is on the state the confirmation has happened. A second
+    CONFIRM_ORDER is handed back to the model as a correction naming the case
+    and asking for the return details, rather than re-run as an idempotent
+    repeat until the step ceiling."""
+    model = ConfirmAgainThenRespondModel()
+    graph = make_graph(active_schema, model)
+    state = initial_state(active_schema)
+    state["case_id"] = "case-already-open"
+    final_state = await graph.ainvoke(
+        state,
+        context=TurnRuntimeContext(guard_context=guard_context(active_schema)),
+        config={"configurable": {"thread_id": "t-confirm-again"}},
+    )
+    assert model.decide_calls == 1
+    assert model.correction_calls == 1
+    assert "already confirmed" in model.correction_errors[0]
+    assert "case-already-open" in model.correction_errors[0]
+    assert "return-context-collection" in model.correction_errors[0]
+    assert final_state["final_response"]["status"] == "COMPLETE"
+    assert final_state["case_id"] == "case-already-open"

@@ -26,6 +26,7 @@ class GeminiProvider(HTTPProvider):
         self._base_url = settings.google_base_url
         self.model = settings.google_model or ""
         self._thinking_budget = settings.google_thinking_budget
+        self._send_response_schema = settings.google_response_schema
 
     @property
     def configured(self) -> bool:
@@ -51,9 +52,13 @@ class GeminiProvider(HTTPProvider):
                 "generationConfig": {
                     "temperature": request.temperature,
                     "responseMimeType": "application/json",
+                    # Constrained decoding is opt-in (`PLATFORM_GOOGLE_RESPONSE_SCHEMA`).
+                    # See the setting for the two ways it broke the order agent:
+                    # it cannot emit the open-ended search signals the schema does
+                    # not list, and it runs away into a repeated identifier.
                     **(
                         {"responseSchema": clean_gemini_schema(request.response_schema)}
-                        if request.response_schema is not None
+                        if self._send_response_schema and request.response_schema is not None
                         else {}
                     ),
                     **(

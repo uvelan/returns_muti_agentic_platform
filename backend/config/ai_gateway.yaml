@@ -370,6 +370,20 @@ tasks:
           has just chosen between, or re-asking a question the transcript shows you already asked, is a
           defect and not a clarification. If what they gave still does not resolve to one record, say
           plainly what you searched with it and ask for a different detail.
+      # The step after CONFIRM_ORDER. The platform hands the turn back to the
+      # model once the case exists, so the associate hears what happened and is
+      # asked what is coming back; without this a model confirms the same order
+      # again, and again (fourteen times on 2026-09-09).
+      - name: after-the-confirmation
+        text: &after-the-confirmation >-
+          When contextJson.case_id is set, the order is already confirmed and the case exists:
+          case_facts carries confirmed_order_reference and the confirmed lines. Never send
+          CONFIRM_ORDER again on that turn. What is owed now is the return itself, under the
+          return-context-collection capability: CLARIFY with status NEEDS_CLARIFICATION asking, in one
+          natural question, why the item is coming back, what condition it is in and how many are
+          coming back — skipping any of those captured_facts already holds — with the question in
+          requested_input. If captured_facts already holds the reason, condition and quantity, RESPOND
+          with status COMPLETE and say the return is open against that order and line.
       # Which field to ask for. suggested_discriminators ranks this; it is
       # evidence, not an instruction.
       - name: choosing-the-next-question
@@ -569,6 +583,14 @@ tasks:
           the associate's first message or their fifth: greet once, at the start, and not again.
     fallbackStrategy: MANUAL_REVIEW
     fallbackTemplate: ORDER_AGENT_LLM_FAILED
+    # Bounded, on every reasoning task, after a live turn on 2026-09-09 in which
+    # gemini-3.5-flash degenerated under the response schema into one identifier
+    # repeated without end, ran 183 s to the model's own ceiling and only then
+    # returned MAX_TOKENS. The largest genuine answer that day was 2,845 output
+    # tokens (a CLARIFY with nine cited statements); 6,144 leaves room for one
+    # twice that size and turns the runaway into a ~20 s loss that opens the
+    # circuit, instead of a three-minute wait the associate's turn cannot survive.
+    maximumOutputTokens: 6144
     maximumInputTokens: 200000
     allowTierEscalation: true
     allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA, MANUAL]
@@ -625,6 +647,7 @@ tasks:
         text: *reading-the-transcript
     fallbackStrategy: MANUAL_REVIEW
     fallbackTemplate: ORDER_AGENT_LLM_FAILED
+    maximumOutputTokens: 6144
     maximumInputTokens: 200000
     allowTierEscalation: true
     allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA, MANUAL]
@@ -671,6 +694,7 @@ tasks:
         text: *reading-the-transcript
     fallbackStrategy: MANUAL_REVIEW
     fallbackTemplate: ORDER_AGENT_LLM_FAILED
+    maximumOutputTokens: 6144
     maximumInputTokens: 200000
     allowTierEscalation: true
     allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA, MANUAL]
@@ -721,6 +745,7 @@ tasks:
         text: *reading-the-transcript
     fallbackStrategy: MANUAL_REVIEW
     fallbackTemplate: ORDER_AGENT_LLM_FAILED
+    maximumOutputTokens: 6144
     maximumInputTokens: 200000
     allowTierEscalation: true
     allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA, MANUAL]
@@ -761,6 +786,7 @@ tasks:
         text: *reading-the-transcript
     fallbackStrategy: MANUAL_REVIEW
     fallbackTemplate: ORDER_AGENT_LLM_FAILED
+    maximumOutputTokens: 6144
     maximumInputTokens: 200000
     allowTierEscalation: true
     allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA, MANUAL]
@@ -779,6 +805,8 @@ tasks:
         text: *statement-and-identifier-rules
       - name: honouring-a-confirmation
         text: *honouring-a-confirmation
+      - name: after-the-confirmation
+        text: *after-the-confirmation
       - name: offering-values-and-confirming
         text: *offering-values-and-confirming
       - name: graph-query-shape
@@ -797,6 +825,7 @@ tasks:
         text: *reading-the-transcript
     fallbackStrategy: MANUAL_REVIEW
     fallbackTemplate: ORDER_AGENT_LLM_FAILED
+    maximumOutputTokens: 6144
     maximumInputTokens: 200000
     allowTierEscalation: true
     allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA, MANUAL]

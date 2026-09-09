@@ -233,7 +233,33 @@ async def test_gemini_sends_both() -> None:
 
     generation_config = post.payload["generationConfig"]
     assert generation_config["maxOutputTokens"] == 4096
-    assert "responseSchema" in generation_config
+    assert generation_config["responseMimeType"] == "application/json"
+    # Constrained decoding is off by default. Under it Gemini could not emit the
+    # search signals `search_intent` carries as extra keys, and one call in
+    # three ran away into a repeated identifier until MAX_TOKENS (2026-09-09).
+    assert "responseSchema" not in generation_config
+
+
+@pytest.mark.asyncio
+async def test_gemini_sends_the_schema_only_when_asked_to() -> None:
+    provider = GeminiProvider(
+        _settings(
+            google_api_key=SecretStr("test-key"),
+            google_model="gemini-test",
+            google_response_schema=True,
+        )
+    )
+    post = _CapturedPost(
+        {
+            "candidates": [{"content": {"parts": [{"text": '{"action_type":"RESPOND"}'}]}}],
+            "usageMetadata": {},
+        }
+    )
+    provider._post = post  # type: ignore[method-assign]
+
+    await provider.generate(REQUEST)
+
+    assert "responseSchema" in post.payload["generationConfig"]
 
 
 # --------------------------------------------------------------------------
