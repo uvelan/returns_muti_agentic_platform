@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, date, datetime
 from typing import Any
 
 from return_platform.dynamic_knowledge.fingerprint import sha256_digest
@@ -10,6 +11,7 @@ from return_platform.dynamic_knowledge.knowledge.query_plan import LogicalQueryP
 from return_platform.dynamic_knowledge.schema import (
     ActiveSchema,
     EntityDefinition,
+    FieldType,
     validate_graph_identifier,
 )
 
@@ -96,6 +98,55 @@ def _field_property(schema: ActiveSchema, entity_id: str, field_id: str) -> str:
     if field is None:
         raise QueryCompilationError(f"unknown field {field_id!r} on entity {entity_id!r}")
     return field.graph_property
+
+
+def _field_type(schema: ActiveSchema, entity_id: str, field_id: str) -> FieldType:
+    return schema.entities[entity_id].fields[field_id].data_type
+
+
+def _temporal_parameter(field_type: FieldType, value: Any) -> Any:
+    """Shape a DATE or DATETIME filter value the way the graph stores the property.
+
+    The source connectors hand the driver the naive UTC datetimes Mongo returns,
+    so every DATETIME property in the graph is a Neo4j LOCAL DATETIME and every
+    DATE property a DATE. Cypher does not compare those against a string, or a
+    local datetime against a zoned one: the comparison is null, the row drops
+    out, and a "last 30 days" filter written as an ISO string returns zero rows
+    with no error anywhere. Observed on `sales_order.order_date` with a plan
+    whose undated form returned three orders.
+
+    Strings are parsed as ISO 8601 (a trailing `Z` included), zoned instants
+    are converted to UTC and the zone dropped, and a date-only value against a
+    DATETIME field means midnight of that day. Anything the field type cannot
+    hold is refused here, where the plan is still being compiled, rather than
+    silently compared to nothing.
+    """
+    if field_type not in {FieldType.DATE, FieldType.DATETIME}:
+        return value
+    moment: datetime | date
+    if isinstance(value, str):
+        text = value.strip()
+        try:
+            moment = datetime.fromisoformat(text) if len(text) > 10 else date.fromisoformat(text)
+        except ValueError as exc:
+            raise QueryCompilationError(
+                f"{field_type.value} filter value {value!r} is not an ISO 8601 date or datetime"
+            ) from exc
+    elif isinstance(value, datetime | date):
+        moment = value
+    else:
+        raise QueryCompilationError(
+            f"{field_type.value} filter value must be an ISO 8601 string, got {type(value).__name__}"
+        )
+    if isinstance(moment, datetime):
+        if moment.tzinfo is not None:
+            moment = moment.astimezone(UTC).replace(tzinfo=None)
+        return moment if field_type is FieldType.DATETIME else moment.date()
+    return (
+        datetime(moment.year, moment.month, moment.day)
+        if field_type is FieldType.DATETIME
+        else moment
+    )
 
 
 def _condition_expression(
@@ -199,13 +250,21 @@ class CypherCompiler:
                     parameter_name=parameter_name,
                 )
             )
+            field_type = _field_type(schema, condition.entity_id, condition.field_id)
             if condition.operator == "BETWEEN":
                 if not isinstance(condition.value, dict) or set(condition.value) != {"from", "to"}:
                     raise QueryCompilationError("BETWEEN requires {'from': ..., 'to': ...}")
-                parameters[f"{parameter_name}_from"] = condition.value["from"]
-                parameters[f"{parameter_name}_to"] = condition.value["to"]
+                parameters[f"{parameter_name}_from"] = _temporal_parameter(
+                    field_type, condition.value["from"]
+                )
+                parameters[f"{parameter_name}_to"] = _temporal_parameter(
+                    field_type, condition.value["to"]
+                )
+            elif condition.operator == "IN":
+                values = condition.value if isinstance(condition.value, list) else [condition.value]
+                parameters[parameter_name] = [_temporal_parameter(field_type, v) for v in values]
             elif condition.operator not in {"EXISTS", "MISSING"}:
-                parameters[parameter_name] = condition.value
+                parameters[parameter_name] = _temporal_parameter(field_type, condition.value)
 
         clauses = match_parts
         if where_parts:

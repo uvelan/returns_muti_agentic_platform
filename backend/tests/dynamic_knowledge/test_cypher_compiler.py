@@ -225,3 +225,80 @@ def test_the_full_text_index_page_stays_bounded(active_schema: ActiveSchema) -> 
     )
     compiled = CypherCompiler().compile_read(active_schema, plan)
     assert compiled.parameters["fulltext_index_rows"] == FULLTEXT_MAX_INDEX_ROWS
+
+
+def test_a_datetime_filter_is_sent_as_the_naive_utc_instant_the_graph_holds(
+    active_schema: ActiveSchema,
+) -> None:
+    """The connectors write Mongo's naive UTC datetimes, so every DATETIME
+    property is a LOCAL DATETIME. Cypher compares that to neither a string nor
+    a zoned instant -- the comparison is null and the row silently drops -- so
+    the ISO string the model writes has to reach the driver as a naive UTC
+    datetime. Observed as "last 30 days" returning zero rows for a customer
+    with three orders in the window."""
+    from datetime import UTC, datetime, timedelta, timezone
+
+    def compiled_with(value: object) -> object:
+        plan = LogicalQueryPlan(
+            operation=QueryOperation.SEARCH,
+            start_entity_id="entity_a",
+            fields=("id",),
+            filters=(
+                QueryCondition(
+                    entity_id="entity_a", field_id="changed_at", operator="GTE", value=value
+                ),
+            ),
+            limit=10,
+        )
+        return CypherCompiler().compile_read(active_schema, plan).parameters["p0"]
+
+    expected = datetime(2026, 8, 9, 18, 30)
+    assert compiled_with("2026-08-09T18:30:00Z") == expected
+    assert compiled_with("2026-08-09T18:30:00+00:00") == expected
+    assert compiled_with("2026-08-10T00:00:00+05:30") == expected
+    assert compiled_with(datetime(2026, 8, 9, 18, 30, tzinfo=UTC)) == expected
+    assert (
+        compiled_with(datetime(2026, 8, 10, 0, 0, tzinfo=timezone(timedelta(hours=5, minutes=30))))
+        == expected
+    )
+    assert compiled_with(datetime(2026, 8, 9, 18, 30)) == expected
+    # A day alone against a DATETIME field means midnight of that day.
+    assert compiled_with("2026-08-09") == datetime(2026, 8, 9)
+    assert compiled_with("2026-08-09T18:30:00Z").tzinfo is None
+
+
+def test_a_datetime_filter_that_is_not_a_date_is_refused_at_compile_time(
+    active_schema: ActiveSchema,
+) -> None:
+    from return_platform.dynamic_knowledge.knowledge.cypher_compiler import QueryCompilationError
+
+    plan = LogicalQueryPlan(
+        operation=QueryOperation.SEARCH,
+        start_entity_id="entity_a",
+        fields=("id",),
+        filters=(
+            QueryCondition(
+                entity_id="entity_a", field_id="changed_at", operator="GT", value="last month"
+            ),
+        ),
+        limit=10,
+    )
+    with pytest.raises(QueryCompilationError, match="ISO 8601"):
+        CypherCompiler().compile_read(active_schema, plan)
+
+
+def test_string_filters_are_untouched_by_the_temporal_coercion(
+    active_schema: ActiveSchema,
+) -> None:
+    plan = LogicalQueryPlan(
+        operation=QueryOperation.SEARCH,
+        start_entity_id="entity_a",
+        fields=("id",),
+        filters=(
+            QueryCondition(
+                entity_id="entity_a", field_id="name", operator="EXACT", value="2026-08-09"
+            ),
+        ),
+        limit=10,
+    )
+    assert CypherCompiler().compile_read(active_schema, plan).parameters["p0"] == "2026-08-09"
