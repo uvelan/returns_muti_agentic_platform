@@ -358,6 +358,13 @@ class IdentificationFieldConfiguration(StrictConfigModel):
     #: the companion reports which signal is needed, so the agent's next
     #: question is for the product rather than for anything else.
     searches_only_with: NonBlank | None = None
+    #: The values this signal is known to take, when the vocabulary is small
+    #: enough to list -- colours and finishes, not customer names. Two readers:
+    #: the turn context, so the model sees them beside the field; and the
+    #: search-intent guard, which moves a value the model left inside another
+    #: signal ("black ABS DWV vent ell" under productNames) into this one and
+    #: tells the model so. Matched case-insensitively, whole words only.
+    known_values: tuple[NonBlank, ...] = ()
 
     @model_validator(mode="after")
     def validate_field(self) -> IdentificationFieldConfiguration:

@@ -184,6 +184,8 @@ class IdentificationField:
     #: The signal this one is a question about, when it is never searched on
     #: its own. See `IdentificationFieldConfiguration.searches_only_with`.
     searches_only_with: str | None = None
+    #: See `IdentificationFieldConfiguration.known_values`. Lower-cased once.
+    known_values: tuple[str, ...] = ()
 
     @property
     def is_date_bound(self) -> bool:
@@ -255,6 +257,8 @@ class IdentificationField:
             # Stated, so the model knows a value here searches nothing by
             # itself, and that the companion is what to ask for next.
             described["searchesOnlyWith"] = self.searches_only_with
+        if self.known_values:
+            described["knownValues"] = list(self.known_values)
         if not self.is_usable:
             # Stated, so the model does not spend a clarifying question asking
             # for something no search can use.
@@ -586,6 +590,11 @@ def build_identification_catalogue(
                 searches=tuple(searches),
                 unusable=tuple(unusable),
                 searches_only_with=getattr(configured, "searches_only_with", None),
+                known_values=tuple(
+                    value.strip().lower()
+                    for value in getattr(configured, "known_values", ())
+                    if value.strip()
+                ),
             )
         )
     return IdentificationCatalogue(fields=tuple(fields), unresolved=tuple(unresolved))

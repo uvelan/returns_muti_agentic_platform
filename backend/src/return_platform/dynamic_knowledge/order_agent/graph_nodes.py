@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -468,10 +469,13 @@ async def _record_on_the_case(
     answer the associate has already given, over a write that retries by itself.
     """
     case_id = state.get("case_id")
-    if not case_id or not captured:
+    case_store = deps.case_store
+    if not case_id or not captured or case_store is None:
+        # No case store means no case can exist in this process (the search-only
+        # composition); there is nothing to write to and nothing lost.
         return
     try:
-        written = await deps.case_store.record_observed_facts(str(case_id), captured)
+        written = await case_store.record_observed_facts(str(case_id), captured)
     except Exception:  # noqa: BLE001 - see the docstring
         logger.warning(
             "order_agent_case_facts_not_recorded",
@@ -649,6 +653,176 @@ _ALREADY_CONFIRMED_MESSAGE = (
 )
 
 
+#: How an associate says yes to an order the agent just showed them. Deliberately
+#: plain: the question is whether *this* message agrees, not what it agrees to --
+#: which order is settled by the agent's last message naming it.
+_AFFIRMATION = re.compile(
+    r"\b(yes|yeah|yep|correct|confirm(ed)?|right|proceed|go ahead|start the return|"
+    r"that'?s (the|it)|that is (the|it)|this is (the|it))\b",
+    re.IGNORECASE,
+)
+
+
+#: A message that confirms *who* is not a message that confirms *which order*,
+#: even when it contains the word "confirm" and the agent's last reply happened
+#: to name an order. "Confirm the customer WESTFIELD PLUMBING CO on account
+#: CHARLOTTE" created a case on 2026-09-09 for exactly that reason.
+_ABOUT_THE_CUSTOMER = re.compile(r"\b(customer|account|branch|company)\b", re.IGNORECASE)
+
+
+def unagreed_confirmation(state: dict[str, Any], action: AgentAction) -> str | None:
+    """Why this CONFIRM_ORDER is premature, or None when the associate agreed.
+
+    Confirming creates the case, so it is the one action that must follow the
+    associate's word and not the model's inference. A small model that finds a
+    single order goes straight to CONFIRM_ORDER (observed 2026-09-09: the
+    customer had just been confirmed, the order never shown); the prompt says
+    show it and ask, and a validator says it on every model.
+
+    Agreement is one of two things: this turn's message names the order
+    ("Confirm order CG700204-1, line 4"), or the agent's previous message named
+    it and this turn's message says yes to it.
+    """
+    if action.action_type != ActionType.CONFIRM_ORDER or action.order_confirmation is None:
+        return None
+    reference = action.order_confirmation.order_reference.strip()
+    if not reference:
+        return None
+    message = str(state.get("user_message") or "")
+    if reference.lower() in message.lower():
+        return None
+    transcript = state.get("transcript") or ()
+    last_agent = ""
+    for entry in reversed(list(transcript)):
+        if isinstance(entry, dict) and entry.get("role") == "agent":
+            last_agent = str(entry.get("text") or "")
+            break
+    if (
+        reference.lower() in last_agent.lower()
+        and _AFFIRMATION.search(message)
+        and not _ABOUT_THE_CUSTOMER.search(message)
+    ):
+        return None
+    return (
+        f"The associate has not agreed to order {reference} on this turn: their message does "
+        f"not name it, and the previous reply did not show it for them to say yes to. Do not "
+        f"CONFIRM_ORDER yet. CLARIFY instead, under order-discovery: show the order so they can "
+        f"recognise it (order number, product, date) and ask them to confirm it, with the "
+        f"question in requested_input. CONFIRM_ORDER on their reply."
+    )
+
+
+def _signal_values(intent: Any, key: str) -> list[str]:
+    raw = (getattr(intent, "model_extra", None) or {}).get(key)
+    if raw is None:
+        return []
+    values = raw if isinstance(raw, list) else [raw]
+    return [
+        str(value)
+        for value in values
+        if isinstance(value, str | int | float) and str(value).strip()
+    ]
+
+
+def _split_known_value(value: str, known: tuple[str, ...]) -> tuple[str, str] | None:
+    """(`known value`, `the rest`) when `value` starts or ends with one, else None.
+
+    Longest known value first, so "matte black" is found before "black".
+    """
+    words = value.strip().split()
+    if not words:
+        return None
+    lowered = [word.lower() for word in words]
+    for candidate in sorted(known, key=len, reverse=True):
+        parts = candidate.split()
+        if len(parts) >= len(words):
+            continue
+        if lowered[: len(parts)] == parts:
+            return " ".join(words[: len(parts)]), " ".join(words[len(parts) :])
+        if lowered[-len(parts) :] == parts:
+            return " ".join(words[-len(parts) :]), " ".join(words[: -len(parts)])
+    return None
+
+
+def empty_search(catalogue: IdentificationCatalogue, action: AgentAction) -> str | None:
+    """Why this ORDER_SEARCH would search for nothing, or None.
+
+    A model can reason about the message correctly -- report the product and the
+    colour on observed_facts -- and still send a search_intent with no signal in
+    it. Observed three times in one turn on 2026-09-09: the search ran with
+    nothing, found nothing, and the associate was told there was no match for
+    an order that exists. The signals are the search; an intent without one is
+    rejected before it runs, and the correction names what the model itself
+    reported so it can put those values where they belong.
+    """
+    intent = action.search_intent
+    if action.action_type != ActionType.ORDER_SEARCH or intent is None:
+        return None
+    if getattr(intent, "wantsMoreResults", False):
+        return None
+    # Any populated key counts, configured or not: an unrecognised key is the
+    # search's own report to make (`unrecognized_signals`), not this guard's.
+    for key in getattr(intent, "model_extra", None) or {}:
+        if _signal_values(intent, key):
+            return None
+    reported = ", ".join(
+        f"{fact.fact}='{fact.value}'"
+        for fact in (action.observed_facts or ())
+        if getattr(fact, "value", None) not in (None, "")
+    )
+    keys = ", ".join(signal.intent_key for signal in catalogue.fields)
+    hint = (
+        f" The facts you reported ({reported}) are the values to search with." if reported else ""
+    )
+    return (
+        "search_intent carries no identifying signal, so this search would look for nothing. "
+        f"Populate the configured keys ({keys}) from the associate's message and send the "
+        f"ORDER_SEARCH again.{hint}"
+    )
+
+
+def misplaced_signal(catalogue: IdentificationCatalogue, action: AgentAction) -> str | None:
+    """Why this ORDER_SEARCH puts a known value under the wrong signal, or None.
+
+    A colour inside the product phrase searches nothing: `productNames` is a
+    CONTAINS on the ERP description, and "black ABS DWV vent ell" matches no
+    description because the description says "2 ABS DWV VENT 90 ELL" and the
+    colour lives on the product's catalogue entry. The configured signal for it
+    (`colors`, `searches_only_with: productNames`) knows its own vocabulary, so
+    a value that begins or ends with one of those words is lifted out here and
+    the model is told where each part goes.
+    """
+    intent = action.search_intent
+    if action.action_type != ActionType.ORDER_SEARCH or intent is None:
+        return None
+    for signal in catalogue.fields:
+        if not signal.known_values or not signal.searches_only_with:
+            continue
+        if _signal_values(intent, signal.intent_key):
+            continue
+        # The companion first, then every other signal the model populated: a
+        # colour can be left inside a free-text phrase as easily as inside the
+        # product name, and no signal is named here by hand.
+        others = [
+            key
+            for key in (getattr(intent, "model_extra", None) or {})
+            if key not in {signal.intent_key, signal.searches_only_with}
+        ]
+        for key in (signal.searches_only_with, *others):
+            for value in _signal_values(intent, key):
+                split = _split_known_value(value, signal.known_values)
+                if split is None:
+                    continue
+                known, rest = split
+                return (
+                    f"'{known}' is a {signal.label} and belongs in search_intent.{signal.intent_key}, "
+                    f"which searches only beside {signal.searches_only_with}; inside "
+                    f"search_intent.{key} it matches nothing. Send the same ORDER_SEARCH with "
+                    f"{signal.intent_key}: ['{known}'] and {signal.searches_only_with}: ['{rest}']."
+                )
+    return None
+
+
 def make_validate_action_node(deps: GraphDependencies) -> Any:
     async def validate_action(
         state: dict[str, Any], runtime: Runtime[TurnRuntimeContext]
@@ -684,6 +858,30 @@ def make_validate_action_node(deps: GraphDependencies) -> Any:
                     "capability_validated": False,
                 }
             raise OrderAgentFailure(exc.code, exc.message, retryable=False) from exc
+        guard_error = (
+            unagreed_confirmation(state, action)
+            or empty_search(deps.identification, action)
+            or misplaced_signal(deps.identification, action)
+        )
+        if guard_error is not None:
+            if correction_attempts >= policy.max_correction_attempts:
+                raise OrderAgentFailure(
+                    "ORDER_AGENT_ACTION_REJECTED",
+                    guard_error,
+                    retryable=True,
+                )
+            context = await _build_context(deps, state, guard_context)
+            invocation = await _invoke_correction(
+                deps, context=context, invalid_action=action, validation_error=guard_error
+            )
+            return {
+                "action": invocation.action.model_dump(mode="json"),
+                "last_provider": invocation.provider,
+                "last_model": invocation.model,
+                "correction_attempts": correction_attempts + 1,
+                "reasoning_steps_used": state.get("reasoning_steps_used", 0) + 1,
+                "capability_validated": False,
+            }
         if state.get("case_id") and action.action_type == ActionType.CONFIRM_ORDER:
             # `confirm_order` hands control back to `decide` so the agent can tell
             # the associate what it did and ask what is coming back. Left to

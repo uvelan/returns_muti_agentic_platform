@@ -698,6 +698,33 @@ discovery:
         someone who said the tap was blue.
       aliases: [colour, color, finish, shade]
       normalization: LOWER_ALPHANUMERIC
+      # The finishes the catalogue records (`product.colour_finish`), so the
+      # model sees the vocabulary and the search-intent guard can lift a colour
+      # the model left inside the product phrase -- "black ABS DWV vent ell"
+      # under productNames searched nothing on 2026-09-09 -- into this signal.
+      # "Red" is deliberately absent: in this catalogue RED is a reducer.
+      known_values:
+        - White
+        - Black
+        - Matte Black
+        - Gray
+        - Grey
+        - Silver
+        - Brass
+        - Chrome
+        - Polished Chrome
+        - Brushed Nickel
+        - Stainless
+        - Copper
+        - Bronze
+        - Oil Rubbed Bronze
+        - Brown
+        - Sand
+        - Almond
+        - Biscuit
+        - Bone
+        - Blue
+        - Green
       ranking_weight_millionths: 100000
       clarification_priority: 56
       # Operator-configurable: remove this line and the search below runs on

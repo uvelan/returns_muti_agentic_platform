@@ -757,3 +757,32 @@ async def test_confirming_an_already_confirmed_order_is_corrected_not_rerun(
     assert "return-context-collection" in model.correction_errors[0]
     assert final_state["final_response"]["status"] == "COMPLETE"
     assert final_state["case_id"] == "case-already-open"
+
+
+@pytest.mark.asyncio
+async def test_confirming_an_order_the_associate_never_agreed_to_is_corrected(
+    active_schema: ActiveSchema,
+) -> None:
+    """The associate confirmed a *customer*; the model jumped to CONFIRM_ORDER on
+    the one order it found. That is handed back as a correction asking it to
+    show the order and ask, rather than creating a case nobody agreed to."""
+    model = ConfirmAgainThenRespondModel()
+    graph = make_graph(active_schema, model)
+    state = initial_state(active_schema)
+    state["user_message"] = "Confirm the customer WESTFIELD PLUMBING CO on account CHARLOTTE."
+    state["transcript"] = (
+        {"role": "associate", "text": "WESTFIELD PLUMBING, phone 555-0184"},
+        {
+            "role": "agent",
+            "text": "I found Westfield Plumbing on CHARLOTTE. Is this the right customer?",
+        },
+    )
+    final_state = await graph.ainvoke(
+        state,
+        context=TurnRuntimeContext(guard_context=guard_context(active_schema)),
+        config={"configurable": {"thread_id": "t-unagreed"}},
+    )
+    assert model.correction_calls == 1
+    assert "has not agreed to order A-1" in model.correction_errors[0]
+    assert final_state.get("case_id") is None
+    assert final_state["final_response"]["status"] == "COMPLETE"
