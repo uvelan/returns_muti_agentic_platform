@@ -276,17 +276,20 @@ class AIRoutePool:
                 cursor = self._state.provider_route_cursors[provider_name] % len(provider_routes)
                 rotated_groups[provider_name] = provider_routes[cursor:] + provider_routes[:cursor]
                 self._state.provider_route_cursors[provider_name] = cursor + 1
-            balanced: list[AIRoute] = []
-            maximum_provider_routes = max(
-                (len(routes) for routes in rotated_groups.values()),
-                default=0,
-            )
-            for route_index in range(maximum_provider_routes):
-                for provider_name in provider_names:
-                    provider_routes = rotated_groups[provider_name]
-                    if route_index < len(provider_routes):
-                        balanced.append(provider_routes[route_index])
-            return tuple(balanced)
+            # Every route of the first provider before any route of the second.
+            # `PLATFORM_AI_PROVIDER_ORDER` is a *priority*, and the routes of one
+            # provider are its keys times its models -- the backups an operator
+            # configured for exactly the day one key's quota runs out. This
+            # used to interleave providers round-robin (Google, NVIDIA, Google,
+            # NVIDIA ...), so a step that found one Google key rate-limited paid
+            # a 30-140 s NVIDIA call before trying the second Google key, and the
+            # attempt budget ran out with five of eight Google routes untouched.
+            # Observed 2026-09-09: four keys, 500 requests a day each on the lite
+            # model, and turns falling to the fallback provider after the first.
+            ordered: list[AIRoute] = []
+            for provider_name in provider_names:
+                ordered.extend(rotated_groups[provider_name])
+            return tuple(ordered)
 
     async def try_acquire(
         self,

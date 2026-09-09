@@ -137,7 +137,7 @@ class StandardReasoningUnavailable(StructuredInvocationUnavailable):
 
 
 class RoutePoolReasoningModelGateway:
-    """Invoke only STANDARD routes and require a strict ``AgentAction`` response."""
+    """Invoke the configured tier's routes and require a strict ``AgentAction`` response."""
 
     def __init__(
         self,
@@ -177,6 +177,15 @@ class RoutePoolReasoningModelGateway:
                 logger=logger,
                 event_prefix="order_agent",
                 subject="Order Agent",
+                # The tier is the configuration's decision, not this class's.
+                # This used to require STANDARD, which pinned every reasoning
+                # task to the large models whatever `ai_gateway.yaml` said --
+                # and on 2026-09-09 the large models were the problem (a
+                # runaway, an exhausted daily quota, a fallback returning junk)
+                # while the lite models answered every stage validly in 2-8 s.
+                # The simulator is still refused below; that one is a
+                # safety rule.
+                required_tier=None,
                 unavailable_error=StandardReasoningUnavailable,
                 recorder=recorder,
                 interception=interception,

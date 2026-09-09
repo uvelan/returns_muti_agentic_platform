@@ -7,7 +7,11 @@ circuitBreaker:
   rateLimitCooldownSeconds: 60
 retry:
   maximumAttemptsPerRoute: 1
-  maximumTotalAttempts: 6
+  # Enough to walk every route of the first provider -- four Google keys times
+  # two standard models -- before the second provider is asked at all. Six ran
+  # out with most of those untried on 2026-09-09. A rate-limited key costs a
+  # second per attempt; the global timeout, not this, bounds a slow provider.
+  maximumTotalAttempts: 12
   initialBackoffMilliseconds: 200
   maximumBackoffMilliseconds: 2000
   jitter: true
@@ -271,7 +275,7 @@ tasks:
     allowedInputKeys: [aggregatedSummary, userMessage, requestedSlot, allowedFields]
 
   ORDER_AGENT_REASONING_V1:
-    tier: STANDARD
+    tier: LIGHTWEIGHT
     # How this prompt got here -- the v14/v15/v18 revisions, the measurements
     # behind each rule, and why versions are bumped rather than amended -- is
     # recorded in docs/configuration/order-agent-prompt-changelog.md. Two facts
@@ -612,7 +616,7 @@ tasks:
   # OPENING: no order search has run for this conversation (orderSearchCache
   # absent -- first substantive message, or the turn after a REPLAN).
   ORDER_AGENT_REASONING_OPENING_V1:
-    tier: STANDARD
+    tier: LIGHTWEIGHT
     promptVersion: order-agent-opening-v1
     systemPromptSections:
       - name: role-and-untrusted-input
@@ -655,7 +659,7 @@ tasks:
   # NARROWING: several candidates, every one on the table (`shown` >=
   # `totalFound`). Omits the two truncated-page rules; WIDE below adds them back.
   ORDER_AGENT_REASONING_NARROWING_V1:
-    tier: STANDARD
+    tier: LIGHTWEIGHT
     promptVersion: order-agent-narrowing-v1
     systemPromptSections:
       - name: role-and-untrusted-input
@@ -702,7 +706,7 @@ tasks:
   # NARROWING_TRUNCATED: more records matched than were returned (`shown` <
   # `totalFound`). NARROWING plus aggregates and cached paging.
   ORDER_AGENT_REASONING_WIDE_V1:
-    tier: STANDARD
+    tier: LIGHTWEIGHT
     promptVersion: order-agent-wide-v1
     systemPromptSections:
       - name: role-and-untrusted-input
@@ -753,7 +757,7 @@ tasks:
   # UNRESOLVED: a search ran and matched nothing (`totalFound` is 0). The only
   # stage carrying `source-system-escalation`.
   ORDER_AGENT_REASONING_UNRESOLVED_V1:
-    tier: STANDARD
+    tier: LIGHTWEIGHT
     promptVersion: order-agent-unresolved-v1
     systemPromptSections:
       - name: role-and-untrusted-input
@@ -794,7 +798,7 @@ tasks:
   # COMPLETING: one candidate stands (`totalFound` is 1), or an order is
   # confirmed and `case_id` is set. Show the order's lines, take confirmation.
   ORDER_AGENT_REASONING_COMPLETING_V1:
-    tier: STANDARD
+    tier: LIGHTWEIGHT
     promptVersion: order-agent-completing-v1
     systemPromptSections:
       - name: role-and-untrusted-input

@@ -384,3 +384,51 @@ def test_domain_firewall_rejects_unrelated_request() -> None:
     inspection = inspect_input({"question": "Please diagnose my medical symptoms"})
     assert inspection.status is SafetyStatus.OUT_OF_DOMAIN_REQUEST
     assert inspection.allowed is False
+
+
+def test_every_route_of_the_first_provider_comes_before_the_second_provider() -> None:
+    """`PLATFORM_AI_PROVIDER_ORDER` is a priority. An operator's four Google
+    keys are the backups for the day one key's daily quota runs out, and they
+    must all be tried before a slower fallback provider is asked -- the round-
+    robin interleave this replaces paid a 30-140 s NVIDIA call between every
+    two Google keys and exhausted the attempt budget with most keys untouched."""
+
+    async def run() -> None:
+        loaded = load_ai_gateway_configuration(CONFIG)
+        routes = []
+        for key_index in range(4):
+            for model_index, model in enumerate(("lite", "flash")):
+                routes.append(
+                    _route(
+                        provider=SuccessProvider("GOOGLE", model),
+                        provider_name="GOOGLE",
+                        model=model,
+                        credential_id=f"google-key-{key_index + 1}",
+                        tier=ModelTier.LIGHTWEIGHT,
+                        provider_priority=0,
+                        model_priority=model_index,
+                        credential_priority=key_index,
+                    )
+                )
+        routes.append(
+            _route(
+                provider=SuccessProvider("NVIDIA", "nemotron"),
+                provider_name="NVIDIA",
+                model="nemotron",
+                credential_id="nvidia-key-1",
+                tier=ModelTier.LIGHTWEIGHT,
+                provider_priority=1,
+            )
+        )
+        pool = AIRoutePool(tuple(routes), loaded.configuration)
+        candidates = await pool.candidates(loaded.configuration.tasks["RETURN_ELIGIBILITY_V1"])
+        providers = [item.provider_name for item in candidates]
+        assert providers == ["GOOGLE"] * 8 + ["NVIDIA"], providers
+        # A rate-limited key steps aside for the others, and NVIDIA is still last.
+        await pool.record_failure(candidates[0], "RATE_LIMITED")
+        again = await pool.candidates(loaded.configuration.tasks["RETURN_ELIGIBILITY_V1"])
+        assert candidates[0].credential_id not in {item.credential_id for item in again}
+        assert [item.provider_name for item in again][-1] == "NVIDIA"
+        assert all(item.provider_name == "GOOGLE" for item in again[:-1])
+
+    asyncio.run(run())

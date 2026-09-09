@@ -41,6 +41,11 @@ from return_platform.dynamic_knowledge.order_agent.contracts import AgentAction
 
 CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway.yaml"
 TASK_ID = "ORDER_AGENT_REASONING_V1"
+#: The tier the shipped configuration puts the order agent on. These tests are
+#: about telemetry, not about which tier that is, so routes and the invoker's
+#: requirement follow the file rather than pinning a value the operator may
+#: change (they did, to LIGHTWEIGHT, on 2026-09-09).
+TASK_TIER = load_ai_gateway_configuration(CONFIG).configuration.tasks[TASK_ID].tier
 
 _VALID_ACTION = (
     '{"business_capability":"order-discovery",'
@@ -93,7 +98,7 @@ class _ScriptedProvider:
         )
 
 
-def _route(provider: Any, *, tier: ModelTier = ModelTier.STANDARD) -> AIRoute:
+def _route(provider: Any, *, tier: ModelTier = TASK_TIER) -> AIRoute:
     return AIRoute(
         route_id=f"{provider.name.lower()}/{provider.model}/key-1",
         provider_name=provider.name,
@@ -134,7 +139,7 @@ def _invoker(
     *,
     pricing: AIPricingCatalog | None = None,
     task_id: str = TASK_ID,
-    required_tier: ModelTier | None = ModelTier.STANDARD,
+    required_tier: ModelTier | None = TASK_TIER,
     forbid_simulator: bool = True,
 ) -> StructuredOutputInvoker[AgentAction]:
     configuration = load_ai_gateway_configuration(CONFIG).configuration
@@ -490,6 +495,7 @@ async def test_a_recorder_failure_does_not_fail_the_turn(
         logger=logging.getLogger("test.correlation"),
         event_prefix="test",
         subject="Test",
+        required_tier=TASK_TIER,
         recorder=RepositoryAIAttemptRecorder(_BrokenSink()),
         interception=ALLOW_ALL,
     )
