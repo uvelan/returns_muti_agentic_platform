@@ -270,3 +270,55 @@ def test_resolve_colour_reads_the_finish_last_and_never_a_reducer() -> None:
         for category in idiom.CATEGORIES
         if not category.finishes
     ), "a generated category with no finish and no material colour would ship uncoloured"
+
+
+def test_dates_move_to_the_anchor_and_keep_their_gaps() -> None:
+    """The extract is from October 2025 and the loader lands its newest order on
+    the anchor day. One offset for the whole corpus: the gap between an order
+    and its commit date, and the proof-of-delivery signature the ERP writes as
+    text, move by exactly the same number of days."""
+    from datetime import date
+
+    from bson import json_util
+
+    load = _module("load_reference_dataset")
+    orders = json_util.loads((DATASET / "salesInv1.json").read_text(encoding="utf-8"))
+    header = lambda order: order["salesHdr"]["salesHdrData"]  # noqa: E731
+    before = [
+        (
+            header(o)["orderDate"],
+            header(o)["shipping"]["commitDate"],
+            header(o)["shipping"].get("podSigTd"),
+        )
+        for o in orders
+    ]
+    latest_before = max(order_date for order_date, _, _ in before)
+
+    anchor = date(2026, 9, 7)
+    offset = load.shift_order_dates(orders, anchor)
+
+    assert offset.days == (anchor - latest_before.date()).days
+    after = [
+        (
+            header(o)["orderDate"],
+            header(o)["shipping"]["commitDate"],
+            header(o)["shipping"].get("podSigTd"),
+        )
+        for o in orders
+    ]
+    assert max(order_date for order_date, _, _ in after).date() == anchor
+    for (od0, cd0, sig0), (od1, cd1, sig1) in zip(before, after, strict=True):
+        assert od1 - od0 == offset
+        assert cd1 - cd0 == offset
+        assert (sig1 is None) == (sig0 is None)
+        if sig0 is not None:
+            parsed0 = load.datetime.strptime(sig0.title(), load._TEXT_TIMESTAMP_FORMAT)
+            parsed1 = load.datetime.strptime(sig1.title(), load._TEXT_TIMESTAMP_FORMAT)
+            assert parsed1 - parsed0 == offset
+            assert sig1 == sig1.upper()
+    # The extract itself holds signatures after the newest order -- two of them
+    # months after -- so they land after the anchor. The loader names them rather
+    # than moving them, and a week past the anchor is still the extract's own gap.
+    late = load.signatures_after(orders, anchor)
+    assert {"PLYMOUTH*CR780953-1", "CHARLOTTE*CK363351"} <= late
+    assert not load.signatures_after(orders, anchor + load.timedelta(days=200))

@@ -386,7 +386,7 @@ discovery:
           field: email
           strategy: EXACT
           limit: 5
-          result_fields: [account_id, customer_id, email]
+          result_fields: [account_id, customer_id, customer_name, email]
           applies_when_pattern: "@"
           narrow_with:
             - intent_key: customerNames
@@ -398,7 +398,7 @@ discovery:
           field: email
           strategy: CONTAINS
           limit: 5
-          result_fields: [account_id, customer_id, email]
+          result_fields: [account_id, customer_id, customer_name, email]
           applies_when_pattern: "^[^@]*$"
           narrow_with:
             - intent_key: customerNames
@@ -424,7 +424,7 @@ discovery:
           field: phone_number
           strategy: EXACT
           limit: 5
-          result_fields: [account_id, customer_id, phone_number]
+          result_fields: [account_id, customer_id, customer_name, phone_number]
           narrow_with:
             - intent_key: customerNames
               path:
@@ -435,7 +435,7 @@ discovery:
           field: phone_number
           strategy: CONTAINS
           limit: 5
-          result_fields: [account_id, customer_id, phone_number]
+          result_fields: [account_id, customer_id, customer_name, phone_number]
           value_form: DIGITS
           narrow_with:
             - intent_key: customerNames
@@ -467,7 +467,7 @@ discovery:
           field: address_line1
           strategy: CONTAINS
           limit: 10
-          result_fields: [account_id, customer_id, address_line1]
+          result_fields: [account_id, customer_id, customer_name, address_line1]
           narrow_with:
             - intent_key: customerNames
               path:
@@ -491,7 +491,7 @@ discovery:
           field: city
           strategy: CONTAINS
           limit: 10
-          result_fields: [account_id, customer_id, city]
+          result_fields: [account_id, customer_id, customer_name, city]
           narrow_with:
             - intent_key: customerNames
               path:
@@ -520,7 +520,7 @@ discovery:
           field: state
           strategy: EXACT
           limit: 10
-          result_fields: [account_id, customer_id, state]
+          result_fields: [account_id, customer_id, customer_name, state]
           narrow_with:
             - intent_key: customerNames
               path:
@@ -545,7 +545,7 @@ discovery:
           field: postal_code
           strategy: EXACT
           limit: 10
-          result_fields: [account_id, customer_id, postal_code]
+          result_fields: [account_id, customer_id, customer_name, postal_code]
           narrow_with:
             - intent_key: customerNames
               path:

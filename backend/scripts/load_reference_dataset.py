@@ -10,18 +10,30 @@ which `REFERENCES_PRODUCT` has no edges.
 
 This is destructive by design and refuses to run outside development or test.
 
+**Dates are moved to the present.** The extract was taken in October 2025 and
+the de-identifier keeps every business value as it was, dates included, so a
+load a year later shows a copilot whose newest order is a year old and whose
+"last 30 days" is empty. Every date on every order is shifted by one fixed
+offset so the latest order date lands two days ago -- far enough back that an
+order signed for the next morning was delivered yesterday rather than later
+today -- and the gaps between an order, its ship date and its signature are
+exactly what the extract held. Pass `--keep-dates` to load the extract's own
+dates, or `--anchor YYYY-MM-DD` to land the newest order on another day.
+
 Usage:
-    python scripts/load_reference_dataset.py [DATASET_DIR]
+    python scripts/load_reference_dataset.py [DATASET_DIR] [--keep-dates] [--anchor YYYY-MM-DD]
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import hashlib
 import os
+import re
 import sys
 from collections import OrderedDict
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -385,6 +397,91 @@ def _customers(orders: list[dict[str, Any]], template: dict[str, Any]) -> list[d
     return list(customers.values())
 
 
+#: The two fields the ERP writes as text rather than as a date: the proof-of-delivery
+#: signature and the manual ship label, both `HH:MM:SS MON DD YYYY` in upper case.
+#: `delivery_signature_at` on the graph reads the first, so leaving them behind
+#: would put a delivery a year before its own order.
+_TEXT_TIMESTAMP = re.compile(r"^(\d{2}:\d{2}:\d{2}) ([A-Z]{3}) (\d{1,2}) (\d{4})$")
+_TEXT_TIMESTAMP_FORMAT = "%H:%M:%S %b %d %Y"
+
+#: Where the extract records when an order was placed. The newest of these is
+#: what lands on the anchor day.
+_ORDER_DATE_PATH = ("salesHdr", "salesHdrData", "orderDate")
+
+
+def _order_date(order: dict[str, Any]) -> datetime | None:
+    node: Any = order
+    for key in _ORDER_DATE_PATH:
+        node = node.get(key) if isinstance(node, dict) else None
+    return node if isinstance(node, datetime) else None
+
+
+def _shift_value(value: Any, offset: timedelta) -> Any:
+    """Move every date in a document forward by `offset`, in place where possible."""
+    if isinstance(value, datetime):
+        return value + offset
+    if isinstance(value, str):
+        match = _TEXT_TIMESTAMP.match(value)
+        if match is None:
+            return value
+        try:
+            parsed = datetime.strptime(value.title(), _TEXT_TIMESTAMP_FORMAT)
+        except ValueError:
+            return value
+        return (parsed + offset).strftime(_TEXT_TIMESTAMP_FORMAT).upper()
+    if isinstance(value, dict):
+        for key, child in value.items():
+            value[key] = _shift_value(child, offset)
+        return value
+    if isinstance(value, list):
+        for index, child in enumerate(value):
+            value[index] = _shift_value(child, offset)
+        return value
+    return value
+
+
+def shift_order_dates(orders: list[dict[str, Any]], anchor: date) -> timedelta:
+    """Shift every date on every order so the newest order date falls on `anchor`.
+
+    One offset for the whole corpus, a whole number of days: an order placed on
+    a Tuesday morning and signed for on Thursday stays a Tuesday-morning order
+    signed for two days later. Returns the offset applied, so the caller can
+    say what it did.
+    """
+    latest = max((d for d in map(_order_date, orders) if d is not None), default=None)
+    if latest is None:
+        raise SystemExit("No order carries salesHdr.salesHdrData.orderDate; cannot anchor dates")
+    offset = timedelta(days=(anchor - latest.date()).days)
+    for order in orders:
+        _shift_value(order, offset)
+    return offset
+
+
+def signatures_after(orders: list[dict[str, Any]], day: date) -> set[str]:
+    """Orders whose proof-of-delivery signature falls after `day`.
+
+    The extract holds a couple of deliveries signed for months after the newest
+    order was placed. Anchoring on the order date is what puts orders in the
+    associate's "last 30 days", and it leaves those signatures after the anchor;
+    they are named on the console rather than clamped, because a signature moved
+    to a different distance from its order would be a delivery the data never
+    recorded.
+    """
+    late: set[str] = set()
+    for order in orders:
+        node: Any = order.get("salesHdr", {}).get("salesHdrData", {}).get("shipping", {})
+        signature = node.get("podSigTd") if isinstance(node, dict) else None
+        if not isinstance(signature, str):
+            continue
+        try:
+            signed = datetime.strptime(signature.title(), _TEXT_TIMESTAMP_FORMAT)
+        except ValueError:
+            continue
+        if signed.date() > day:
+            late.add(str(order.get("_id")))
+    return late
+
+
 def _wipe_neo4j(settings: Settings) -> None:
     driver = GraphDatabase.driver(
         settings.neo4j_uri,
@@ -420,8 +517,28 @@ def _wipe_neo4j(settings: Settings) -> None:
         driver.close()
 
 
+def _parse_arguments(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Wipe every datastore and load the reference dataset."
+    )
+    parser.add_argument("dataset", nargs="?", type=Path, default=DEFAULT_DATASET)
+    parser.add_argument(
+        "--keep-dates",
+        action="store_true",
+        help="Load the extract's own dates (October 2025) instead of moving them to the present.",
+    )
+    parser.add_argument(
+        "--anchor",
+        type=date.fromisoformat,
+        default=None,
+        help="Day the newest order lands on (YYYY-MM-DD). Defaults to two days ago, UTC.",
+    )
+    return parser.parse_args(argv)
+
+
 async def main() -> int:
-    dataset = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_DATASET
+    arguments = _parse_arguments(sys.argv[1:])
+    dataset = arguments.dataset
     settings, _ = await resolve_runtime_settings_from_vault(
         Settings(),  # type: ignore[call-arg]
         resolve_ai_credentials=False,
@@ -433,6 +550,14 @@ async def main() -> int:
         )
 
     orders = _load(dataset, "salesInv1.json")
+    if arguments.keep_dates:
+        print("order dates          kept as extracted")
+    else:
+        anchor = arguments.anchor or (datetime.now(UTC).date() - timedelta(days=2))
+        offset = shift_order_dates(orders, anchor)
+        print(
+            f"order dates          shifted +{offset.days} days; newest order now {anchor.isoformat()}"
+        )
     products = _products(orders, _load(dataset, "lkpSearchProduct.json"))
     customers = _customers(orders, _load(dataset, "customerOutboundCDM.json"))
 

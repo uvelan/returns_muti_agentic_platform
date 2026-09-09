@@ -15,6 +15,7 @@
 #   3. load the reference dataset, which drops every database first
 #   4. start the host, whose bootstrap recreates the system store it just lost
 #   5. build the graph, which needs the source collections from (3)
+#   6. seed warehouse bays for every warehouse the loaded orders name
 #
 #   Usage: ./scripts/linux/reset_all.sh [options]
 #
@@ -104,10 +105,10 @@ else
     fail "No backend Python environment (no backend/.venv and no poetry). Run scripts/bootstrap_host.sh first."
 fi
 
-log "1/6  Stopping host processes"
+log "1/7  Stopping host processes"
 scripts/linux/17_stop_host_processes.sh || true
 
-log "2/6  Resetting and starting infrastructure"
+log "2/7  Resetting and starting infrastructure"
 if [[ "${DATA_ONLY}" == true ]]; then
     # Containers and volumes are kept, so SQL Server does not re-initialise its
     # system databases -- the slow part of a full reset. Started first because
@@ -150,20 +151,20 @@ fi
 log "2b/6 Checking published ports match what the application dials"
 "${PYTHON[@]}" "${REPO_ROOT}/scripts/preflight_ports.py"
 
-log "3/6  Loading the reference dataset (drops every database first)"
+log "3/7  Loading the reference dataset (drops every database first)"
 dataset_args=()
 [[ -n "${DATASET}" ]] && dataset_args+=("${DATASET}")
 "${PYTHON[@]}" "${REPO_ROOT}/backend/scripts/load_reference_dataset.py" "${dataset_args[@]}"
 
 if [[ "${START_HOST}" == true ]]; then
-    log "4/6  Starting backend, workers and frontend"
+    log "4/7  Starting backend, workers and frontend"
     # `--no-supervise`, and without it this whole script was broken. The
     # supervising form never returns, so step 6 -- the graph build, the one step
     # this script exists to add -- was unreachable, and the Ctrl-C that ended
     # the apparent hang ran the supervisor's EXIT trap and stopped everything.
     scripts/run_all_host.sh --no-supervise
 else
-    log "4/6  Skipping host start (--no-host)"
+    log "4/7  Skipping host start (--no-host)"
 fi
 
 # Last, and only after the load: the graph is built from the source collections
@@ -174,7 +175,7 @@ fi
 # and MongoDB compares only within BSON type brackets, so a timestamp stored as
 # a STRING matches no date bound at all. Zero records scanned, run status
 # COMPLETED, and a graph holding nothing gets activated.
-log "5/6  Building the knowledge graph (cap ${GRAPH_RECORDS} records per asset)"
+log "5/7  Building the knowledge graph (cap ${GRAPH_RECORDS} records per asset)"
 # The env var raises the second ceiling. `maxRecordsPerAsset` alone cannot get
 # past `PLATFORM_GRAPH_SYNC_MAX_RECORDS`, so passing 30000 without this would
 # still clamp to 10,000.
@@ -190,8 +191,19 @@ PLATFORM_GRAPH_SYNC_MAX_RECORDS="${PLATFORM_GRAPH_SYNC_MAX_RECORDS:-${GRAPH_RECO
 #
 # `set -Eeuo pipefail` at the top of this script is what makes a non-zero exit
 # here stop the run.
-log "6/6  Verifying the graph can answer a discovery turn"
+log "6/7  Verifying the graph can answer a discovery turn"
 "${PYTHON[@]}" "${REPO_ROOT}/backend/scripts/verify_graph_ready.py"
+
+# The reference loader writes no warehouse master, and the SQL migration seeds
+# bays for one warehouse the orders never name. Every order line carries a real
+# inventory warehouse id, so without this the bay agent answers
+# WAREHOUSE_NOT_IN_GRAPH for every return and no case can reach the dock. The
+# backfill mints a master document per warehouse the sales source names; the
+# projection is what writes them into `platform.bay_configuration`, the only bay
+# authority the platform reads. Both are idempotent and touch nothing that exists.
+log "7/7  Seeding warehouse bays for every warehouse the orders name"
+"${PYTHON[@]}" "${REPO_ROOT}/backend/scripts/backfill_warehouse_master.py"
+"${PYTHON[@]}" "${REPO_ROOT}/backend/scripts/seed_warehouse_bay_configuration.py"
 
 if [[ "${START_HOST}" == true ]]; then
     # Verify rather than assume. Running processes are not a working platform:

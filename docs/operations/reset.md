@@ -17,6 +17,7 @@ order:
 3. load the reference dataset
 4. start the host processes
 5. build the knowledge graph
+6. seed warehouse bays for every warehouse the orders name
 ```
 
 **Step 5 is the one that had no script at all.** Loading the source collections
@@ -30,7 +31,23 @@ every health check passes, and discovery finds nothing.
 ```bash
 python backend/scripts/load_reference_dataset.py   # wipes, then loads
 python backend/scripts/build_knowledge_graph.py    # source -> Neo4j
+python backend/scripts/backfill_warehouse_master.py          # a warehouse per id the orders name
+python backend/scripts/seed_warehouse_bay_configuration.py   # ... and its bays, into SQL Server
 ```
+
+**Dates are moved to the present on load.** The extract is from October 2025 and
+keeps its real dates; loaded as-is a year later, the newest order is a year old and
+"last 30 days" finds nothing. The loader shifts every date on every order by one
+offset so the newest order lands two days ago, gaps intact -- an order signed for
+the next morning is still signed for the next morning. `--keep-dates` loads the
+extract's own dates; `--anchor YYYY-MM-DD` lands the newest order elsewhere. Two of
+the extract's own signatures fall months after its newest order and so land after
+the anchor; the loader names them rather than moving them.
+
+**Bays are seeded last, and the reset needs them.** The loader writes no warehouse
+master, and the SQL migration seeds bays for one warehouse no order names, so a
+reset that stopped at the graph build left every bay placement answering
+`WAREHOUSE_NOT_IN_GRAPH` and no case able to reach the dock.
 
 ## Infrastructure-only reset
 
