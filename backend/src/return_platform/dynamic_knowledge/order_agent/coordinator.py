@@ -89,6 +89,89 @@ _RECURSION_LIMIT = 256
 _LOGGER = logging.getLogger(__name__)
 
 
+#: The channel LangGraph records an `interrupt()` under, in a checkpoint's
+#: pending writes. A checkpoint carrying one is waiting on the associate.
+_INTERRUPT_CHANNEL = "__interrupt__"
+
+
+def _tuple_is_paused(checkpoint: Any) -> bool:
+    writes = getattr(checkpoint, "pending_writes", None) or ()
+    return any(len(write) >= 2 and write[1] == _INTERRUPT_CHANNEL for write in writes)
+
+
+def _tuple_values(checkpoint: Any) -> dict[str, Any]:
+    raw = getattr(checkpoint, "checkpoint", None) or {}
+    values = raw.get("channel_values") if isinstance(raw, dict) else None
+    return dict(values) if isinstance(values, dict) else {}
+
+
+def _tuple_checkpoint_id(checkpoint: Any) -> str | None:
+    config = getattr(checkpoint, "config", None) or {}
+    value = (
+        config.get("configurable", {}).get("checkpoint_id") if isinstance(config, dict) else None
+    )
+    return value if isinstance(value, str) else None
+
+
+async def locate_paused_checkpoint(
+    graph: Any, thread_id: str
+) -> tuple[dict[str, Any], str | None, bool]:
+    """The checkpoint a resumed turn should answer into, and its id when it is
+    not the thread's latest.
+
+    The latest checkpoint is the one to resume when it is paused on
+    `interrupt()`. It is *not* when a previous attempt at this same turn died
+    part-way -- an activity timed out at its ceiling with the provider mid-call,
+    a worker was restarted -- because that attempt had already advanced the
+    thread past the interrupt before it died, and its half-finished step is what
+    the checkpointer now holds. Resuming into that gives LangGraph an update to
+    apply to a step that never completed, and it refuses:
+    "At key 'correlation_id': Can receive only one value per step". Every retry
+    hits the same checkpoint and the conversation is wedged for good. Observed
+    2026-09-09 on a turn that timed out twice against a rate-limited provider.
+
+    So when the latest checkpoint is not paused, walk back to the newest one
+    that is, and resume from *there* -- LangGraph forks a fresh branch off a
+    named `checkpoint_id`, leaving the dead attempt's writes behind.
+
+    Read through the checkpointer's raw tuples, not `graph.aget_state`: building
+    a state snapshot replays the checkpoint's pending writes, and the poisoned
+    checkpoint this exists to route around raises on exactly that.
+
+    Returns the checkpoint's values, its id, and whether resuming it is a fork
+    (it is not the latest). `({}, None, False)` when the thread has no
+    checkpoint at all.
+    """
+    saver = getattr(graph, "checkpointer", None)
+    config = {"configurable": {"thread_id": thread_id}}
+    if saver is None or not hasattr(saver, "alist"):
+        snapshot = await graph.aget_state(config)
+        values = getattr(snapshot, "values", None) or {}
+        return (cast("dict[str, Any]", values) if isinstance(values, dict) else {}), None, False
+    latest: Any = None
+    async for checkpoint in saver.alist(config):
+        if latest is None:
+            latest = checkpoint
+            if _tuple_is_paused(checkpoint):
+                return _tuple_values(checkpoint), _tuple_checkpoint_id(checkpoint), False
+            continue
+        if not _tuple_is_paused(checkpoint):
+            continue
+        checkpoint_id = _tuple_checkpoint_id(checkpoint)
+        if checkpoint_id is None:
+            break
+        _LOGGER.warning(
+            "order_agent_resume_from_earlier_checkpoint thread_id=%s checkpoint_id=%s: "
+            "the latest checkpoint is not paused, a previous attempt at this turn died mid-run",
+            thread_id,
+            checkpoint_id,
+        )
+        return _tuple_values(checkpoint), checkpoint_id, True
+    if latest is None:
+        return {}, None, False
+    return _tuple_values(latest), _tuple_checkpoint_id(latest), False
+
+
 class ConversationStore(Protocol):
     async def load_for_turn(
         self,
@@ -137,6 +220,12 @@ def _scope_of(guard_context: GuardContext) -> ConversationScope:
 
 class GraphStateProvider(Protocol):
     async def active_generation(self, schema: ActiveSchema) -> str: ...
+
+
+def _stored_case_id(conversation_state: dict[str, object]) -> str | None:
+    """The case this conversation raised, as the conversation document records it."""
+    value = conversation_state.get("caseId")
+    return value if isinstance(value, str) and value else None
 
 
 def _stored_transcript(conversation_state: dict[str, Any]) -> tuple[dict[str, str], ...]:
@@ -490,7 +579,9 @@ class DynamicOrderAgentCoordinator:
         # clarification pause, which can last days and would pin a generation
         # against retirement for the whole time. A resumed turn takes its own
         # lease here.
-        paused_values = await self._paused_checkpoint_values(resume_thread_id)
+        paused_values, paused_checkpoint_id, paused_is_fork = await self._paused_checkpoint_values(
+            resume_thread_id
+        )
         pinned = _pinned_generation_of(paused_values)
         if pinned is not None and policy.generation_binding is GenerationBinding.STRICT_PINNING:
             # Lease the generation the conversation started on, not whatever is
@@ -505,6 +596,8 @@ class DynamicOrderAgentCoordinator:
                     resume_thread_id=resume_thread_id,
                     rebound_from=None,
                     paused_values=paused_values,
+                    paused_checkpoint_id=paused_checkpoint_id,
+                    paused_is_fork=paused_is_fork,
                     correlation_id=correlation_id,
                 )
 
@@ -520,11 +613,27 @@ class DynamicOrderAgentCoordinator:
                 resume_thread_id=resume_thread_id,
                 rebound_from=rebound_from,
                 paused_values=paused_values,
+                paused_checkpoint_id=paused_checkpoint_id,
+                paused_is_fork=paused_is_fork,
                 correlation_id=correlation_id,
             )
 
-    async def _paused_checkpoint_values(self, resume_thread_id: str | None) -> dict[str, Any]:
-        """The paused turn's own checkpoint state, or `{}` when there is none.
+    async def _discard_input_writes(self, thread_id: str, checkpoint_id: str) -> int:
+        saver = getattr(self._graph, "checkpointer", None)
+        discard = getattr(saver, "adiscard_input_writes", None)
+        if discard is None:
+            return 0
+        count = await discard(
+            {"configurable": {"thread_id": thread_id, "checkpoint_id": checkpoint_id}}
+        )
+        return int(count or 0)
+
+    async def _paused_checkpoint_values(
+        self, resume_thread_id: str | None
+    ) -> tuple[dict[str, Any], str | None, bool]:
+        """The paused turn's own checkpoint state, or `{}` when there is none,
+        the id of the checkpoint to resume, and whether that resume is a fork
+        off an earlier checkpoint (see `locate_paused_checkpoint`).
 
         Read once and handed to `_run_turn` rather than fetched per question of
         it: the resume path needs both the pinned generation and whether the
@@ -537,19 +646,15 @@ class DynamicOrderAgentCoordinator:
         terms rather than here.
         """
         if resume_thread_id is None:
-            return {}
+            return {}, None, False
         try:
-            snapshot = await self._graph.aget_state(
-                {"configurable": {"thread_id": resume_thread_id}}
-            )
+            return await locate_paused_checkpoint(self._graph, resume_thread_id)
         except Exception:
             _LOGGER.exception(
                 "Could not read the paused checkpoint for thread %s; treating the turn as unpinned",
                 resume_thread_id,
             )
-            return {}
-        values = getattr(snapshot, "values", None) or {}
-        return cast("dict[str, Any]", values) if isinstance(values, dict) else {}
+            return {}, None, False
 
     async def _run_turn(
         self,
@@ -561,6 +666,8 @@ class DynamicOrderAgentCoordinator:
         resume_thread_id: str | None,
         rebound_from: str | None = None,
         paused_values: dict[str, Any] | None = None,
+        paused_checkpoint_id: str | None = None,
+        paused_is_fork: bool = False,
         correlation_id: str | None = None,
     ) -> AgentTurnResult:
         """The turn itself, with its generation already resolved and pinned.
@@ -637,7 +744,7 @@ class DynamicOrderAgentCoordinator:
             # reasoned as though no case existed: elicitation never engaged and
             # the Support outcome had no path back into the chat (TC-E2E-02
             # step 14).
-            "case_id": conversation_state.get("caseId"),
+            "case_id": _stored_case_id(conversation_state),
             "requested_schema_entity_ids": (),
             "evidence_refs": (),
             "order_search_cache": _cache_for_generation(
@@ -671,7 +778,7 @@ class DynamicOrderAgentCoordinator:
             resume_update = _resume_update(
                 request=request,
                 conversation_state=conversation_state,
-                paused_values=paused_values,
+                paused_values=paused_values or {},
                 as_of=as_of,
                 session_timezone=session_timezone,
                 correlation_id=correlation_id,
@@ -712,12 +819,32 @@ class DynamicOrderAgentCoordinator:
             graph_input = Command(resume=request.message, update=resume_update)
         else:
             graph_input = initial_state
+        configurable: dict[str, Any] = {"thread_id": thread_id}
+        if resume_thread_id and paused_checkpoint_id is not None:
+            # A checkpoint can be resumed once: the input a resume records on
+            # it is accumulated by LangGraph, not replaced. Drop whatever a
+            # previous attempt left there before answering into it. On the
+            # ordinary first resume this deletes nothing.
+            discarded = await self._discard_input_writes(thread_id, paused_checkpoint_id)
+            if discarded:
+                _LOGGER.warning(
+                    "order_agent_discarded_stale_input_writes thread_id=%s checkpoint_id=%s "
+                    "writes=%d",
+                    thread_id,
+                    paused_checkpoint_id,
+                    discarded,
+                )
+            if paused_is_fork:
+                # Fork off the checkpoint that is actually paused, not the
+                # dead attempt sitting on top of it. See
+                # `locate_paused_checkpoint`.
+                configurable["checkpoint_id"] = paused_checkpoint_id
         try:
             final_state = await self._graph.ainvoke(
                 graph_input,
                 context=TurnRuntimeContext(guard_context=guard_context),
                 config={
-                    "configurable": {"thread_id": thread_id},
+                    "configurable": configurable,
                     "recursion_limit": _RECURSION_LIMIT,
                 },
             )

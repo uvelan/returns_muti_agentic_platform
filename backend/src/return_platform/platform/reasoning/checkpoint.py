@@ -65,6 +65,13 @@ def _checkpoint_doc_id(thread_id: str, checkpoint_ns: str, checkpoint_id: str) -
     return f"{thread_id}::{checkpoint_ns}::{checkpoint_id}"
 
 
+#: LangGraph's id for the pseudo-task that carries a step's *input* writes. The
+#: public export is deprecated in 1.x and the private one may move, so the value
+#: is pinned here: it is a fixed nil UUID the framework has never changed, and a
+#: mismatch would show up in the first resume test rather than in production.
+NULL_TASK_ID = "00000000-0000-0000-0000-000000000000"
+
+
 def _write_doc_id(
     thread_id: str, checkpoint_ns: str, checkpoint_id: str, task_id: str, write_idx: int
 ) -> str:
@@ -154,6 +161,34 @@ class SystemStoreCheckpointSaver(BaseCheckpointSaver[str]):
         checkpoint_ns = config["configurable"].get("checkpoint_ns", "")
         checkpoint_id = config["configurable"]["checkpoint_id"]
 
+        if task_id == NULL_TASK_ID:
+            # The null task carries the *input* to the step this checkpoint is
+            # waiting on -- a `Command(update=...)` on resume. LangGraph
+            # accumulates those on its side and hands this method the old ones
+            # plus the new on every resume, so under "first write wins" a
+            # checkpoint resumed twice held two `correlation_id`s, three held
+            # three, and `apply_writes` refused every one of them: "At key
+            # 'correlation_id': Can receive only one value per step". A turn
+            # whose first attempt timed out could never be retried, and the
+            # checkpoint could not even be *read* -- `aget_state` replays the
+            # same writes. Observed 2026-09-09.
+            #
+            # An input is the latest input: keep one write per channel, the
+            # last one given, and replace the set rather than append to it.
+            latest_per_channel: dict[str, tuple[str, Any]] = {}
+            for channel, value in writes:
+                latest_per_channel[channel] = (channel, value)
+            writes = list(latest_per_channel.values())
+            await self._store.delete_many(
+                _WRITES_STRUCTURE,
+                {
+                    "thread_id": thread_id,
+                    "checkpoint_ns": checkpoint_ns,
+                    "checkpoint_id": checkpoint_id,
+                    "task_id": task_id,
+                },
+            )
+
         for idx, (channel, value) in enumerate(writes):
             write_idx = WRITES_IDX_MAP.get(channel, idx)
             serde_type, raw = self.serde.dumps_typed(value)
@@ -188,6 +223,36 @@ class SystemStoreCheckpointSaver(BaseCheckpointSaver[str]):
             await self._store.insert_one(
                 _WRITES_STRUCTURE, document, allowed_metadata_fields=_WRITE_METADATA_FIELDS
             )
+
+    async def adiscard_input_writes(self, config: RunnableConfig) -> int:
+        """Drop the input writes a previous resume left on this checkpoint.
+
+        A resume records its `Command(update=...)` as the null task's pending
+        writes on the checkpoint it resumes, and LangGraph *accumulates* those:
+        loading the checkpoint again hands the loop the old input plus the new,
+        and `apply_writes` refuses two values for one channel in one step. So a
+        paused checkpoint can be resumed exactly once -- unless the attempt that
+        resumed it died before advancing, in which case its input is stale and
+        the retry must not inherit it. The coordinator calls this before every
+        resume; on the ordinary first resume there is nothing to delete.
+
+        Returns how many writes were discarded, for the log line.
+        """
+        thread_id = config["configurable"]["thread_id"]
+        checkpoint_ns = config["configurable"].get("checkpoint_ns", "")
+        checkpoint_id = config["configurable"].get("checkpoint_id")
+        if not checkpoint_id:
+            return 0
+        result = await self._store.delete_many(
+            _WRITES_STRUCTURE,
+            {
+                "thread_id": thread_id,
+                "checkpoint_ns": checkpoint_ns,
+                "checkpoint_id": checkpoint_id,
+                "task_id": NULL_TASK_ID,
+            },
+        )
+        return int(getattr(result, "deleted_count", 0) or 0)
 
     async def aget_tuple(self, config: RunnableConfig) -> CheckpointTuple | None:
         thread_id = config["configurable"]["thread_id"]
