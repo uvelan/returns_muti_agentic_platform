@@ -12,9 +12,22 @@ from return_platform.dynamic_knowledge.fingerprint import sha256_digest
 
 class StatementType(StrEnum):
     GRAPH_FACT = "GRAPH_FACT"
+    #: Something the case itself records -- its fulfilment status, the RMA,
+    #: where it is going -- cited from `contextJson.case_facts` rather than from
+    #: a query. Added 2026-09-10: asked "what is the status", the model wrote a
+    #: GRAPH_FACT citing `case_facts`, which no query produced, and the turn
+    #: failed three times over a fact the platform held all along. A case fact
+    #: is verifiable, so it gets a statement type the guard can verify.
+    CASE_FACT = "CASE_FACT"
     USER_PROVIDED_FACT = "USER_PROVIDED_FACT"
     REASONED_SUGGESTION = "REASONED_SUGGESTION"
     CLARIFICATION_QUESTION = "CLARIFICATION_QUESTION"
+
+
+#: The `query_execution_id` a CASE_FACT cites. Not a query: the name of the
+#: case-fact map in the context, so a citation reads ["fulfillment_status"]
+#: against it the way a GRAPH_FACT's reads ["rows", "0", "sku"] against a result.
+CASE_FACTS_EVIDENCE_ID = "case_facts"
 
 
 class QueryEvidence(BaseModel):
@@ -75,10 +88,12 @@ class ResponseStatement(BaseModel):
     #: contract it conditions.
     statement_type: StatementType = Field(
         description=(
-            "GRAPH_FACT requires a non-empty evidence_refs and is rejected "
-            "without one; USER_PROVIDED_FACT requires source_message_id. "
+            "GRAPH_FACT requires a non-empty evidence_refs citing query evidence and is "
+            "rejected without one; CASE_FACT requires evidence_refs whose "
+            "query_execution_id is 'case_facts' and whose result_path names a fact on "
+            "contextJson.case_facts; USER_PROVIDED_FACT requires source_message_id. "
             "REASONED_SUGGESTION and CLARIFICATION_QUESTION require neither. "
-            "State something the query results do not contain as a "
+            "State something neither the query results nor the case facts contain as a "
             "REASONED_SUGGESTION rather than as an uncited GRAPH_FACT."
         )
     )
@@ -88,8 +103,22 @@ class ResponseStatement(BaseModel):
 
     @model_validator(mode="after")
     def validate_evidence_shape(self) -> ResponseStatement:
-        if self.statement_type is StatementType.GRAPH_FACT and not self.evidence_refs:
-            raise ValueError("GRAPH_FACT requires evidence references")
+        if self.statement_type is StatementType.GRAPH_FACT:
+            if not self.evidence_refs:
+                raise ValueError("GRAPH_FACT requires evidence references")
+            if any(ref.query_execution_id == CASE_FACTS_EVIDENCE_ID for ref in self.evidence_refs):
+                raise ValueError(
+                    "a GRAPH_FACT cites query evidence; a fact read from case_facts is a CASE_FACT"
+                )
+        if self.statement_type is StatementType.CASE_FACT:
+            if not self.evidence_refs:
+                raise ValueError("CASE_FACT requires evidence references into case_facts")
+            for ref in self.evidence_refs:
+                if ref.query_execution_id != CASE_FACTS_EVIDENCE_ID or not ref.result_path:
+                    raise ValueError(
+                        "CASE_FACT evidence_refs cite query_execution_id 'case_facts' with a "
+                        "result_path naming the fact"
+                    )
         if self.statement_type is StatementType.USER_PROVIDED_FACT and not self.source_message_id:
             raise ValueError("USER_PROVIDED_FACT requires source_message_id")
         return self

@@ -8933,7 +8933,7 @@ export interface components {
             source_message_id?: string | null;
             /** Statement Id */
             statement_id: string;
-            /** @description GRAPH_FACT requires a non-empty evidence_refs and is rejected without one; USER_PROVIDED_FACT requires source_message_id. REASONED_SUGGESTION and CLARIFICATION_QUESTION require neither. State something the query results do not contain as a REASONED_SUGGESTION rather than as an uncited GRAPH_FACT. */
+            /** @description GRAPH_FACT requires a non-empty evidence_refs citing query evidence and is rejected without one; CASE_FACT requires evidence_refs whose query_execution_id is 'case_facts' and whose result_path names a fact on contextJson.case_facts; USER_PROVIDED_FACT requires source_message_id. REASONED_SUGGESTION and CLARIFICATION_QUESTION require neither. State something neither the query results nor the case facts contain as a REASONED_SUGGESTION rather than as an uncited GRAPH_FACT. */
             statement_type: components["schemas"]["StatementType"];
             /** Text */
             text: string;
@@ -10982,7 +10982,7 @@ export interface components {
          * StatementType
          * @enum {string}
          */
-        StatementType: "GRAPH_FACT" | "USER_PROVIDED_FACT" | "REASONED_SUGGESTION" | "CLARIFICATION_QUESTION";
+        StatementType: "GRAPH_FACT" | "CASE_FACT" | "USER_PROVIDED_FACT" | "REASONED_SUGGESTION" | "CLARIFICATION_QUESTION";
         /** StructuredAgentResponse */
         StructuredAgentResponse: {
             /** Business Capability */

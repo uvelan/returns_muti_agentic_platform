@@ -249,8 +249,8 @@ def _agent_text(result: dict[str, Any]) -> str:
     ).strip()
 
 
-def _replies_in_order(document: dict[str, Any]) -> list[str]:
-    """Each turn's reply, oldest first, from the per-turn record.
+def _replies_in_order(document: dict[str, Any]) -> list[tuple[str, str | None]]:
+    """Each turn's reply and its `as_of`, oldest first, from the per-turn record.
 
     `turns` is keyed by idempotency key, so the ordering comes from the
     `conversation_version` each result carries rather than from insertion order.
@@ -264,7 +264,10 @@ def _replies_in_order(document: dict[str, Any]) -> list[str]:
         if isinstance(turn, dict) and isinstance(turn.get("result"), dict)
     ]
     results.sort(key=lambda result: int(result.get("conversation_version") or 0))
-    return [_agent_text(result) for result in results]
+    return [
+        (_agent_text(result), result["as_of"] if isinstance(result.get("as_of"), str) else None)
+        for result in results
+    ]
 
 
 def _last_result_turn(document: dict[str, Any]) -> AgentTurnResult | None:
@@ -361,7 +364,7 @@ def _transcript_of(document: dict[str, Any]) -> tuple[dict[str, str], ...]:
     if not isinstance(stored, list):
         return ()
     entries = [
-        {"role": str(entry["role"]), "text": str(entry["text"])}
+        _served_entry(entry)
         for entry in stored
         if isinstance(entry, dict) and "role" in entry and "text" in entry
     ]
@@ -371,9 +374,34 @@ def _transcript_of(document: dict[str, Any]) -> tuple[dict[str, str], ...]:
     if len(prompts) != len(replies):
         return tuple(entries)
 
+    # The instant a rebuilt reply is served with: the stored reply's own when
+    # the writer recorded one, else the turn's `as_of` (the reply came seconds
+    # after it), else nothing -- never a guess the console would then sort by.
+    recorded_reply_at = {
+        index: entry.get("at")
+        for index, entry in enumerate(entries)
+        if entry["role"] == "agent" and entry.get("at")
+    }
     rebuilt: list[dict[str, str]] = []
-    for prompt, reply in zip(prompts, replies, strict=True):
+    prompt_positions = [
+        index for index, entry in enumerate(entries) if entry["role"] == "associate"
+    ]
+    for position, (prompt, (reply, as_of)) in zip(
+        prompt_positions, zip(prompts, replies, strict=True), strict=True
+    ):
         rebuilt.append(prompt)
         if reply:
-            rebuilt.append({"role": "agent", "text": reply})
+            agent: dict[str, str] = {"role": "agent", "text": reply}
+            at = recorded_reply_at.get(position + 1) or as_of or prompt.get("at")
+            if at:
+                agent["at"] = at
+            rebuilt.append(agent)
     return tuple(rebuilt)
+
+
+def _served_entry(entry: dict[str, Any]) -> dict[str, str]:
+    narrowed = {"role": str(entry["role"]), "text": str(entry["text"])}
+    at = entry.get("at")
+    if isinstance(at, str) and at:
+        narrowed["at"] = at
+    return narrowed

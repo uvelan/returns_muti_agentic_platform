@@ -240,10 +240,29 @@ def _stored_transcript(conversation_state: dict[str, Any]) -> tuple[dict[str, st
     if not isinstance(stored, list):
         return ()
     return tuple(
-        {"role": str(entry["role"]), "text": str(entry["text"])}
+        _transcript_entry(entry)
         for entry in stored
         if isinstance(entry, dict) and "role" in entry and "text" in entry
     )
+
+
+def _transcript_entry(entry: dict[str, Any]) -> dict[str, str]:
+    """Role and text, plus the instant it was said when the record has one.
+
+    `at` is an ISO-8601 UTC instant written by `_extended_transcript`. Kept
+    only when it is a string: an entry written before instants existed simply
+    has none, and the console orders such an entry the way it always did.
+    """
+    narrowed = {"role": str(entry["role"]), "text": str(entry["text"])}
+    at = entry.get("at")
+    if isinstance(at, str) and at:
+        narrowed["at"] = at
+    return narrowed
+
+
+def _instant(value: Any) -> str | None:
+    """An ISO-8601 instant as the state carries it, or None for anything else."""
+    return value if isinstance(value, str) and value else None
 
 
 def _extended_transcript(
@@ -251,8 +270,16 @@ def _extended_transcript(
     *,
     user_message: str,
     response: StructuredAgentResponse | None,
+    asked_at: str | None = None,
 ) -> list[dict[str, str]]:
     """This turn appended to what was said before, oldest first and bounded.
+
+    `asked_at` is when the associate's message arrived -- the turn's `as_of` --
+    and the reply is stamped now, at commit. Two instants rather than one
+    because the platform's own entries land between them: the item pane's
+    record of a selection made while the turn was running belongs after the
+    question and before the answer, and one shared stamp would put it on the
+    wrong side of both.
 
     The agent used to see only the current message plus the previous search's
     cache, so it could not tell a first mention from a repeat and would re-ask
@@ -275,11 +302,12 @@ def _extended_transcript(
     and the question the two sit between was missing from the middle.
     """
     transcript: list[dict[str, str]] = list(_stored_transcript(conversation_state))
-    transcript.append({"role": "associate", "text": user_message})
+    now = datetime.now(UTC).isoformat()
+    transcript.append({"role": "associate", "text": user_message, "at": asked_at or now})
     if response is not None:
         agent_text = " ".join(statement.text for statement in response.statements).strip()
         if agent_text:
-            transcript.append({"role": "agent", "text": agent_text})
+            transcript.append({"role": "agent", "text": agent_text, "at": now})
     return transcript[-TRANSCRIPT_LIMIT:]
 
 
@@ -355,6 +383,7 @@ def _resume_update(
         # remove the one ceiling on a loop of questions.
         "reasoning_steps_used": 0,
         "queries_used": 0,
+        "graph_queries_used": 0,
         "correction_attempts": 0,
         "replans_used": 0,
         "targeted_syncs_used": 0,
@@ -758,6 +787,7 @@ class DynamicOrderAgentCoordinator:
             "action": None,
             "reasoning_steps_used": 0,
             "queries_used": 0,
+            "graph_queries_used": 0,
             "correction_attempts": 0,
             "clarifications_used": 0,
             "replans_used": 0,
@@ -903,7 +933,10 @@ class DynamicOrderAgentCoordinator:
                     # conversation has to see, and it is what the agent is told
                     # to read before asking anything.
                     "transcript": _extended_transcript(
-                        conversation_state, user_message=request.message, response=question
+                        conversation_state,
+                        user_message=request.message,
+                        response=question,
+                        asked_at=_instant(final_state.get("as_of")),
                     ),
                 },
                 scope=scope,
@@ -930,7 +963,10 @@ class DynamicOrderAgentCoordinator:
             # stays that case's conversation.
             "caseId": final_state.get("case_id") or conversation_state.get("caseId"),
             "transcript": _extended_transcript(
-                conversation_state, user_message=request.message, response=response
+                conversation_state,
+                user_message=request.message,
+                response=response,
+                asked_at=_instant(final_state.get("as_of")),
             ),
         }
         provisional = AgentTurnResult(

@@ -436,6 +436,44 @@ async def test_the_releases_placement_of_the_rung_reaches_the_parcel() -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_placed_rung_is_also_a_case_fact_the_agent_can_cite() -> None:
+    """What the panel shows is what the agent may say.
+
+    The fulfilment reading is the platform's conclusion from the graph, and the
+    graph can lag the carrier: on 2026-09-10 the panel said IN_TRANSIT from the
+    parcel while the only status fact said AWAITING_HANDOFF, and the agent --
+    which answers from facts -- told the associate the stale one. The placed
+    rung is therefore a fact too, keyed on the parcel and the rung so a repeated
+    read is one fact, and absent when the release has not placed the rung.
+    """
+    business_state, repository = _BusinessState(), _Repository()
+    placements = {"in_transit": "IN_TRANSIT", "delivered": "DELIVERED"}
+    service = ReturnShipmentStateService(
+        business_state=business_state,
+        repository=repository,
+        observations=_Observations(_observed()),
+        projection_status_for=lambda code: placements.get((code or "").lower()),
+    )
+
+    await service.record_update(_update())
+    await service.record_update(_update())
+
+    facts = _named(repository, "shipment_status")
+    assert [fact["value"] for fact in facts] == ["IN_TRANSIT", "IN_TRANSIT"]
+    assert len({fact["fact_id"] for fact in facts}) == 1
+    assert facts[0]["source_path"] == "RETURN_TRACKING_PROJECTION"
+
+    unplaced = _Repository()
+    await ReturnShipmentStateService(
+        business_state=_BusinessState(),
+        repository=unplaced,
+        observations=_Observations(_observed()),
+        projection_status_for=lambda code: None,
+    ).record_update(_update())
+    assert _named(unplaced, "shipment_status") == []
+
+
+@pytest.mark.asyncio
 async def test_every_parcel_the_store_holds_is_recorded_not_only_the_one_submitted() -> None:
     """The mirror is of `dbo.return_tracking`, not of the update in hand (D4).
 

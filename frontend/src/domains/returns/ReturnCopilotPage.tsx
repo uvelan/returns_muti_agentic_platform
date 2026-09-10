@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { skipToken, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  skipToken,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useSearchParams } from "wouter";
 
 import {
@@ -39,7 +44,11 @@ import { useRuntimeConfig } from "../../hooks/useRuntimeConfig";
 import { DomainRail, RailFact, RailSection } from "../DomainRail";
 
 import { ReturnCopilotShell } from "./panes/ReturnCopilotShell";
-import { ConversationPane, type ChatHistoryEntry } from "./panes/ConversationPane";
+import {
+  ConversationPane,
+  type ChatHistoryEntry,
+} from "./panes/ConversationPane";
+import { placedByTime } from "./chatTime";
 import { ProgressTruthPane } from "./panes/ProgressTruthPane";
 import { BusinessObjectPane } from "./panes/BusinessObjectPane";
 import { CasePanel } from "./panes/casePanel/CasePanel";
@@ -58,9 +67,7 @@ import { CarrierTransitMode } from "./modes/CarrierTransitMode";
 import { WarehouseReceivingMode } from "./modes/WarehouseReceivingMode";
 import { ReturnSettlementMode } from "./modes/ReturnSettlementMode";
 import { useElapsedSeconds } from "../../hooks/useElapsedSeconds";
-import {
-  readSupportSystemEntries,
-} from "./panes/casePanel/support/supportSystemEntries";
+import { readSupportSystemEntries } from "./panes/casePanel/support/supportSystemEntries";
 // V2's panel sections register at import time. One side-effect import per screen
 // that mounts `CasePanel`; a renderer nobody imports never draws, and the panel
 // shows the contributed section as a placeholder that reads like a deployment skew.
@@ -96,7 +103,9 @@ function capturedFacts(turn: AgentTurnResult | null): readonly CapturedFact[] {
  * disagree with it. Absent is entirely ordinary -- the fields are optional --
  * so every part is independently nullable and nothing is defaulted.
  */
-function branchAssociate(projection: CaseProjection | null): BranchAssociateContact {
+function branchAssociate(
+  projection: CaseProjection | null,
+): BranchAssociateContact {
   const facts = projection?.facts ?? null;
   return {
     name: projectedFactString(facts, "branch_associate_name"),
@@ -125,9 +134,14 @@ function statedReturnReason(
   turn: AgentTurnResult | null,
   projection: CaseProjection | null,
 ): string | null {
-  const recorded = projectedFactString(projection?.facts ?? null, "return_reason");
+  const recorded = projectedFactString(
+    projection?.facts ?? null,
+    "return_reason",
+  );
   if (recorded !== null) return recorded;
-  const heard = capturedFacts(turn).find((fact) => fact.name === "return_reason");
+  const heard = capturedFacts(turn).find(
+    (fact) => fact.name === "return_reason",
+  );
   return heard === undefined ? null : text(heard.value);
 }
 
@@ -136,7 +150,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function text(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
 }
 
 /**
@@ -233,7 +249,9 @@ type TurnCandidates = {
 function citedExecutions(turn: AgentTurnResult): ReadonlySet<string> {
   return new Set(
     turn.response.statements.flatMap((statement) =>
-      (statement.evidence_refs ?? []).map((reference) => reference.query_execution_id),
+      (statement.evidence_refs ?? []).map(
+        (reference) => reference.query_execution_id,
+      ),
     ),
   );
 }
@@ -298,20 +316,43 @@ function ordersFromRows(rows: readonly unknown[]): Record<string, unknown>[] {
   // a stronger error than the empty cells beside it.
   //
   // A field only some orders can answer is not a fact about this set of orders.
-  const universal = [...new Set(merged.flatMap((order) => Object.keys(order)))].filter((field) =>
-    merged.every((order) => field in order),
-  );
+  const universal = [
+    ...new Set(merged.flatMap((order) => Object.keys(order))),
+  ].filter((field) => merged.every((order) => field in order));
   return merged.map((order) =>
     Object.fromEntries(universal.map((field) => [field, order[field]])),
   );
+}
+
+/**
+ * With nothing cited, the most recent search envelope stands for the turn.
+ *
+ * A turn's evidence accumulates: the customer search that opened the
+ * conversation is still there beside the search this turn ran, and summing
+ * both put ten rows under a heading that said seven matched (2026-09-10). The
+ * last search is the one the turn was about; the ones before it were the way
+ * there. Evidence with no search envelope at all is returned whole, so the
+ * row-based fallback in `turnCandidates` still sees every read.
+ */
+function latestSearch(
+  evidence: AgentTurnResult["query_evidence"],
+): AgentTurnResult["query_evidence"] {
+  for (let index = evidence.length - 1; index >= 0; index -= 1) {
+    const result = evidence[index].result;
+    if (isRecord(result) && Array.isArray(result.candidates))
+      return [evidence[index]];
+  }
+  return evidence;
 }
 
 function turnCandidates(turn: AgentTurnResult): TurnCandidates | null {
   const cited = citedExecutions(turn);
   const spoken =
     cited.size === 0
-      ? turn.query_evidence
-      : turn.query_evidence.filter((evidence) => cited.has(evidence.query_execution_id));
+      ? latestSearch(turn.query_evidence)
+      : turn.query_evidence.filter((evidence) =>
+          cited.has(evidence.query_execution_id),
+        );
 
   const searches = spoken.flatMap((evidence) =>
     isRecord(evidence.result) && Array.isArray(evidence.result.candidates)
@@ -350,12 +391,14 @@ function turnCandidates(turn: AgentTurnResult): TurnCandidates | null {
     // order it belongs to (the GROUP_BY's line count, for instance) alongside
     // its own. The same order appearing on several rows is not duplication
     // here: those rows say different things. `CandidateOrderMode` pages them.
-    const lines = rows.filter((row) => isRecord(row) && row[LINE_FIELD] !== undefined);
+    const lines = rows.filter(
+      (row) => isRecord(row) && row[LINE_FIELD] !== undefined,
+    );
     if (lines.length > 0) {
       const orderFacts = new Map(
-        ordersFromRows(rows.filter((row) => isRecord(row) && row[LINE_FIELD] === undefined)).map(
-          (order) => [String(order.sales_order_number), order],
-        ),
+        ordersFromRows(
+          rows.filter((row) => isRecord(row) && row[LINE_FIELD] === undefined),
+        ).map((order) => [String(order.sales_order_number), order]),
       );
       const enriched = lines.flatMap((row) => {
         if (!isRecord(row)) return [];
@@ -373,7 +416,8 @@ function turnCandidates(turn: AgentTurnResult): TurnCandidates | null {
   }
 
   const totals = searches.flatMap((result) =>
-    typeof result.total_found === "number" && Number.isFinite(result.total_found)
+    typeof result.total_found === "number" &&
+    Number.isFinite(result.total_found)
       ? [result.total_found]
       : [],
   );
@@ -387,7 +431,9 @@ function turnCandidates(turn: AgentTurnResult): TurnCandidates | null {
   };
 }
 
-function resolvedOrderReference(candidates: readonly Record<string, unknown>[]): string | null {
+function resolvedOrderReference(
+  candidates: readonly Record<string, unknown>[],
+): string | null {
   if (candidates.length !== 1) return null;
   const value = candidates[0].sales_order_number;
   return typeof value === "string" ? value : null;
@@ -408,10 +454,14 @@ function confirmedOrderRow(
   order: ConfirmedOrderProjection | null,
 ): Record<string, unknown>[] {
   if (order === null) return [];
-  const row: Record<string, unknown> = { sales_order_number: order.orderReference };
+  const row: Record<string, unknown> = {
+    sales_order_number: order.orderReference,
+  };
   if (order.orderSource !== null) row.order_source = order.orderSource;
-  if (order.sourceWebOrderNumber !== null) row.web_order_number = order.sourceWebOrderNumber;
-  if (order.trilogieOrderNumber !== null) row.trilogie_order_number = order.trilogieOrderNumber;
+  if (order.sourceWebOrderNumber !== null)
+    row.web_order_number = order.sourceWebOrderNumber;
+  if (order.trilogieOrderNumber !== null)
+    row.trilogie_order_number = order.trilogieOrderNumber;
   if (order.confirmedAt !== null) row.confirmed_at = order.confirmedAt;
   return [row];
 }
@@ -431,7 +481,8 @@ function historySearchKey(
       ? candidate.sales_order_number
       : null;
   const customer =
-    typeof candidate.customer_id === "string" && candidate.customer_id.length > 0
+    typeof candidate.customer_id === "string" &&
+    candidate.customer_id.length > 0
       ? candidate.customer_id
       : null;
   const account =
@@ -476,7 +527,7 @@ function agentBinding(
       runtimeConfig === null
         ? "Runtime configuration has not loaded yet, so the copilot cannot address an agent."
         : "This deployment has no copilot.order_discovery_agent_id configured, so no message " +
-          "can be sent. Set it in the return configuration release.",
+            "can be sent. Set it in the return configuration release.",
     ),
   };
 }
@@ -501,29 +552,35 @@ const CASE_PARAM = "caseId";
  * statements, so a replayed turn must not be able to claim it cited evidence it
  * no longer carries.
  */
-function restoredHistory(transcript: ConversationTranscript): ChatHistoryEntry[] {
-  const spoken: ChatHistoryEntry[] = transcript.messages.map((message, index) => ({
-    role: "restored" as const,
-    id: `${transcript.conversationId}-${String(index)}`,
-    author: message.role,
-    text: message.text,
-  }));
-  // The platform's own updates about what Support said (DR-3), appended after
-  // the last turn rather than interleaved. The transcript replays role and text
-  // and carries **no instants**, so there is nothing to interleave against, and
-  // guessing a position would be inventing when something was said. The entries
-  // keep their own recorded order among themselves.
-  //
-  // Read defensively out of the response body: no endpoint serves
-  // `systemEntries` today, so this is an empty list against everything the
-  // platform currently sends. See `supportSystemEntries.ts`.
-  const updates: ChatHistoryEntry[] = readSupportSystemEntries(transcript).map((entry) => ({
-    role: "system" as const,
-    id: entry.entryId,
-    kicker: entry.kicker,
-    text: entry.text,
-  }));
-  return [...spoken, ...updates];
+function restoredHistory(
+  transcript: ConversationTranscript,
+): ChatHistoryEntry[] {
+  const spoken: ChatHistoryEntry[] = transcript.messages.map(
+    (message, index) => ({
+      role: "restored" as const,
+      id: `${transcript.conversationId}-${String(index)}`,
+      author: message.role,
+      text: message.text,
+      ...(message.at === undefined ? {} : { at: message.at }),
+    }),
+  );
+  // The platform's own updates about what Support said (DR-3), placed where
+  // they happened. Each carries `recordedAt`, and since 2026-09-10 each spoken
+  // line carries `at`, so an entry lands before the message that came after it
+  // rather than after the last thing anyone typed -- which is where "what is
+  // the status" sat above the pane's own record of the item it asked about.
+  // A line with no instant (recorded before then) keeps its position and the
+  // entries that cannot be placed against it follow it, as they always did.
+  const updates: ChatHistoryEntry[] = readSupportSystemEntries(transcript).map(
+    (entry) => ({
+      role: "system" as const,
+      id: entry.entryId,
+      kicker: entry.kicker,
+      text: entry.text,
+      ...(entry.recordedAtIso === null ? {} : { at: entry.recordedAtIso }),
+    }),
+  );
+  return placedByTime(spoken, updates);
 }
 
 /**
@@ -535,7 +592,12 @@ function restoredHistory(transcript: ConversationTranscript): ChatHistoryEntry[]
  * render -- are skipped by id, so nothing is drawn twice.
  */
 function platformEntriesKey(conversationId: string) {
-  return ["order-agent", "transcript", conversationId, "system-entries"] as const;
+  return [
+    "order-agent",
+    "transcript",
+    conversationId,
+    "system-entries",
+  ] as const;
 }
 
 /** The platform's own "the document moved" refusal, and nothing else. */
@@ -559,21 +621,23 @@ function withPlatformEntries(
   const drawn = new Set(history.map((entry) => entry.id));
   const fresh = arrived.filter((entry) => !drawn.has(entry.entryId));
   if (fresh.length === 0) return history;
-  return [
-    ...history,
-    ...fresh.map((entry) => ({
+  return placedByTime(
+    history,
+    fresh.map((entry) => ({
       role: "system" as const,
       id: entry.entryId,
       kicker: entry.kicker,
       text: entry.text,
+      ...(entry.recordedAtIso === null ? {} : { at: entry.recordedAtIso }),
     })),
-  ];
+  );
 }
 
 export function ReturnCopilotPage() {
   const { can } = useCapabilities();
   const runtimeConfig = useRuntimeConfig();
-  const { agentId, error: agentConfigurationError } = agentBinding(runtimeConfig);
+  const { agentId, error: agentConfigurationError } =
+    agentBinding(runtimeConfig);
   // The released reason and condition catalogues. Empty means the deployment
   // has published none, which the pane says rather than substituting a list.
   const vocabulary = selectionVocabulary(runtimeConfig);
@@ -597,7 +661,9 @@ export function ReturnCopilotPage() {
   const [draft, setDraft] = useState<string>("");
   const [showHistory, setShowHistory] = useState<boolean>(false);
   const [turn, setTurn] = useState<AgentTurnResult | null>(null);
-  const [candidates, setCandidates] = useState<readonly Record<string, unknown>[]>([]);
+  const [candidates, setCandidates] = useState<
+    readonly Record<string, unknown>[]
+  >([]);
   /** What the search matched, as opposed to what it handed over. `null` if unreported. */
   const [candidateTotal, setCandidateTotal] = useState<number | null>(null);
 
@@ -617,7 +683,9 @@ export function ReturnCopilotPage() {
    */
   function restoreCandidates(transcript: ConversationTranscript) {
     const found =
-      transcript.lastResultTurn == null ? null : turnCandidates(transcript.lastResultTurn);
+      transcript.lastResultTurn == null
+        ? null
+        : turnCandidates(transcript.lastResultTurn);
     setCandidates(found?.rows ?? []);
     setCandidateTotal(found?.totalFound ?? null);
   }
@@ -636,7 +704,10 @@ export function ReturnCopilotPage() {
 
   /** Write identity to the URL, replacing rather than pushing: resuming a return
    * is not a navigation the back button should have to walk through. */
-  function rememberIdentity(next: { conversationId?: string; caseId?: string | null }) {
+  function rememberIdentity(next: {
+    conversationId?: string;
+    caseId?: string | null;
+  }) {
     if (next.conversationId !== undefined) {
       restoredConversation.current = next.conversationId;
     }
@@ -665,11 +736,13 @@ export function ReturnCopilotPage() {
     // state to drive the whole screen -- stage included -- with no
     // `ReturnSession` read behind it, which is what the deleted
     // `returnsApi.list()` scan used to attempt in the browser.
-    queryFn: caseId === null ? skipToken : () => casesApi.readProjection(caseId),
+    queryFn:
+      caseId === null ? skipToken : () => casesApi.readProjection(caseId),
     // Business truth, not array length. `caseRefetchInterval` carries the
     // reasoning; the short version is that an RMA with no label is a case still
     // being worked, and the shipped predicate stopped on it.
-    refetchInterval: (query) => caseRefetchInterval(query.state.data, query.state.error),
+    refetchInterval: (query) =>
+      caseRefetchInterval(query.state.data, query.state.error),
     // A late response carrying a lower revision is discarded before it becomes
     // query data, so it cannot walk the screen backwards.
     structuralSharing: keepNewerRevision,
@@ -717,7 +790,8 @@ export function ReturnCopilotPage() {
       caseId === null || history.length === 0
         ? skipToken
         : () => orderAgentApi.readTranscript(conversationId),
-    refetchInterval: lifecycle?.isTerminal === true ? false : CASE_POLL_INTERVAL_MS,
+    refetchInterval:
+      lifecycle?.isTerminal === true ? false : CASE_POLL_INTERVAL_MS,
     staleTime: CASE_POLL_INTERVAL_MS,
     retry: caseRetry,
   });
@@ -788,10 +862,16 @@ export function ReturnCopilotPage() {
     }) => {
       if (caseId === null) {
         return Promise.reject(
-          new Error("No case has been raised yet, so no selection can be recorded."),
+          new Error(
+            "No case has been raised yet, so no selection can be recorded.",
+          ),
         );
       }
-      return orderLinesApi.replaceSelection(caseId, submission.items, submission.contact);
+      return orderLinesApi.replaceSelection(
+        caseId,
+        submission.items,
+        submission.contact,
+      );
     },
     onSuccess: async () => {
       await Promise.all([
@@ -887,6 +967,7 @@ export function ReturnCopilotPage() {
           id: `agent-${String(previous.length)}`,
           statements: result.response.statements,
           status: result.response.status,
+          at: new Date().toISOString(),
         },
       ]);
     },
@@ -907,7 +988,9 @@ export function ReturnCopilotPage() {
       }
       const authorised = caseRecords(projection).flatMap((record) =>
         (record.approvedItems ?? []).flatMap((item) =>
-          typeof item.quantityApproved === "number" ? [item.quantityApproved] : [],
+          typeof item.quantityApproved === "number"
+            ? [item.quantityApproved]
+            : [],
         ),
       );
       const selected = (projection.selectedItems ?? []).flatMap((item) =>
@@ -954,7 +1037,13 @@ export function ReturnCopilotPage() {
    * back in and the whole screen fell back to discovery.
    */
   const open = useMutation({
-    mutationFn: async ({ id, caseId: known }: { id: string; caseId?: string }) => {
+    mutationFn: async ({
+      id,
+      caseId: known,
+    }: {
+      id: string;
+      caseId?: string;
+    }) => {
       const transcript = await orderAgentApi.readTranscript(id);
       if (known !== undefined) {
         return { transcript, raisedCase: { caseId: known } };
@@ -1051,7 +1140,12 @@ export function ReturnCopilotPage() {
     if (trimmed.length === 0 || send.isPending || agentId === null) return;
     setHistory((previous) => [
       ...previous,
-      { role: "associate", id: `me-${String(previous.length)}`, text: trimmed },
+      {
+        role: "associate",
+        id: `me-${String(previous.length)}`,
+        text: trimmed,
+        at: new Date().toISOString(),
+      },
     ]);
     setDraft("");
     send.mutate(trimmed);
@@ -1150,7 +1244,10 @@ export function ReturnCopilotPage() {
             conversations={conversations.data ?? []}
             openCases={cases.data ?? []}
             onOpen={(id, knownCaseId) => {
-              open.mutate({ id, ...(knownCaseId === undefined ? {} : { caseId: knownCaseId }) });
+              open.mutate({
+                id,
+                ...(knownCaseId === undefined ? {} : { caseId: knownCaseId }),
+              });
             }}
             openError={open.error}
             showHistory={showHistory}
@@ -1172,7 +1269,10 @@ export function ReturnCopilotPage() {
           />
         }
         businessObjectPane={
-          <BusinessObjectPane activeMode={activeMode} candidateCount={shownCandidates.length}>
+          <BusinessObjectPane
+            activeMode={activeMode}
+            candidateCount={shownCandidates.length}
+          >
             {activeMode === "DISCOVERY" && <DiscoveryMode turn={turn} />}
             {activeMode === "CANDIDATE_ORDER" && (
               <CandidateOrderMode
@@ -1185,12 +1285,16 @@ export function ReturnCopilotPage() {
                 // unstated, and the table falls back to its own identity set.
                 configuredColumns={candidateColumnCatalogue(runtimeConfig)}
                 returnHistory={returnHistory.data ?? null}
-                returnHistoryPending={historyAnchor !== null && returnHistory.isPending}
+                returnHistoryPending={
+                  historyAnchor !== null && returnHistory.isPending
+                }
                 returnHistoryError={returnHistory.error}
                 // Same rule the handler applies, asked before the click: a row
                 // that cannot produce a confirmation renders disabled rather
                 // than swallowing the press.
-                canSelectCandidate={(chosen) => confirmationFor(chosen) !== null}
+                canSelectCandidate={(chosen) =>
+                  confirmationFor(chosen) !== null
+                }
                 onSelectCandidate={(chosen) => {
                   // Only the agent can confirm an order -- confirmation is what
                   // raises the case. The button says which one, in the
@@ -1236,7 +1340,9 @@ export function ReturnCopilotPage() {
                 // and ticks them; without them it drew every line of the order
                 // with none selected, and the associate set the return up
                 // against whichever line happened to be drawn first.
-                confirmedLineReferences={orderLines.data?.confirmedLineReferences ?? []}
+                confirmedLineReferences={
+                  orderLines.data?.confirmedLineReferences ?? []
+                }
                 linesPending={caseId !== null && orderLines.isPending}
                 linesError={orderLines.error}
                 items={projection?.selectedItems ?? []}

@@ -16,6 +16,8 @@ import { apiClient } from "./client";
 
 export type StatementType =
   | "GRAPH_FACT"
+  /** A fact the case itself records (status, RMA, destination), cited from `case_facts`. */
+  | "CASE_FACT"
   | "USER_PROVIDED_FACT"
   | "REASONED_SUGGESTION"
   | "CLARIFICATION_QUESTION";
@@ -160,7 +162,12 @@ export type ConversationSummary = {
 export type ConversationTranscript = {
   conversationId: string;
   conversationVersion: number;
-  messages: { role: "associate" | "agent"; text: string }[];
+  /**
+   * `at` is the ISO-8601 instant the line was said, written by the backend
+   * since 2026-09-10. Absent on lines recorded before then, and the console
+   * then orders such a line the way it always did: by position.
+   */
+  messages: { role: "associate" | "agent"; text: string; at?: string }[];
   /**
    * The most recent turn in this conversation that produced results.
    *

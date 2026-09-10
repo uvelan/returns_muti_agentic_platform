@@ -74,9 +74,13 @@ from return_platform.dynamic_knowledge.order_agent.search_strategy import (
     PlannedSearch,
     build_search_program,
     candidate_key,
+    count_plan,
+    counted_totals,
     narrow_fulltext_matches,
     rank_search_results,
     search_intent_signature,
+    truncated_searches,
+    with_true_total,
 )
 from return_platform.dynamic_knowledge.order_agent.state import CandidateSet
 from return_platform.dynamic_knowledge.order_agent.temporal_grounding import (
@@ -712,6 +716,150 @@ def unagreed_confirmation(state: dict[str, Any], action: AgentAction) -> str | N
     )
 
 
+#: A message that confirms a customer, as the Select button phrases it
+#: ("Confirm the customer NORTHGATE PLUMBING on account PHOENIX.") and as an
+#: associate types it ("confirm customer northgate"). The account is captured
+#: when given, so the correction can name the filter the model has to write.
+_CUSTOMER_CONFIRMATION = re.compile(
+    r"\bconfirm(?:ed|ing)?\b\s+(?:the\s+)?(?:customer|company)\s+(?P<name>.+?)"
+    r"(?:\s+on\s+(?:the\s+)?account\s+(?P<account>[A-Za-z0-9_-]+))?\s*[.!]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def confirmed_customer(message: str) -> tuple[str, str | None] | None:
+    """(customer name, account or None) when the message confirms a customer, else None.
+
+    A message that names an order is not a customer confirmation, whatever
+    else it says: "confirm order CO363355 for customer Westfield" is about the
+    order, and `unagreed_confirmation` is the rule for that.
+    """
+    if re.search(r"\border\b", message, re.IGNORECASE):
+        return None
+    found = _CUSTOMER_CONFIRMATION.search(message.strip())
+    if found is None:
+        return None
+    name = found.group("name").strip().rstrip(".").strip()
+    if not name:
+        return None
+    account = found.group("account")
+    return name, (account.strip() if account else None)
+
+
+def orders_not_read(state: dict[str, Any], action: AgentAction) -> str | None:
+    """Why this reply comes before the confirmed customer's orders were read, or None.
+
+    "Confirm the customer SILVERLAKE AIR SYSTEMS on account SACRAMENTO" was
+    answered on 2026-09-10 with three customer searches and "I couldn't find
+    any orders" -- the customer had an eight-line order, and no query had ever
+    gone from the customer to it. The prompt says a confirmed customer's orders
+    are shown next; this holds it on every model. A RESPOND or CLARIFY on a
+    confirming message, before any GRAPH_QUERY has run on the turn, goes back
+    with the read it has to do first. Once a case exists the customer question
+    is long settled and the rule does not apply.
+    """
+    if action.action_type not in {ActionType.RESPOND, ActionType.CLARIFY}:
+        return None
+    if state.get("case_id") or state.get("graph_queries_used", 0) > 0:
+        return None
+    who = confirmed_customer(str(state.get("user_message") or ""))
+    if who is None:
+        return None
+    name, account = who
+    scope = f"customer_name CONTAINS '{name}'"
+    where = f"the customer {name}"
+    if account:
+        scope += f" and account_id EQUALS '{account}'"
+        where += f" on account {account}"
+    return (
+        f"The associate confirmed {where} in this message, and that customer's orders have "
+        "not been read: no GRAPH_QUERY has run on this turn, and a customer search cannot "
+        "show orders or scope by account. Do not RESPOND or CLARIFY yet. Issue GRAPH_QUERY "
+        "with operation TRAVERSE from customer to its orders and their lines, as the "
+        f"graph-query-shape rule describes, with filters on customer: {scope}. Then show the "
+        "orders and products it returned, and say the customer has no orders only if that "
+        "traverse returned no rows."
+    )
+
+
+def repeated_search(
+    catalogue: IdentificationCatalogue, state: dict[str, Any], action: AgentAction
+) -> str | None:
+    """Why this ORDER_SEARCH would only repeat one this turn already ran, or None.
+
+    The same signals and the same unrecognised keys as the search whose page is
+    already in hand, on the same turn. Three in a row were sent on 2026-09-10
+    after a customer confirmation, each returning the same page and each
+    spending a model call and a graph read. The page is in contextJson; the
+    next step is reading it, or a GRAPH_QUERY scoped past it. A "show more" is
+    not a repeat, and a search from an earlier turn may be run again.
+    """
+    intent = action.search_intent
+    if action.action_type != ActionType.ORDER_SEARCH or intent is None:
+        return None
+    if getattr(intent, "wantsMoreResults", False):
+        return None
+    cache = state.get("order_search_cache")
+    if not isinstance(cache, dict):
+        return None
+    if cache.get("signature") != search_intent_signature(intent, catalogue):
+        return None
+    candidate_set = cache.get("candidateSet")
+    if not isinstance(candidate_set, dict):
+        return None
+    if candidate_set.get("turn_id") != state.get("client_turn_id"):
+        return None
+    return (
+        f"This exact search already ran on this turn and found {cache.get('totalFound')} "
+        f"candidate(s), {cache.get('shown')} of them on the page in contextJson; sending it "
+        "again returns the same page. Do not repeat it. Work from those candidates: ask what "
+        "tells them apart, or, if the associate has confirmed a customer or an account, read "
+        "that customer's orders with a GRAPH_QUERY TRAVERSE filtered on customer_name and "
+        "account_id -- an account is not a search signal, and ORDER_SEARCH cannot scope by "
+        "it. For the next page of this search send wantsMoreResults instead."
+    )
+
+
+async def repeated_query(
+    deps: GraphDependencies, state: dict[str, Any], action: AgentAction
+) -> str | None:
+    """Why this GRAPH_QUERY would only repeat one this turn already ran, or None.
+
+    The same query_plan, checksum for checksum, as one whose rows are already
+    in the turn's evidence. Twelve identical traverses were sent on 2026-09-10
+    -- nine rows in contextJson every time -- until the query budget ended the
+    turn with nothing said. Rows arrive with no plan attached, so a model that
+    does not recognise its own answer asks again; this tells it where the
+    answer is and what to do with it. Compared against the turn's own evidence
+    only, so the same question on a later turn is a fresh read.
+    """
+    plan = action.query_plan
+    if action.action_type != ActionType.GRAPH_QUERY or plan is None:
+        return None
+    refs = tuple(state.get("evidence_refs", ()))
+    if not refs:
+        return None
+    checksum = sha256_digest(plan.model_dump(mode="json"))
+    for item in await _rehydrate_evidence(deps, refs):
+        if item.logical_plan_checksum != checksum:
+            continue
+        result = item.result if isinstance(item.result, dict) else {}
+        rows = result.get("rows")
+        rows = rows if isinstance(rows, list) else []
+        fields = sorted({key for row in rows[:5] if isinstance(row, dict) for key in row})
+        named = f", with fields {', '.join(fields)}" if fields else ""
+        return (
+            f"This exact GRAPH_QUERY already ran on this turn: its {len(rows)} row(s) are in "
+            f"contextJson.query_evidence under query_execution_id {item.query_execution_id}"
+            f"{named}. Running it again returns the same rows. Do not repeat it. Answer from "
+            "them now: RESPOND or CLARIFY with GRAPH_FACT statements whose evidence_refs cite "
+            'that query_execution_id at ["rows", "<index>", "<field>"], naming the orders and '
+            "products they hold and asking which one is coming back. If it returned no rows, "
+            "say so plainly instead of querying again."
+        )
+    return None
+
+
 def _signal_values(intent: Any, key: str) -> list[str]:
     raw = (getattr(intent, "model_extra", None) or {}).get(key)
     if raw is None:
@@ -862,7 +1010,11 @@ def make_validate_action_node(deps: GraphDependencies) -> Any:
             unagreed_confirmation(state, action)
             or empty_search(deps.identification, action)
             or misplaced_signal(deps.identification, action)
+            or repeated_search(deps.identification, state, action)
+            or orders_not_read(state, action)
         )
+        if guard_error is None:
+            guard_error = await repeated_query(deps, state, action)
         if guard_error is not None:
             if correction_attempts >= policy.max_correction_attempts:
                 raise OrderAgentFailure(
@@ -1042,6 +1194,7 @@ def make_graph_query_node(deps: GraphDependencies) -> Any:
         return {
             "evidence_refs": (*state.get("evidence_refs", ()), evidence.query_execution_id),
             "queries_used": state.get("queries_used", 0) + 1,
+            "graph_queries_used": state.get("graph_queries_used", 0) + 1,
             "_corrected": False,
         }
 
@@ -1138,7 +1291,7 @@ def make_order_search_node(deps: GraphDependencies) -> Any:
         program = build_search_program(
             intent, deps.identification, fulltext_policy=deps.customer_fulltext
         )
-        raw_results, compiled_checksums, queries_used = await _run_planned_searches(
+        raw_results, compiled_checksums, queries_used, executed = await _run_planned_searches(
             deps,
             planned=program.primary,
             guard_context=guard_context,
@@ -1147,7 +1300,42 @@ def make_order_search_node(deps: GraphDependencies) -> Any:
             budget=policy.max_graph_queries_per_turn,
         )
 
-        ranked = rank_search_results(intent, raw_results, program=program)
+        # A page that filled is not the whole answer. Ask how many there really
+        # are before ranking, so the envelope says so instead of counting the
+        # page and calling it the total (SRCH-01, 2026-09-10). Best effort and
+        # within the same budget: a count that cannot run leaves the total a
+        # floor, and the signal is still named as truncated.
+        truncated = truncated_searches(list(zip(executed, raw_results, strict=True)))
+        counts: tuple[int, ...] = ()
+        if truncated:
+            countable = [plan for plan in map(count_plan, truncated) if plan is not None]
+            if countable:
+                count_results, count_checksums, queries_used, _ = await _run_planned_searches(
+                    deps,
+                    planned=countable,
+                    guard_context=guard_context,
+                    state=state,
+                    queries_used=queries_used,
+                    budget=policy.max_graph_queries_per_turn,
+                    best_effort=True,
+                )
+                compiled_checksums.extend(count_checksums)
+                counts = counted_totals(count_results)
+            logger.info(
+                "order_search_truncated",
+                extra={
+                    "conversation_id": state["conversation_id"],
+                    "client_turn_id": state["client_turn_id"],
+                    "intent_keys": sorted({item.intent_key for item in truncated}),
+                    "counts": list(counts),
+                },
+            )
+
+        ranked = with_true_total(
+            rank_search_results(intent, raw_results, program=program),
+            truncated=truncated,
+            counts=counts,
+        )
 
         # The deferred searches are the ones an operator marked as worth running
         # only when everything else failed -- an indexed approximate match is
@@ -1155,7 +1343,7 @@ def make_order_search_node(deps: GraphDependencies) -> Any:
         # those are is configuration; that they run here, once, on zero results,
         # is the shape of the turn.
         if ranked["total_found"] == 0 and program.deferred:
-            fallback_results, fallback_checksums, queries_used = await _run_planned_searches(
+            fallback_results, fallback_checksums, queries_used, _ = await _run_planned_searches(
                 deps,
                 planned=program.deferred,
                 guard_context=guard_context,
@@ -1262,8 +1450,12 @@ async def _run_planned_searches(
     queries_used: int,
     budget: int,
     best_effort: bool = False,
-) -> tuple[list[Any], list[str], int]:
+) -> tuple[list[Any], list[str], int, list[PlannedSearch]]:
     """Guard, compile and execute a set of planned searches within the turn budget.
+
+    Returns the raw results, their compiled checksums, the budget used, and the
+    plans that actually executed, in the same order as the results -- a caller
+    that wants to know whether a result filled its plan's page needs the plan.
 
     One loop for every configured search, whichever field produced it. The
     per-field branches this replaced each had their own copy of guard-validate,
@@ -1305,7 +1497,7 @@ async def _run_planned_searches(
     """
     capacity = budget - queries_used
     if capacity <= 0:
-        return [], [], queries_used
+        return [], [], queries_used, []
 
     # Serial, and before any IO. Guards and the compiler are pure, so this
     # settles exactly which searches are admitted without a round trip -- and
@@ -1335,7 +1527,7 @@ async def _run_planned_searches(
         admitted.append((item, compiled))
 
     if not admitted:
-        return [], [], queries_used
+        return [], [], queries_used, []
 
     async def _execute(compiled: CompiledQuery, plan: Any) -> Any:
         return await deps.knowledge_gateway.execute(
@@ -1357,6 +1549,7 @@ async def _run_planned_searches(
 
     raw_results: list[Any] = []
     checksums: list[str] = []
+    executed: list[PlannedSearch] = []
     for (item, compiled), outcome in zip(admitted, outcomes, strict=True):
         if isinstance(outcome, BaseException):
             if best_effort:
@@ -1379,8 +1572,9 @@ async def _run_planned_searches(
             ) from outcome
         raw_results.append(outcome)
         checksums.append(compiled.checksum)
+        executed.append(item)
         queries_used += 1
-    return raw_results, checksums, queries_used
+    return raw_results, checksums, queries_used, executed
 
 
 def _rank_deferred_matches(
@@ -1588,6 +1782,9 @@ def make_clarify_node(deps: GraphDependencies) -> Any:
             response=action.response,
             evidence=evidence,
             graph_generation_id=state["graph_generation_id"],
+            # Read now, not from the context the model saw: a CASE_FACT is
+            # checked against the case as it is at validation time.
+            case_facts=await _case_facts(deps, state.get("case_id")),
         )
         if not validation.valid:
             if correction_attempts >= policy.max_correction_attempts:
@@ -1825,6 +2022,9 @@ def make_respond_node(deps: GraphDependencies) -> Any:
             response=action.response,
             evidence=evidence,
             graph_generation_id=state["graph_generation_id"],
+            # Read now, not from the context the model saw: a CASE_FACT is
+            # checked against the case as it is at validation time.
+            case_facts=await _case_facts(deps, state.get("case_id")),
         )
         if not validation.valid:
             # The reasons go in the *message*, not only in `extra`. They were

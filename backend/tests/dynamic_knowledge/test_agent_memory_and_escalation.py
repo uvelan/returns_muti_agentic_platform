@@ -177,7 +177,9 @@ def test_a_paused_turn_still_records_what_the_associate_said() -> None:
     still part of the conversation -- dropping it would make the resumed turn
     look like the question came from nowhere."""
     extended = _extended_transcript({}, user_message="melgon heating", response=None)
-    assert extended == [{"role": "associate", "text": "melgon heating"}]
+    assert _said(extended) == [{"role": "associate", "text": "melgon heating"}]
+    # And when: the console orders the platform's own entries against it.
+    assert extended[0]["at"].endswith("+00:00")
 
 
 def test_the_transcript_is_bounded() -> None:
@@ -218,10 +220,31 @@ def test_memory_is_scoped_to_one_session_and_does_not_cross() -> None:
     silently carry one customer's details into the next customer's return.
     """
     first = _extended_transcript({}, user_message="melgon heating", response=None)
-    assert first == [{"role": "associate", "text": "melgon heating"}]
+    assert _said(first) == [{"role": "associate", "text": "melgon heating"}]
 
     # A new session's record carries no transcript at all.
     assert _stored_transcript({}) == ()
-    assert _extended_transcript({}, user_message="different customer", response=None) == [
+    assert _said(_extended_transcript({}, user_message="different customer", response=None)) == [
         {"role": "associate", "text": "different customer"}
     ]
+
+
+def _said(transcript: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Role and text only: what was said, without when."""
+    return [{"role": entry["role"], "text": entry["text"]} for entry in transcript]
+
+
+def test_the_instant_survives_the_round_trip_and_an_old_entry_has_none() -> None:
+    """An entry written before instants existed is served without one rather
+    than with a guess; one written since keeps exactly the instant it got."""
+    stored = [
+        {"role": "associate", "text": "old"},
+        {"role": "agent", "text": "reply", "at": "2026-09-10T07:26:55+00:00"},
+        {"role": "associate", "text": "bad instant", "at": 42},
+    ]
+    kept = _stored_transcript({"transcript": stored})
+    assert kept == (
+        {"role": "associate", "text": "old"},
+        {"role": "agent", "text": "reply", "at": "2026-09-10T07:26:55+00:00"},
+        {"role": "associate", "text": "bad instant"},
+    )

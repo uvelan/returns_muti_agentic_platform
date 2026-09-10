@@ -190,10 +190,17 @@ discovery:
         # could never meet: five ACOSTAs and five strangers' orders, and the one
         # ACOSTA order carrying the product in neither. When no product is
         # given the search runs broad, exactly as before.
+        # The limit bounds the page, never the corpus (SRCH-01): a filled page
+        # is counted by the platform and reported as truncated, so the total is
+        # honest whatever the number here. It matches the cached-candidate
+        # window because that is how many the turn can page through: at five,
+        # seven customers sharing one trade name came back as five, and the
+        # two on the account the associate had just confirmed were never seen
+        # (2026-09-10).
         - entity: customer
           field: customer_name
           strategy: CONTAINS
-          limit: 5
+          limit: 25
           narrow_with:
             - intent_key: productNames
               path:

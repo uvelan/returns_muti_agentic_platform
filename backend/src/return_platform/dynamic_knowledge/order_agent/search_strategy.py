@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -848,3 +849,100 @@ def _match_strength(
         if normalized_value in normalized_row:
             return weight, f"{search.field_id}_contains"
     return None
+
+
+# --- Truncation ---------------------------------------------------------------
+#
+# A search that returns exactly its row limit has not necessarily shown
+# everything. Seven customers named SILVERLAKE AIR SYSTEMS behind a limit of
+# five came back as five, `total_found` counted those five, and the two on the
+# account the associate had just confirmed were never seen (2026-09-10). The
+# invariant at the top of this module -- a limit bounds what is returned, never
+# what is searchable -- holds only when the turn can tell that it was cut off
+# and how many there really are. These helpers make that visible: which
+# searches filled their page, the COUNT that asks the same question without a
+# page, and the envelope that carries the true total.
+
+#: A search whose limit is one is a lookup, not a page -- an order number, an
+#: exact id. Reaching that limit means it was answered, not truncated.
+LOOKUP_LIMIT = 1
+
+
+def truncated_searches(
+    executed: Sequence[tuple[PlannedSearch, Any]],
+) -> tuple[PlannedSearch, ...]:
+    """The searches whose page filled, so rows beyond it may exist unseen.
+
+    An indexed search is excluded: its limit trims a list the index has already
+    ranked in full (SRCH-01), so filling it is the expected shape of a hit and
+    not a cut-off.
+    """
+    truncated: list[PlannedSearch] = []
+    for planned, result in executed:
+        plan = planned.plan
+        if plan.operation is QueryOperation.FULLTEXT_SEARCH or plan.limit <= LOOKUP_LIMIT:
+            continue
+        rows = result.get("rows", []) if isinstance(result, dict) else []
+        if isinstance(rows, list) and len(rows) >= plan.limit:
+            truncated.append(planned)
+    return tuple(truncated)
+
+
+def count_plan(planned: PlannedSearch) -> PlannedSearch | None:
+    """The same question as a COUNT: same start, same filters, no page.
+
+    ``None`` for a search that walks a path. The compiler's COUNT counts rows and
+    a traversal yields one row per path, so the figure would overstate the
+    records; such a search is still reported as truncated, without a total.
+    """
+    plan = planned.plan
+    if plan.traversal:
+        return None
+    return PlannedSearch(
+        plan=LogicalQueryPlan(
+            operation=QueryOperation.COUNT,
+            start_entity_id=plan.start_entity_id,
+            filters=plan.filters,
+            limit=1,
+        ),
+        search=planned.search,
+        intent_key=planned.intent_key,
+    )
+
+
+def counted_totals(results: Sequence[Any]) -> tuple[int, ...]:
+    """The figures a COUNT pass returned, read from the compiler's ``value`` column."""
+    totals: list[int] = []
+    for result in results:
+        rows = result.get("rows", []) if isinstance(result, dict) else []
+        for row in rows if isinstance(rows, list) else []:
+            value = row.get("value") if isinstance(row, dict) else None
+            if isinstance(value, int) and not isinstance(value, bool):
+                totals.append(value)
+                break
+    return tuple(totals)
+
+
+def with_true_total(
+    ranked: dict[str, Any],
+    *,
+    truncated: Sequence[PlannedSearch],
+    counts: Sequence[int],
+) -> dict[str, Any]:
+    """The ranked envelope, told what its page could not show.
+
+    Unchanged when nothing filled its page. Otherwise ``total_found`` becomes
+    the largest figure known -- the candidates in hand or a COUNT's answer --
+    and ``truncated_signals`` names the intent keys whose search filled. A
+    search that filled but could not be counted leaves ``total_found`` a floor,
+    and its key is still named so a reader looks past the page rather than
+    concluding from it.
+    """
+    if not truncated:
+        return ranked
+    in_hand = int(ranked.get("total_found", 0))
+    return {
+        **ranked,
+        "total_found": max((in_hand, *counts)),
+        "truncated_signals": sorted({item.intent_key for item in truncated}),
+    }

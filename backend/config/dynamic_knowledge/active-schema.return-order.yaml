@@ -5288,6 +5288,10 @@ agent_policies:
     - purchase-history
     - candidate-disambiguation
     - return-context-collection
+    # How the return is going, answered from the case's own facts as CASE_FACT
+    # statements once a case exists. Absent, "what is the status" was answered
+    # under return-context-collection with an uncitable fact (2026-09-10).
+    - return-status
     allowed_roles:
     - '*'
     allowed_entity_ids:
@@ -5316,4 +5320,4 @@ agent_policies:
     max_clarifications: 10
     max_replans: 2
     max_targeted_syncs_per_turn: 3
-configuration_checksum: a4a72797813922e4765370e9cab0267e3ffc4143ad6456a53df48d98decbdd90
+configuration_checksum: 511c9d2c2a6fc986459f9528f02ff63f7d1e4a4ef8bdad3cb14f4c853b7850c2

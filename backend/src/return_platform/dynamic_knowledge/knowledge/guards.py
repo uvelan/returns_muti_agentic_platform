@@ -13,6 +13,7 @@ from return_platform.dynamic_knowledge.knowledge.evidence import (
     EvidenceValidationFailure,
     EvidenceValidationResult,
     QueryEvidence,
+    ResponseStatement,
     StatementType,
     StructuredAgentResponse,
 )
@@ -321,10 +322,23 @@ class HallucinationGuard:
         response: StructuredAgentResponse,
         evidence: Sequence[QueryEvidence],
         graph_generation_id: str,
+        case_facts: Mapping[str, Any] | None = None,
     ) -> EvidenceValidationResult:
+        """Every cited fact is checked against what it cites.
+
+        A GRAPH_FACT against the turn's query evidence, on the current graph
+        generation. A CASE_FACT against `case_facts` -- the case's own record,
+        read fresh for this validation -- so "the return is IN_TRANSIT" is
+        refused when the case says otherwise, exactly as a claimed SKU is
+        refused when the row says otherwise. A CASE_FACT with no case to read
+        (`case_facts` None or empty) fails: there is nothing it could be true of.
+        """
         evidence_by_id = {item.query_execution_id: item for item in evidence}
         failures: list[EvidenceValidationFailure] = []
         for statement in response.statements:
+            if statement.statement_type is StatementType.CASE_FACT:
+                failures.extend(_case_fact_failures(statement, case_facts or {}))
+                continue
             if statement.statement_type is not StatementType.GRAPH_FACT:
                 continue
             for reference in statement.evidence_refs:
@@ -370,6 +384,38 @@ class HallucinationGuard:
                         )
                     )
         return EvidenceValidationResult(valid=not failures, failures=tuple(failures))
+
+
+def _case_fact_failures(
+    statement: ResponseStatement, case_facts: Mapping[str, Any]
+) -> list[EvidenceValidationFailure]:
+    failures: list[EvidenceValidationFailure] = []
+    for reference in statement.evidence_refs:
+        try:
+            actual = _resolve_result_path(case_facts, reference.result_path)
+        except (KeyError, IndexError, TypeError, ValueError):
+            failures.append(
+                EvidenceValidationFailure(
+                    statement_id=statement.statement_id,
+                    reason=(
+                        f"case fact {list(reference.result_path)!r} is not recorded on the case; "
+                        "cite only a fact present in contextJson.case_facts"
+                    ),
+                )
+            )
+            continue
+        if reference.expected_value is not None and actual != reference.expected_value:
+            failures.append(
+                EvidenceValidationFailure(
+                    statement_id=statement.statement_id,
+                    reason=(
+                        f"claimed value {reference.expected_value!r} for case fact "
+                        f"{list(reference.result_path)!r} does not match the recorded value "
+                        f"{actual!r}"
+                    ),
+                )
+            )
+    return failures
 
 
 def _resolve_result_path(value: Any, path: Sequence[str]) -> Any:

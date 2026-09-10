@@ -50,6 +50,7 @@ from return_platform.dynamic_knowledge.order_agent.identification import (
 from return_platform.dynamic_knowledge.order_agent.search_strategy import (
     MAX_CACHED_CANDIDATES,
     CustomerFulltextPolicy,
+    PlannedSearch,
     SearchProgram,
     build_fulltext_query,
     build_search_program,
@@ -1112,3 +1113,108 @@ def test_no_strong_anchor_is_inert(production_schema: ActiveSchema) -> None:
     ]
 
     assert inert == []
+
+
+# --- truncation ---------------------------------------------------------------
+#
+# Seven customers named SILVERLAKE AIR SYSTEMS behind a limit of five came back
+# as five, total_found counted the five, and the two on the account the
+# associate had just confirmed were never seen (2026-09-10).
+
+
+def _customer_rows(count: int) -> list[dict[str, Any]]:
+    return [
+        {"customer_id": f"CUST-{index}", "customer_name": "SILVERLAKE AIR SYSTEMS"}
+        for index in range(count)
+    ]
+
+
+def _customer_plan(catalogue: IdentificationCatalogue) -> PlannedSearch:
+    program = build_search_program(_intent(customerNames=["SILVERLAKE AIR SYSTEMS"]), catalogue)
+    [planned] = [item for item in program.primary if item.intent_key == "customerNames"]
+    return planned
+
+
+def test_a_page_that_filled_is_truncated_and_one_below_the_limit_is_not(
+    catalogue: IdentificationCatalogue,
+) -> None:
+    from return_platform.dynamic_knowledge.order_agent.search_strategy import truncated_searches
+
+    planned = _customer_plan(catalogue)
+    limit = planned.plan.limit
+    assert limit > 1
+
+    assert truncated_searches([(planned, {"rows": _customer_rows(limit)})]) == (planned,)
+    assert truncated_searches([(planned, {"rows": _customer_rows(limit - 1)})]) == ()
+
+
+def test_a_lookup_and_an_indexed_search_never_count_as_truncated(
+    catalogue: IdentificationCatalogue,
+) -> None:
+    from return_platform.dynamic_knowledge.order_agent.search_strategy import truncated_searches
+
+    program = build_search_program(_intent(orderNumbers=["CW273354"]), catalogue)
+    [lookup] = [item for item in program.primary if item.plan.limit == 1]
+    assert truncated_searches([(lookup, {"rows": [{"sales_order_number": "CW273354"}]})]) == ()
+
+    deferred = build_search_program(_intent(customerNames=["Silverlake"]), catalogue).deferred
+    [indexed] = [
+        item for item in deferred if item.plan.operation is QueryOperation.FULLTEXT_SEARCH
+    ][:1]
+    filled = {"rows": _customer_rows(indexed.plan.limit)}
+    assert truncated_searches([(indexed, filled)]) == ()
+
+
+def test_the_count_asks_the_same_question_without_a_page(
+    catalogue: IdentificationCatalogue,
+) -> None:
+    from return_platform.dynamic_knowledge.order_agent.search_strategy import count_plan
+
+    planned = _customer_plan(catalogue)
+    counted = count_plan(planned)
+    assert counted is not None
+    assert counted.plan.operation is QueryOperation.COUNT
+    assert counted.plan.start_entity_id == planned.plan.start_entity_id
+    assert counted.plan.filters == planned.plan.filters
+    assert counted.plan.traversal == ()
+    assert counted.intent_key == planned.intent_key
+
+    # Narrowed by a product, the search walks a path, and a COUNT over it would
+    # count paths rather than customers: reported as truncated, never counted.
+    program = build_search_program(
+        _intent(customerNames=["SILVERLAKE AIR SYSTEMS"], productNames=["gasket"]), catalogue
+    )
+    [narrowed] = [item for item in program.primary if item.intent_key == "customerNames"]
+    assert narrowed.plan.traversal
+    assert count_plan(narrowed) is None
+
+
+def test_the_true_total_replaces_the_page_count_and_names_the_signal(
+    catalogue: IdentificationCatalogue,
+) -> None:
+    from return_platform.dynamic_knowledge.order_agent.search_strategy import (
+        counted_totals,
+        with_true_total,
+    )
+
+    planned = _customer_plan(catalogue)
+    intent = _intent(customerNames=["SILVERLAKE AIR SYSTEMS"])
+    program = build_search_program(intent, catalogue)
+    ranked = rank_search_results(intent, [{"rows": _customer_rows(5)}], program=program)
+    assert ranked["total_found"] == 5
+
+    counts = counted_totals([{"rows": [{"value": 7}]}, {"rows": []}, "not a result"])
+    assert counts == (7,)
+
+    told = with_true_total(ranked, truncated=(planned,), counts=counts)
+    assert told["total_found"] == 7
+    assert told["truncated_signals"] == ["customerNames"]
+    assert len(told["candidates"]) == 5
+
+    # Filled but uncountable: the total stays a floor and the signal is still named.
+    floor = with_true_total(ranked, truncated=(planned,), counts=())
+    assert floor["total_found"] == 5
+    assert floor["truncated_signals"] == ["customerNames"]
+
+    # Nothing filled: the envelope is returned exactly as ranked.
+    assert with_true_total(ranked, truncated=(), counts=()) is ranked

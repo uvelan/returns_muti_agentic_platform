@@ -337,7 +337,7 @@ describe("the -container/ tint rule, across the frontend", () => {
       // review.gap -- 8.68:1. The error pair IMPROVES under tint.
       "copilotTokens.ts:93  bg-error-container/30 text-on-error-container",
       // The one instance outside the token registry. 8.45:1.
-      "panes/ConversationPane.tsx:240  bg-error-container/40 text-on-error-container",
+      "panes/ConversationPane.tsx:295  bg-error-container/40 text-on-error-container",
     ]);
   });
 

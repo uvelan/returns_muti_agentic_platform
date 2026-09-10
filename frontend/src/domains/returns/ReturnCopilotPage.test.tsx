@@ -991,6 +991,60 @@ describe("resuming a return", () => {
     expect(screen.getByText(/of 7 matched/)).toBeInTheDocument();
   });
 
+  it("shows the latest search when the turn cites none of them", async () => {
+    // The Morgan search that opened the conversation is still in the turn's
+    // evidence beside the Silverlake search this turn ran. Uncited, the table
+    // used to sum both: ten rows under "of 7 matched" (2026-09-10).
+    const evidence = (id: string, total: number, accounts: string[]) => ({
+      query_execution_id: id,
+      schema_version: "v2",
+      graph_generation_id: "gen-abc12345",
+      logical_plan_checksum: "plan-x",
+      compiled_query_checksum: "compiled-x",
+      result_checksum: "x",
+      result: {
+        total_found: total,
+        candidates: accounts.map((account, index) => ({
+          data: { customer_id: `${id}-${String(index)}`, account_id: account },
+        })),
+      },
+    });
+    withHistory();
+    mocks.listCases.mockResolvedValue([]);
+    mocks.readTranscript.mockResolvedValue({
+      conversationId: "disc-old",
+      conversationVersion: 7,
+      messages: [{ role: "associate", text: "earlier" }],
+      lastResultTurn: turn({
+        response: {
+          status: "COMPLETE",
+          business_capability: "order-discovery",
+          statements: [
+            {
+              statement_id: "s1",
+              statement_type: "REASONED_SUGGESTION",
+              text: "I couldn't find any orders matching that name.",
+              evidence_refs: [],
+            },
+          ],
+        },
+        query_evidence: [
+          evidence("qe-morgan", 7, ["NASH", "PLYMOUTH"]),
+          evidence("qe-silverlake", 5, ["CHARLOTTE"]),
+        ],
+      }),
+    });
+    render(<ReturnCopilotPage />, { wrapper });
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous returns" }));
+    fireEvent.click(await screen.findByText("earlier"));
+
+    expect(await screen.findByText("CHARLOTTE")).toBeInTheDocument();
+    expect(screen.queryByText("NASH")).toBeNull();
+    expect(screen.queryByText("PLYMOUTH")).toBeNull();
+    expect(screen.getByText(/Showing 1 of 5 matched/)).toBeInTheDocument();
+  });
+
   it("clears the matches for a conversation that carries none", async () => {
     // Not a regression of the above. Whatever is on screen belongs to whatever
     // was open before, and a resumed conversation showing another one's matches

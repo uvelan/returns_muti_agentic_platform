@@ -777,6 +777,10 @@ async def test_confirming_an_order_the_associate_never_agreed_to_is_corrected(
             "text": "I found Westfield Plumbing on CHARLOTTE. Is this the right customer?",
         },
     )
+    # "The one order it found": the premise is that the customer's orders were
+    # read. Without this the `orders_not_read` rule -- a different guard, tested
+    # in test_action_guards -- would also send the closing RESPOND back.
+    state["graph_queries_used"] = 1
     final_state = await graph.ainvoke(
         state,
         context=TurnRuntimeContext(guard_context=guard_context(active_schema)),

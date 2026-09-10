@@ -173,6 +173,10 @@ class OrderAgentGraphState(TypedDict, total=False):
     # Budgets/counters.
     reasoning_steps_used: int
     queries_used: int
+    # How many of those were the model's own GRAPH_QUERY reads, as opposed to
+    # the searches ORDER_SEARCH ran on its behalf. `orders_not_read` needs to
+    # know whether the turn has looked past the customer yet.
+    graph_queries_used: int
     correction_attempts: int
     clarifications_used: int
     replans_used: int
@@ -222,6 +226,7 @@ ORDER_DISCOVERY_CHECKPOINT_ALLOWLIST: frozenset[str] = frozenset(
         "capability_validated",
         "reasoning_steps_used",
         "queries_used",
+        "graph_queries_used",
         "correction_attempts",
         "clarifications_used",
         "replans_used",

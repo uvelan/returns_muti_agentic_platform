@@ -81,6 +81,15 @@ logger = logging.getLogger("return_platform.operations.return_shipment_state")
 #: writer, and a fact name that drifts silently stops answering.
 FULFILLMENT_STATUS_FACT = "fulfillment_status"
 FULFILLMENT_EVIDENCE_FACT = "shipment_evidence"
+#: Where the parcel is by the carrier's latest rung, as the release places it
+#: in the projection's vocabulary -- the value `returnRecords[].shipments[]`
+#: shows on the case panel. Recorded as a fact beside `fulfillment_status`
+#: because the two can disagree: the fulfilment reading is the platform's own
+#: conclusion from the graph, and on 2026-09-10 the graph had not yet seen a
+#: parcel the carrier had already delivered, so the case panel said IN_TRANSIT
+#: while the only status fact said AWAITING_HANDOFF -- and the agent, which
+#: answers from facts, told the associate the stale one.
+SHIPMENT_STATUS_FACT = "shipment_status"
 
 #: What a generation id reads as when the lookup never reached one. The same
 #: sentinel `operations/orchestrator.py` writes on the session path -- two
@@ -354,22 +363,40 @@ class ReturnShipmentStateService:
                 extra={"return_reference": return_reference},
             )
             return
+        case_id = _reference(record.get("case_id")) if record else None
         for row in reversed(await self._business_state.read_shipment_state(return_reference)):
             tracking_reference = _reference(row.get("tracking_reference"))
             if tracking_reference is None:
                 continue
+            placed = (
+                None
+                if self._projection_status_for is None
+                else self._projection_status_for(_reference(row.get("tracking_status")))
+            )
             await self._repository.record_case_shipment(
                 return_record_id=return_record_id,
                 tracking_reference=tracking_reference,
                 carrier=_reference(row.get("carrier_code")),
-                shipment_status=(
-                    None
-                    if self._projection_status_for is None
-                    else self._projection_status_for(_reference(row.get("tracking_status")))
-                ),
+                shipment_status=placed,
+            )
+            if placed is None or case_id is None:
+                continue
+            # The same value, as a fact: what the panel shows is what the agent
+            # may say. Derived id, so the same rung on the same parcel is one
+            # fact however many times it is read.
+            await self._append_once(
+                fact_id=f"shipment-status-{return_reference}-{tracking_reference}-{placed}",
+                case_id=case_id,
+                fact_name=SHIPMENT_STATUS_FACT,
+                value=placed,
+                agent_id="fulfillment-tracking-agent",
+                channel=FactChannel.SYSTEM,
+                acquisition_method=FactAcquisition.DERIVED,
+                source_system="RETURN_SHIPMENT",
+                source_path="RETURN_TRACKING_PROJECTION",
             )
 
-    async def _append_once(self, **fact) -> None:
+    async def _append_once(self, **fact: Any) -> None:
         """Append one derived-id fact, absorbing the already-recorded case.
 
         The docstring on `_record_on_case` always promised a retry of the same

@@ -1,18 +1,43 @@
 import { useEffect, useRef, useState } from "react";
-import { Bot, History, Loader2, MapPin, Package, Plus, Send, Tag, User } from "lucide-react";
-import type { ConversationSummary, ResponseStatement } from "../../../api/orderAgent";
+import {
+  Bot,
+  History,
+  Loader2,
+  MapPin,
+  Package,
+  Plus,
+  Send,
+  Tag,
+  User,
+} from "lucide-react";
+import type {
+  ConversationSummary,
+  ResponseStatement,
+} from "../../../api/orderAgent";
 import type { CaseSummary } from "../../../api/cases";
 import { COPILOT_TOKENS } from "../copilotTokens";
+import { saidAt } from "../chatTime";
+
+/**
+ * When an entry was said, as an ISO-8601 instant, on every kind of entry.
+ *
+ * Optional because the record did not always carry one: a line restored from
+ * a conversation older than 2026-09-10 has none, and the pane then shows no
+ * time rather than a made-up one. It is also what the page orders the
+ * platform's own entries by, so a system entry lands where it happened
+ * instead of after the last thing anyone typed.
+ */
+type Said = { at?: string };
 
 export type ChatHistoryEntry =
-  | { role: "associate"; id: string; text: string }
-  | {
+  | ({ role: "associate"; id: string; text: string } & Said)
+  | ({
       role: "agent";
       id: string;
       statements: readonly ResponseStatement[];
       status: string;
-    }
-  | { role: "restored"; id: string; author: string; text: string }
+    } & Said)
+  | ({ role: "restored"; id: string; author: string; text: string } & Said)
   /**
    * A typed system entry (DR-3) -- the platform reporting what Support said.
    *
@@ -30,7 +55,32 @@ export type ChatHistoryEntry =
    * one identifier that does appear -- the return reference -- is
    * whitespace-collapsed before it gets here.
    */
-  | { role: "system"; id: string; kicker: string; text: string };
+  | ({ role: "system"; id: string; kicker: string; text: string } & Said);
+
+function SaidAt({
+  at,
+  align,
+}: {
+  at: string | undefined;
+  align: "start" | "end" | "center";
+}) {
+  const label = saidAt(at);
+  if (label === null) return null;
+  const justify =
+    align === "end"
+      ? "text-right"
+      : align === "center"
+        ? "text-center"
+        : "text-left";
+  return (
+    <time
+      dateTime={at}
+      className={`mt-1 block text-[11px] leading-none text-outline ${justify}`}
+    >
+      {label}
+    </time>
+  );
+}
 
 export type ConversationPaneProps = {
   history: readonly ChatHistoryEntry[];
@@ -145,7 +195,9 @@ export function ConversationPane({
    * same arrival is announced by the panel's own region, and the alternative
    * (announcing a whole restored transcript) is worse for the same person.
    */
-  const newestSystemEntry = history.filter((entry) => entry.role === "system").at(-1);
+  const newestSystemEntry = history
+    .filter((entry) => entry.role === "system")
+    .at(-1);
   // The parts are separate values rather than one joined key, so the effect
   // reads nothing that is not in its dependency list -- and so no separator has
   // to be chosen that the copy can never contain. Depending on the entry object
@@ -185,7 +237,10 @@ export function ConversationPane({
               Discovery Agent
             </h2>
             <div className="flex items-center gap-1.5 text-xs text-outline">
-              <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+              <span
+                className="size-1.5 rounded-full bg-emerald-500"
+                aria-hidden="true"
+              />
               <span>Ready to help</span>
             </div>
           </div>
@@ -239,13 +294,16 @@ export function ConversationPane({
                 role="alert"
                 className="mb-3 rounded-xl border border-error/40 bg-error-container/40 p-3 text-xs text-on-error-container"
               >
-                That return could not be opened: {openError.message} The other rows still work.
+                That return could not be opened: {openError.message} The other
+                rows still work.
               </p>
             )}
 
             {openCases.length > 0 ? (
               <div className="mb-4">
-                <span className="block text-xs font-semibold text-outline mb-1.5">Open returns</span>
+                <span className="block text-xs font-semibold text-outline mb-1.5">
+                  Open returns
+                </span>
                 <ul className="flex flex-col gap-1.5">
                   {openCases.map((openCase) => (
                     <li key={openCase.caseId}>
@@ -255,7 +313,10 @@ export function ConversationPane({
                         onClick={() => {
                           if (openCase.channelAConversationId !== null) {
                             // Both ids, because this row holds both.
-                            onOpen(openCase.channelAConversationId, openCase.caseId);
+                            onOpen(
+                              openCase.channelAConversationId,
+                              openCase.caseId,
+                            );
                           }
                         }}
                         className="flex w-full items-center justify-between rounded-xl border border-outline-control bg-surface-container-lowest p-3 text-left text-xs transition hover:border-primary hover:bg-surface-container-lowest/90 shadow-xs disabled:opacity-40"
@@ -281,7 +342,9 @@ export function ConversationPane({
               </div>
             ) : (
               <div>
-                <span className="block text-xs font-semibold text-outline mb-1.5">Past Searches</span>
+                <span className="block text-xs font-semibold text-outline mb-1.5">
+                  Past Searches
+                </span>
                 <ul className="flex flex-col gap-1.5">
                   {conversations.map((conversation) => (
                     <li key={conversation.conversationId}>
@@ -339,8 +402,9 @@ export function ConversationPane({
                     </div>
                     <div className="rounded-2xl rounded-tl-sm border border-outline-variant/20 bg-surface-container-low p-4 text-sm leading-relaxed text-on-surface shadow-[0_4px_24px_rgba(0,0,0,0.02)]">
                       <p>
-                        Hi -- let&apos;s find that order. Tell me whatever the customer gave you: an order
-                        number, their name, the product, roughly when it arrived. Anything is a start.
+                        Hi -- let&apos;s find that order. Tell me whatever the
+                        customer gave you: an order number, their name, the
+                        product, roughly when it arrived. Anything is a start.
                       </p>
                     </div>
                   </li>
@@ -350,9 +414,12 @@ export function ConversationPane({
                   if (message.role === "associate") {
                     return (
                       <li key={message.id} className="flex justify-end">
-                        <p className="max-w-[85%] rounded-2xl rounded-tr-sm bg-primary-container px-4 py-3 text-sm leading-relaxed text-white shadow-sm">
-                          {message.text}
-                        </p>
+                        <div className="flex max-w-[85%] flex-col items-end">
+                          <p className="rounded-2xl rounded-tr-sm bg-primary-container px-4 py-3 text-sm leading-relaxed text-white shadow-sm">
+                            {message.text}
+                          </p>
+                          <SaidAt at={message.at} align="end" />
+                        </div>
                       </li>
                     );
                   }
@@ -376,10 +443,15 @@ export function ConversationPane({
                         <div
                           className={`w-full max-w-[92%] ${COPILOT_TOKENS.support.systemEntry}`}
                         >
-                          <span className={COPILOT_TOKENS.support.systemEntryKicker}>
+                          <span
+                            className={COPILOT_TOKENS.support.systemEntryKicker}
+                          >
                             {message.kicker}
                           </span>
-                          <p className="text-sm leading-relaxed text-on-surface">{message.text}</p>
+                          <p className="text-sm leading-relaxed text-on-surface">
+                            {message.text}
+                          </p>
+                          <SaidAt at={message.at} align="center" />
                         </div>
                       </li>
                     );
@@ -388,16 +460,27 @@ export function ConversationPane({
                   if (message.role === "restored") {
                     const isMe = message.author === "associate";
                     return (
-                      <li key={message.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
-                        <p
-                          className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                            isMe
-                              ? "rounded-tr-sm bg-primary-container text-white shadow-sm"
-                              : "rounded-tl-sm border border-outline-variant/20 bg-surface-container-low text-on-surface"
-                          }`}
+                      <li
+                        key={message.id}
+                        className={`flex ${isMe ? "justify-end" : "justify-start"}`}
+                      >
+                        <div
+                          className={`flex max-w-[85%] flex-col ${isMe ? "items-end" : "items-start"}`}
                         >
-                          {message.text}
-                        </p>
+                          <p
+                            className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                              isMe
+                                ? "rounded-tr-sm bg-primary-container text-white shadow-sm"
+                                : "rounded-tl-sm border border-outline-variant/20 bg-surface-container-low text-on-surface"
+                            }`}
+                          >
+                            {message.text}
+                          </p>
+                          <SaidAt
+                            at={message.at}
+                            align={isMe ? "end" : "start"}
+                          />
+                        </div>
                       </li>
                     );
                   }
@@ -423,7 +506,13 @@ export function ConversationPane({
                                 From order records
                               </span>
                             ) : null}
-                            {statement.statement_type === "REASONED_SUGGESTION" ? (
+                            {statement.statement_type === "CASE_FACT" ? (
+                              <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-primary">
+                                From this return
+                              </span>
+                            ) : null}
+                            {statement.statement_type ===
+                            "REASONED_SUGGESTION" ? (
                               <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-secondary">
                                 Suggestion
                               </span>
@@ -431,6 +520,7 @@ export function ConversationPane({
                             <p>{statement.text}</p>
                           </div>
                         ))}
+                        <SaidAt at={message.at} align="start" />
                       </div>
                     </li>
                   );
@@ -459,7 +549,11 @@ export function ConversationPane({
                       role="status"
                       className="flex items-center gap-2 rounded-2xl rounded-tl-sm border border-outline-variant/20 bg-surface-container-low px-4 py-2.5 text-xs text-outline"
                     >
-                      <Loader2 size={14} className="animate-spin text-primary" aria-hidden="true" />
+                      <Loader2
+                        size={14}
+                        className="animate-spin text-primary"
+                        aria-hidden="true"
+                      />
                       <span>
                         Searching
                         {/*
@@ -475,13 +569,16 @@ export function ConversationPane({
                             <span
                               key={index}
                               className="animate-pulse"
-                              style={{ animationDelay: `${String(index * 200)}ms` }}
+                              style={{
+                                animationDelay: `${String(index * 200)}ms`,
+                              }}
                             >
                               .
                             </span>
                           ))}
                         </span>
-                        {typeof waitingSeconds === "number" && waitingSeconds > 0
+                        {typeof waitingSeconds === "number" &&
+                        waitingSeconds > 0
                           ? ` ${String(waitingSeconds)}s`
                           : ""}
                       </span>
@@ -524,7 +621,10 @@ export function ConversationPane({
               </p>
 
               {error ? (
-                <div role="alert" className="mt-2 rounded-xl border border-error/20 bg-error-container p-3 text-xs text-error">
+                <div
+                  role="alert"
+                  className="mt-2 rounded-xl border border-error/20 bg-error-container p-3 text-xs text-error"
+                >
                   {error.message}
                 </div>
               ) : null}

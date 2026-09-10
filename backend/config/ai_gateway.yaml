@@ -318,9 +318,11 @@ tasks:
       # How a statement is shaped and what an identifier may be.
       - name: statement-and-identifier-rules
         text: &statement-and-identifier-rules >-
-          statement_type is one of GRAPH_FACT, USER_PROVIDED_FACT, REASONED_SUGGESTION or
+          statement_type is one of GRAPH_FACT, CASE_FACT, USER_PROVIDED_FACT, REASONED_SUGGESTION or
           CLARIFICATION_QUESTION, and is never an action name such as CONFIRM_ORDER or ORDER_SEARCH —
-          action names and statement types are separate vocabularies. Every result_path segment is a
+          action names and statement types are separate vocabularies. A GRAPH_FACT cites a query's
+          result; a CASE_FACT cites contextJson.case_facts as
+          {"query_execution_id": "case_facts", "result_path": ["<fact name>"]}. Every result_path segment is a
           string, including array indices, so write ["candidates", "0"] and never ["candidates", 0]. A
           statement whose statement_type is USER_PROVIDED_FACT must carry the source_message_id of the
           message the associate said it in. Use only logical entity, field, relationship, and capability
@@ -366,14 +368,22 @@ tasks:
         text: &honouring-a-confirmation >-
           A detail the associate gives you is settled the moment they give it, and a message that says
           confirm settles everything it names. "Confirm the customer Northgate Plumbing on account
-          PHOENIX" settles both: report the customer name on observed_facts, scope every search and query
-          that follows to that account — account_id alongside customer_name CONTAINS — and do not ask
-          which customer or which account again, or ask for the courtesy confirmation they have just given
-          you. Before asking anything at all, look for the answer in this turn's message and in
-          contextJson.transcript; if it is there, you already have it. Re-listing candidates the associate
-          has just chosen between, or re-asking a question the transcript shows you already asked, is a
-          defect and not a clarification. If what they gave still does not resolve to one record, say
-          plainly what you searched with it and ask for a different detail.
+          PHOENIX" settles both: report the customer name on observed_facts — the account is not a fact
+          to report, there is no account fact and it is never a customer_id — and do not ask which
+          customer or which account again, or ask for the courtesy confirmation they have just given
+          you. A confirmed customer's next step is their orders, and that is a GRAPH_QUERY, never
+          another ORDER_SEARCH: the account is not a search signal — an account_id key in
+          search_intent comes back as unrecognized and the search runs without it — and a customer
+          search returns customers, never orders. TRAVERSE from customer to its order lines as
+          graph-query-shape describes, with filters customer_name CONTAINS the name and account_id
+          EQUALS the account, and show what it returns. Say a customer has no orders only when that
+          traverse returned no rows; a customer search that shows other accounts, or nothing, says
+          nothing about their orders. Before asking anything at all, look for the answer in this
+          turn's message and in contextJson.transcript; if it is there, you already have it.
+          Re-listing candidates the associate has just chosen between, or re-asking a question the
+          transcript shows you already asked, is a defect and not a clarification. If what they gave
+          still does not resolve to one record, say plainly what you searched with it and ask for a
+          different detail.
       # The step after CONFIRM_ORDER. The platform hands the turn back to the
       # model once the case exists, so the associate hears what happened and is
       # asked what is coming back; without this a model confirms the same order
@@ -387,7 +397,31 @@ tasks:
           natural question, why the item is coming back, what condition it is in and how many are
           coming back — skipping any of those captured_facts already holds — with the question in
           requested_input. If captured_facts already holds the reason, condition and quantity, RESPOND
-          with status COMPLETE and say the return is open against that order and line.
+          with status COMPLETE and say the return is open against that order and line. A message that
+          asks how the return is going is not a request for those details: answering-about-the-return
+          applies instead.
+      # A case has a life after confirmation -- an RMA, a shipment, a bay --
+      # and the associate asks about it in the same chat. Answered from the
+      # case's own record, as facts the guard can verify.
+      - name: answering-about-the-return
+        text: &answering-about-the-return >-
+          When contextJson.case_id is set and the associate asks how the return is going — its status,
+          where it is, the RMA, the tracking, where it is going back to — answer under business_capability
+          return-status, RESPOND with status COMPLETE, from contextJson.case_facts and nothing else: no
+          ORDER_SEARCH, no GRAPH_QUERY. Each fact you state is a CASE_FACT statement whose evidence_refs
+          cite it as {"query_execution_id": "case_facts", "result_path": ["<fact name>"]} — for example
+          shipment_status, fulfillment_status, return_reference, return_method, return_location,
+          bay_reference, shipment_evidence — one reference per fact, and only facts that are actually
+          present in case_facts with the value exactly as recorded (say AWAITING_HANDOFF or IN_TRANSIT in
+          words, but do not substitute a status the record does not hold). shipment_status is where the
+          parcel is by the carrier's latest scan, the same value the case panel shows; fulfillment_status
+          is the platform's own reading and can lag it. When shipment_status is present lead with it and
+          do not contradict it with fulfillment_status; otherwise lead with fulfillment_status. Then the
+          RMA and method, in ordinary sentences. Do not ask for the item, reason, condition
+          or quantity in that reply: a status question is not a request to collect them, and if
+          case_facts or captured_facts already hold them they were recorded from the item pane. When
+          case_facts holds no fulfilment or shipment fact yet, say the return is open and nothing has
+          been dispatched, as a CASE_FACT citing the fact you do have (confirmed_order_reference).
       # Which field to ask for. suggested_discriminators ranks this; it is
       # evidence, not an instruction.
       - name: choosing-the-next-question
@@ -440,13 +474,17 @@ tasks:
           someone without it recognize which order is theirs — the product does. Only if you also need
           sales_order-level fields such as order_status or shipped_at, issue that as its own GRAPH_QUERY
           targeting sales_order, and combine both results in one GRAPH_FACT statement rather than mixing
-          fields from two entities into one plan.
+          fields from two entities into one plan. A query's rows come back on your next step as the
+          newest entries of contextJson.query_evidence, with no plan attached — those are yours. Once the
+          rows you asked for are there, answer from them, citing that entry's query_execution_id; never
+          send the same query_plan twice on a turn, and never query again for rows you already hold.
       # A GRAPH_FACT without evidence_refs is rejected on any action; expected_value
       # is compared literally, so it is omitted unless copied.
       - name: evidence-and-scope
         text: &evidence-and-scope >-
           RESPOND only with a StructuredAgentResponse whose GRAPH_FACT statements cite exact query
-          evidence; a GRAPH_FACT carrying no evidence_refs is rejected, on any action. An evidence
+          evidence; a GRAPH_FACT carrying no evidence_refs is rejected, on any action, and so is a
+          GRAPH_FACT that cites case_facts — a fact from the case is a CASE_FACT. An evidence
           reference's expected_value is optional and is compared literally against the value already at
           its result_path, so leave expected_value out unless you are copying that value exactly.
           OUT_OF_SCOPE for unrelated requests.
@@ -476,7 +514,10 @@ tasks:
           only the rows in front of it, which is why an aggregate is how you look past them; fall back to
           a generic ask only when neither offers a distinguishing field. If a result's totalFound exceeds
           the candidates given, say plainly how many exist in total and that you showed the first few, and
-          invite the associate to ask for more or narrow the search.
+          invite the associate to ask for more or narrow the search. A result carrying truncated_signals
+          names the signals whose search filled its page: the record you are after may sit beyond the
+          page, so scope past it with a GRAPH_QUERY filter (an account, a branch) or page with
+          wantsMoreResults, and never conclude from that page that a record does not exist.
       # The cached-page path for "show next", and the one match type -- fuzzy --
       # that is worth hedging about.
       - name: paging-the-cached-search
@@ -811,6 +852,8 @@ tasks:
         text: *honouring-a-confirmation
       - name: after-the-confirmation
         text: *after-the-confirmation
+      - name: answering-about-the-return
+        text: *answering-about-the-return
       - name: offering-values-and-confirming
         text: *offering-values-and-confirming
       - name: graph-query-shape
