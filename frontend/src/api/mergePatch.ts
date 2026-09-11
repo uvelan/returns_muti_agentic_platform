@@ -12,6 +12,11 @@
  *
  * Arrays are values, not containers, exactly as the RFC says: an edited list
  * is sent whole.
+ *
+ * A `null` in `after` is sent as `null`, which the RFC defines as "remove the
+ * key". The backend then re-defaults the field, which for every Optional
+ * field the release carries is `None` -- the same value. A required field set
+ * to `null` is refused by the backend's model, in its own words, as intended.
  */
 
 export type JsonValue = string | number | boolean | null | JsonValue[] | JsonRecord;

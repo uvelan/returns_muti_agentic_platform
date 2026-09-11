@@ -185,3 +185,20 @@ $ pytest tests/test_graph_configuration_bootstrap.py tests/test_configuration_ap
 $ ruff check src/return_platform/configuration tests/... ; ruff format --check ... ; mypy bootstrap_graph_configuration.py releases.py
 All checks passed! / files already formatted / Success: no issues found in 2 source files
 ```
+
+---
+
+## CFG-0 step:03 — RV round 2: PASS; correction to step:02's dispositions
+
+Verdict `.plan/reviews/CFG-0.md` on `0e7a2e60`: PASS, zero blocking. RV's T2 reproduction shows the
+operator's deletion surviving once the key has a baseline; live measurement on head 77: 6 undecided,
+22 of 28 keys recordable.
+
+Correction: step:02 said the `mergePatchOf` null-versus-delete behaviour was "documented in the
+module". It was not; `git diff 1d2c8bed..0e7a2e60 -- frontend/` was empty. The note is added in this
+step. F5 (asymmetric unknown-unit refusal) and F10 (the canonical-shape test asserts the key set, not
+the model-dump round trip) were dropped from step:02's list; both are carried into CFG-1's brief as
+item 7.
+
+Merge: `refactor/unified-return-platform` (local) fast-forwarded to this branch head. Not pushed to
+`origin` -- pushing is the operator's call.
