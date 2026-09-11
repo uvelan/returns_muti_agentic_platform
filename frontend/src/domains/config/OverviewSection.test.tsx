@@ -2,12 +2,22 @@
  * `/config/overview`: the release/head/releases cards (existing), plus
  * (CFG-4) the undecided-keys panel.
  *
- * F5: a bare unit name is a `RETURN_PLATFORM` key; `AI_GATEWAY`/
- * `DEPENDENCY_SIMULATION` units are shown with their domain. F11: the panel
- * must render `would_adopt` correctly whether it is empty (no active
- * release, `RETURN_PLATFORM`'s own shape) or full (the other two domains'
- * fallback-to-packaged shape) in the same response, without treating either
- * as wrong.
+ * A bare unit name is a `RETURN_PLATFORM` key; `AI_GATEWAY`/
+ * `DEPENDENCY_SIMULATION` units are shown with their domain. CFG-3a's F11:
+ * the panel must render `would_adopt` correctly whether it is empty (no
+ * active release, `RETURN_PLATFORM`'s own shape) or full (the other two
+ * domains' fallback-to-packaged shape) in the same response, without
+ * treating either as wrong.
+ *
+ * RV round 1 F1 (BLOCKING): the panel used to infer "no active release"
+ * from a unit's absence in `would_adopt` -- which is exactly the shape an
+ * *undecided* key with a perfectly real active release has by construction
+ * (`_carry_forward` keeps the release's own value; `_would_adopt` only
+ * reports a key when the merge took the packaged one). On the live stack
+ * this was six false sentences next to six enabled buttons. Fixed to derive
+ * "no active release" from `headRevision` instead; the fixture below is the
+ * live stack's own shape (six undecided keys, `RETURN_PLATFORM`'s
+ * `would_adopt` empty, an active release present via `head_revision`).
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -143,5 +153,64 @@ describe("Overview screen -- undecided keys panel", () => {
     render(<OverviewSection canReadReleases />, { wrapper: Wrapper });
     expect(await screen.findByText(/requires config.release.write/)).toBeInTheDocument();
     expect(mocks.packagedDrift).not.toHaveBeenCalled();
+  });
+
+  describe("F1 -- the live stack's own shape (six undecided, would_adopt empty, active release present)", () => {
+    it("never says there is no active release when the runtime snapshot carries one", async () => {
+      mocks.packagedDrift.mockResolvedValue({
+        RETURN_PLATFORM: {
+          undecided: [
+            "agents",
+            "clarification_policy",
+            "policy_evaluation",
+            "return_eligibility_policy",
+            "return_policy",
+            "support_ingress",
+          ],
+          would_adopt: [],
+          filled_leaves: [],
+        },
+        AI_GATEWAY: { undecided: [], would_adopt: [], filled_leaves: [] },
+        DEPENDENCY_SIMULATION: { undecided: [], would_adopt: [], filled_leaves: [] },
+      });
+      render(<OverviewSection canReadReleases />, { wrapper: Wrapper });
+
+      expect(await screen.findByText("RETURN_PLATFORM: agents")).toBeInTheDocument();
+      // The sentence RV F1 found false on every one of these six rows.
+      expect(screen.queryByText(/No active release to compare against yet/)).not.toBeInTheDocument();
+      // What carry-forward actually did, and what the button's own
+      // consequence is, said once per row -- six times, one per key.
+      const kept = screen.getAllByText(/The release's own value is kept for now\./);
+      expect(kept).toHaveLength(6);
+      const consequence = screen.getAllByText(
+        /Taking the packaged file for this whole key replaces every value the release holds for it\./,
+      );
+      expect(consequence).toHaveLength(6);
+    });
+
+    it("names the leaves the packaged file would still fill in, when there are any", async () => {
+      mocks.packagedDrift.mockResolvedValue({
+        RETURN_PLATFORM: {
+          undecided: ["policy_evaluation", "support_ingress"],
+          would_adopt: [],
+          filled_leaves: ["policy_evaluation.disabled_reason", "support_ingress.queue"],
+        },
+        AI_GATEWAY: { undecided: [], would_adopt: [], filled_leaves: [] },
+        DEPENDENCY_SIMULATION: { undecided: [], would_adopt: [], filled_leaves: [] },
+      });
+      render(<OverviewSection canReadReleases />, { wrapper: Wrapper });
+
+      await screen.findByText("RETURN_PLATFORM: policy_evaluation");
+      expect(
+        screen.getByText(
+          /The release's own value is kept for now; the packaged file would still fill 1 leaf it leaves absent \(policy_evaluation\.disabled_reason\)\./,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /The release's own value is kept for now; the packaged file would still fill 1 leaf it leaves absent \(support_ingress\.queue\)\./,
+        ),
+      ).toBeInTheDocument();
+    });
   });
 });

@@ -4,6 +4,7 @@ import { Braces, Columns3, ListTree, Minus, Plus, RotateCcw } from "lucide-react
 
 import { KeyValueTable, type KeyValueEntry, type KeyValueKind } from "../../components/forms/KeyValueTable";
 import { ValidationErrors, type ValidationError } from "../../components/forms/ValidationErrors";
+import { normalizeErrorPath } from "./jsonPath";
 
 /**
  * One JSON document, editable as nested key/value, split view, or raw JSON.
@@ -50,17 +51,6 @@ function isObject(value: Json): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/**
- * `"fields[3].priority"` -> `"fields.3.priority"` -- the only path convention
- * this editor understands internally (see `childPath`) is dot-plus-index, but
- * a backend validator is equally likely to report a pydantic-`loc`-shaped
- * bracket path. Normalising the incoming `errors` path once, before matching,
- * means both spellings reach the same field. Documented in
- * `components/forms/README.md`.
- */
-function normalizeErrorPath(path: string): string {
-  return path.replace(/\[(\d+)\]/g, ".$1");
-}
 
 /** Whether `dotted` (split on `.`) resolves to something inside `document` -- array indices count as segments too. */
 function hasPath(document: Json, segments: readonly string[]): boolean {

@@ -73,3 +73,20 @@ export function asBoolean(value: Json | undefined, fallback = false): boolean {
 export function asStringArray(value: Json | undefined): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
+
+/**
+ * `"fields[3].priority"` -> `"fields.3.priority"` -- the only path convention
+ * this codebase's generated forms understand internally is dot-plus-index,
+ * but a backend validator is equally likely to report a pydantic-`loc`-shaped
+ * bracket path. Normalising the incoming `errors` path once, before
+ * matching, means both spellings reach the same field. Documented in
+ * `components/forms/README.md`.
+ *
+ * Moved here from `DocumentEditor.tsx` (RV round 1, alongside F3): that
+ * module is a component file, and `react-refresh/only-export-components`
+ * refuses a plain function export alongside a component. `DocumentEditor`
+ * and `runtimeSlice.ts`'s `errorsByPath` (RV F3) both import it from here.
+ */
+export function normalizeErrorPath(path: string): string {
+  return path.replace(/\[(\d+)\]/g, ".$1");
+}

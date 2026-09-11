@@ -10,6 +10,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { APIError } from "../../api/client";
 import { CapabilityContext } from "../../hooks/capabilityContext";
 import { FulfilmentSection } from "./FulfilmentSection";
 
@@ -189,5 +190,54 @@ describe("Fulfilment screen", () => {
     render(<FulfilmentSection />, { wrapper: Wrapper });
     await screen.findByDisplayValue("customerReturnV2");
     expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
+  });
+
+  // RV F2.
+  it("disables every typed field and shows the read-only notice when config.release.write is missing", async () => {
+    grants = ["config.runtime.read", "config.release.promote"];
+    render(<FulfilmentSection />, { wrapper: Wrapper });
+
+    const field = await screen.findByDisplayValue("customerReturnV2");
+    expect(field).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Require physical receipt" })).toBeDisabled();
+    expect(screen.getByText(/Read-only access\. Editing this section requires config\.release\.write\./)).toBeInTheDocument();
+  });
+
+  // RV F9: no test anywhere covered a refused publish.
+  it("shows the error and keeps the draft when Publish is refused", async () => {
+    const user = userEvent.setup();
+    mocks.publish.mockRejectedValue(new APIError("Domain patch refused: unknown status code", 422));
+    render(<FulfilmentSection />, { wrapper: Wrapper });
+
+    const toggle = await screen.findByRole("checkbox", { name: "Allow pre-arrival reservation" });
+    await user.click(toggle);
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+
+    expect(await screen.findByText(/Domain patch refused/)).toBeInTheDocument();
+    expect(toggle).toBeChecked();
+    expect(screen.queryByText(/is published/)).not.toBeInTheDocument();
+  });
+
+  // RV F3: `errorsByPath` used to key its map verbatim off `error.path`, so
+  // the backend's bracketed index (`_dotted_error_path`,
+  // `"agents[2].version", not "agents.2.version"`) never matched this
+  // screen's own dot-plus-index lookup (`shipment_tracking.statuses.0.code`).
+  it("maps a bracketed indexed error path (shipment_tracking.statuses[0].code) onto the right status card", async () => {
+    const user = userEvent.setup();
+    mocks.validateDomain.mockResolvedValue({
+      valid: false,
+      errors: [{ path: "shipment_tracking.statuses[0].code", message: "Duplicate code.", type: "value_error" }],
+    });
+    render(<FulfilmentSection />, { wrapper: Wrapper });
+
+    await screen.findByDisplayValue("customerReturnV2");
+    // Validate is disabled until something is staged.
+    await user.click(await screen.findByRole("checkbox", { name: "Require physical receipt" }));
+    await user.click(screen.getByRole("button", { name: "Validate" }));
+
+    const codeFields = await screen.findAllByRole("textbox", { name: /^Code/ });
+    await waitFor(() => { expect(codeFields[0]).toHaveAttribute("aria-invalid", "true"); });
+    expect(codeFields[1]).not.toHaveAttribute("aria-invalid");
+    expect(await screen.findAllByText("Duplicate code.")).not.toHaveLength(0);
   });
 });

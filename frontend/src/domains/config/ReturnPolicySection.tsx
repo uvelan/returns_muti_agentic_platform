@@ -143,6 +143,7 @@ function ReturnPolicyEditor({
               <KeyValueTable
                 label="Ship-via methods"
                 hint={`Ship-via code -> return method. A value should be one of: ${methods.join(", ") || "(no methods declared yet)"}.`}
+                error={errorMap.get("return_policy.return_method_derivation.ship_via_methods")}
                 entries={Object.entries(asObject(derivation.ship_via_methods)).map(
                   ([key, value]): KeyValueEntry => ({ key, value }),
                 )}
@@ -171,6 +172,7 @@ function ReturnPolicyEditor({
             <FieldGroup kicker="Eligibility" title="Precedence" description="Which policy wins when more than one applies. FERGUSON_STANDARD_RETURN must be last -- it is the platform's own fallback.">
               <OrderedList
                 label="Precedence order"
+                error={errorMap.get("return_eligibility_policy.precedence")}
                 items={asStringArray(eligibility.precedence)}
                 keyOf={(value) => value}
                 onChange={(next) => { set(["return_eligibility_policy", "precedence"], next); }}

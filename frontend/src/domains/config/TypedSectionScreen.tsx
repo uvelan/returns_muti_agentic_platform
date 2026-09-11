@@ -2,13 +2,14 @@ import { useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Braces, ListTree } from "lucide-react";
 
+import { APIError } from "../../api/client";
 import { configApi, type ValidationErrorItem } from "../../api/configuration";
 import { mergePatchOf } from "../../api/mergePatch";
 import { DiffPreview } from "../../components/forms/DiffPreview";
 import { PublishBar } from "../../components/forms/PublishBar";
 import { ValidationErrors } from "../../components/forms/ValidationErrors";
 import { DocumentEditor, type Json, type JsonObject } from "./DocumentEditor";
-import { errorsByPath, type RuntimeSlice } from "./runtimeSlice";
+import { errorsByPath, runtimeSliceOf, type RuntimeSlice } from "./runtimeSlice";
 import { getPath, setPath } from "./jsonPath";
 
 /**
@@ -65,6 +66,20 @@ export function TypedSectionScreen({
     errors: readonly ValidationErrorItem[];
   } | null>(null);
   const [publishedId, setPublishedId] = useState<string | null>(null);
+  // RV F5: a 409 (`CONFIGURATION_REVISION_CONFLICT`) means someone else
+  // published while this draft was open. `active.headRevision` -- the prop
+  // -- only updates when the parent's runtime query refetches, and every
+  // caller keys its editor by `active.releaseId` (deliberately, so a
+  // genuine external release change resets stale state elsewhere in this
+  // codebase) -- so invalidating `["config"]` here to pick up the new head
+  // would remount this component and silently discard the draft the
+  // conflict was about. Held locally instead: refreshed straight from
+  // `configApi.runtime()` (not through the shared query cache) so the next
+  // Publish attempt uses the real head without touching `active` or
+  // triggering a remount.
+  const [headRevisionOverride, setHeadRevisionOverride] = useState<number | null>(null);
+  const [conflictNotice, setConflictNotice] = useState<string | null>(null);
+  const effectiveHeadRevision = headRevisionOverride ?? active.headRevision;
 
   // `mergePatchOf(JsonObject, JsonObject)` always returns an object patch --
   // the `null`/array arms of its `JsonValue` return type are for a `before`/
@@ -85,18 +100,40 @@ export function TypedSectionScreen({
       configApi.publish({
         domainKey,
         patch,
-        expectedHeadRevision: active.headRevision ?? 0,
+        expectedHeadRevision: effectiveHeadRevision ?? 0,
       }),
     onSuccess: async (result) => {
       setPublishedId(result.release_id);
       setValidation(null);
+      setConflictNotice(null);
+      setHeadRevisionOverride(null);
       await queryClient.invalidateQueries({ queryKey: ["config"] });
+    },
+    onError: (error: unknown) => {
+      if (!(error instanceof APIError) || error.status !== 409) return;
+      // Best-effort: read the head fresh, off the shared cache, so a second
+      // Publish click has a real revision to lock against. If this itself
+      // fails, the original 409's own message (already shown via
+      // `publish.error`) is still the honest answer.
+      void configApi
+        .runtime()
+        .then((snapshot) => {
+          const fresh = runtimeSliceOf(snapshot).headRevision;
+          setHeadRevisionOverride(fresh);
+          setConflictNotice(
+            fresh === null
+              ? "The release moved while you were editing. Review the diff and publish again."
+              : `The release moved to head ${String(fresh)} while you were editing. Review the diff and publish again.`,
+          );
+        })
+        .catch(() => { /* the 409's own message still shows */ });
     },
   });
 
   function set(path: readonly (string | number)[], value: Json) {
     setDraft((prev) => setPath(prev, path, value) as JsonObject);
     setValidation(null);
+    setConflictNotice(null);
   }
   function get(path: readonly (string | number)[]): Json {
     return getPath(draft, path);
@@ -168,17 +205,37 @@ export function TypedSectionScreen({
             const result = await configApi.publish({
               domainKey,
               patch: wholePatch,
-              expectedHeadRevision: active.headRevision ?? 0,
+              expectedHeadRevision: effectiveHeadRevision ?? 0,
             });
             setDraft(document);
             setPublishedId(result.release_id);
+            setConflictNotice(null);
+            setHeadRevisionOverride(null);
             await queryClient.invalidateQueries({ queryKey: ["config"] });
             return result;
           }}
         />
       ) : (
         <>
-          {renderTyped({ draft, get, set, errorMap })}
+          {/*
+            RV F2: `canWrite` used to be consumed only by the Advanced
+            branch's `DocumentEditor` (which already gates itself at
+            `DocumentEditor.tsx:406`) -- the typed branch rendered every
+            field editable regardless, so a principal with
+            `config.release.promote` but not `config.release.write` saw an
+            enabled form the backend would 403 every write from. A native
+            `<fieldset disabled>` cascades to every input/select/textarea/
+            button `renderTyped` renders, the same mechanism `DocumentEditor`
+            itself uses, with no change needed in any of the three screens.
+          */}
+          {!canWrite ? (
+            <p className="rounded-lg border border-outline-variant bg-surface-container-low px-3 py-2 text-sm text-on-surface-variant">
+              Read-only access. Editing this section requires config.release.write.
+            </p>
+          ) : null}
+          <fieldset disabled={!canWrite} className="flex flex-col gap-4 disabled:opacity-75">
+            {renderTyped({ draft, get, set, errorMap })}
+          </fieldset>
           <ValidationErrors errors={errors} title="Validation results" />
           <DiffPreview before={loaded} after={draft} title={`${title} changes`} />
           <PublishBar
@@ -188,7 +245,7 @@ export function TypedSectionScreen({
             disabledReason={disabledReason}
             validating={validate.isPending}
             publishing={publish.isPending}
-            error={publish.error instanceof Error ? publish.error.message : null}
+            error={conflictNotice ?? (publish.error instanceof Error ? publish.error.message : null)}
           />
         </>
       )}

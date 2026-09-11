@@ -137,6 +137,7 @@ function DiscoveryEditor({
             <IdentificationFields
               fields={asArray(discovery.identification_fields)}
               onChange={(next) => { set(["discovery", "identification_fields"], next); }}
+              error={errorMap.get("discovery.identification_fields")}
             />
 
             <FieldGroup kicker="Source resolution" title="Where each fact is read from" description="A source path is autocompleted from the active graph schema, but free text is always accepted -- a release can carry a binding the schema has not been re-synced to yet.">
@@ -185,6 +186,7 @@ function DiscoveryEditor({
             <ClarificationFields
               fields={asArray(clarificationPolicy.fields)}
               onChange={(next) => { set(["clarification_policy", "fields"], next); }}
+              error={errorMap.get("clarification_policy.fields")}
             />
 
             <FieldGroup kicker="Selection vocabulary" title="Reasons and conditions" description="The words a selection is described with -- reasons must be one of the platform's known return reasons; conditions are free-form.">
@@ -245,9 +247,11 @@ function newIdentificationField(): JsonObject {
 function IdentificationFields({
   fields,
   onChange,
+  error,
 }: {
   fields: readonly Json[];
   onChange: (next: Json[]) => void;
+  error?: string;
 }) {
   return (
     <FieldGroup
@@ -257,6 +261,7 @@ function IdentificationFields({
     >
       <OrderedList
         label="Identification fields"
+        error={error}
         items={fields.map((field, index) => ({ field: asObject(field), index }))}
         keyOf={({ field, index }) => asString(field.field_id) || `field-${String(index)}`}
         onChange={(next) => { onChange(next.map(({ field }) => field)); }}
@@ -424,14 +429,17 @@ function SearchesEditor({
 function ClarificationFields({
   fields,
   onChange,
+  error,
 }: {
   fields: readonly Json[];
   onChange: (next: Json[]) => void;
+  error?: string;
 }) {
   return (
     <FieldGroup kicker="Clarification policy" title="What the copilot asks for" description="Priority decides which field is asked about first when several are missing.">
       <OrderedList
         label="Clarification fields"
+        error={error}
         items={fields.map((field, index) => ({ field: asObject(field), index }))}
         keyOf={({ field, index }) => asString(field.field) || `clarify-${String(index)}`}
         onChange={(next) => { onChange(next.map(({ field }) => field)); }}

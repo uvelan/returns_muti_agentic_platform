@@ -12,6 +12,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { APIError } from "../../api/client";
 import { CapabilityContext } from "../../hooks/capabilityContext";
 import { DiscoverySection } from "./DiscoverySection";
 
@@ -166,5 +167,84 @@ describe("Discovery screen", () => {
     render(<DiscoverySection />, { wrapper: Wrapper });
     await screen.findByRole("spinbutton", { name: /Ambiguity gap/ });
     expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
+  });
+
+  // RV F2: `canWrite` used to gate only the Advanced/JSON branch. A
+  // principal with `config.release.promote` but not `config.release.write`
+  // saw every typed field enabled -- the backend would 403 the write, but
+  // nothing on screen said so first.
+  it("disables every typed field and shows the read-only notice when config.release.write is missing", async () => {
+    grants = ["config.runtime.read", "config.release.promote"];
+    render(<DiscoverySection />, { wrapper: Wrapper });
+
+    const field = await screen.findByRole("spinbutton", { name: /Ambiguity gap/ });
+    expect(field).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Allow auto-confirmation" })).toBeDisabled();
+    expect(screen.getByText(/Read-only access\. Editing this section requires config\.release\.write\./)).toBeInTheDocument();
+  });
+
+  // RV F9: no test anywhere covered a refused publish; `publish` was mocked
+  // resolved in every existing test.
+  it("shows the error and keeps the draft when Publish is refused", async () => {
+    const user = userEvent.setup();
+    mocks.publish.mockRejectedValue(
+      new APIError("Domain patch refused: ambiguity_gap_millionths must be at most 1000000", 422),
+    );
+    render(<DiscoverySection />, { wrapper: Wrapper });
+
+    const field = await screen.findByRole("spinbutton", { name: /Ambiguity gap/ });
+    await user.clear(field);
+    await user.type(field, "900000");
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+
+    expect(await screen.findByText(/Domain patch refused/)).toBeInTheDocument();
+    // The draft survives the refusal -- an operator's edit is not thrown
+    // away by a rejection they still need to act on.
+    expect(field).toHaveValue(900_000);
+    expect(screen.queryByText(/is published/)).not.toBeInTheDocument();
+  });
+
+  // RV F5: a 409 used to leave `expectedHeadRevision` stale forever (no
+  // `onError`, so nothing refreshed it) and the only refresh that existed
+  // changed the editor's React `key`, silently discarding the draft.
+  it("recovers from a revision conflict without losing the draft, and retries with the fresh head", async () => {
+    const user = userEvent.setup();
+    mocks.publish
+      .mockRejectedValueOnce(new APIError("Configuration head revision changed from 41 to 44", 409))
+      .mockResolvedValueOnce({
+        release_id: "publish-2",
+        status: "RELEASED",
+        created_at: "2026-09-01T00:00:00Z",
+        created_by: "operator",
+        checksum_sha256: "abc",
+        domains: {},
+        head_revision: 45,
+        audit_ids: ["a1", "a2", "a3", "a4", "a5"],
+      });
+    render(<DiscoverySection />, { wrapper: Wrapper });
+
+    const field = await screen.findByRole("spinbutton", { name: /Ambiguity gap/ });
+    // Queued *after* mount consumes the base (head 41) -- this is what the
+    // `onError` handler's own direct `configApi.runtime()` call (not
+    // through the shared query cache) picks up next.
+    mocks.runtime.mockResolvedValueOnce({
+      release_id: "rel-1",
+      head_revision: 44,
+      configuration: configuration(),
+    });
+    await user.clear(field);
+    await user.type(field, "300000");
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+
+    await waitFor(() => { expect(mocks.publish).toHaveBeenCalledTimes(1); });
+    expect(await screen.findByText(/The release moved to head 44 while you were editing\. Review the diff and publish again\./)).toBeInTheDocument();
+    // The draft is intact -- no remount, no reset.
+    expect(field).toHaveValue(300_000);
+
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await waitFor(() => { expect(mocks.publish).toHaveBeenCalledTimes(2); });
+    const [secondCallOptions] = mocks.publish.mock.calls[1] as [{ expectedHeadRevision: number }];
+    expect(secondCallOptions.expectedHeadRevision).toBe(44);
+    expect(await screen.findByText(/Release publish-2 is published/)).toBeInTheDocument();
   });
 });

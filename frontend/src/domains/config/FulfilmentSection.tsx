@@ -118,6 +118,7 @@ function FulfilmentEditor({
               <KeyValueTable
                 label="Source mirror"
                 hint="Physical path -> logical field name (shipment_tracking.fields)."
+                error={errorMap.get("shipment_tracking.source_mirror")}
                 entries={Object.entries(asObject(shipmentTracking.source_mirror)).map(
                   ([key, value]): KeyValueEntry => ({ key, value }),
                 )}
@@ -131,6 +132,7 @@ function FulfilmentEditor({
               <KeyValueTable
                 label="Source constants"
                 hint="Physical path -> literal value, written as-is."
+                error={errorMap.get("shipment_tracking.source_constants")}
                 entries={Object.entries(asObject(shipmentTracking.source_constants)).map(
                   ([key, value]): KeyValueEntry => ({ key, value }),
                 )}
@@ -164,10 +166,29 @@ function FulfilmentEditor({
               />
               <TagListInput
                 label="Eligible statuses"
-                hint="Case physical-status values a bay assignment is offered for."
+                hint="Case physical-status values a bay assignment is offered for. No enum exists on the model (free NonBlank strings) -- suggestions are the release's own current values plus the codes named in code comments, not an exhaustive list."
                 values={asStringArray(bay.eligible_statuses)}
                 onChange={(next) => { set(["bay", "eligible_statuses"], next); }}
-                suggestions={["AWAITING_RECEIPT", "WAREHOUSE_STAGED", "PLANNED", "STAGED_AT_BRANCH", "LICENSE_PLATE_ASSIGNED", "UNKNOWN"]}
+                // RV F7: this used to be only the six codes documented in
+                // `case_placement.py`'s comments -- two of the live release's
+                // own three values (`WAREHOUSE_RECEIVED`, `INSPECTION_COMPLETE`)
+                // were missing from it, so the one field an operator could not
+                // extend without the suggestion covering what was actually
+                // deployed. Seeded from the loaded value first (always
+                // accurate to what is running) so the deployment's own
+                // codes never go missing regardless of whether the
+                // hardcoded list is complete.
+                suggestions={[
+                  ...new Set([
+                    ...asStringArray(bay.eligible_statuses),
+                    "AWAITING_RECEIPT",
+                    "WAREHOUSE_STAGED",
+                    "PLANNED",
+                    "STAGED_AT_BRANCH",
+                    "LICENSE_PLATE_ASSIGNED",
+                    "UNKNOWN",
+                  ]),
+                ]}
                 error={errorMap.get("bay.eligible_statuses")}
               />
             </FieldGroup>
@@ -186,6 +207,7 @@ function FulfilmentEditor({
               <KeyValueTable
                 label="Customer return display"
                 hint="Status code -> display label."
+                error={errorMap.get("omc.customer_return_display")}
                 entries={Object.entries(asObject(omc.customer_return_display)).map(
                   ([key, value]): KeyValueEntry => ({ key, value }),
                 )}
@@ -199,6 +221,7 @@ function FulfilmentEditor({
               <KeyValueTable
                 label="Normalized statuses"
                 hint="OMC status code -> the platform's own normalized status."
+                error={errorMap.get("omc.normalized_statuses")}
                 entries={Object.entries(asObject(omc.normalized_statuses)).map(
                   ([key, value]): KeyValueEntry => ({ key, value }),
                 )}
@@ -265,6 +288,7 @@ function StatusLadder({
     >
       <OrderedList
         label="Statuses"
+        error={errorMap.get("shipment_tracking.statuses")}
         items={statuses.map((status, index) => ({ status: asObject(status), index }))}
         keyOf={({ status, index }) => asString(status.code) || `status-${String(index)}`}
         onChange={(next) => { onChange(next.map(({ status }) => status)); }}

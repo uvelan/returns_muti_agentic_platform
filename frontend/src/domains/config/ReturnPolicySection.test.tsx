@@ -11,6 +11,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { APIError } from "../../api/client";
 import { CapabilityContext } from "../../hooks/capabilityContext";
 import { ReturnPolicySection } from "./ReturnPolicySection";
 
@@ -160,5 +161,31 @@ describe("Return policy screen", () => {
     render(<ReturnPolicySection />, { wrapper: Wrapper });
     await screen.findByRole("combobox", { name: "Default method" });
     expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
+  });
+
+  // RV F2.
+  it("disables every typed field and shows the read-only notice when config.release.write is missing", async () => {
+    grants = ["config.runtime.read", "config.release.promote"];
+    render(<ReturnPolicySection />, { wrapper: Wrapper });
+
+    const select = await screen.findByRole("combobox", { name: "Default method" });
+    expect(select).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: "Policy evaluation enabled" })).toBeDisabled();
+    expect(screen.getByText(/Read-only access\. Editing this section requires config\.release\.write\./)).toBeInTheDocument();
+  });
+
+  // RV F9: no test anywhere covered a refused publish.
+  it("shows the error and keeps the draft when Publish is refused", async () => {
+    const user = userEvent.setup();
+    mocks.publish.mockRejectedValue(new APIError("Domain patch refused: unknown return method", 422));
+    render(<ReturnPolicySection />, { wrapper: Wrapper });
+
+    const select = await screen.findByRole("combobox", { name: "Default method" });
+    await user.selectOptions(select, "FREIGHT_RETURN");
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+
+    expect(await screen.findByText(/Domain patch refused/)).toBeInTheDocument();
+    expect(select).toHaveValue("FREIGHT_RETURN");
+    expect(screen.queryByText(/is published/)).not.toBeInTheDocument();
   });
 });

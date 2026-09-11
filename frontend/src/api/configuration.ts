@@ -135,8 +135,10 @@ export type AdoptPackagedResult = PublishResult & {
  * `GET /api/config/packaged-drift` -- the Overview screen's undecided-keys
  * panel. One entry per domain (`RETURN_PLATFORM`, `AI_GATEWAY`,
  * `DEPENDENCY_SIMULATION`); a unit name with no `DOMAIN/` prefix is a
- * `RETURN_PLATFORM` top-level key (CFG-3a F5) -- the vocabulary
- * `POST /adopt-packaged`'s own `units` list takes.
+ * `RETURN_PLATFORM` top-level key -- the vocabulary `POST /adopt-packaged`'s
+ * own `units` list takes. (Not CFG-3a's F5, despite an earlier comment here
+ * saying so -- see `UndecidedKeysPanel.tsx`'s own note, RV round 1 F4. The
+ * real F5 is a backend finding and stays open.)
  *
  * **`would_adopt` answers "nothing merged yet" two different ways across
  * domains (CFG-3a F11), and both are correct for what each domain actually

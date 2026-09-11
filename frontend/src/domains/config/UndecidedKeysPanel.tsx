@@ -8,7 +8,12 @@ import { useCapabilities } from "../../hooks/capabilityContext";
  * The Overview screen's undecided-keys panel -- `GET /api/config/packaged-drift`,
  * rendered.
  *
- * **F5: a unit is per domain, and a bare name means `RETURN_PLATFORM`.**
+ * **A unit is per domain, and a bare name means `RETURN_PLATFORM`.** (RV
+ * round 1, F4: this was mislabelled "F5" here and in the ledger -- CFG-3a's
+ * actual F5 is a *backend* finding, "rollback narrower than 'any refusal'"
+ * on `adopt_packaged`'s own `except` clause, and remains open, carried to
+ * whichever lease next touches `backend/configuration` -- see
+ * `.plan/tracks/CFG.ledger.md`'s CFG-4 step:10 note.)
  * `POST /adopt-packaged`'s own `units` vocabulary is `<key>` for a
  * `RETURN_PLATFORM` top-level key (`"discovery"`) or `<DOMAIN>/<unit>` for
  * anything else (`"AI_GATEWAY/tasks.T1"`) -- this panel states that
@@ -76,15 +81,38 @@ export function UndecidedKeysPanel({ headRevision }: { headRevision: number | nu
     data[domain].would_adopt.map((unit) => ({ domain, unit })),
   );
 
-  function diffSummary(unit: string, domainDrift: PackagedDriftDomain): string {
-    const wouldAdopt = domainDrift.would_adopt.includes(unit);
-    const filledUnder = domainDrift.filled_leaves.filter((leaf) => leaf === unit || leaf.startsWith(`${unit}.`));
-    if (wouldAdopt) {
-      return filledUnder.length > 0
-        ? `Taking the packaged file would fill ${String(filledUnder.length)} leaf${filledUnder.length === 1 ? "" : "s"} (${filledUnder.slice(0, 3).join(", ")}${filledUnder.length > 3 ? ", ..." : ""}).`
-        : "Taking the packaged file would change this key.";
+  /**
+   * RV F1: this used to infer "no active release" from the unit's absence
+   * from `would_adopt`. That inference is wrong by construction for exactly
+   * the rows this panel exists to show: `_carry_forward`
+   * (`packaged_adoption.py:228-243`) gives an undecided key
+   * `merged[key] = _fill_absent_leaves(value, active[key])` -- the release's
+   * *own* value, kept -- so `_would_adopt` (`:552-584`), which reports a key
+   * only when `merged[key] == packaged[key]`, never reports an undecided key
+   * that has an active release to be undecided against. On the live stack
+   * every one of six undecided rows read "No active release... adopting is
+   * refused" next to an enabled button that would, in fact, publish
+   * immediately.
+   *
+   * The real signal for "is there an active release" is `headRevision`
+   * (`null` exactly when `OverviewSection` has none to pass down -- see
+   * `runtimeSliceOf`), not anything derived from `would_adopt`. With an
+   * active release, an undecided key says what carry-forward actually did:
+   * the release's own value is kept, `filled_leaves` names what the
+   * packaged file would still fill in under it (computed only for undecided
+   * keys, `packaged_adoption.py:623-629`), and the action's consequence is
+   * stated plainly rather than implied by the confirm dialog alone.
+   */
+  function diffSummary(unit: string, domainDrift: PackagedDriftDomain, hasActiveRelease: boolean): string {
+    if (!hasActiveRelease) {
+      return "No active release to compare against yet -- adopting is refused until one exists.";
     }
-    return "No active release to compare against yet -- adopting is refused until one exists.";
+    const filledUnder = domainDrift.filled_leaves.filter((leaf) => leaf === unit || leaf.startsWith(`${unit}.`));
+    const kept =
+      filledUnder.length > 0
+        ? `The release's own value is kept for now; the packaged file would still fill ${String(filledUnder.length)} leaf${filledUnder.length === 1 ? "" : "s"} it leaves absent (${filledUnder.slice(0, 3).join(", ")}${filledUnder.length > 3 ? ", ..." : ""}).`
+        : "The release's own value is kept for now.";
+    return `${kept} Taking the packaged file for this whole key replaces every value the release holds for it.`;
   }
 
   return (
@@ -126,7 +154,7 @@ export function UndecidedKeysPanel({ headRevision }: { headRevision: number | nu
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-on-surface">{unitLabel(domain, unit)}</p>
                   <p className="mt-0.5 text-xs text-on-surface-variant">
-                    {diffSummary(unit, data[domain])}
+                    {diffSummary(unit, data[domain], headRevision !== null)}
                   </p>
                 </div>
                 <button
