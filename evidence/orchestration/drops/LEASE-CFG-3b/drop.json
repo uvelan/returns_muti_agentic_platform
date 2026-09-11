@@ -1,0 +1,33 @@
+{
+  "lease_id": "CFG-3b",
+  "branch": "feat/cfg-3b-form-primitives",
+  "base_sha": "734a16dc",
+  "head_sha": "edb5cf9086ce4814bb0568f4df9429ccee25d31f",
+  "files": [
+    "frontend/src/components/forms/Field.tsx",
+    "frontend/src/components/forms/Field.test.tsx",
+    "frontend/src/components/forms/FieldGroup.tsx",
+    "frontend/src/components/forms/FieldGroup.test.tsx",
+    "frontend/src/components/forms/Toggle.tsx",
+    "frontend/src/components/forms/Toggle.test.tsx",
+    "frontend/src/components/forms/NumberField.tsx",
+    "frontend/src/components/forms/NumberField.test.tsx",
+    "frontend/src/components/forms/DurationField.tsx",
+    "frontend/src/components/forms/DurationField.test.tsx",
+    "frontend/src/components/forms/EnumSelect.tsx",
+    "frontend/src/components/forms/EnumSelect.test.tsx"
+  ],
+  "tests": {
+    "vitest src/components/forms": "29 passed (6 files)",
+    "typecheck": "clean",
+    "lint (src/components/forms only)": "clean"
+  },
+  "remaining": [
+    "group 2: TagListInput, OrderedList, KeyValueTable, PathPicker",
+    "group 3: DiffPreview (over api/mergePatch.ts), PublishBar, ValidationErrors",
+    "DocumentEditor: errors prop with path-mapped rendering, dataKeyedPaths rendering as KeyValueTable",
+    "frontend/src/components/forms/README.md",
+    "full acceptance run: npx vitest run src/components/forms src/domains/config src/api/mergePatch.test.ts, npm run typecheck, npm run lint (whole project)"
+  ],
+  "merge_status": "PARTIAL"
+}

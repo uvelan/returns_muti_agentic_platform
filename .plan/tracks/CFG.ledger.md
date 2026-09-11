@@ -584,3 +584,69 @@ frontend 200
 ```
 The six undecided keys are unchanged. Snapshot `evidence/config_audit/after_cfg1/`.
 CFG-2 implementer started on `feat/cfg-2-config-split` from `73c276d2` (worktree `cfg-2`).
+
+---
+
+## CFG-3b step:00 — worktree confirmed, base verified by ref
+
+Worktree `.claude/worktrees/cfg-3b`, branch `feat/cfg-3b-form-primitives`, base `734a16dc` (the
+local `refactor/unified-return-platform` head after CFG-1, per the lease). Frontend-only lease --
+no `PYTHONPATH`/Python step applies (memory `worktree-venv-pth-trap` is a backend concern; there is
+no `backend/` write in this lease).
+
+```
+$ git fetch -q origin
+$ git rev-parse refactor/unified-return-platform
+734a16dcf6c8a081ab810f51c6d405694d52c934
+$ git rev-parse origin/refactor/unified-return-platform
+42b0536b1334d858a4ca33f0d415208b68203bbd
+$ git rev-list --left-right --count refactor/unified-return-platform...origin/refactor/unified-return-platform
+16	0
+$ git merge-base --is-ancestor 734a16dc HEAD && echo yes
+yes
+```
+
+The local trunk is 16 commits ahead of `origin/refactor/unified-return-platform` -- CFG-0 and CFG-1
+merged locally and were never pushed (track rule: never push). This is the expected, intentional
+state the brief describes, not a stale base: `734a16dc` is exactly the sha CFG-3b.brief.md names.
+
+Read, in the order the brief specifies: `CFG-3b.brief.md`, `CFG.brief.md` §1.2-1.3 and §3.4, the
+existing `DocumentEditor.tsx` and its three callers (`AgentsSection.tsx`, `SupportTemplateSection.tsx`,
+`BusinessSection.tsx`) plus `AgentsSection.a11y.test.tsx` / `SupportTemplateSection.a11y.test.tsx` /
+`BusinessSection.test.tsx`, `frontend/src/index.css`, `frontend/tailwind.config.js`,
+`frontend/src/components/PublishProgress.tsx`, and `AiControlCenterPage.tsx`'s `ProviderDialog` /
+`Switch` (~line 1677, ~line 2188) for house style. Did not read the audit PART files, per the brief.
+
+**a11y integration check** (`package.json`): no `jest-axe` or `vitest-axe` dependency; only
+`@axe-core/playwright` (the separate Playwright e2e suite, not usable from vitest/jsdom). Per
+CFG.brief.md's instruction, no axe integration is added; every primitive's test instead asserts
+role/name, `aria-describedby`/`aria-invalid` wiring, and keyboard operability directly (the same
+style `AgentsSection.a11y.test.tsx` already uses for `DocumentEditor`).
+
+## CFG-3b step:01 — form primitives group 1: Field, FieldGroup, Toggle, NumberField, DurationField, EnumSelect
+
+Six primitives with a render/interaction test each (`frontend/src/components/forms/`): `Field.tsx`
+(shared label/hint/error/id wiring -- a render-function `children` slot hands the control its `id`,
+`aria-describedby` and `aria-invalid`), `FieldGroup.tsx` (premium-panel section frame, optionally
+collapsible with `aria-expanded`/`aria-controls`), `Toggle.tsx` (labelled switch with an inline
+reason field that appears and is marked invalid only while `requiredWhen` holds), `NumberField.tsx`
+(range hint, clamps on blur not mid-keystroke), `DurationField.tsx` (s/min/h/day selector storing
+seconds, human-readable hint), `EnumSelect.tsx` (keeps the release's current value selectable even
+once the schema drops it; `allowUnknown={false}` flags it as an error instead).
+
+```
+$ npx vitest run src/components/forms
+ Test Files  6 passed (6)
+      Tests  29 passed (29)
+$ npm run typecheck
+> tsc -b --pretty false
+(clean, no output)
+$ npx eslint src/components/forms --max-warnings=0
+(clean, no output)
+```
+
+One fix during lint: `Toggle.tsx`'s `reasonMissing` used `reasonField?.value` after a
+`reasonRequired` guard that already aliased `reasonField !== undefined` (TS's control-flow analysis
+of aliased conditions), so the optional chain was flagged unnecessary; dropped it.
+
+Commit `edb5cf90` -- `(CFG) step:01 form primitives group 1 -- Field, FieldGroup, Toggle, NumberField, DurationField, EnumSelect`.
