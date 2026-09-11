@@ -20,7 +20,7 @@ because nobody re-read a decision made in August.
 **Three places must agree, and this file reads all three separately.**
 
 1. the **released configuration** -- `support_resolver.tool_bindings` in
-   `backend/config/returns/production.yaml`, read from disk;
+   `backend/config/returns/support.yaml`, read from disk;
 2. the **compiled graph** -- the node set `build_resolution_ladder` produces
    from the dependencies the production factory assembles;
 3. the **target map** -- the `ends` mapping on every conditional branch in that
@@ -71,7 +71,8 @@ _GRAPH_NODES = ("sync_graph", "resolve_from_graph")
 
 
 def _released_document() -> dict[str, Any]:
-    """`production.yaml` as text, parsed -- not as a configuration object.
+    """`support.yaml` (the part carrying `support_resolver`) as text, parsed --
+    not as a configuration object.
 
     Read from disk on purpose. `SupportResolverConfiguration.tool_bindings`
     defaults to `()`, so a loaded object reports "no bindings" identically
@@ -79,9 +80,13 @@ def _released_document() -> dict[str, Any]:
     document entirely. Those are different facts: the first is a deliberate
     closed default with a comment above it, the second is a deleted key nobody
     noticed. The loaded object is asserted too, below; this read is what tells
-    them apart.
+    them apart. `support_resolver` lives in `support.yaml` since CFG-2's split
+    (`backend/config/returns/index.yaml`'s `parts` list); reading that one part
+    file rather than composing the whole directory keeps this test reading raw
+    text, exactly as before.
     """
-    with DEFAULT_RETURN_CONFIGURATION_PATH.open(encoding="utf-8") as handle:
+    support_part = DEFAULT_RETURN_CONFIGURATION_PATH / "support.yaml"
+    with support_part.open(encoding="utf-8") as handle:
         return yaml.safe_load(handle)
 
 
@@ -123,7 +128,7 @@ class TestItem10IsUnreachableAndSaysSo:
         document = _released_document()
         resolver_block = document["support_resolver"]
         assert "tool_bindings" in resolver_block, (
-            "`support_resolver.tool_bindings` has disappeared from production.yaml. "
+            "`support_resolver.tool_bindings` has disappeared from support.yaml. "
             "The loaded configuration still reports no bindings, because the field "
             "defaults to (), so nothing else in the suite would notice -- but a "
             "deliberate closed default and a deleted key are not the same release."

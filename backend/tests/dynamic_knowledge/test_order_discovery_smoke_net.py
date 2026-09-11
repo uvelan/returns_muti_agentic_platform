@@ -460,7 +460,7 @@ def _identification(schema: ActiveSchema) -> IdentificationCatalogue:
     whether what we ship does.
     """
     discovery = load_return_configuration(
-        Path(__file__).parents[2] / "config/returns/production.yaml"
+        Path(__file__).parents[2] / "config/returns"
     ).configuration.discovery
     return build_identification_catalogue(
         discovery.identification_fields,
@@ -759,7 +759,7 @@ async def test_an_email_or_phone_becomes_a_search_instead_of_a_dead_answer(
 ) -> None:
     """The agent's own highest-priority clarifying questions, now answerable.
 
-    `clarification_policy` in `config/returns/production.yaml` ranks email at 95
+    `clarification_policy` in `config/returns/discovery_resolution.yaml` ranks email at 95
     and phone at 90 -- above every narrowing signal -- and `OrderSearchIntent`
     carried neither field while being `extra="forbid"`. The agent asked an
     associate for the email on the order and had nowhere to put the answer.

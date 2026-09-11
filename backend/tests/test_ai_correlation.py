@@ -39,7 +39,7 @@ from return_platform.ai.routing.tasks import ModelTier, load_ai_gateway_configur
 from return_platform.configuration.settings import Settings
 from return_platform.dynamic_knowledge.order_agent.contracts import AgentAction
 
-CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway.yaml"
+CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway"
 TASK_ID = "ORDER_AGENT_REASONING_V1"
 #: The tier the shipped configuration puts the order agent on. These tests are
 #: about telemetry, not about which tier that is, so routes and the invoker's

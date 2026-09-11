@@ -22,7 +22,7 @@ from return_platform.operations.support_template_draft import SAMPLE_CASE
 from return_platform.security import roles as r
 from return_platform.security.principal import Principal
 
-_PRODUCTION_YAML = Path(__file__).resolve().parents[2] / "config" / "returns" / "production.yaml"
+_PRODUCTION_YAML = Path(__file__).resolve().parents[2] / "config" / "returns"
 
 
 def _client(
@@ -114,7 +114,7 @@ def test_the_preview_is_the_composed_text() -> None:
     The preview exists so an operator can trust what a template will produce.
     Its docstring used to assert that previewing the default variant showed
     "what `compose_support_handoff` says today", and nothing checked it -- so a
-    rename in `production.yaml` would have made the preview quietly show
+    rename in `support.yaml` would have made the preview quietly show
     fallbacks for values a real case fills, which is the single thing this
     screen must never do.
 

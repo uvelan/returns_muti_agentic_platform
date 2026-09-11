@@ -68,7 +68,7 @@ from tests.operations.scoped_fact_double import ScopedFactDouble
 
 _async = pytest.mark.asyncio
 
-PRODUCTION_YAML = Path(__file__).resolve().parents[2] / "config" / "returns" / "production.yaml"
+PRODUCTION_YAML = Path(__file__).resolve().parents[2] / "config" / "returns"
 CASE_ID = "case-gate-1"
 REQUEST_ID = "support:case-gate-1"
 REVIEW_ID = "review-gate-1"

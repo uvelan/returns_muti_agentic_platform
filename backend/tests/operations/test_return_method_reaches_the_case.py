@@ -80,7 +80,7 @@ from tests.test_cumulative_support_outcomes import (  # reuse the established do
 WORK_ITEM_ID = "wi-d23"
 _URL = f"/api/v1/return-support/work-items/{WORK_ITEM_ID}/return-outcome"
 
-_LOADED = load_return_configuration(Path("config/returns/production.yaml"))
+_LOADED = load_return_configuration(Path("config/returns"))
 _CONFIGURED_METHODS = _LOADED.configuration.return_policy.normalized_return_methods
 
 #: A method the shipped configuration does not declare, standing in for one an

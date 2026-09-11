@@ -51,7 +51,7 @@ def production_schema() -> ActiveSchema:
 
 def _catalogue(schema: ActiveSchema) -> IdentificationCatalogue:
     discovery = load_return_configuration(
-        REPOSITORY_BACKEND / "config/returns/production.yaml"
+        REPOSITORY_BACKEND / "config/returns"
     ).configuration.discovery
     return build_identification_catalogue(
         discovery.identification_fields,
@@ -359,7 +359,7 @@ def test_a_signal_whose_value_was_invalid_is_asked_for_again(
     question is still open -- and the ranking says that is why it came back.
     """
     discovery = load_return_configuration(
-        REPOSITORY_BACKEND / "config/returns/production.yaml"
+        REPOSITORY_BACKEND / "config/returns"
     ).configuration.discovery
     payload = discovery.model_dump(mode="json")
     for entry in payload["identification_fields"]:
@@ -395,7 +395,7 @@ def test_a_signal_nothing_can_search_is_never_suggested(
     whose graph records no colour.
     """
     discovery = load_return_configuration(
-        REPOSITORY_BACKEND / "config/returns/production.yaml"
+        REPOSITORY_BACKEND / "config/returns"
     ).configuration.discovery
     payload = discovery.model_dump(mode="json")
     for entry in payload["identification_fields"]:

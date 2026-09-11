@@ -56,9 +56,7 @@ def _apply(
 def validate() -> dict[str, object]:
     checks: list[str] = []
 
-    loaded = load_return_configuration(
-        BACKEND_ROOT / "config" / "returns" / "production.yaml"
-    )
+    loaded = load_return_configuration(BACKEND_ROOT / "config" / "returns")
     configuration = loaded.configuration
     expected_agents = {
         "order_discovery",

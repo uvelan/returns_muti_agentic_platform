@@ -108,7 +108,7 @@ from return_platform.workflows.return_case_workflow import (
 
 pytestmark = [pytest.mark.live_infra, pytest.mark.asyncio(loop_scope="module")]
 
-_CONFIG = Path(__file__).resolve().parents[2] / "config" / "returns" / "production.yaml"
+_CONFIG = Path(__file__).resolve().parents[2] / "config" / "returns"
 _TEMPORAL_TARGET = os.getenv("PLATFORM_TEST_TEMPORAL_TARGET", "localhost:7233")
 
 

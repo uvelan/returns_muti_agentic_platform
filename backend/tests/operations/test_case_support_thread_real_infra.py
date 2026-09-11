@@ -31,7 +31,7 @@ from return_platform.operations.return_support.service import ReturnSupportServi
 
 pytestmark = pytest.mark.asyncio(loop_scope="module")
 
-CONFIG = Path(__file__).resolve().parents[2] / "config" / "returns" / "production.yaml"
+CONFIG = Path(__file__).resolve().parents[2] / "config" / "returns"
 
 
 def _required_env(name: str) -> str:

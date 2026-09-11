@@ -29,7 +29,7 @@ from return_platform.configuration.snapshot import (
 
 @pytest.fixture
 def sample_config() -> ReturnPlatformConfiguration:
-    return load_return_configuration(Path("config/returns/production.yaml")).configuration
+    return load_return_configuration(Path("config/returns")).configuration
 
 
 @pytest.mark.asyncio
@@ -175,7 +175,7 @@ async def test_runtime_activator_reconciles_a_new_graph_head(
     sample_config: ReturnPlatformConfiguration,
 ) -> None:
     repo = InMemoryConfigurationGraphRepository()
-    baseline_path = Path("config/returns/production.yaml")
+    baseline_path = Path("config/returns")
     baseline_snapshot = await ConfigurationSnapshotBuilder(repo).build_snapshot(
         sample_config,
         allow_baseline_fallback=True,

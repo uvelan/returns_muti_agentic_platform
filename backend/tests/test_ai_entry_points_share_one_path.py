@@ -50,10 +50,10 @@ from return_platform.ai.routing.tasks import ModelTier, load_ai_gateway_configur
 from return_platform.configuration.settings import Settings
 from return_platform.operations.models import AIGatewaySettingsView, AITraceView
 
-CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway.yaml"
+CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway"
 
 #: The decision task `evaluate` is built around, and a structured task for the
-#: invoker. Both are read from the real `ai_gateway.yaml` rather than invented,
+#: invoker. Both are read from the real `ai_gateway/` rather than invented,
 #: so this test fails if the shipped configuration stops supporting either.
 _DECISION_TASK = "RETURN_ELIGIBILITY_V1"
 

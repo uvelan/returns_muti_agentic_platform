@@ -121,9 +121,7 @@ async def platform() -> Any:
     service = ReturnSupportService(
         client=client,
         settings=settings,
-        configuration=load_return_configuration(
-            Path("config/returns/production.yaml")
-        ).configuration,
+        configuration=load_return_configuration(Path("config/returns")).configuration,
         operational_repository=repository,
     )
     await service.ensure_indexes()

@@ -39,11 +39,10 @@ retired in CFG-1 (see below) because no process ever constructed it.
 
 ## What actually runs (audited 2026-09-11)
 
-`ai_gateway.yaml` and `returns/production.yaml` are not loaded through the manifest, and as of
-CFG-1 there is no other loader for them either: what every process actually runs is the RELEASED
-release in the Neo4j configuration graph, whose three domains are published from
-`returns/production.yaml` (`RETURN_PLATFORM`), `ai_gateway.yaml` (`AI_GATEWAY`) and
-`dependency_simulation.yaml` (`DEPENDENCY_SIMULATION`) by
+`ai_gateway/` and `returns/` are not loaded through the manifest, and as of CFG-1 there is no other
+loader for them either: what every process actually runs is the RELEASED release in the Neo4j
+configuration graph, whose three domains are published from `returns/` (`RETURN_PLATFORM`),
+`ai_gateway/` (`AI_GATEWAY`) and `dependency_simulation.yaml` (`DEPENDENCY_SIMULATION`) by
 `return_platform/configuration/cli/bootstrap_graph_configuration.py` at every stack start, and
 edited afterwards through `/api/config` and the Configuration, Support Template and AI Control
 Center screens. See `return_platform/configuration/README.md` (Precedence) for the carry-forward
@@ -51,12 +50,45 @@ rules that decide whether an edited packaged file reaches a deployment that alre
 and `docs/configuration/DEFERRED_DESIGN.md` for `feature_flags`/`extensions` (retired in CFG-1,
 D-CFG-2 -- neither block was ever read).
 
-Before CFG-1, `ai_gateway.yaml` and `returns/production.yaml` were also loaded a second way -- by
-explicit name, through `ConfigurationLoader.load_file`, from
-`application/compatibility.py::LegacyCompatibilityAdapter` -- to build a synthetic
-`RuntimeSnapshot` for `tests/configuration/` only; no process constructed that path. CFG-1 retired
-`compatibility.py` along with `precedence.py`, `adapters.py` and `validator.py`, so that second
-loading path no longer exists.
+Before CFG-1, `ai_gateway/` and `returns/` (then single files, `ai_gateway.yaml` and
+`returns/production.yaml`) were also loaded a second way -- by explicit name, through
+`ConfigurationLoader.load_file`, from `application/compatibility.py::LegacyCompatibilityAdapter` --
+to build a synthetic `RuntimeSnapshot` for `tests/configuration/` only; no process constructed that
+path. CFG-1 retired `compatibility.py` along with `precedence.py`, `adapters.py` and `validator.py`,
+so that second loading path no longer exists.
+
+## Composed directories (CFG-2)
+
+`returns/` and `ai_gateway/` are each a directory now, composed at load time by
+`return_platform/configuration/composition.py::compose_configuration_document` -- the same idea as
+`manifest.yaml` above, one level down: every file under the directory must be named by the
+directory's own `index.yaml`, and nothing globs.
+
+`index.yaml` carries:
+
+- the document-level keys directly (for `returns/`: `schema_version`, `assumption_set_version`; for
+  `ai_gateway/`: `schemaVersion`, `domain`, plus the five cross-task sections that are not split
+  further -- `circuitBreaker`, `retry`, `rateLimits`, `providerLimits`, `modelContexts`);
+- `parts:`, an ordered list of relative paths, each a whole top-level section (`returns/`'s
+  `agents.yaml`, `discovery.yaml`, …);
+- `entries:`, a mapping of section name to an ordered list of files whose own content becomes one
+  entry each, keyed by filename stem (`ai_gateway/`'s `entries.tasks:` lists `tasks/<TASK_ID>.yaml`,
+  25 files, one per task id -- dotted ids like `support.message.classify.v1` included, since
+  `Path.stem` only strips the last suffix).
+
+Four ways to get it wrong, every one a `ValueError` naming every offending file:
+
+1. No `index.yaml` in the directory.
+2. `index.yaml` lists a path that does not exist.
+3. A `*.yaml`/`*.yml` file exists under the directory that no list names -- the same no-globbing
+   rule `manifest.yaml` enforces above, restated at this level: an unlisted file is never loaded,
+   regardless of its contents.
+4. A section declared twice -- inline in `index.yaml` and in a part file, in two part files, or an
+   `entries` stem colliding with another under `casefold()`.
+
+`return_configuration.py::load_return_configuration` and `ai/routing/tasks.py::load_ai_gateway_configuration`
+both accept a file (today's single-document shape, unchanged) or a directory; nothing that reads
+`Settings.return_configuration_path` / `Settings.ai_gateway_configuration_path` has to know which.
 
 ## Directories
 

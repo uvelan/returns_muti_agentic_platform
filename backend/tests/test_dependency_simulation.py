@@ -320,10 +320,10 @@ def test_configured_lightweight_provider_failure_is_measured_and_falls_back() ->
             openai_api_key=None,
             anthropic_api_key=None,
             ollama_model=None,
-            ai_gateway_configuration_path=(CONFIG.parent / "ai_gateway.yaml"),
+            ai_gateway_configuration_path=(CONFIG.parent / "ai_gateway"),
         )
         loaded_simulation = load_dependency_simulation_configuration(CONFIG)
-        loaded_ai = load_ai_gateway_configuration(CONFIG.parent / "ai_gateway.yaml")
+        loaded_ai = load_ai_gateway_configuration(CONFIG.parent / "ai_gateway")
         route = AIRoute(
             route_id="google/lightweight-test-model/google-key-1",
             provider_name="GOOGLE",
@@ -444,11 +444,11 @@ def test_simulator_ai_uses_lightweight_route_and_captures_usage() -> None:
             openai_api_key=None,
             anthropic_api_key=None,
             ollama_model=None,
-            ai_gateway_configuration_path=(CONFIG.parent / "ai_gateway.yaml"),
+            ai_gateway_configuration_path=(CONFIG.parent / "ai_gateway"),
             ai_timeout_seconds=1.0,
         )
         loaded_simulation = load_dependency_simulation_configuration(CONFIG)
-        loaded_ai = load_ai_gateway_configuration(CONFIG.parent / "ai_gateway.yaml")
+        loaded_ai = load_ai_gateway_configuration(CONFIG.parent / "ai_gateway")
         provider = _NarrativeProvider(
             name="GOOGLE",
             model="light-model-a",
@@ -508,11 +508,11 @@ def test_simulator_ai_rotates_model_after_model_unavailable() -> None:
             openai_api_key=None,
             anthropic_api_key=None,
             ollama_model=None,
-            ai_gateway_configuration_path=(CONFIG.parent / "ai_gateway.yaml"),
+            ai_gateway_configuration_path=(CONFIG.parent / "ai_gateway"),
             ai_timeout_seconds=1.0,
         )
         loaded_simulation = load_dependency_simulation_configuration(CONFIG)
-        loaded_ai = load_ai_gateway_configuration(CONFIG.parent / "ai_gateway.yaml")
+        loaded_ai = load_ai_gateway_configuration(CONFIG.parent / "ai_gateway")
         failed = _simulation_route(
             provider=_NarrativeProvider(
                 name="GOOGLE",
@@ -574,11 +574,11 @@ def test_simulator_ai_invalid_schema_falls_back_without_affecting_operation() ->
             openai_api_key=None,
             anthropic_api_key=None,
             ollama_model=None,
-            ai_gateway_configuration_path=(CONFIG.parent / "ai_gateway.yaml"),
+            ai_gateway_configuration_path=(CONFIG.parent / "ai_gateway"),
             ai_timeout_seconds=1.0,
         )
         loaded_simulation = load_dependency_simulation_configuration(CONFIG)
-        loaded_ai = load_ai_gateway_configuration(CONFIG.parent / "ai_gateway.yaml")
+        loaded_ai = load_ai_gateway_configuration(CONFIG.parent / "ai_gateway")
         invalid = _simulation_route(
             provider=_NarrativeProvider(
                 name="GOOGLE",

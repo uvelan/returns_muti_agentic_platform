@@ -94,7 +94,7 @@ def production_schema() -> ActiveSchema:
 @pytest.fixture(scope="module")
 def catalogue(production_schema: ActiveSchema) -> IdentificationCatalogue:
     discovery = load_return_configuration(
-        REPOSITORY_BACKEND / "config/returns/production.yaml"
+        REPOSITORY_BACKEND / "config/returns"
     ).configuration.discovery
     return build_identification_catalogue(
         discovery.identification_fields,

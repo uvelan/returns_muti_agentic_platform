@@ -31,7 +31,7 @@ from return_platform.graph_schema_analyzer.application.prompt_context import (
 )
 from return_platform.graph_schema_analyzer.ports.ai_port import SchemaReasoningPort
 
-CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway.yaml"
+CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway"
 
 _PROPOSAL_JSON = json.dumps(
     {

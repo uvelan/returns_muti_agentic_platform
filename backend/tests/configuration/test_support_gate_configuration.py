@@ -4,7 +4,7 @@ Contracts.md sect. 6 (the gate, its cadence, its timeout policy) and sect. 10
 (the config key). Three things this file is actually guarding, none of which is
 "the model has fields":
 
-* the **shipped `production.yaml` block** parses into this model and says what
+* the **shipped `support.yaml` block** parses into this model and says what
   DR-4 says it says -- the gate is on;
 * a release cut before the block existed still loads, and loads with the gate
   **on** rather than off, because the failure mode of the other default is
@@ -31,12 +31,17 @@ from return_platform.configuration.support_gate_configuration import (
     TemplateReviewTimeoutPolicy,
 )
 
-PRODUCTION_YAML = Path(__file__).resolve().parents[2] / "config" / "returns" / "production.yaml"
+#: `support_gate` and `return_case` moved into different part files at
+#: CFG-2's split (`backend/config/returns/index.yaml`'s `parts` list):
+#: `support_gate` into `support.yaml`, `return_case` into `workflow.yaml`.
+RETURNS_DIR = Path(__file__).resolve().parents[2] / "config" / "returns"
+SUPPORT_YAML = RETURNS_DIR / "support.yaml"
+WORKFLOW_YAML = RETURNS_DIR / "workflow.yaml"
 
 
 @pytest.fixture(scope="module")
 def production_block() -> dict[str, Any]:
-    document = yaml.safe_load(PRODUCTION_YAML.read_text(encoding="utf-8"))
+    document = yaml.safe_load(SUPPORT_YAML.read_text(encoding="utf-8"))
     assert "support_gate" in document, "the shipped release must carry the block"
     return dict(document["support_gate"])
 
@@ -68,7 +73,7 @@ def test_the_review_wait_does_not_inherit_the_support_dev_override(
     Pinned in *both* directions so this stays a real statement: the review wait
     is a working day, and it is not whatever that field currently says.
     """
-    document = yaml.safe_load(PRODUCTION_YAML.read_text(encoding="utf-8"))
+    document = yaml.safe_load(WORKFLOW_YAML.read_text(encoding="utf-8"))
     support_wait = int(document["return_case"]["support_response_wait_seconds"])
     review_wait = SupportGateConfiguration.model_validate(
         production_block

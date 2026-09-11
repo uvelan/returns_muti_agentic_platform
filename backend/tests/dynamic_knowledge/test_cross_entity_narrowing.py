@@ -50,7 +50,7 @@ from return_platform.dynamic_knowledge.order_agent.search_strategy import (
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 
 REPOSITORY_BACKEND = Path(__file__).parents[2]
-PRODUCTION_CONFIGURATION = REPOSITORY_BACKEND / "config/returns/production.yaml"
+PRODUCTION_CONFIGURATION = REPOSITORY_BACKEND / "config/returns"
 ACTIVE_SCHEMA = REPOSITORY_BACKEND / "config/dynamic_knowledge/active-schema.return-order.yaml"
 
 

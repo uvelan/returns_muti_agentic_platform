@@ -4,30 +4,40 @@
   "base_sha": "73c276d231cd9e609678f8d29517d67cfb5d77a9",
   "head_sha": "PENDING",
   "files": [
-    "backend/src/return_platform/configuration/settings.py (return_configuration_path/ai_gateway_configuration_path moved to a new validate_packaged_configuration_path validator; directory-accepting, strict widening)",
-    "backend/tests/configuration/test_settings_configuration_paths.py (new; synthetic tmp_path fixtures for the widened validator)",
+    "backend/src/return_platform/configuration/settings.py (validator moved; DEFAULT_RETURN_CONFIGURATION_PATH/DEFAULT_AI_GATEWAY_CONFIGURATION_PATH repointed at the directories)",
     "backend/src/return_platform/configuration/composition.py (new; the composer)",
     "backend/src/return_platform/configuration/return_configuration.py (load_return_configuration: directory support)",
     "backend/src/return_platform/ai/routing/tasks.py (load_ai_gateway_configuration: directory support)",
-    "backend/config/returns/{index.yaml,agents.yaml,discovery.yaml,discovery_resolution.yaml,return_policy.yaml,workflow.yaml,support.yaml,fulfilment.yaml,integrations.yaml} (new; split trees, production.yaml untouched beside them)",
-    "backend/config/ai_gateway/{index.yaml,tasks/<25>.yaml} (new; split trees, anchors materialized -- see ledger step:02 deviation 1)",
-    "backend/tests/data/pre_split/{returns_production.yaml,ai_gateway.yaml} (new; frozen pre-split bytes)",
+    "backend/config/returns/** (new split tree, 8 parts + index, production.yaml untouched beside it)",
+    "backend/config/ai_gateway/** (new split tree, index + 25 task files, anchors materialized)",
+    "backend/tests/data/pre_split/** (new; frozen pre-split bytes)",
     "backend/tests/configuration/test_packaged_configuration_composition.py (new; equivalence + error tests)",
-    "backend/tests/harness/configuration_tree.py (new; copied_configuration_tree)"
+    "backend/tests/configuration/test_settings_configuration_paths.py (new)",
+    "backend/tests/harness/configuration_tree.py (new; copied_configuration_tree)",
+    "compose.yaml, backend/Dockerfile, .env.example (repointed at the directories)",
+    "the seven raw-text test readers named in the brief, repointed at the part file that now holds their section",
+    "53 additional test files (found, not in the brief's Owns list -- see ledger step:04) that hardcode 'production.yaml'/'ai_gateway.yaml' in a Path passed to a loader; mechanically repointed at the directory",
+    "scripts/validate_stage4l_production.py, scripts/validate_stage4n_ai_gateway.py (take the directory)",
+    "backend/config/README.md, backend/src/return_platform/configuration/README.md, backend/src/return_platform/ai/README.md, backend/config/workflows/return_session.yaml (docs)",
+    "docs/evidence/stage4n_ai_gateway/validation_summary.json (byproduct of re-running validate_stage4n_ai_gateway.py; PASSED, 9 checks, timestamps only)"
   ],
   "tests": {
     "backend/tests/configuration/test_packaged_configuration_composition.py + test_settings_configuration_paths.py": "19 passed",
-    "backend/tests/platform/test_layering.py + test_no_module_cross_imports.py + test_ai_lane_boundary.py": "6 passed",
-    "backend/tests/configuration + tests/platform + tests/api (cwd=backend/)": "834 passed, 34 deselected",
-    "ruff check/format on owned src": "clean",
-    "mypy on owned src": "47 pre-existing errors in 6 unowned files, confirmed present on the unmodified base with a fresh cache -- not introduced by this lease; none of the four owned files affected"
+    "backend/tests/platform layering/cross-import/ai-lane-boundary": "6 passed",
+    "backend/tests/{acceptance,configuration,operations,policy} repointed files": "79 passed",
+    "pytest --collect-only after the 53-file bulk fix": "5347/5862 collected (515 deselected), zero collection errors",
+    "full backend suite (tests -q --ignore=test_concurrent_activation.py), run before the 53-file bulk fix": "42 failed (matches the known pre-existing set), 5295 passed, 10 skipped",
+    "full backend suite, run after the 53-file bulk fix and prose cleanup": "in progress -- result to be pasted in the ledger before PENDING",
+    "scripts/validate_stage4n_ai_gateway.py end to end": "checksPassed=9, status=PASSED, against the split ai_gateway/ tree",
+    "scripts/validate_stage4l_production.py": "fails at an unrelated pre-existing broken import (ReturnAgentRegistry does not exist), predates this lease -- confirmed via git log; the one line this lease owns was still fixed",
+    "ruff check/format on owned src and all touched test files": "clean",
+    "mypy on owned src": "47 pre-existing errors in 6 unowned files, confirmed present on the unmodified base with a fresh cache -- not introduced by this lease"
   },
   "remaining": [
-    "repoint defaults: settings.py:13,17; compose.yaml:14,16; backend/Dockerfile:124,126; .env.example:204,297",
-    "repoint the seven raw-text test readers",
-    "deletion commit (git rm production.yaml, ai_gateway.yaml) -- last, once everything runs against the directories",
-    "docs updates (backend/config/README.md, configuration/README.md, ai/README.md, return_session.yaml)",
-    "full acceptance run (pytest, ruff, mypy, check_openapi_drift.py) and deliberate-failure check pasted in the ledger"
+    "deletion commit (git rm production.yaml, ai_gateway.yaml) -- last, once the full suite result above is confirmed",
+    "full acceptance run pasted in the ledger after deletion: pytest, ruff, mypy, check_openapi_drift.py",
+    "deliberate-failure check (duplicate 'workflow' declaration) pasted in the ledger",
+    "final grep sweep confirming only the accepted exceptions remain"
   ],
   "merge_status": "PARTIAL"
 }

@@ -150,9 +150,7 @@ def _client(
     # process is serving (CFG-03), so a test app without one is a process that
     # cannot validate -- and stubbing the policy would let the routes pass
     # against a vocabulary the deployment does not have.
-    app.state.return_configuration = load_return_configuration(
-        Path("config/returns/production.yaml")
-    )
+    app.state.return_configuration = load_return_configuration(Path("config/returns"))
     with TestClient(app, raise_server_exceptions=False) as client:
         yield client
 

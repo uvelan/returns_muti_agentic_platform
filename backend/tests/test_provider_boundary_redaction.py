@@ -570,7 +570,7 @@ def test_the_ai_package_has_exactly_one_http_transport() -> None:
 # that a string is absent from a payload also passes when the payload is empty,
 # and "the store persisted nothing" is not the property being claimed.
 
-CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway.yaml"
+CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway"
 
 
 class _Verdict(BaseModel):

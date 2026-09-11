@@ -121,9 +121,9 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/src \
     PLATFORM_CATALOG_PATH=/app/config/data_assets.yaml \
     PLATFORM_SCHEMA_REGISTRY_PATH=/app/config/schema_registry.yaml \
-    PLATFORM_RETURN_CONFIGURATION_PATH=/app/config/returns/production.yaml \
+    PLATFORM_RETURN_CONFIGURATION_PATH=/app/config/returns \
     PLATFORM_DEPENDENCY_SIMULATION_CONFIGURATION_PATH=/app/config/dependency_simulation.yaml \
-    PLATFORM_AI_GATEWAY_CONFIGURATION_PATH=/app/config/ai_gateway.yaml
+    PLATFORM_AI_GATEWAY_CONFIGURATION_PATH=/app/config/ai_gateway
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libsybdb5 \

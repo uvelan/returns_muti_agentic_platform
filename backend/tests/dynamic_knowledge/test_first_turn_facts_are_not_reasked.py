@@ -55,7 +55,7 @@ OPENING_TURN = (
 @pytest.fixture(scope="module")
 def clarification_policy() -> SmartQuestionConfiguration:
     return load_return_configuration(
-        REPOSITORY_BACKEND / "config/returns/production.yaml"
+        REPOSITORY_BACKEND / "config/returns"
     ).configuration.clarification_policy
 
 

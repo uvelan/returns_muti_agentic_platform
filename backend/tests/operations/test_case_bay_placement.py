@@ -8,7 +8,7 @@ best-effort about.
 
 These scenarios run the real `CaseBayPlacement`, the real
 `observe_eligible_bays` pipeline the session path uses, and the real
-`BayAssignmentAgent` loaded from `config/returns/production.yaml`. Only the two
+`BayAssignmentAgent` loaded from `config/returns/agents.yaml`. Only the two
 datastore edges are doubled: the case repository and the warehouse observation
 port. The confidence assertions in particular depend on the real agent -- a
 double would let a constant pass, which is precisely what contract C2 forbids.
@@ -49,7 +49,7 @@ RECEIVED = "WAREHOUSE_RECEIVED"
 
 @pytest.fixture(scope="module")
 def production_configuration() -> ReturnPlatformConfiguration:
-    return load_return_configuration(Path("config/returns/production.yaml")).configuration
+    return load_return_configuration(Path("config/returns")).configuration
 
 
 @pytest.fixture

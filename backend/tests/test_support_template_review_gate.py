@@ -87,7 +87,7 @@ from tests.operations.scoped_fact_double import ScopedFactDouble
 
 _async = pytest.mark.asyncio
 
-PRODUCTION_YAML = Path(__file__).resolve().parents[1] / "config" / "returns" / "production.yaml"
+PRODUCTION_YAML = Path(__file__).resolve().parents[1] / "config" / "returns"
 CASE_ID = "case-gate-wf"
 REQUEST_ID = f"support:{CASE_ID}"
 NOW = datetime(2026, 8, 30, 9, 0, tzinfo=UTC)

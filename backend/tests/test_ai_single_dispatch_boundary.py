@@ -72,7 +72,7 @@ from return_platform.configuration.settings import Settings
 from return_platform.operations.models import AIGatewaySettingsView, AITraceView
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1] / "src" / "return_platform"
-CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway.yaml"
+CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway"
 
 DECISION_TASK = "RETURN_ELIGIBILITY_V1"
 

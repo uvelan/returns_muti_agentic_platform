@@ -46,7 +46,7 @@ from return_platform.operations.support_template_renderer import (
     select_variant,
 )
 
-_PRODUCTION_YAML = Path(__file__).resolve().parents[2] / "config" / "returns" / "production.yaml"
+_PRODUCTION_YAML = Path(__file__).resolve().parents[2] / "config" / "returns"
 
 
 def _template(payload: dict) -> SupportTemplateConfiguration:

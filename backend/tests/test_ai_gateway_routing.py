@@ -22,7 +22,7 @@ from return_platform.operations.models import (
     AITraceView,
 )
 
-CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway.yaml"
+CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway"
 
 
 class MemoryGatewayRepository:

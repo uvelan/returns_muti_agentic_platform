@@ -41,7 +41,7 @@ from return_platform.dependency_simulation.service import (  # noqa: E402
     DependencySimulationService,
 )
 
-AI_CONFIG = ROOT / "backend" / "config" / "ai_gateway.yaml"
+AI_CONFIG = ROOT / "backend" / "config" / "ai_gateway"
 SIM_CONFIG = ROOT / "backend" / "config" / "dependency_simulation.yaml"
 EVIDENCE_DIR = ROOT / "docs" / "evidence" / "stage4n_ai_gateway"
 EVIDENCE_PATH = EVIDENCE_DIR / "validation_summary.json"

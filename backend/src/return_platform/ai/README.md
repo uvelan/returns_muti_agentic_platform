@@ -27,7 +27,7 @@ contain a provider or model literal.
 
 | Package | Responsibility |
 |---|---|
-| `routing/tasks.py` | The validated configuration document: task definitions (tier, prompt version, system prompt, token budgets, allowed providers, allowed input keys, fallback), plus retry, rate-limit, provider-limit and circuit-breaker settings. Loaded from `config/ai_gateway.yaml` or from an activated configuration release. |
+| `routing/tasks.py` | The validated configuration document: task definitions (tier, prompt version, system prompt, token budgets, allowed providers, allowed input keys, fallback), plus retry, rate-limit, provider-limit and circuit-breaker settings. Loaded from `config/ai_gateway/` (a composed directory, one file per task -- see `config/README.md`) or from an activated configuration release. |
 | `routing/routes.py` | Pure construction of the immutable route set — the fully resolved `(provider, model, credential, tier)` tuples a configuration permits. |
 | `routing/selection.py` | `AIRoutePool`: everything mutable — candidate ordering, per-route/model/credential/provider/tier minute counters, concurrency, and the four-level circuit breaker. |
 | `providers/` | One adapter per provider, plus `contracts.py` (`AIProvider`, `ProviderRequest`, `ProviderResponse`, `ProviderError`) and `registry.py`. |
@@ -119,7 +119,8 @@ only the route would retry the same broken credential across every model it serv
 
 Implement `AIProvider` in `providers/`, register it in `routes.py`'s `_provider`,
 `_provider_credentials`, and `_provider_models`, add a `providerLimits` entry to
-`config/ai_gateway.yaml`, and add the name to `TaskConfiguration.allowedProviders`'s literal
+`config/ai_gateway/index.yaml` (`providerLimits` is one of the cross-task sections kept inline
+there, not split per task), and add the name to `TaskConfiguration.allowedProviders`'s literal
 and to `AIGatewayConfiguration.validate_registry`. Availability comes from configuration and
 from `provider.configured` — never from a code branch on environment.
 

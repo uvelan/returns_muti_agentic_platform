@@ -57,7 +57,7 @@ def order_agent_prompt() -> str:
     would either miss the composition or assert against a section boundary; this
     asserts against the exact string that goes on the wire.
     """
-    configuration = load_ai_gateway_configuration(BACKEND_ROOT / "config/ai_gateway.yaml")
+    configuration = load_ai_gateway_configuration(BACKEND_ROOT / "config/ai_gateway")
     return configuration.configuration.tasks["ORDER_AGENT_REASONING_V1"].systemPrompt
 
 

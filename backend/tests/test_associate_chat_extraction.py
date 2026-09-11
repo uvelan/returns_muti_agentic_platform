@@ -32,7 +32,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 def service() -> Any:
     instance = cast(Any, object.__new__(AssociateConversationService))
     instance._return_configuration = load_return_configuration(
-        BACKEND_ROOT / "config" / "returns" / "production.yaml"
+        BACKEND_ROOT / "config" / "returns"
     ).configuration
     progressive = instance._return_configuration.discovery.progressive
     instance._progressive_conversation = ProgressiveConversationEngine(

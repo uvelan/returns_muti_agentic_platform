@@ -46,7 +46,7 @@ from return_platform.dynamic_knowledge.order_agent.temporal_grounding import (
     temporal_grounding_prompt,
 )
 
-CONFIG = Path(__file__).resolve().parents[2] / "config" / "ai_gateway.yaml"
+CONFIG = Path(__file__).resolve().parents[2] / "config" / "ai_gateway"
 
 
 # --- windows -----------------------------------------------------------------

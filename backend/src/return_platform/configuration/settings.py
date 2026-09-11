@@ -10,11 +10,15 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 REPOSITORY_ROOT = BACKEND_ROOT.parent
 DEFAULT_DATA_ASSET_CATALOG_PATH = BACKEND_ROOT / "config" / "data_assets.yaml"
 DEFAULT_SCHEMA_REGISTRY_PATH = BACKEND_ROOT / "config" / "schema_registry.yaml"
-DEFAULT_RETURN_CONFIGURATION_PATH = BACKEND_ROOT / "config" / "returns" / "production.yaml"
+#: A directory, composed by `configuration.composition` -- see CFG-2.design.md.
+#: `backend/config/returns/production.yaml` (the file this replaced) is deleted
+#: once the split is proven byte-equivalent.
+DEFAULT_RETURN_CONFIGURATION_PATH = BACKEND_ROOT / "config" / "returns"
 DEFAULT_DEPENDENCY_SIMULATION_CONFIGURATION_PATH = (
     BACKEND_ROOT / "config" / "dependency_simulation.yaml"
 )
-DEFAULT_AI_GATEWAY_CONFIGURATION_PATH = BACKEND_ROOT / "config" / "ai_gateway.yaml"
+#: A directory, composed by `configuration.composition` -- see CFG-2.design.md.
+DEFAULT_AI_GATEWAY_CONFIGURATION_PATH = BACKEND_ROOT / "config" / "ai_gateway"
 DEFAULT_DYNAMIC_KNOWLEDGE_SCHEMA_PATH = (
     BACKEND_ROOT / "config" / "dynamic_knowledge" / "active-schema.return-order.yaml"
 )

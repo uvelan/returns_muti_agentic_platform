@@ -21,7 +21,7 @@ Two mechanisms had to both be wrong for that to happen, and both were:
   `_TERMINAL_FOR_ROUTE`, whose premise is "this route will fail the same way if
   asked again" -- true of a byte-identical retry, and false once
   `on_response_invalid` rebuilds the payload. With
-  `retry.maximumAttemptsPerRoute` at 1 in `config/ai_gateway.yaml`, no inner
+  `retry.maximumAttemptsPerRoute` at 1 in `config/ai_gateway/`, no inner
   retry existed to reach that premise anyway.
 
 So the assertions below come in two layers. The dispatcher cases prove the
@@ -70,7 +70,7 @@ from return_platform.dynamic_knowledge.order_agent.contracts import (
     AgentTurnContext,
 )
 
-CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway.yaml"
+CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway"
 
 _ORDER_AGENT_TASK = "ORDER_AGENT_REASONING_V1"
 

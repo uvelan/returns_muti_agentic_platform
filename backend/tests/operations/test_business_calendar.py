@@ -306,7 +306,7 @@ async def test_the_activity_applies_the_configured_production_calendar() -> None
     the worker changes" -- so the whole calculation lives in an activity whose
     single instant the workflow history records.
     """
-    configuration = load_return_configuration(Path("config/returns/production.yaml")).configuration
+    configuration = load_return_configuration(Path("config/returns")).configuration
     raised = _local(2026, 8, 14, 16, 30)
 
     resolved = await _resolve(configuration, from_instant=raised, seconds=8 * 3600)
@@ -362,7 +362,7 @@ async def test_the_shipped_calendar_and_the_support_sla_agree_about_which_clock_
     close D46 properly with a fourth availability term rather than a 30-minute
     Support SLA nobody could honour.
     """
-    configuration = load_return_configuration(Path("config/returns/production.yaml")).configuration
+    configuration = load_return_configuration(Path("config/returns")).configuration
     shipped = next(c for c in configuration.business_calendars if c.calendar_id == "default")
 
     around_the_clock = len(shipped.working_periods) == 7 and all(
@@ -388,7 +388,7 @@ async def test_an_undeclared_calendar_falls_back_to_wall_clock_and_says_so() -> 
     it must be visible. Inventing a default Mon-Fri instead would be wrong for
     most deployments and wrong invisibly.
     """
-    configuration = load_return_configuration(Path("config/returns/production.yaml")).configuration
+    configuration = load_return_configuration(Path("config/returns")).configuration
     raised = _local(2026, 8, 14, 16, 30)
 
     resolved = await _resolve(

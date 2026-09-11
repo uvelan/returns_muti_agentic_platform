@@ -9,7 +9,7 @@ string is not a version.
 
 It is now derived from the **released** AI gateway document, so changing routing
 policy is a released change. These tests run against the shipped
-`config/ai_gateway.yaml` and its real `support.message.*` tasks -- against
+`config/ai_gateway/` and its real `support.message.*` tasks -- against
 production's own document, not a fixture built to agree with the code.
 
 The property has two halves and both are asserted, because only one of them is
@@ -43,7 +43,7 @@ from return_platform.operations.return_support.composition import (
     EXTRACT_TASK_ID,
 )
 
-GATEWAY_PATH = Path(__file__).resolve().parents[2] / "config" / "ai_gateway.yaml"
+GATEWAY_PATH = Path(__file__).resolve().parents[2] / "config" / "ai_gateway"
 
 
 @pytest.fixture(scope="module")

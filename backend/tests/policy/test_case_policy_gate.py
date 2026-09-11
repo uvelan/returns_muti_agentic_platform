@@ -14,7 +14,7 @@ outside world through exactly six functions on `temporalio.workflow` --
 `execute_activity`, `now`, `uuid4`, `wait_condition`, `info` and `logger`. The
 harness below substitutes those six and drives the loop directly, with the
 **real** `ReturnCaseActivities`, the **real** deterministic evaluator and the
-**real** Ferguson rule set from `config/returns/production.yaml` behind them.
+**real** Ferguson rule set from `config/returns/` behind them.
 
 What that buys: the branching, the ordering and the fact writes are the shipped
 ones, and the test runs in the normal suite where a regression in the gate is
@@ -66,7 +66,7 @@ CASE_ID = "case-under-test"
 #: The instant every evaluation is made at. Fixed, so a 30-day window boundary
 #: is a value the test states rather than one the calendar decides today.
 NOW = datetime(2026, 8, 15, 12, 0, tzinfo=UTC)
-CONFIGURATION_PATH = Path("config/returns/production.yaml")
+CONFIGURATION_PATH = Path("config/returns")
 
 
 # ---------------------------------------------------------------------------

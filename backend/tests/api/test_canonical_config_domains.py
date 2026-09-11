@@ -39,7 +39,7 @@ _ROUTER_SOURCE = (
 
 
 def _snapshot() -> PinnedConfigurationSnapshot:
-    loaded = load_return_configuration(Path("config/returns/production.yaml"))
+    loaded = load_return_configuration(Path("config/returns"))
     return PinnedConfigurationSnapshot(
         release_id="r-1",
         head_revision=1,

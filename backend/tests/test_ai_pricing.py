@@ -22,7 +22,7 @@ from return_platform.ai.pricing import (
 )
 from return_platform.ai.routing.tasks import load_ai_gateway_configuration
 
-CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway.yaml"
+CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway"
 
 
 def _entry(

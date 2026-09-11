@@ -59,7 +59,7 @@ from return_platform.ai.routing.selection import AIRoutePool
 from return_platform.ai.routing.tasks import ModelTier, load_ai_gateway_configuration
 from return_platform.configuration.settings import Settings
 
-CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway.yaml"
+CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway"
 _STRUCTURED_TEXT = '{"verdict":"ok"}'
 
 
