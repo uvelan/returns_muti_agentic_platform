@@ -296,12 +296,27 @@ describe("Configuration tabs D3 backed", () => {
     expect(window.location.pathname).toBe("/config/support");
   });
 
-  it("says integrations are already served rather than pending", async () => {
-    // The distinction matters: "pending" invites someone to build a duplicate
-    // endpoint for data the runtime snapshot already carries.
+  // CFG-5: this used to say "Already served" and point at the Runtime tab's
+  // raw JSON -- a read of the same snapshot, not a write surface. It is
+  // IntegrationsSection.tsx now, a typed screen like every other tab here.
+  it("renders the Integrations screen rather than an already-served notice", async () => {
+    mocks.runtime.mockResolvedValue({
+      release_id: "rel-1",
+      head_revision: 7,
+      configuration: {
+        integrations: {
+          omc_return_create: { enabled: true, topic: "omc.return.create", authority: "OMC", ai_may_fabricate_success: false },
+          external_support_mirror: { enabled: true, topic: "support.mirror", authority: "SUPPORT", ai_may_fabricate_success: false },
+          carrier_booking: { enabled: false, topic: "carrier.booking", authority: "CARRIER", ai_may_fabricate_success: false },
+          customer_notification: { enabled: true, topic: "customer.notify", authority: "PLATFORM", ai_may_fabricate_success: false },
+        },
+        copilot: { order_discovery_agent_id: "order-discovery-agent", candidate_columns: [] },
+      },
+    });
     goToSection("/config", "integrations");
     render(<ConfigurationPage />, { wrapper });
 
-    expect(await screen.findByText(/Already served/)).toBeInTheDocument();
+    expect(await screen.findByText("OMC return create")).toBeInTheDocument();
+    expect(screen.queryByText(/Already served/)).not.toBeInTheDocument();
   });
 });

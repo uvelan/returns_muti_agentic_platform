@@ -772,6 +772,29 @@ const MOCK_SUPPORT_QUEUES = {
   external_ticket_outbox_topic: "support.tickets.outbox",
 };
 
+/**
+ * `integrations`/`copilot`, as CFG-5's `/config/integrations` reads them.
+ * `integrations` is four *named* topics (`IntegrationConfiguration`), not a
+ * data-keyed map -- see `IntegrationsSection.tsx`'s own note. Replaces the
+ * stale `{ omc: { enabled: true } }` fixture, which named a topic the model
+ * has never had (the real four are `omc_return_create`,
+ * `external_support_mirror`, `carrier_booking`, `customer_notification`).
+ */
+const MOCK_INTEGRATIONS = {
+  omc_return_create: { enabled: true, topic: "omc.return.create", authority: "OMC", ai_may_fabricate_success: false },
+  external_support_mirror: { enabled: true, topic: "support.external.mirror", authority: "SUPPORT", ai_may_fabricate_success: false },
+  carrier_booking: { enabled: false, topic: "carrier.booking.request", authority: "CARRIER", ai_may_fabricate_success: false },
+  customer_notification: { enabled: true, topic: "customer.notification.send", authority: "PLATFORM", ai_may_fabricate_success: false },
+};
+
+const MOCK_COPILOT = {
+  order_discovery_agent_id: "order-discovery-agent",
+  candidate_columns: [
+    { label: "Order", fields: ["orderNumber", "salesOrderNumber"] },
+    { label: "Customer", fields: ["customerName", "accountId"] },
+  ],
+};
+
 const MOCK_HOUSEKEEPING = {
   enabled: true,
   interval_seconds: 900,
@@ -1692,7 +1715,8 @@ export const canonicalHandlers = [
           source: "GRAPH",
           head_revision: 41,
           configuration: {
-            integrations: { omc: { enabled: true } },
+            integrations: MOCK_INTEGRATIONS,
+            copilot: MOCK_COPILOT,
             // A template small enough to read and real enough to preview: one
             // default variant with one bound field. `dev:mock` shows the
             // Support Template tab with something in it rather than the

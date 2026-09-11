@@ -2730,3 +2730,86 @@ Files: `frontend/src/domains/config/SupportSection.tsx`, `SupportSection.test.ts
 `BusinessSection.tsx`, `BusinessSection.test.tsx`, `ConfigurationPage.tsx`, `ConfigurationPage.test.tsx`,
 `frontend/src/domains/registry.ts`, `frontend/src/mocks/handlers/canonicalHandlers.ts`,
 `frontend/e2e/config-support.spec.ts`. `drop.json` PARTIAL: items 1-3 done; items 4-11 remain.
+
+## CFG-5 step:04 — `/config/integrations` screen (item 4)
+
+Replaces `ConfigurationPage.tsx`'s `UNBACKED.Integrations` entry (which pointed at the Runtime tab's
+raw JSON -- a read) with `IntegrationsSection.tsx`, a typed `TypedSectionScreen` form over
+`integrations` and `copilot`.
+
+**Two more places the brief's design table didn't match the live model**, in the same vein as
+step:02's workflow finding. `integrations` is `IntegrationConfiguration` -- four *named* fixed
+fields (`omc_return_create`, `external_support_mirror`, `carrier_booking`, `customer_notification`),
+`extra="forbid"` refusing a fifth -- not a data-keyed map, so `KeyValueTable` (add/rename/delete)
+would build controls that always 422; built as four fixed rows instead.
+`copilot.candidate_columns` is `CandidateColumnConfiguration` (`{label, fields}`, `fields` an alias
+chain), not a flat string list, so an `OrderedList` of small cards, not `TagListInput`. No
+"poll intervals" field exists anywhere on `CopilotConfiguration` or `RuntimeIntegrationsConfiguration`
+(already pointed at "AI Control Center -- Providers & Models" elsewhere); not invented.
+
+`order_discovery_agent_id` is an `EnumSelect` sourced from `agentConfigApi.list()` (the live agents,
+matching the brief's "from the agents present"), with an explicit "Not set" option when the release
+carries `None` rather than snapping to the first agent.
+
+**Live e2e run caught a real, unconditional validator.** Tried `ai_may_fabricate_success` first
+(the field the design table names) and the real backend refused it with "AI cannot fabricate success
+for authoritative integrations" on *every* environment --
+`ReturnPlatformConfiguration.validate_required_agents` (`return_configuration.py:1879`) checks all
+four topics unconditionally, not only in production. `IntegrationsSection.tsx`'s hint text, originally
+written from the model's own "must stay off in production"-sounding docstring elsewhere in the file,
+was corrected. Switched the e2e spec to `external_support_mirror.enabled` (confirmed safe with a
+direct `POST /api/config/validate/RETURN_PLATFORM` call before rewriting the spec).
+
+**`BusinessSection.tsx`'s `platform` group (`integrations`, `copilot`) removed**, continuing the
+step:03 pattern -- `BUSINESS_GROUPS` now holds only `simulation` (CFG-5 item 6 is what empties it).
+The now-dead `section()` helper and `RETURN_PLATFORM_DOMAIN_KEY` constant (both had no remaining
+call site once `platform` was gone) were removed rather than left as unused exports.
+`BusinessSection.test.tsx` rewritten around the single remaining group; the "patches under its own
+key on RETURN_PLATFORM" test is retired with a comment explaining why (no live subject exercises that
+branch of `onSubmit` any more), and "sends a removed entry as null" is re-proven through the
+`DEPENDENCY_SIMULATION`-domain subject instead, which does not need the branch to demonstrate it.
+
+```
+$ npx vitest run                       # whole frontend suite
+ Test Files  86 passed (86)
+      Tests  1042 passed (1042)
+
+$ npm run typecheck
+typecheck exit: 0
+$ npm run lint
+lint exit: 0
+```
+
+`dev:mock` route sweep, scoped to `/config/integrations` (warm server):
+
+```
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g "integrations"
+  3 passed -- render, keyboard, axe
+```
+
+Live e2e run, disposable `vite --port 5199`, stopped afterwards; `:5173`/`:8000` never restarted:
+
+```
+$ E2E_REAL_BASE_URL=http://localhost:5199 npx playwright test --project=cfg4-e2e e2e/config-integrations.spec.ts --workers=1 --reporter=list --timeout=60000
+  ok Integrations -- real stack › flips external_support_mirror.enabled, publishes, and the runtime
+     snapshot reflects it -- then reverts (10.4s)
+  1 passed
+```
+
+One more bug caught and fixed along the way: `Toggle`'s real checkbox is visually `sr-only` under a
+CSS-drawn switch `<span>` that covers its coordinates -- clicking the checkbox locator directly
+(even `force: true`, which only skips Playwright's actionability checks, not the browser's real
+hit-testing) lands on the covering span and never fires. Clicking the associated `<label>` (a real,
+uncovered sibling) is what actually toggles it; used in both the e2e spec and worth carrying into any
+future spec that flips a `Toggle` live.
+
+```
+head_revision before/after: 121 123                (one publish, one revert)
+release       before/after: publish-6e8616f231584f6f publish-885b6d9363fe4963
+integrations.external_support_mirror.enabled  identical: True (False both times it matters)
+```
+
+Files: `frontend/src/domains/config/IntegrationsSection.tsx`, `IntegrationsSection.test.tsx`,
+`BusinessSection.tsx`, `BusinessSection.test.tsx`, `ConfigurationPage.tsx`, `ConfigurationPage.test.tsx`,
+`frontend/src/mocks/handlers/canonicalHandlers.ts`, `frontend/e2e/config-integrations.spec.ts`.
+`drop.json` PARTIAL: items 1-4 done; items 5-11 remain.

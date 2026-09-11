@@ -13,6 +13,7 @@ import { AgentsSection } from "./AgentsSection";
 import { BusinessSection } from "./BusinessSection";
 import { DiscoverySection } from "./DiscoverySection";
 import { FulfilmentSection } from "./FulfilmentSection";
+import { IntegrationsSection } from "./IntegrationsSection";
 import { OverviewSection } from "./OverviewSection";
 import { ReturnPolicySection } from "./ReturnPolicySection";
 import { SupportSection } from "./SupportSection";
@@ -36,13 +37,15 @@ import { formatTimestamp } from "../../format/datetime";
  * Console handlers rather than reimplementing them, so this screen reaches them
  * through the canonical path and nothing here breaks at cutover.
  *
- * Of the four that remain, three will never need one and say so rather than
- * claiming to be pending: business config and integrations are *already* served
- * -- `/runtime` returns the whole snapshot and they are fields on it -- and
- * modules would return `[]` forever because the kernel module registry is empty
- * by design. Security is not configuration: the role model is code, and
- * publishing the role-to-capability table would let a UI reimplement
- * authorization locally, which the capability layer exists to prevent.
+ * Of the four that remain, two will never need one and say so rather than
+ * claiming to be pending: modules would return `[]` forever because the kernel
+ * module registry is empty by design, and security is not configuration --
+ * the role model is code, and publishing the role-to-capability table would
+ * let a UI reimplement authorization locally, which the capability layer
+ * exists to prevent. Business config and integrations *were* the other two,
+ * pointed at "already served -- see the Runtime tab", which is a read: both
+ * are typed write screens of their own now (`BusinessSection.tsx`,
+ * `IntegrationsSection.tsx`).
  *
  * **Promotion controls exist now, and drive one lifecycle.** The blocker was
  * real -- two release lifecycles existed and a button would have silently
@@ -68,10 +71,11 @@ type Tab = (typeof CONFIG_SECTIONS)[number];
  * served* rather than missing, which is a different statement and worth making.
  * Business used to be listed here as "already served, see the Runtime tab";
  * a read is not a write surface, and it is a tab of its own now.
+ *
+ * CFG-5: `Integrations` was here too, pointed at the Runtime tab's raw JSON --
+ * a read, the same defect `Business` had. It is `IntegrationsSection.tsx` now.
  */
 const UNBACKED: Partial<Record<Tab, string>> = {
-  Integrations:
-    "Already served. Integrations are fields on the runtime snapshot (configuration.integrations and configuration.runtime_integrations), visible on the Runtime tab. A second endpoint would duplicate them.",
   Modules:
     "No endpoint, deliberately. The kernel module registry is empty by design, so a /modules route would answer [] forever -- a shell that always says nothing is worse than an honest absence. A release's module list is reachable through its domain payloads.",
   Security:
@@ -138,6 +142,8 @@ function TabBody({ tab, canReadReleases }: { tab: Tab; canReadReleases: boolean 
       return <FulfilmentSection />;
     case "Workflow":
       return <WorkflowSection />;
+    case "Integrations":
+      return <IntegrationsSection />;
     // Was "already served, see the Runtime tab" -- a read. Every section the
     // release carries is editable here; the runtime snapshot is what it edits.
     case "Business":

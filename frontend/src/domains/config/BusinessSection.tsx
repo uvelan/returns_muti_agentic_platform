@@ -46,7 +46,12 @@ import { DocumentEditor, type JsonObject } from "./DocumentEditor";
  * support template took.
  */
 
-const RETURN_PLATFORM_DOMAIN_KEY = "RETURN_PLATFORM";
+// `RETURN_PLATFORM`, the domain every `EDITED_ELSEWHERE` pointer's typed
+// screen publishes to, named nowhere in *this* file any more: the last
+// subject that published under a `RETURN_PLATFORM` key (the `platform`
+// group) moved to `/config/integrations` this step, and `BUSINESS_GROUPS`
+// now holds only the `DEPENDENCY_SIMULATION`-domain subject below. See the
+// module note above `BUSINESS_GROUPS`.
 const DEPENDENCY_SIMULATION_DOMAIN_KEY = "DEPENDENCY_SIMULATION";
 
 type Subject = {
@@ -59,38 +64,38 @@ type Subject = {
 
 type Group = { id: string; title: string; blurb: string; subjects: readonly Subject[] };
 
-function section(key: string, title: string, hint: string): Subject {
-  return { key, domainKey: RETURN_PLATFORM_DOMAIN_KEY, title, hint };
-}
-
 /**
  * Derived from the release's own sections -- see the module note.
  *
- * **Five groups are gone: discovery, policy, fulfilment, workflow, support.**
- * CFG-4 gave the first three a typed screen of its own --
+ * **Six groups are gone: discovery, policy, fulfilment, workflow, support,
+ * platform.** CFG-4 gave the first three a typed screen of its own --
  * `/config/discovery`, `/config/return-policy`, `/config/fulfilment` -- and
- * CFG-5 gave the other two theirs -- `/config/workflow`, `/config/support`
- * (six tabs, the template included) -- and this tab's job was always the
- * honest first step for sections whose shape had not earned a typed form
- * yet, not a second write path once one exists. The nineteen sections those
- * five groups covered (`discovery`, `source_resolution`,
- * `clarification_policy`, `selection_vocabulary`; `return_policy`,
- * `return_eligibility_policy`, `policy_evaluation`; `shipment_tracking`,
- * `bay`, `omc`; `workflow`, `return_case`, `business_calendars`,
- * `housekeeping`; `support`, `support_gate`, `support_ingress`,
- * `support_resolver`, `context_assembly`) are unreachable from here now,
- * pointed at instead through `EDITED_ELSEWHERE`.
+ * CFG-5 gave the other three theirs -- `/config/workflow`, `/config/support`
+ * (six tabs, the template included), `/config/integrations` -- and this
+ * tab's job was always the honest first step for sections whose shape had
+ * not earned a typed form yet, not a second write path once one exists. The
+ * twenty-one sections those six groups covered (`discovery`,
+ * `source_resolution`, `clarification_policy`, `selection_vocabulary`;
+ * `return_policy`, `return_eligibility_policy`, `policy_evaluation`;
+ * `shipment_tracking`, `bay`, `omc`; `workflow`, `return_case`,
+ * `business_calendars`, `housekeeping`; `support`, `support_gate`,
+ * `support_ingress`, `support_resolver`, `context_assembly`; `integrations`,
+ * `copilot`) are unreachable from here now, pointed at instead through
+ * `EDITED_ELSEWHERE`.
+ *
+ * **Only `simulation` is left**, and it is the one group whose subject
+ * publishes on its own domain rather than under a key on `RETURN_PLATFORM`
+ * (`subject.key === null`) -- so the `subject.key !== null` branch of this
+ * component's own `onSubmit` (`patch: { [subject.key]: patch }`) is no
+ * longer exercised by any subject this tab actually offers. It is still
+ * correct code -- the branch a future section restores this tab to would
+ * use -- but nothing here proves it live any more, which is worth stating
+ * plainly rather than leaving a claim the tests can no longer back.
+ * `/config/simulation` (CFG-5 item 6) is the last typed screen this tab is
+ * waiting on; once it lands, `BUSINESS_GROUPS` is empty and this tab is
+ * retired outright (CFG-5 item 8), not left as a shell with nothing to show.
  */
 const BUSINESS_GROUPS: readonly Group[] = [
-  {
-    id: "platform",
-    title: "Integrations and features",
-    blurb: "Topic bindings and the copilot's own settings.",
-    subjects: [
-      section("integrations", "Integrations", "Outbox topics and what AI may not fabricate."),
-      section("copilot", "Copilot", "Which agent the copilot runs and what it shows."),
-    ],
-  },
   {
     id: "simulation",
     title: "Dependency simulation",
@@ -137,6 +142,9 @@ const EDITED_ELSEWHERE: Readonly<Record<string, string>> = {
   support_ingress: "Support tab -- Ingress, how the platform reads and answers Support.",
   support_resolver: "Support tab -- Resolver, how a reply is matched to its request.",
   context_assembly: "Support tab -- Context assembly, what a Support request carries.",
+  // CFG-5: the platform group.
+  integrations: "Integrations tab -- topic bindings and what AI may not fabricate.",
+  copilot: "Integrations tab -- which agent the Copilot routes to, and its candidate columns.",
 };
 
 type Snapshot = {
