@@ -3620,6 +3620,49 @@
         "title": "APIResponse[dict[str, bool]]",
         "type": "object"
       },
+      "APIResponse_dict_str__dict_str__list_str____": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "additionalProperties": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "type": "object"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PageMeta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "meta"
+        ],
+        "title": "APIResponse[dict[str, dict[str, list[str]]]]",
+        "type": "object"
+      },
       "APIResponse_dict_str__object__": {
         "additionalProperties": false,
         "properties": {
@@ -4863,6 +4906,28 @@
           "cardinality"
         ],
         "title": "AddRelationship",
+        "type": "object"
+      },
+      "AdoptPackagedPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_head_revision": {
+            "minimum": 0.0,
+            "title": "Expected Head Revision",
+            "type": "integer"
+          },
+          "units": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Units",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_head_revision"
+        ],
+        "title": "AdoptPackagedPayload",
         "type": "object"
       },
       "AgentConfigurationProposalView": {
@@ -11168,6 +11233,18 @@
       "PatchDomainPayload": {
         "additionalProperties": false,
         "properties": {
+          "expected_version": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Version"
+          },
           "patch": {
             "additionalProperties": true,
             "title": "Patch",
@@ -12655,6 +12732,58 @@
           "detail"
         ],
         "title": "ProposedRebinding",
+        "type": "object"
+      },
+      "PublishConfigurationPayload": {
+        "additionalProperties": false,
+        "properties": {
+          "domain_key": {
+            "title": "Domain Key",
+            "type": "string"
+          },
+          "expected_head_revision": {
+            "minimum": 0.0,
+            "title": "Expected Head Revision",
+            "type": "integer"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "patch": {
+            "additionalProperties": true,
+            "title": "Patch",
+            "type": "object"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 3,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          }
+        },
+        "required": [
+          "domain_key",
+          "patch",
+          "expected_head_revision"
+        ],
+        "title": "PublishConfigurationPayload",
         "type": "object"
       },
       "PublishRequest": {
@@ -20271,6 +20400,38 @@
         "title": "TransformationKind",
         "type": "string"
       },
+      "ValidateDomainPayload": {
+        "additionalProperties": false,
+        "description": "Body of `POST /validate/{domain_key}` -- exactly one of two shapes.\n\n`payload` validates a whole document standalone, with nothing read from\nany release: the shape a form uses before a draft exists at all.\n`patch` merges against the ACTIVE release's stored domain (never a\ndraft's -- this route takes no `release_id`, because \"would this be\nvalid\" is a question worth asking before a draft is even open, and the\nactive release is the only document a caller with no draft yet can name).",
+        "properties": {
+          "patch": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Patch"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
+          }
+        },
+        "title": "ValidateDomainPayload",
+        "type": "object"
+      },
       "ValidationCheck": {
         "enum": [
           "SOURCE_EXISTS",
@@ -21960,6 +22121,48 @@
         ]
       }
     },
+    "/api/config/adopt-packaged": {
+      "post": {
+        "description": "Publish a release adopting the named packaged units, per-key audited.\n\nThe API's answer to a `packaged_configuration_not_adopted` warning: what\n`--adopt-packaged-key` does from a terminal, this does from the\nConfiguration screen. On refusal the release this call created is\narchived rather than left behind -- nothing is left for a retry to trip\nover.",
+        "operationId": "adopt_packaged_api_config_adopt_packaged_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdoptPackagedPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Adopt Packaged",
+        "tags": [
+          "Configuration"
+        ]
+      }
+    },
     "/api/config/adoption": {
       "get": {
         "description": "`ACTIVATED != LIVE` -- which processes are actually running the release.\n\nPromoting a release moves the graph pointer and nothing else; the API\nprocess, the workers and the model the Order Agent calls each adopt on their\nown poll. Until every required process class has reported the activated\nrevision the platform is running two releases at once, and this is the\nendpoint that says so rather than leaving an operator to assume otherwise.\n\nActivated is read from the graph, not from `app.state`: this process is one\nof the adopters, so answering from its own snapshot would make it\nstructurally unable to report itself as behind.",
@@ -21984,8 +22187,45 @@
     },
     "/api/config/audit": {
       "get": {
-        "description": "Platform audit records.\n\nMounted under `/api/config` because that is where the plan puts it, and\nbecause the actions it records are overwhelmingly configuration ones --\npromotions, source edits, workspace changes. It is *not* filtered to\nconfiguration, and the path should not be read as promising that; the\nrecords carry their own `action` and `target`.",
+        "description": "Platform audit records, optionally filtered.\n\nMounted under `/api/config` because that is where the plan puts it, and\nbecause the actions it records are overwhelmingly configuration ones --\npromotions, source edits, workspace changes. It is *not* filtered to\nconfiguration BY DEFAULT, and the path should not be read as promising\nthat; the records carry their own `action` and `target`, and `actions`/\n`target` are how a caller narrows to them.",
         "operationId": "list_configuration_audit_api_config_audit_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "actions",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actions"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Target"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -21996,6 +22236,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "List Configuration Audit",
@@ -22041,6 +22291,70 @@
           }
         },
         "summary": "Get Configuration Audit",
+        "tags": [
+          "Configuration"
+        ]
+      }
+    },
+    "/api/config/packaged-drift": {
+      "get": {
+        "description": "The Overview screen's undecided-keys panel: read-only, per domain.\n\n`config.release.write`, not a read capability: this is the panel that\ntells an operator what `POST /adopt-packaged` would let them request, not\na general configuration read every read-role principal needs.",
+        "operationId": "packaged_drift_api_config_packaged_drift_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__dict_str__list_str____"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Packaged Drift",
+        "tags": [
+          "Configuration"
+        ]
+      }
+    },
+    "/api/config/publish": {
+      "post": {
+        "description": "Draft, patch and publish one behaviour domain in a single call.\n\nOn refusal the draft this call created is archived, not left behind --\na retry after a 409 or 422 finds no half-published release in its way.",
+        "operationId": "publish_api_config_publish_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishConfigurationPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish",
         "tags": [
           "Configuration"
         ]
@@ -22313,7 +22627,7 @@
     },
     "/api/config/sources": {
       "get": {
-        "description": "Configured data sources and their probed health.\n\nDelegates to the retired console module's handler rather than\nreimplementing the probe fan-out: this is a canonical *surface* over one\nimplementation, which is the whole point of the exercise. CFG-1 deleted\nthe console `APIRouter` this handler used to also be mounted under; the\nbody stays in `sources.py`, imported and called directly, unchanged.",
+        "description": "Configured data sources and their probed health.\n\nDelegates to the retired console module's handler rather than\nreimplementing the probe fan-out: this is a canonical *surface* over one\nimplementation, which is the whole point of the exercise. CFG-1 deleted\nthe console `APIRouter` this handler used to also be mounted under; the\nbody stays in `sources.py`, imported and called directly, unchanged.\n\nRouted through `_ok` (CFG-3a, carried from RV CFG-1 F4): this and the\nother four canonical reads below used to return the console handler's\n`APIResponse` straight through, which bypassed `redact_secret_values` --\nevery OTHER handler on this router scrubs its response, and these five\nwere the exception nothing had closed.",
         "operationId": "list_configured_sources_api_config_sources_get",
         "responses": {
           "200": {
@@ -22422,6 +22736,59 @@
           }
         },
         "summary": "Get Configured Source Asset",
+        "tags": [
+          "Configuration"
+        ]
+      }
+    },
+    "/api/config/validate/{domain_key}": {
+      "post": {
+        "description": "Check a payload or a patch against the active release, with no write.\n\nRead roles, not write: nothing is stored, nothing is audited, and a form\nvalidating a field as an operator types must not need the write\ncapability an eventual patch would.",
+        "operationId": "validate_domain_api_config_validate__domain_key__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain_key",
+            "required": true,
+            "schema": {
+              "title": "Domain Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateDomainPayload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate Domain",
         "tags": [
           "Configuration"
         ]

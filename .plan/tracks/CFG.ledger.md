@@ -1253,3 +1253,48 @@ acceptance sweep (ruff/format/mypy on the whole owned set, the full backend
 suite against the known-failure registry).
 
 Head sha: see commit. `merge_status: PARTIAL`.
+
+## CFG-3a step:09 — item 7: OpenAPI regen (all copies) + drift check
+
+`python scripts/check_openapi_drift.py --write` regenerated all four
+committed JSON snapshots and the frontend generated types; the four new
+routes (`POST /api/config/validate/{domain_key}`, `POST /api/config/publish`,
+`POST /api/config/adopt-packaged`, `GET /api/config/packaged-drift`) and the
+`/audit` route's two new query parameters (`actions`, `target`) confirmed
+present in the regenerated `openapi.json`. No frontend component touched --
+only the generated `.d.ts` and the four OpenAPI JSON copies, per the brief's
+Owns list.
+
+**Drift-check output** (brief's "Evidence to paste"), check mode after the
+write:
+
+```
+$ cd .. && PYTHONPATH=$WT/backend/src backend/.venv/Scripts/python.exe scripts/check_openapi_drift.py
+{
+  "stage": "4E",
+  "gate": "openapi_drift",
+  "mode": "check",
+  "commit": "1b3155e95255a41618671dda33ad36e46e7bb9fd",
+  "openapi_sha256": "0d12158eb3ce21963d890129a56364a7951e611410f5f75b4452b421de99cbda",
+  "snapshots": [
+    "openapi/return-platform.openapi.json",
+    "backend/openapi/return-platform.openapi.json",
+    "frontend/openapi/return-platform.openapi.json",
+    "openapi.json"
+  ],
+  "diffs": [],
+  "status": "PASS",
+  "exit_code": 0
+}
+```
+
+**Full acceptance command** (brief's exact suite list):
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/test_configuration_api.py tests/configuration tests/test_graph_configuration_bootstrap.py tests/test_every_console_path_is_mounted.py tests/api -q -p no:cacheprovider
+714 passed, 5 deselected, 2 warnings in 101.15s
+```
+
+Head sha: see commit. `merge_status`: moving to PENDING once the final
+ruff/format/mypy sweep on every changed file and the full backend suite
+(known-failure registry check) are confirmed in the next step.
