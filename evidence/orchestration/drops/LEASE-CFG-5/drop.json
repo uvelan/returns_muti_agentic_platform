@@ -2,7 +2,7 @@
   "lease_id": "CFG-5",
   "branch": "feat/cfg-5-screens-b",
   "base_sha": "b03cbb59",
-  "head_sha": "eed9d5e2",
+  "head_sha": "751b0694",
   "status": "PARTIAL",
   "files": [
     "frontend/src/mocks/handlers/canonicalHandlers.ts",
@@ -24,34 +24,32 @@
     "frontend/e2e/config-integrations.spec.ts"
   ],
   "tests": {
-    "npx vitest run (whole frontend suite)": "1042 passed, 0 failed (86 files)",
-    "npm run typecheck": "clean",
-    "npm run lint": "clean",
-    "npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts (warm dev:mock server, full run)": "129 passed, 0 failed",
-    "npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g support|workflow|integrations (scoped re-checks)": "all passed, 0 failed",
-    "E2E_REAL_BASE_URL=... npx playwright test --project=cfg4-e2e e2e/config-workflow.spec.ts --workers=1": "1 passed",
-    "E2E_REAL_BASE_URL=... npx playwright test --project=cfg4-e2e e2e/config-support.spec.ts --workers=1": "1 passed",
-    "E2E_REAL_BASE_URL=... npx playwright test --project=cfg4-e2e e2e/config-integrations.spec.ts --workers=1": "1 passed"
+    "npx vitest run (whole frontend suite, as of step:04)": "1042 passed, 0 failed (86 files)",
+    "npm run typecheck (as of step:04)": "clean",
+    "npm run lint (as of step:04)": "clean",
+    "npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts (warm dev:mock server, full run, as of step:01)": "129 passed, 0 failed",
+    "E2E_REAL_BASE_URL=... npx playwright test --project=cfg4-e2e (per-screen specs)": "workflow 1 passed, support 1 passed, integrations 1 passed"
   },
   "done": [
-    "item 1: MSW handlers + contract tests for /api/agents, /api/schema-releases/*, /api/ai/requests/{id}/replay|compare; /api/source-bindings already covered by CFG-4; dead /data-console/v1/ branch removed from main.tsx (settled on onUnhandledRequest: \"bypass\" -- see out_of_scope_flagged/task_1349209e)",
+    "item 1: MSW handlers + contract tests for /api/agents, /api/schema-releases/*, /api/ai/requests/{id}/replay|compare; dead /data-console/v1/ branch removed from main.tsx",
     "item 2: /config/workflow screen -- built against the live WorkflowConfiguration model rather than the brief's design table, which described a handler/agent-ref shape belonging to a different, unused model",
-    "item 3: /config/support screen, six tabs -- Template (SupportTemplateSection, moved unchanged) plus typed Gate/Ingress/Resolver/Context assembly/Queues forms; /config/support-template redirects for one release; removed BusinessSection.tsx's now-superseded workflow group",
-    "item 4: /config/integrations screen -- integrations as four fixed named topics (not KeyValueTable, extra=\"forbid\" refuses a fifth), copilot.candidate_columns as an OrderedList of {label,fields} cards (not TagListInput); live e2e run caught ai_may_fabricate_success is unconditionally refused, corrected the screen's hint text and used external_support_mirror.enabled instead; removed BusinessSection.tsx's now-superseded platform group -- only simulation remains"
+    "item 3: /config/support screen, six tabs -- Template (SupportTemplateSection, moved unchanged) plus typed Gate/Ingress/Resolver/Context assembly/Queues forms; /config/support-template redirects for one release",
+    "item 4: /config/integrations screen -- integrations as four fixed named topics, copilot.candidate_columns as an OrderedList of {label,fields} cards; live e2e run caught ai_may_fabricate_success is unconditionally refused by a release-wide validator, corrected the screen's hint text",
+    "item 5 (partial): backend architecture fully researched and a concrete step-by-step implementation plan recorded in the ledger (CFG-5 step:05) -- NOT implemented. See ledger for the full plan: AgentRegistry/runtime only ever reads ReturnPlatformConfiguration.agents, never AGENT_MODULES or the packaged YAML; publish_release_with_domains replaces a domain whole (not by patch), which changes the concrete repoint approach; manifest.yaml's non-agent entries (workflow/sync/source/mapping/graph) are confirmed dead and their target files exist on disk; platform.system_store is read by an unrelated loader and stays untouched either way"
   ],
   "remaining": [
-    "item 5: backend -- repoint PUT /api/agents/{id} and application/agent_configuration.py at the live agents: section, delete backend/config/agents/*.yaml and manifest.yaml entries (verify with grep which loader consumers remain), update test_agent_configuration_releases.py and backend/config/README.md, paste backend suites; then /config/agents typed table on the proposal path",
+    "item 5: implement the recorded plan -- rewrite agent_configuration.py (drop ConfigurationLoader/YAML, read/write ReturnPlatformConfiguration.agents.<id> directly), governance_agent_configuration.py (patch the whole RETURN_PLATFORM document via publish_release_with_domains, not a separate AGENT_MODULES domain), main.py wiring, delete backend/config/agents/*.yaml + workflow/sync/source/mapping/graph manifest entries and their target files (keep platform.system_store), rewrite test_agent_configuration_releases.py, update backend/config/README.md, paste backend suites; then rebuild /config/agents as a typed table (name/version/enabled/ai_assisted Toggles/ai_route_ref EnumSelect) on the proposal path, replacing the current DocumentEditor-based AgentsSection.tsx",
     "item 6: /config/simulation screen (empties BusinessSection's last group -- simulation -- once typed)",
     "item 7: /config/data-sources screen (source bindings + sync moved from /sync with redirect)",
     "item 8: retire Business tab once item 6 leaves BUSINESS_GROUPS empty",
     "item 9: CFG-4 advisories G1 (409 notice clears with first keystroke), G2 (no-active-release branch test), F6 (dirty count per field)",
-    "item 10: remaining Playwright specs, one per new screen (workflow, support, integrations are done)",
+    "item 10: remaining Playwright specs, one per new screen (workflow, support, integrations are done; agents, simulation, data-sources remain)",
     "item 11: full acceptance sweep (vitest 0 failures, typecheck, lint, backend pytest tests/configuration tests/api tests/test_configuration_api.py -q, drift check, dev:mock sweep)"
   ],
   "out_of_scope_flagged": [
     {
       "task_id": "task_1349209e",
-      "what": "supportHandlers.ts has no MSW handler for GET /api/rma-tickets or GET /api/v1/return-support/work-items; discovered while testing onUnhandledRequest: \"error\", outside CFG-5's Owns; still open, unaffected by later steps"
+      "what": "supportHandlers.ts has no MSW handler for GET /api/rma-tickets or GET /api/v1/return-support/work-items; discovered while testing onUnhandledRequest: \"error\", outside CFG-5's Owns; still open"
     }
   ],
   "merge_status": "NOT_READY"
