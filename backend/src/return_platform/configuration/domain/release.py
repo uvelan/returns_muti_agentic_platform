@@ -6,10 +6,12 @@ from enum import StrEnum
 class ReleaseStatus(StrEnum):
     """Whether a configuration *manifest* is finished. Not a promotion lifecycle.
 
-    Two values, because two is what the manifest has to distinguish:
-    `LegacyCompatibilityAdapter.build_canonical_snapshot` refuses DRAFT and
-    serves anything else, and the packaged manifest declares ACTIVE. Those are
-    the only values `ConfigurationLoader` has ever parsed out of a real file.
+    Two values, because two is what the manifest has to distinguish: the
+    packaged manifest declares ACTIVE, and those are the only values
+    `ConfigurationLoader` has ever parsed out of a real file. (The
+    manifest-translation path that used to refuse DRAFT here --
+    `LegacyCompatibilityAdapter.build_canonical_snapshot` -- was test-only and
+    was retired in CFG-1.)
 
     `VALIDATED`, `APPROVED` and `SUPERSEDED` used to be members too. They were
     the vocabulary of `RELEASE_SERVICE_TRANSITIONS` (DRAFT -> VALIDATED ->

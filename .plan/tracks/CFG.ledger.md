@@ -202,3 +202,97 @@ item 7.
 
 Merge: `refactor/unified-return-platform` (local) fast-forwarded to this branch head. Not pushed to
 `origin` -- pushing is the operator's call.
+
+## CFG-1 step:00 — base check, env verification
+
+```
+$ git rev-parse HEAD
+06b43b184b7f0714f789f6ac20eb13cc74a2c4f8
+$ git log --oneline -1
+06b43b18 (CFG) step:03 RV round 2 PASS -- the mergePatch null note that step:02 claimed, F5/F10 carried into CFG-1
+$ git rev-list --left-right --count 06b43b18...42b0536b
+5	0
+```
+Base is CFG-0's RV-approved head (06b43b18), 5 commits ahead of trunk `refactor/unified-return-platform@42b0536b`, 0 behind -- not stale.
+
+```
+$ PYTHONPATH=$WT/backend/src backend/.venv/Scripts/python.exe -c "import return_platform; print(return_platform.__file__)"
+K:\Projects\Ret\returns_muti_agentic_platform\.claude\worktrees\cfg-1\backend\src\return_platform\__init__.py
+```
+Resolves inside the cfg-1 worktree. Proceeding with scope item 1.
+
+## CFG-1 step:01 — never-wired files deleted (D-CFG-1) + manifest translation path retired (item 2)
+
+Combined into one step because deleting `backend/config/policies/` requires removing the
+`policy.*` manifest entries in the same change to keep the loader consistent (item 2's own
+instruction), and both items' README edits touch the same two files.
+
+**Item 1 grep evidence (no reader in `backend/src`, scoped to `backend/ frontend/src scripts/ docs/`):**
+```
+$ grep -rn "config/policies\|policies/candidate_scoring\|policies/clarification\|policies/privacy\|policies/return_eligibility" backend/src backend/tests scripts docs
+docs/implementation/basic-return-flow/00-execution-context.md:89:| Policy modules | `backend/config/policies/*.yaml` |   (a table entry, not a loader)
+$ grep -rn "live_validation" backend/src backend/tests scripts docs
+(only docs/archive and docs/UNIFIED_RETURN_PLATFORM_*.md mentions -- no code reader)
+$ grep -rn "internal_manifests" backend/src backend/tests scripts docs
+(no hits at all)
+$ grep -rn "reasoning.yaml\|load_reasoning_configuration" backend/src backend/tests scripts docs
+backend/src/return_platform/platform/reasoning/configuration.py, __init__.py (definition/re-export only)
+docs/... (design-doc prose, not a loader)
+```
+`active-schema.example.yaml` kept: linked from `docs/UNIFIED_RETURN_PLATFORM_TARGET_DESIGN.md` and
+`docs/UNIFIED_RETURN_PLATFORM_EXECUTION_STATE.md`, and loaded directly by
+`backend/tests/dynamic_knowledge/test_schema_and_fingerprint.py::test_active_configuration_example_has_valid_checksum`
+(outside this lease's owned test paths) -- the brief's own "only if no doc links it" condition is not met.
+
+Deleted: `backend/config/policies/{candidate_scoring,clarification,privacy,return_eligibility}.yaml`,
+`backend/config/live_validation/data_assets.sampling.yaml`,
+`backend/config/dynamic_knowledge/internal_manifests/{mongodb,mssql,neo4j,postgresql}.yaml`,
+`backend/config/reasoning.yaml`, `platform/reasoning/configuration.py` (whole file -- only
+`load_reasoning_configuration` and the types it alone used), its re-export in
+`platform/reasoning/__init__.py`, and the stale README row naming it. Wrote
+`docs/configuration/DEFERRED_DESIGN.md` first, per the brief's ordering, naming the live rule (or
+absence of one) for each removed file.
+
+**Item 2 grep evidence -- `compatibility.py`/`precedence.py`/`adapters.py`/`validator.py` imported by
+nothing but each other and their own test file:**
+```
+$ grep -rln "configuration\.application\.compatibility" backend/src backend/tests
+backend/src/return_platform/configuration/application/adapters.py
+backend/tests/configuration/test_canonical_application.py
+$ grep -rln "configuration\.application\.precedence" backend/src backend/tests
+backend/tests/configuration/test_canonical_application.py
+$ grep -rln "configuration\.application\.validator" backend/src backend/tests
+backend/tests/configuration/test_canonical_application.py
+$ grep -n "^from\|^import" .../adapters.py   # only compatibility.py, domain/release.py, domain/release_model.py
+```
+**Deviation from the brief's literal list, evidenced:** `domain/release_model.py` was NOT deleted --
+`grep -rln "domain\.release_model" backend/src` shows `application/runtime_configuration.py` and
+`application/snapshot.py` (both outside this deletion list, both live-path modules) import
+`RuntimeSnapshot` from it, and `ConfigurationRelease` (its other class) is used by
+`graph_repository.py`, `dynamic_knowledge/graph/generation.py` and `platform/reasoning/checkpoint.py`.
+The brief's own gate ("only after grep shows each symbol is imported by nothing but the others in
+this list") is not met for this file, so it stays untouched.
+
+Deleted `compatibility.py`, `precedence.py`, `adapters.py`, `validator.py`,
+`tests/configuration/test_canonical_application.py` (862 lines; no `test_validator_smoke.py` /
+`test_loader_and_compatibility.py` exist as separate files -- those names are inside this one file
+as `test_loader_and_compatibility`/`test_validator_smoke` test functions, consolidated). Removed
+`policy.*` from `manifest.yaml`; kept agent/workflow/sync/source/mapping/graph/platform entries.
+Updated `docstring` in `configuration/domain/release.py` (stale `LegacyCompatibilityAdapter`
+reference). Both READMEs (`backend/config/README.md`, `.../configuration/README.md`) rewritten:
+dropped "Manifest and compatibility translation" and "Semantic validation" sections and the
+"Singleton compatibility files" section, kept and updated the "What actually runs" text CFG-0
+added, added a "Removed as dead (CFG-1)" pointer to `DEFERRED_DESIGN.md`.
+
+**Advisory, not fixed (out of `application/loader.py`'s protected scope per the brief's Owns list):**
+`loader.py::MODULE_TYPE_PREFIX` still maps `"policy" -> "POLICY"` and `load_file()` now has zero
+callers (only `compatibility.py` called it) -- both harmless dead code inside a file this lease must
+not touch (`application/loader.py` is explicitly protected; CFG-5 repoints it).
+
+```
+$ pytest backend/tests/configuration backend/tests/reasoning backend/tests/dynamic_knowledge/test_schema_and_fingerprint.py backend/tests/test_every_console_path_is_mounted.py -q
+218 passed (configuration) / 17 passed, 28 deselected (reasoning + schema/fingerprint + console-mount)
+$ ruff check src/return_platform/configuration src/return_platform/platform/reasoning -> All checks passed!
+$ ruff format --check (same paths) -> already formatted
+$ mypy src/return_platform/configuration -> Success: no issues found in 48 source files
+```
