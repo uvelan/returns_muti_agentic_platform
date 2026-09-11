@@ -2,7 +2,7 @@
   "lease_id": "CFG-4",
   "branch": "feat/cfg-4-screens-a",
   "base_sha": "656ba175",
-  "head_sha": "PENDING",
+  "head_sha": "08c9001deeccc28746da5396e9deddda9bb8cfb2",
   "files": [
     "frontend/src/domains/config/DocumentEditor.tsx",
     "frontend/src/domains/config/DocumentEditor.test.tsx",
@@ -47,10 +47,10 @@
   "tests": {
     "npx vitest run (whole frontend suite)": "1002 passed, 0 failed (83 files)",
     "npm run typecheck": "clean",
-    "npm run lint": "clean"
+    "npm run lint": "clean",
+    "npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts (dev:mock route sweep, incl. the three new routes)": "129 passed",
+    "E2E_REAL_BASE_URL=... npx playwright test --project=cfg4-e2e --workers=1 (live stack, run once, reverted)": "4 passed"
   },
-  "remaining": [
-    "final acceptance: vitest/typecheck/lint whole project, dev:mock route sweep"
-  ],
-  "merge_status": "PARTIAL"
+  "remaining": [],
+  "merge_status": "PENDING"
 }

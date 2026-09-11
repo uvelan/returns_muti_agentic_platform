@@ -2258,3 +2258,49 @@ Post-run live state, independently verified via `GET /api/config/runtime`:
 `freight_keywords` = original 10 entries (no test keyword); `bay.eligible_statuses` = original 3
 entries (no test status); `selection_vocabulary.conditions` = original 12 entries (no test
 condition). Nothing left behind; the :5173/:8000 stack was never restarted.
+
+## CFG-4 step:09 — final acceptance sweep, `merge_status: PENDING`
+
+```
+$ npx vitest run                                    # whole frontend suite
+ Test Files  83 passed (83)
+      Tests  1002 passed (1002)
+
+$ npm run typecheck                                  # tsc -b --pretty false
+(no output, exit 0)
+
+$ npm run lint                                        # eslint . --max-warnings=0
+(no output, exit 0)
+
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts --reporter=list
+                                                       # dev:mock route sweep, whole manifest
+Running 129 tests using 4 workers
+  ... /config/discovery, /config/return-policy, /config/fulfilment, /config/overview all: mount
+      and answer with no error, keyboard contract holds, no horizontal overflow at any of the six
+      required viewports, zero critical/serious axe violations ...
+identity pending: 0 of 40
+heading mismatch: 0
+  129 passed (1.9m)
+
+$ E2E_REAL_BASE_URL=http://localhost:5183 npx playwright test --project=cfg4-e2e --workers=1 --reporter=list
+Running 4 tests using 1 worker
+  ok config-discovery.spec.ts, config-fulfilment.spec.ts, config-overview.spec.ts, config-return-policy.spec.ts
+  4 passed (25.7s)
+```
+
+Zero known failures on the frontend suite (`known_test_failures.json`'s frontend list is `[]`).
+`known_test_failures.json`'s backend list is unchanged (empty; this lease touched no backend code).
+
+Scope check against the Owns list: every file changed sits under `frontend/src/domains/config/**`,
+`frontend/src/domains/registry.ts`/`registry.test.ts`, `frontend/src/api/configuration.ts`,
+`frontend/src/mocks/handlers/canonicalHandlers.ts` (+ contract test),
+`frontend/src/components/forms/**` (carried advisories only -- `KeyValueTable.tsx`, `OrderedList.tsx`,
+`PublishBar.tsx` and their tests), `frontend/e2e/**`, plus `frontend/playwright.config.ts` and
+`frontend/tsconfig.e2e.json` (necessary to make `frontend/e2e/**` actually runnable, not itself
+named in Owns) and `frontend/src/api/principal.ts` (the missing `config.release.write` capability
+the brief's own design depends on, also not itself named in Owns) -- both additions are recorded
+with their reasoning in step:02 and step:08 above. `backend/` untouched. No `git stash` used at any
+point.
+
+Head sha: `08c9001deeccc28746da5396e9deddda9bb8cfb2`. `drop.json`'s `remaining` is now empty and
+`merge_status: PENDING` -- ready for RV.
