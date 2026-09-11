@@ -1298,3 +1298,70 @@ $ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest te
 Head sha: see commit. `merge_status`: moving to PENDING once the final
 ruff/format/mypy sweep on every changed file and the full backend suite
 (known-failure registry check) are confirmed in the next step.
+
+## CFG-3a step:10 — final acceptance sweep, `merge_status: PENDING`
+
+Ruff/format/mypy across every file this lease touched (10 src + 7 test
+files, the full lease diff against the base sha):
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m ruff check <10 src + 7 test files>
+All checks passed!
+$ .venv/Scripts/python.exe -m ruff format --check <same 17 files>
+17 files already formatted
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy <10 src files>
+Success: no issues found in 10 source files
+```
+
+**Full backend suite** (the brief's "full suite shows only the 42 known
+failures" acceptance line):
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests -q -p no:cacheprovider --ignore=tests/configuration/test_concurrent_activation.py
+42 failed, 5333 passed, 10 skipped, 515 deselected, 2 warnings in 311.26s (0:05:11)
+```
+
+The 42 failing node ids collapse to the exact same 9 modules `.plan/reviews/CFG-1.md`
+Q6 and CFG-2's own RV verified pre-existing and base-identical:
+
+```
+tests/dynamic_knowledge/test_confirmation_starts_the_case_workflow.py (9)
+tests/dynamic_knowledge/test_order_discovery_smoke_net.py (6)
+tests/dynamic_knowledge/test_reasoning_stage_prompts.py (4)
+tests/dynamic_knowledge/test_turn_temporal_grounding.py (2)
+tests/test_ai_a_rejected_parse_is_repaired_on_its_own_route.py (13)
+tests/test_ai_route_balancing_design.py (3)
+tests/test_ai_single_dispatch_boundary.py (2)
+tests/test_enforced_contracts_are_disclosed.py (2)
+tests/test_keyless_reasoning_is_held_for_a_human.py (1)
+```
+9+6+4+2+13+3+2+2+1 = 42, none touching configuration loading, the release
+lifecycle, or anything this lease owns. 5333 passed = CFG-2's final 5295 +
+38 tests this lease adds (optimistic lock 1, validate 6, publish 6,
+adopt-packaged 6 incl. the CLI-equivalence acceptance test, packaged-drift
+2, capability guards 2+2, composition carry-overs 2, audit filter 8+3, the
+RV CFG-1 F4 regression tests 3 -- 41 counted individually, a few folded
+into shared parametrizations bringing the net to 38).
+
+**Acceptance checklist against the brief:**
+- Scope items 1 (validate), 2 (publish), 3 (adopt-packaged + packaged-drift,
+  extraction), 4 (CONFIG_RELEASE_WRITE), 5 (optimistic lock), 6 (audit
+  filter), 7 (OpenAPI regen) -- all landed, steps 04-09.
+- Item 8 carry-overs: the transitional `ignore` param removed with a test
+  (step:01); the 25 former shared anchor blocks pinned against drift
+  (step:01); the five canonical reads routed through `_ok` with tests (step:08,
+  found while implementing item 6).
+- Tests for every route: happy path, 422 path-mapped errors (validate), 409
+  stale version (PATCH) / stale head (promote, publish, adopt-packaged), 403
+  without the capability (create/patch/publish/adopt-packaged/packaged-drift),
+  the publish rollback on a refused promote (publish and adopt-packaged both
+  archive their draft), adopt-packaged producing the same release a CLI run
+  would (byte-equal domain payloads, asserted against `bootstrap_graph_configuration.main`
+  on a matching in-memory repository) -- all present.
+- `pytest tests/test_configuration_api.py tests/configuration tests/test_graph_configuration_bootstrap.py
+  tests/test_every_console_path_is_mounted.py tests/api -q -p no:cacheprovider`
+  green (714 passed).
+- ruff/format/mypy clean on changed files; drift check PASS.
+
+Head sha: `933b39c3bf88eda9091664794a478f488516b88f`. `merge_status: PENDING`
+-- this lease's own definition of done is met. Ready for RV.

@@ -2,21 +2,39 @@
   "lease_id": "LEASE-CFG-3a",
   "branch": "feat/cfg-3a-config-api",
   "base_sha": "5dc5a8250cab846e4b7bc95c09f08b2b2fa825ea",
-  "head_sha": "PENDING",
+  "head_sha": "933b39c3bf88eda9091664794a478f488516b88f",
   "files": [
-    "backend/src/return_platform/configuration/composition.py (removed the transitional ignore parameter -- RV CFG-2 F1)",
+    "backend/src/return_platform/configuration/composition.py (removed the transitional `ignore` parameter -- RV CFG-2 F1)",
     "backend/src/return_platform/configuration/return_configuration.py (call site updated)",
-    "backend/tests/configuration/test_packaged_configuration_composition.py (ignore kwarg removed from an existing call; two new tests: re-added production.yaml refused, former shared anchor blocks have not drifted -- RV CFG-2 F1/F2)",
-    "backend/tests/configuration/test_return_method_requirements_configuration.py (ignore kwarg removed from a second call site found by grep, not named in the CFG-2 drop)"
+    "backend/src/return_platform/configuration/graph_repository.py (new get_domain_version method, protocol + both implementations -- scope item 5)",
+    "backend/src/return_platform/security/capabilities.py (new CONFIG_RELEASE_WRITE capability, mapped to console_admin via ALL_CAPABILITIES and to workspace_editor -- scope item 4)",
+    "backend/src/return_platform/configuration/api/router.py (POST /validate/{domain_key}, POST /publish, POST /adopt-packaged, GET /packaged-drift; PATCH/POST-releases narrowed to CONFIG_RELEASE_WRITE; the five canonical reads routed through _ok -- RV CFG-1 F4)",
+    "backend/src/return_platform/configuration/api/releases.py (ValidateDomainPayload/validate_domain_config, PublishConfigurationPayload/publish_configuration, AdoptPackagedPayload/adopt_packaged_release/get_packaged_drift, _archive_draft_on_refusal, _active_or_baseline_domains extracted from create_release, PatchDomainPayload.expected_version, record_configuration_audit now returns a correlation id)",
+    "backend/src/return_platform/configuration/api/audit.py (AuditService.list_logs actions/target filter, _action_pattern, list_audit_logs signature)",
+    "backend/src/return_platform/configuration/application/packaged_adoption.py (new; adopt_packaged_configuration extracted from bootstrap main(), plus summarize_packaged_drift/DomainDrift; every helper and constant moved from bootstrap_graph_configuration.py unchanged)",
+    "backend/src/return_platform/configuration/application/release_promotion.py (publish_release_with_domains gained an optional caller-supplied expected_head_revision, default None preserves existing callers exactly)",
+    "backend/src/return_platform/configuration/cli/bootstrap_graph_configuration.py (main() calls adopt_packaged_configuration instead of the inline carry-forward; re-imports+__all__ keep every moved name resolving as a module attribute for existing tests)",
+    "backend/tests/configuration/test_packaged_configuration_composition.py (ignore kwarg removed; +2 tests: re-added production.yaml refused, former shared anchor blocks have not drifted)",
+    "backend/tests/configuration/test_return_method_requirements_configuration.py (ignore kwarg removed from a second call site)",
+    "backend/tests/test_configuration_api.py (+~40 tests: optimistic lock, validate, publish, adopt-packaged incl. CLI-equivalence, packaged-drift, capability guards)",
+    "backend/tests/test_every_console_path_is_mounted.py (CONFIGURATION_WRITE_ROUTES/CONFIGURATION_CAPABILITY_ROUTES extended for publish/adopt-packaged/create/patch)",
+    "backend/tests/security/test_guards_match_the_console.py (+2 tests for the CONFIG_RELEASE_WRITE narrowing)",
+    "backend/tests/configuration/test_canonical_config_api.py (mutation-surface pin updated for validate/publish/adopt-packaged; +3 tests for the RV CFG-1 F4 fix; +2 tests for the audit query-param threading)",
+    "backend/tests/configuration/test_audit_filter.py (new; AuditService.list_logs query-building, _action_pattern)",
+    "backend/openapi/return-platform.openapi.json, openapi/return-platform.openapi.json, frontend/openapi/return-platform.openapi.json, openapi.json, frontend/src/api/generated/return-platform.d.ts (regenerated)",
+    "docs/evidence/stage4_contract_closure/openapi_drift_receipt.json (byproduct of --write)"
   ],
   "tests": {
-    "tests/configuration -q -p no:cacheprovider": "240 passed",
-    "ruff check + format --check (4 changed files)": "clean after one format fix",
-    "mypy composition.py return_configuration.py": "no issues found"
+    "brief's exact acceptance command (tests/test_configuration_api.py tests/configuration tests/test_graph_configuration_bootstrap.py tests/test_every_console_path_is_mounted.py tests/api)": "714 passed, 5 deselected, 2 warnings in 101.15s",
+    "full backend suite (tests -q --ignore=tests/configuration/test_concurrent_activation.py; that file no longer exists, --ignore is a no-op)": "42 failed, 5333 passed, 10 skipped, 515 deselected, 2 warnings in 311.26s -- the 42 failing ids collapse to the exact same 9 modules CFG-2's RV-verified pre-existing set names (test_confirmation_starts_the_case_workflow.py:9, test_order_discovery_smoke_net.py:6, test_reasoning_stage_prompts.py:4, test_turn_temporal_grounding.py:2, test_ai_a_rejected_parse_is_repaired_on_its_own_route.py:13, test_ai_route_balancing_design.py:3, test_ai_single_dispatch_boundary.py:2, test_enforced_contracts_are_disclosed.py:2, test_keyless_reasoning_is_held_for_a_human.py:1 = 42); none touches configuration. 5333 passed = CFG-2's final 5295 + 38 tests this lease adds",
+    "ruff check + format --check on every file this lease changed (10 src + 7 test files)": "clean",
+    "mypy on the 10 changed src files (PYTHONPATH set)": "Success: no issues found in 10 source files",
+    "python scripts/check_openapi_drift.py (post --write)": "status PASS, diffs: []",
+    "bootstrap CLI test suite (test_graph_configuration_bootstrap.py, unmodified, the extraction's own contract)": "24 passed -- proves adopt_packaged_configuration's extraction changed no CLI behaviour"
   },
   "remaining": [
-    "Scope items 1-7 (validate, publish, adopt-packaged/packaged-drift, CONFIG_RELEASE_WRITE, optimistic lock, audit filter, OpenAPI regen) not yet started.",
-    "Full acceptance suite not yet run."
+    "Not this lease's job (brief + environment rules): bootstrap CLI against the live dev graph, launchers, reset scripts -- left for the orchestrator after RV.",
+    "The coordinator message received mid-lease about 'RV round 1 for CFG-3b' concerns a different lease (frontend form primitives) and worktree; not acted on here since CFG-3a's brief excludes frontend components and this worktree has no access to CFG-3b's files. Flagged to the orchestrator in the final report as likely misrouted."
   ],
-  "merge_status": "PARTIAL"
+  "merge_status": "PENDING"
 }
