@@ -540,3 +540,26 @@ removed. Frontend: `npx vitest run src/domains/config` (59 passed), `npm run typ
 
 Head sha: `7fd2f061`. `evidence/orchestration/drops/LEASE-CFG-1/drop.json` written with
 `merge_status: PENDING`.
+
+---
+
+## CFG-1 step:06 — RV PASS; CFG-2 design and brief recorded
+
+Verdict `.plan/reviews/CFG-1.md` on `e036310d`: PASS, zero blocking. RV reproduced the full suite
+(`42 failed, 5276 passed`), re-ran the nine failing modules on a throwaway worktree of the base and
+found the failing ids identical, diffed collection (51 ids gone = 54 deleted in
+`test_canonical_application.py` + 1 rename − 4 added), and simulated the retired-key drop against the
+live RELEASED release read-only: drops exactly `extensions` and `feature_flags`, six undecided keys and
+20 baselines unchanged, `model_validate` passes.
+
+Advisories: F1 stale doc reference annotated in this step; F2 (inert `dependencies: policy.*` in
+`agents/*.yaml`) and F5 (dead MSW branch in `frontend/src/main.tsx:69`) carried into CFG-5, which
+retires those agent copies and touches the mock layer; F3 noted (the keep of `release_model.py` stands
+on `RuntimeSnapshot`); F4 (five canonical read routes bypass `redact_secret_values`, pre-existing)
+carried into CFG-3a; F6 (retired-key drop covers RETURN_PLATFORM only) accepted -- the other two
+domains' models have not retired keys; F7 (`known_test_failures.json` lists no backend failures while
+42 fail on trunk) carried into CFG-7.
+
+CFG-2 design spike (Opus, read-only) delivered `.plan/tracks/CFG-2.design.md` and
+`.plan/tracks/CFG-2.brief.md`; the blocker it found -- `settings.py` `validate_catalog_path` refuses a
+directory -- is scope item 1 of that brief.

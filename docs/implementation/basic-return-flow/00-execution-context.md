@@ -86,7 +86,7 @@ to report as unavailable.
 |---|---|
 | Return platform config | `backend/config/returns/production.yaml` |
 | AI gateway tasks and providers | `backend/config/ai_gateway.yaml` |
-| Policy modules | `backend/config/policies/*.yaml` |
+| Policy modules | `backend/config/policies/*.yaml` | *(removed by CFG-1, 2026-09-11: never loaded; see docs/configuration/DEFERRED_DESIGN.md)*
 | Agent definitions | `backend/config/agents/` |
 | Typed settings | `backend/src/return_platform/configuration/settings.py` |
 | Typed return config | `backend/src/return_platform/configuration/return_configuration.py` |
