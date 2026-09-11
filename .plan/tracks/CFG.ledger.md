@@ -1834,3 +1834,21 @@ its own hash inside its own content) -- the same lag every prior step in
 this lease recorded it with.
 
 Head sha: see commit. `merge_status: PENDING` -- ready for RV round 2.
+
+---
+
+## CFG-3b and CFG-3a merged; CFG-3a accepted on the dev graph (orchestrator)
+
+CFG-3b merged at `3bee4c87` (RV round 2 PASS on `f3a7340d`; advisory C1 and A2/A5–A8 carried into the
+CFG-4 brief). CFG-3a merged at `656ba175` (RV round 2 PASS on `52f01260`; advisories F5 and F11 carried
+into CFG-4). Serving worktree moved to `656ba175` and relaunched:
+```
+graph_configuration_release=return-platform-d2f7787021d4622d
+graph_configuration_status=UNCHANGED
+runtime: return-platform-d2f7787021d4622d head 78
+adoption: LIVE 78 pending [] api [78]
+new routes: /api/config/validate/{domain_key}, /api/config/publish, /api/config/adopt-packaged, /api/config/packaged-drift
+GET /api/config/packaged-drift RETURN_PLATFORM undecided: ['agents', 'clarification_policy', 'policy_evaluation', 'return_eligibility_policy', 'return_policy', 'support_ingress'] would_adopt: []
+frontend 200
+```
+CFG-4 implementer started on `feat/cfg-4-screens-a` from `656ba175` (worktree `cfg-4`).
