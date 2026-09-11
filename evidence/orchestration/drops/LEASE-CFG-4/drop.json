@@ -36,7 +36,13 @@
     "frontend/src/domains/config/BusinessSection.tsx",
     "frontend/src/domains/config/BusinessSection.test.tsx",
     "frontend/src/domains/registry.test.ts",
-    "scripts/ci/known_test_failures.json"
+    "scripts/ci/known_test_failures.json",
+    "frontend/playwright.config.ts",
+    "frontend/tsconfig.e2e.json",
+    "frontend/e2e/config-overview.spec.ts",
+    "frontend/e2e/config-discovery.spec.ts",
+    "frontend/e2e/config-return-policy.spec.ts",
+    "frontend/e2e/config-fulfilment.spec.ts"
   ],
   "tests": {
     "npx vitest run (whole frontend suite)": "1002 passed, 0 failed (83 files)",
@@ -44,7 +50,6 @@
     "npm run lint": "clean"
   },
   "remaining": [
-    "Playwright specs, run once against the live stack and reverted",
     "final acceptance: vitest/typecheck/lint whole project, dev:mock route sweep"
   ],
   "merge_status": "PARTIAL"

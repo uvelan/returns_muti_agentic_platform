@@ -2189,3 +2189,72 @@ $ npm run lint
 
 Zero known failures on the frontend suite now -- `known_test_failures.json`'s frontend
 `known_failures` is `[]`.
+
+## CFG-4 step:08 — Playwright specs, run once against the live stack and reverted (Order item 8)
+
+**The live frontend at :5173 is another worktree's checkout, not mine.** Navigating there first
+(to sanity-check) showed the trunk baseline -- no Discovery/Return Policy/Fulfilment tabs, no
+`UndecidedKeysPanel` -- confirming CFG-4's own frontend code was never going to be reachable
+through it. Started a second, disposable frontend dev server from this worktree
+(`npx vite --port 5183`, `.env`'s existing `FRONTEND_BACKEND_TARGET=http://localhost:8000` proxies
+its `/api/*` to the same live, shared backend) rather than touching the running :5173 process at
+all -- "never restart it" is about that process, not about whether another one may exist alongside
+it. Confirmed via `/api/principal` through both origins that they read the same live
+`dev-operator` principal and the same backend. Stopped the :5183 process once the run was done;
+:5173 and :8000 were never touched.
+
+Added `frontend/e2e/` as a **separate Playwright project** (`cfg4-e2e`, own `testDir`) rather than
+folding these into `real-chromium`, which runs `tests/canonical-routes.spec.ts` (read-only) --
+keeping the route sweep and these publish-and-revert specs in different projects means running one
+can never accidentally also run the other. `tsconfig.e2e.json`'s `include` gained `"e2e"` so these
+type-check under `npm run typecheck`.
+
+Four specs, one per screen, each `requireRealStack()`-gated (skips loudly when `E2E_REAL_BASE_URL`
+is unset, same convention as the rest of the real-stack suite):
+- **Discovery, Return policy, Fulfilment**: open, add one uniquely-named tag to a `TagListInput`
+  field, Validate, Publish, `GET /api/config/runtime` reflects it, remove the tag, Publish again,
+  `GET /api/config/runtime` no longer has it.
+- **Overview**: read-only, deliberately -- see the spec's own long comment. "Take packaged file"
+  (`POST /api/config/adopt-packaged`) rewrites baseline metadata across the whole release, not one
+  field a merge patch can cleanly undo; on a live stack shared with other work, the safer scope is
+  to prove the screen reads `GET /api/config/packaged-drift` correctly (both F11 shapes) and
+  renders F5's vocabulary, without writing anything.
+
+**Two real findings from the live run, both fixed, neither a defect in the shipped screens:**
+- Discovery's spec originally targeted `discovery.strong_anchors` (per the design table's own
+  field). The real backend 422'd it: `"strong anchors require extraction patterns"` -- each entry
+  must name a field with a matching `discovery.anchor_extractors` pattern, a cross-field rule
+  neither research pass had surfaced. Switched the spec to `selection_vocabulary.conditions`
+  ("Item conditions"), which the model documents as genuinely free-form. No product code changed;
+  the typed field itself is correct (this is exactly what `Validate` exists to catch, and did).
+- `TagListInput` renders as ARIA role `combobox` when given `suggestions` (an `<input list="...">`)
+  and `textbox` otherwise -- true of the primitive since CFG-3b, not a regression here. Specs
+  updated to query the right role per field (`Strong anchors`/`Eligible statuses` pass
+  `suggestions`; `Freight keywords` does not).
+- Running all four with Playwright's default (parallel, one worker per core) produced a real
+  `409 CONFIGURATION_REVISION_CONFLICT` -- two specs' publishes raced the same
+  `expected_head_revision` lock, exactly as two operators editing concurrently would. Not a bug:
+  the optimistic lock did its job. Documented in `playwright.config.ts` and each spec's header:
+  **run this project with `--workers=1`** (Playwright has no per-project `workers`). The one failed
+  run left `return_policy.return_method_derivation.freight_keywords` carrying the test keyword
+  (its own revert publish was the one that lost the race); cleaned up by hand via one corrective
+  `POST /api/config/publish` before re-running serially, verified clean by an independent
+  `GET /api/config/runtime` read afterward.
+
+```
+$ npm run typecheck && npm run lint
+(no output, exit 0 both)
+
+$ E2E_REAL_BASE_URL=http://localhost:5183 npx playwright test --project=cfg4-e2e --workers=1 --reporter=list --timeout=60000
+Running 4 tests using 1 worker
+  ok 1 [cfg4-e2e] config-discovery.spec.ts: adds an item condition, publishes, and the runtime snapshot reflects it -- then reverts (7.4s)
+  ok 2 [cfg4-e2e] config-fulfilment.spec.ts: adds a bay-eligible status, publishes, and the runtime snapshot reflects it -- then reverts (6.8s)
+  ok 3 [cfg4-e2e] config-overview.spec.ts: reads the active release and renders the undecided-keys panel from the live packaged-drift (2.0s)
+  ok 4 [cfg4-e2e] config-return-policy.spec.ts: adds a freight keyword, publishes, and the runtime snapshot reflects it -- then reverts (7.3s)
+  4 passed (25.7s)
+```
+
+Post-run live state, independently verified via `GET /api/config/runtime`:
+`freight_keywords` = original 10 entries (no test keyword); `bay.eligible_statuses` = original 3
+entries (no test status); `selection_vocabulary.conditions` = original 12 entries (no test
+condition). Nothing left behind; the :5173/:8000 stack was never restarted.
