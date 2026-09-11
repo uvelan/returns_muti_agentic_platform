@@ -563,3 +563,24 @@ domains' models have not retired keys; F7 (`known_test_failures.json` lists no b
 CFG-2 design spike (Opus, read-only) delivered `.plan/tracks/CFG-2.design.md` and
 `.plan/tracks/CFG-2.brief.md`; the blocker it found -- `settings.py` `validate_catalog_path` refuses a
 directory -- is scope item 1 of that brief.
+
+---
+
+## CFG-1 acceptance on the dev graph (orchestrator)
+
+Trunk merged at `3cb696e7` (merge record `73c276d2`). The serving worktree `cfg-verify` was moved to
+`3cb696e7` and the stack relaunched (15 python processes stopped first, including the reload
+children; port 8000 had no listener before the launch):
+```
+retired_configuration_key key=extensions
+retired_configuration_key key=feature_flags
+graph_configuration_release=return-platform-d2f7787021d4622d
+graph_configuration_status=READY
+runtime: return-platform-d2f7787021d4622d head 78
+feature_flags in runtime config: False | extensions: False
+adoption: LIVE 78 pending [] api instances [78]
+data-console paths served: 0
+frontend 200
+```
+The six undecided keys are unchanged. Snapshot `evidence/config_audit/after_cfg1/`.
+CFG-2 implementer started on `feat/cfg-2-config-split` from `73c276d2` (worktree `cfg-2`).
