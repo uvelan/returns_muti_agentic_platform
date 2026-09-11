@@ -77,10 +77,16 @@ export function SimulationSection() {
 function simulationSliceOf(snapshot: Readonly<Record<string, unknown>>): RuntimeSlice {
   const releaseId = snapshot.release_id;
   const head = snapshot.head_revision;
+  const environment = snapshot.environment;
   return {
     releaseId: typeof releaseId === "string" ? releaseId : "unknown",
     headRevision: typeof head === "number" ? head : null,
     configuration: asObject(snapshot.dependency_simulation_configuration as JsonObject | undefined),
+    // CFG-6: `RuntimeSlice.environment` (`GET /api/config/runtime`'s own
+    // field, not this domain's) -- read the same way `runtimeSliceOf` does,
+    // for the same reason `releaseId`/`headRevision` are: it describes the
+    // release/process, not the dependency-simulation document.
+    environment: typeof environment === "string" ? environment : null,
   };
 }
 

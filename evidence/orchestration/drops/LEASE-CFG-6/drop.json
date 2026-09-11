@@ -1,8 +1,8 @@
 {
   "lease_id": "CFG-6",
   "branch": "feat/cfg-6-deployment-section",
-  "base_sha": "fd2874ca",
-  "head_sha": "cb508ccc",
+  "base_sha": "59950920",
+  "head_sha": "PENDING_COMMIT",
   "files": [
     "backend/src/return_platform/configuration/return_configuration.py",
     "backend/config/returns/deployment.yaml",
@@ -39,7 +39,7 @@
     "frontend/src/domains/config/DeploymentSection.a11y.test.tsx",
     "frontend/src/domains/config/runtimeSlice.ts",
     "frontend/src/domains/config/ConfigurationPage.tsx",
-    "frontend/src/domains/config/BusinessSection.tsx",
+    "frontend/src/domains/config/SimulationSection.tsx",
     "frontend/src/domains/registry.ts",
     "frontend/src/components/forms/EnumSelect.tsx",
     "frontend/src/mocks/handlers/canonicalHandlers.ts",
@@ -57,7 +57,7 @@
     "ruff format --check (same 25 files)": "clean",
     "mypy (16 touched backend source files)": "clean",
     "python scripts/check_openapi_drift.py": "PASS, zero diffs",
-    "npx vitest run (frontend, whole suite)": "1023 passed, 0 failed (85 files)",
+    "npx vitest run (frontend, whole suite)": "1069 passed, 0 failed (89 files, after rebasing onto CFG-5's trunk merge)",
     "npm run typecheck": "clean",
     "npm run lint": "clean",
     "grep -rn providerOrder backend/src frontend/src": "only retirement comments, the unrelated dependency_simulation field, and a local TS variable name in DeploymentSection.tsx -- no AI-gateway settings duplicate remains"
@@ -66,5 +66,9 @@
     "Live no-restart proof (acceptance's headline claim): deliberately not executed from this worktree -- rules forbid running launchers/bootstrap against the live stack here. Exact procedure for the orchestrator to run after RV is in the ledger's step:10 and the implementer's final report.",
     "Scope item 6c: no code change -- ReturnOrchestrator/FeedbackLearningService has no production construction site in backend/src today (design's own finding, not something this lease introduces or can wire without inventing a call site outside its Owns list). Documented in docs/configuration/families.md footnote (b) as the requirement for whichever future lease adds one."
   ],
+  "rebase": {
+    "onto": "59950920",
+    "note": "CFG-5 merged to trunk mid-lease. Rebased in place; conflicts in the step:08 frontend commit (BusinessSection.tsx deletion, ConfigurationPage.tsx/registry.ts tab wiring, canonicalHandlers.ts runtime mock) and the step:10 ledger commit, all resolved by keeping CFG-5's decisions and adding this lease's Deployment section alongside them -- see ledger step:11. One post-rebase fix outside the conflict set: SimulationSection.tsx's own RuntimeSlice-shaped adapter needed the new `environment` field too (tsc caught it, not a merge conflict)."
+  },
   "merge_status": "PENDING"
 }

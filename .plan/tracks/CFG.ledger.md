@@ -3772,3 +3772,95 @@ bootstrap CLI was run against a live database.
   whichever future lease adds one.
 
 Head sha: `cb508cccea1e177cb5584723191b544109d887b5`. drop.json's merge_status: PENDING.
+
+## CFG-6 step:11 — rebased onto trunk 59950920
+
+CFG-5 merged to trunk while this lease was in flight
+(`refactor/unified-return-platform` at `59950920`, "(CFG) CFG-5 merge record; advisories carried;
+CFG-5b prepared" -- typed configuration screens wave B: workflow, support, integrations,
+simulation, source bindings; Business tab retired). Rebased `feat/cfg-6-deployment-section` onto
+`59950920` in place (`git rebase 59950920`; no `git stash` used).
+
+**Conflicts, all in the frontend commit (step:08) and the ledger commit (step:10):**
+
+- `frontend/src/domains/config/BusinessSection.tsx` -- modify/delete (CFG-5 retired the whole
+  Business tab and deleted the file; this lease's step:08 had added a `deployment` pointer to its
+  `EDITED_ELSEWHERE` map). Resolved by taking the deletion (`git rm`) -- the pointer is moot with
+  the tab gone.
+- `frontend/src/domains/config/ConfigurationPage.tsx` -- two hunks: the import list (kept CFG-5's
+  `DataSourcesSection` import, added `DeploymentSection`, dropped `BusinessSection`) and the
+  `TabBody` switch (kept CFG-5's `Workflow`/`Integrations`/`Simulation`/`Source Bindings` cases,
+  added a `"Deployment"` case beside them, dropped the `"Business"` case and its now-dead comment).
+- `frontend/src/domains/registry.ts` -- two hunks: `CONFIG_SECTIONS` (inserted `"Deployment"`
+  between `"Fulfilment"` and CFG-5's `"Workflow"` -- the last of the wave-A-style typed sections,
+  beside the other three rather than under the retired Business tab) and the section-icon map
+  (added `Deployment: SlidersHorizontal` beside CFG-5's `Workflow` icon entry).
+- `frontend/src/mocks/handlers/canonicalHandlers.ts` -- the `GET /api/config/runtime` mock's
+  `configuration` object: kept CFG-5's real `MOCK_INTEGRATIONS`/`MOCK_COPILOT` (this lease's own
+  branch had a stale placeholder `integrations: { omc: { enabled: true } }` predating CFG-5's
+  typed Integrations screen) and added this lease's `deployment: MOCK_DEPLOYMENT` and
+  `runtime_integrations: { ai_providers: [...] }` alongside them -- no key collision, both sides
+  additive.
+- `.plan/tracks/CFG.ledger.md` -- CFG-5's own step entries (trunk) and this lease's CFG-6 step:00
+  through step:10 entries were purely sequential (no interleaved edits to the same lines); resolved
+  by keeping both blocks in order, CFG-5's first, CFG-6's after, removing only the conflict marker
+  lines.
+
+`frontend/src/components/forms/EnumSelect.tsx` and `frontend/src/domains/config/runtimeSlice.ts`
+auto-merged cleanly (both additive: `EnumOption.disabled`/`disabledReason`, `RuntimeSlice.environment`).
+All four backend-only commits (step:01-04, 06-07 -- `deployment_settings.py`, the production gates,
+`packaged_adoption.py`, Mongo `providerOrder` retirement, docs/env/compose) and the OpenAPI regen
+commit (step:09) applied with no conflicts at all -- CFG-5 touched no backend file this lease also
+touched, and neither lease's OpenAPI diff overlapped the other's in the generated JSON.
+
+**One post-rebase fix, found by `tsc -b`, not part of the conflict set:** CFG-5's own
+`SimulationSection.tsx` builds a second `RuntimeSlice`-shaped object (`simulationSliceOf`, its own
+adapter for the `dependency_simulation_configuration` domain, parallel to `runtimeSliceOf`) that
+this lease's now-required `RuntimeSlice.environment` field did not touch during the conflict
+resolution above because it was never a conflict -- it was a silent type error. Added the same
+`environment: typeof environment === "string" ? environment : null` line there, matching
+`runtimeSliceOf`'s own convention.
+
+```
+$ PYTHONPATH="$(pwd)/backend/src" backend/.venv/Scripts/python.exe -c \
+  "import return_platform; print(return_platform.__file__)"
+K:\Projects\Ret\returns_muti_agentic_platform\.claude\worktrees\cfg-6\backend\src\return_platform\__init__.py
+
+$ npx vitest run
+Test Files  89 passed (89)
+     Tests  1069 passed (1069)
+
+$ npm run typecheck
+(no output, exit 0)
+
+$ npm run lint
+(no output, exit 0)
+
+$ pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py \
+    tests/test_ai_gateway_routing.py tests/test_ai_gateway_policy.py tests/platform \
+    tests/test_outbox_dependency_dispatchers.py tests/test_worker_runtime_activation.py \
+    tests/test_ai_route_balancing_design.py tests/test_ai_entry_points_share_one_path.py \
+    tests/test_ai_single_dispatch_boundary.py tests/test_openapi_contract_drift.py -q
+5 failed, 1002 passed, 35 deselected
+(same five pre-existing failures as before the rebase, identical names and messages)
+
+$ ruff check <25 touched backend files>
+All checks passed!
+
+$ ruff format --check <same 25 files>
+25 files already formatted
+
+$ mypy <16 touched backend source files>
+Success: no issues found in 16 source files
+
+$ python scripts/check_openapi_drift.py --write
+"diffs": [], "status": "PASS", "exit_code": 0
+```
+
+Zero drift even with `--write`: the rebase's auto-merge of the four OpenAPI JSON copies (which
+produced no conflict) already matched the freshly-generated document exactly. No new backend files
+touched by this step; `docs/evidence/stage4_contract_closure/openapi_drift_receipt.json` refreshed
+(new commit sha and timestamps only, same `openapi_sha256`).
+
+Head sha: `<see commit below>`. Base sha (this step's rebase target): `59950920`. `drop.json`
+updated: `head_sha`, `base_sha: "59950920"`.
