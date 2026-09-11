@@ -3414,3 +3414,361 @@ surfaced three more unhandled routes (`/api/config/adoption`, `/api/shipment-sta
 Serving worktree moved to `58b1e409` (frontend-only change, no backend restart). CFG-5b worktree
 prepared from `58b1e409`. CFG-6 implementer running in parallel on `feat/cfg-6-deployment-section`
 from `fd2874ca` (backend + one screen; file-disjoint).
+## CFG-6 step:00 — worktree confirmed, base verified
+
+```
+$ git rev-parse HEAD
+fd2874ca452c886958919228e1c3352a4c59cf58
+
+$ PYTHONPATH="$(pwd)/backend/src" backend/.venv/Scripts/python.exe -c \
+  "import return_platform; print(return_platform.__file__)"
+K:\Projects\Ret\returns_muti_agentic_platform\.claude\worktrees\cfg-6\backend\src\return_platform\__init__.py
+```
+
+Inside `cfg-6`, confirmed. Base `fd2874ca` = "(CFG) brief for CFG-5b" — trunk with CFG-0..4
+merged; CFG-5 (frontend-only) under review in parallel per the lease brief, not touched here.
+`.env` and `.venv` present (junctioned from the main checkout per the worktree pattern); greps
+scoped to `backend/ frontend/src scripts/ compose.yaml .env.example` throughout.
+
+Read, in order: `CFG-6.design.md`, `CFG-6.brief.md`, `CFG.brief.md` section 1.2-1.3, the last five
+ledger entries (CFG-4 steps 08-10 and the CFG-4-merged note), then every file the design names:
+`configuration/runtime_integrations.py`, `configuration/runtime_activation.py`,
+`application/packaged_adoption.py`, `cli/bootstrap_graph_configuration.py`,
+`return_configuration.py`, `settings.py`'s validators, `ai/routing/routes.py` + `selection.py`,
+`providers/google.py`, `workers/integration_outbox.py`, `operations/feedback_service.py`,
+`api/ai_gateway.py` + `operations/models.py`, `api/dependencies.py`, and the wave-A screens under
+`frontend/src/domains/config/` (`ReturnPolicySection.tsx` as the `TypedSectionScreen` template,
+`TypedSectionScreen.tsx` itself, `AgentsSection.tsx`, `ConfigurationPage.tsx`, `registry.ts`).
+
+## CFG-6 step:01 — DeploymentConfiguration model, packaged deployment.yaml
+
+Scope item 1. Full detail in commit `ce26f64b`. `DeploymentConfiguration` and its five sub-models
+added to `configuration/return_configuration.py`, defaulted on `ReturnPlatformConfiguration` (the
+`copilot`/`policy_evaluation` precedent). Model validators lifted only the environment-independent
+half of `settings.py`'s rules (provider-name/uniqueness, the two-mode base_url requirement); the
+production half is deliberately NOT a model validator (design section 2: no `Settings.environment`
+reaches one).
+
+`backend/config/returns/deployment.yaml` packaged and listed in `index.yaml`'s `parts`, mirroring
+today's env defaults exactly.
+
+```
+$ python -c "
+from return_platform.configuration.return_configuration import load_return_configuration
+from return_platform.configuration.settings import Settings
+loaded = load_return_configuration(Settings().return_configuration_path)
+print('deployment:', loaded.configuration.deployment)
+"
+deployment: ai=DeploymentAIConfiguration(provider_order=('GOOGLE', 'NVIDIA', 'SIMULATOR'),
+model_pools={}, google=DeploymentGoogleConfiguration(thinking_budget=2048, response_schema=False))
+dependencies=DeploymentDependenciesConfiguration(omc='SIMULATED', parcel='SIMULATED',
+freight='SIMULATED', lsi='SIMULATED') feedback_learning=DeploymentFeedbackLearningConfiguration(enabled=True)
+support_ticket=DeploymentSupportTicketConfiguration(mode='INTERNAL', base_url=None)
+```
+
+## CFG-6 step:02 — apply_deployment_configuration, precedence with runtime_integrations
+
+Scope item 2. Full detail in commit `d3b83fc6`. New `configuration/deployment_settings.py`.
+`apply_graph_runtime_configuration` (`runtime_integrations.py`) now always calls
+`apply_deployment_configuration` before returning -- the early `if not updates: return settings`
+no longer short-circuits deployment away. Precedence (design section 4): `deployment.ai.provider_order`
+always wins order and is the only source of SIMULATOR/MANUAL; `runtime_integrations` keeps
+availability (credentials + pool) for every provider it governs, `deployment.ai.model_pools` fills
+in only ungoverned providers.
+
+```
+$ pytest tests/configuration/test_deployment_settings.py -q
+16 passed   (17 after step:04's revert test was added)
+
+$ pytest tests/test_ai_route_balancing_design.py -q
+5 passed, 4 failed -> after adding deployment=DeploymentConfiguration() to the SimpleNamespace
+configuration double (the overlay now always reads .deployment):
+9 passed, 5 pre-existing failed -- confirmed identical on unmodified base fd2874ca via a
+throwaway git worktree add /tmp/cfg6-baseline-check fd2874ca (removed after verification).
+```
+
+## CFG-6 step:03 — production gates, bootstrap seeding, rollback widening (RV CFG-3a F5)
+
+Scope items 3, 4, 10. Full detail in commit `53607e2e`.
+
+**Item 3.** `validate_deployment_for_environment` wired into `POST /api/config/validate/{domain_key}`
+(`_validation_errors`, given `environment`), `/publish` and `/adopt-packaged`
+(`_enforce_deployment_gate` -> 422 with a pydantic-shaped path via `DeploymentEnvironmentError`), and
+`configuration/runtime_loader.py` + `main.py` at startup (`RuntimeError`, named reason, before
+`apply_graph_runtime_configuration` runs). `GET /api/config/runtime` gained `environment` (one line,
+`configuration/api/router.py`) for the frontend's disabled-with-reason rendering (step:08).
+
+**Item 4.** `deployment_payload_from_settings(settings)` overlays env-set fields onto the packaged
+`deployment.yaml` payload (`merge_deployment_defaults`). Injected at
+`cli/bootstrap_graph_configuration.py::main()` (on the bootstrap `Settings` the CLI itself resolved)
+and at `configuration/api/releases.py::_packaged_domain_payloads` via
+`app.state.packaged_deployment_defaults`, snapshotted in `main.py` from `bootstrap_settings` BEFORE
+`apply_graph_runtime_configuration` first runs -- never from `app.state.settings`, which is
+release-derived after the first adoption.
+
+**Item 10 (carried, RV CFG-3a F5).** `adopt_packaged_release` and `publish_configuration` now roll
+back on ANY refusal: the guarded block in each extends through `set_release_metadata`/
+`record_configuration_audit`, with `except BaseException: await _archive_draft_on_refusal(...); raise`
+after the existing typed clause.
+
+```
+$ pytest tests/test_configuration_api.py -q
+38 passed
+
+$ pytest tests/configuration tests/api -q
+679 passed
+```
+
+Regression-test integrity check for the rollback widening (both
+`test_*_rolls_back_on_any_refusal_not_only_release_promotion_error` tests): temporarily replaced
+both new `except BaseException:` clauses with `except tuple():` (a clause that matches nothing),
+reran --
+
+```
+$ pytest tests/test_configuration_api.py -q -k rolls_back_on_any_refusal
+FAILED test_publish_rolls_back_on_any_refusal_not_only_release_promotion_error
+  AssertionError: assert 'DRAFT' == 'ARCHIVED'
+FAILED test_adopt_packaged_rolls_back_on_any_refusal_not_only_release_promotion_error
+  AssertionError: assert False
+```
+
+-- confirming both tests have teeth, then restored `except BaseException:` and reran green (38 passed).
+
+## CFG-6 step:04 — carry-forward granularity for deployment
+
+Scope item 5. Full detail in commit `3be54f0e`. `RETURN_PLATFORM_DOMAIN_KEY: ("deployment",)` added
+to `CARRY_FORWARD_SPLIT_KEYS`; the RETURN_PLATFORM branch of `adopt_packaged_configuration` (and
+`summarize_packaged_drift`'s RETURN_PLATFORM half) now routes through the existing `_units`/
+`_assemble`, giving units `deployment.ai`, `deployment.dependencies`, `deployment.feedback_learning`,
+`deployment.support_ticket`. Backwards compatible by construction -- `_units` only explodes
+"deployment" when present as a non-empty dict, so a release/payload pair carrying no "deployment"
+key takes the identical path as before (`test_return_platform_carry_forward_unchanged_without_deployment`).
+
+Three pre-existing bootstrap tests compared `PACKAGED_KEY_DIGESTS` against a flat
+`_key_digests(payload)`; updated to compare against the unit-keyed baseline
+(`_key_digests(_units(payload, split_keys))`) -- same property, new baseline shape.
+
+```
+$ pytest tests/configuration/test_packaged_adoption.py tests/test_graph_configuration_bootstrap.py -q
+27 passed
+```
+
+## CFG-6 step:05 — readers behind the rebuild: outbox dispatchers, feedback learning
+
+Scope item 6. Full detail in commit `5eab8157`.
+
+**(a)** `workers/integration_outbox.py`'s dispatcher table for the three deployment-governed topics
+(`return-support.ticket.create`, `omc.return.create`, `carrier.return.book`) is rebuilt by a new
+`_DependencyDispatcherParticipant` (`ActivationParticipant`), registered on the worker's
+`build_worker_runtime_activation` call. `prepare` recomputes the table from live settings via the
+extracted `_dependency_topic_dispatchers` (shared with the worker's own initial build, so the two
+cannot drift); `publish` assigns through a new `IntegrationOutboxDispatcher.replace_dispatchers` seam.
+Every other topic (Temporal signals, Support classification, customer notification) is untouched.
+
+**(b)** `operations/feedback_service.py:92` no longer caches a bool at construction:
+`FeedbackLearningService` holds the live `Settings` object and reads
+`self._settings.feedback_learning_enabled` at call time (a property).
+
+**(c)** No code change: per design section 1, `ReturnOrchestrator` (which constructs
+`FeedbackLearningService`) has no production construction site in `backend/src` today -- only tests
+import it. Documented in `docs/configuration/families.md` (step:07) as the requirement a future
+wiring site must meet.
+
+```
+$ pytest tests/test_outbox_dependency_dispatchers.py tests/test_worker_runtime_activation.py -q
+17 passed
+```
+
+## CFG-6 step:06 — retire the Mongo providerOrder duplicate, keep interceptMode
+
+Scope item 7 (design section 5). Full detail in commit `c158806f`. `AIGatewaySettingsUpdate`/
+`AIGatewaySettingsView` drop `providerOrder`; `PUT /api/ai/settings` takes `interceptMode` +
+`expectedVersion` only, its production SIMULATOR check moved to
+`validate_deployment_for_environment` (step:03). `get_ai_settings`/`update_ai_settings` no longer
+seed or migrate `providerOrder` (the `["NONE"]` migration branch is gone with the field it
+migrated). `api/dependencies.py`'s health-card enumeration and `api/ai_gateway.py`'s resume
+force-provider selection both read `settings.ai_provider_order`. `interceptMode` stays in Mongo
+unchanged.
+
+```
+$ grep -rn "providerOrder" backend/src frontend/src
+Only comments explaining the retirement, and the unrelated
+dependency_simulation/{ai,configuration}.py field (the design's own named exception) --
+no AI-gateway settings duplicate remains.
+
+$ pytest tests/test_ai_gateway_routing.py tests/test_ai_entry_points_share_one_path.py tests/test_ai_single_dispatch_boundary.py -q
+26 passed, 2 pre-existing failed (identical on base fd2874ca)
+```
+
+## CFG-6 step:07 — docs and env/compose defaults now named as bootstrap-only
+
+Scope item 9. Full detail in commit `8220d3df`. `.env.example` and `compose.yaml` keep every
+migrated line, each under a block comment naming it a bootstrap default whose authority moves to
+the release at `/config/deployment` once one publishes. `docs/configuration/families.md` gets a new
+"deployment: the env to release switches" section (the eight fields, the precedence rule stated for
+an operator, the env-default behaviour before/after a first publish, the revert path) plus footnote
+(b) recording item 6c's open requirement. `backend/config/README.md` needed no change (no
+exhaustive per-file list to extend).
+
+## CFG-6 step:08 — /config/deployment screen on TypedSectionScreen chrome
+
+Scope item 8. Full detail in commit `02dfc1f3`. `DeploymentSection.tsx`: `OrderedList` for
+`deployment.ai.provider_order`, `TagListInput` per ungoverned provider x tier for model pools (a
+governed provider renders a read-only note -- "governed by the AI Control Center provider
+bindings"), `EnumSelect` for the four dependency modes and `support_ticket.mode`, `NumberField` for
+`thinking_budget`, `Toggle` for `response_schema`/`feedback_learning.enabled`, the existing
+`TextField` primitive for `support_ticket.base_url`; `DiffPreview` + `PublishBar` from
+`TypedSectionScreen` as on every typed screen. Registered as "Deployment" in `registry.ts`'s
+`CONFIG_SECTIONS` and `ConfigurationPage.tsx`'s `TabBody`, under the existing
+`config.runtime.read`/`write` capabilities. `BusinessSection.tsx` gets a "deployment" pointer in
+`EDITED_ELSEWHERE`.
+
+`runtimeSlice.ts`'s `RuntimeSlice` gains `environment` (null-safe for a payload predating it).
+`components/forms/EnumSelect.tsx`'s `EnumOption` gains optional `disabled`/`disabledReason`
+(additive) for design section 6's "production-gated options render disabled with the reason, not
+hidden" -- applied to the dependency-mode SIMULATED option in production; `OrderedList` has no
+per-item disable concept, so SIMULATOR/MANUAL in production get an inline flag instead of a native
+disabled state. `mocks/handlers/canonicalHandlers.ts`'s runtime fixture gained
+`deployment`/`runtime_integrations`/`environment` for `npm run dev:mock`.
+
+```
+$ npx vitest run src/domains/config/DeploymentSection.test.tsx src/domains/config/DeploymentSection.a11y.test.tsx
+Test Files  2 passed (2)
+     Tests  11 passed (11)
+
+$ npx vitest run
+Test Files  85 passed (85)
+     Tests  1023 passed (1023)
+
+$ npm run typecheck
+(no output, exit 0)
+
+$ npm run lint
+(no output, exit 0)
+```
+
+## CFG-6 step:09 — OpenAPI regen (all four JSON copies + the .d.ts), drift PASS
+
+Scope item 11. Full detail in commit `cb508ccc`.
+
+```
+$ python scripts/check_openapi_drift.py --write
+"diffs": ["DRIFT: openapi/return-platform.openapi.json", "DRIFT: backend/openapi/return-platform.openapi.json",
+"DRIFT: frontend/openapi/return-platform.openapi.json", "DRIFT: openapi.json",
+"DRIFT: frontend/src/api/generated/return-platform.d.ts"], "status": "PASS", "exit_code": 0
+
+$ python scripts/check_openapi_drift.py
+"diffs": [], "status": "PASS", "exit_code": 0
+```
+
+Re-run again after step:08's `GET /api/config/runtime` `environment` field and every backend commit
+landed -- still zero drift (`openapi_sha256` unchanged from the first `--write`, confirming the
+schema was already complete after step:03).
+
+## CFG-6 step:10 — final acceptance sweep, merge_status: PENDING
+
+**Backend, the brief's named acceptance set:**
+
+```
+$ pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py \
+    tests/test_ai_gateway_routing.py tests/test_ai_gateway_policy.py tests/platform \
+    tests/test_outbox_dependency_dispatchers.py tests/test_worker_runtime_activation.py \
+    tests/test_ai_route_balancing_design.py tests/test_ai_entry_points_share_one_path.py \
+    tests/test_ai_single_dispatch_boundary.py tests/test_openapi_contract_drift.py -q
+5 failed, 1002 passed, 35 deselected
+
+FAILED tests/test_ai_route_balancing_design.py::test_candidates_are_provider_balanced_and_rotate_within_provider
+FAILED tests/test_ai_route_balancing_design.py::test_order_agent_fails_over_to_next_provider_and_logs_attempts
+FAILED tests/test_ai_route_balancing_design.py::test_order_agent_escalates_to_lightweight_tier_when_standard_exhausted
+FAILED tests/test_ai_single_dispatch_boundary.py::test_the_cacheable_prefix_is_byte_identical_across_turns_and_modes
+FAILED tests/test_ai_single_dispatch_boundary.py::test_no_per_turn_value_is_copied_into_the_system_prompt
+```
+
+All five confirmed pre-existing on the unmodified base `fd2874ca` (throwaway worktree, same
+failures, same messages -- `PROVIDER_UNAVAILABLE`/`attempts=0` and a MANUAL ranking assertion, both
+unrelated to `deployment`/provider order: the routes in question are built directly by the test with
+explicit `AIRoutePool(routes, ...)`, never through `apply_graph_runtime_configuration`). Not in
+`scripts/ci/known_test_failures.json`, whose backend list is documented empty and self-pruning; not
+touched by this lease, and out of `tests/ai`/`tests/platform`'s literal scope -- included here anyway
+for completeness since the brief's `tests/ai` does not exist as a directory and these are the
+`tests/test_ai_*.py` files closest to that name.
+
+**Full backend suite, for the record:**
+
+```
+$ pytest tests -q
+42 failed, 5347 passed, 10 skipped, 516 deselected
+```
+
+The 42 = the 5 above + 37 pre-existing failures in `tests/dynamic_knowledge/*` and
+`tests/test_ai_a_rejected_parse_is_repaired_on_its_own_route.py`/`test_enforced_contracts_are_disclosed.py`/
+`test_keyless_reasoning_is_held_for_a_human.py` -- all individually confirmed identical on base
+`fd2874ca` by name and message. Zero new failures anywhere in the full suite.
+
+**Lint/format/types:**
+
+```
+$ ruff check <every file this lease touched>          # 25 backend files
+All checks passed!
+
+$ ruff format --check <same files>
+25 files already formatted
+
+$ mypy <every backend source file this lease touched>  # 16 files (tests excluded, matching this
+                                                         # repo's mypy config, which names no test paths)
+Success: no issues found in 16 source files
+```
+
+**Frontend:**
+
+```
+$ npx vitest run
+Test Files  85 passed (85)
+     Tests  1023 passed (1023)
+
+$ npm run typecheck && npm run lint
+(no output, exit 0 both)
+```
+
+**OpenAPI drift:** PASS, zero diffs (step:09).
+
+**providerOrder grep (acceptance's own command):**
+
+```
+$ grep -rn "providerOrder" backend/src frontend/src
+```
+
+Every hit is either a comment explaining the CFG-6 retirement, the unrelated
+`dependency_simulation/{ai,configuration}.py` field (named as the acceptable exception), or a local
+TypeScript variable name inside the new `DeploymentSection.tsx` (`const providerOrder = ...`, not an
+API field). No AI-gateway settings duplicate remains.
+
+**Scope check against the brief's Owns list.** Every file changed sits under: `configuration/`
+(`return_configuration.py`, `deployment_settings.py` [new], `runtime_integrations.py`,
+`application/packaged_adoption.py`, `runtime_loader.py`, `cli/bootstrap_graph_configuration.py`,
+`api/releases.py`, `api/router.py` -- one line, `environment`, named in the brief's own item 3),
+`backend/config/returns/{deployment.yaml,index.yaml}`, `operations/{feedback_service.py,models.py,
+repository.py}`, `api/{ai_gateway.py,dependencies.py}`, `workers/integration_outbox.py`,
+`operations/integrations/outbox.py` (the `replace_dispatchers` seam item 6a needs, not itself named
+but a direct consequence of it), `frontend/src/domains/config/DeploymentSection*.tsx`,
+`domains/registry.ts`, `ConfigurationPage.tsx`, `.env.example`, `compose.yaml`, the matching tests,
+the four OpenAPI JSON copies + the `.d.ts`. Two additions beyond the literal Owns list, both
+necessary and both minimal: `frontend/src/components/forms/EnumSelect.tsx` (the
+`disabled`/`disabledReason` capability item 8's own "disabled with the reason, not hidden" requires
+-- additive, every existing caller unaffected) and `frontend/src/domains/config/BusinessSection.tsx`
+(one `EDITED_ELSEWHERE` pointer, the exact pattern CFG-4 used for its own migrated sections).
+Must-not-touch respected: `settings.py`, `ai/routing/routes.py`, `ai/providers/*`,
+`runtime_activation.py` and every other config screen are unmodified; no launcher, reset script or
+bootstrap CLI was run against a live database.
+
+**Not done in this lease, and why:**
+
+- **Live no-restart proof** (the acceptance's headline claim) is deliberately NOT executed here --
+  the rules forbid running launchers/bootstrap against the live stack from this worktree. The exact
+  procedure for the orchestrator to run after RV is in the final report.
+- **Item 6c** (`ReturnOrchestrator`/`FeedbackLearningService` wired with live `resources.settings`)
+  has no code change: no production construction site exists in `backend/src` yet (design's own
+  finding). Documented in `docs/configuration/families.md` footnote (b) as the requirement for
+  whichever future lease adds one.
+
+Head sha: `cb508cccea1e177cb5584723191b544109d887b5`. drop.json's merge_status: PENDING.
