@@ -331,6 +331,57 @@ const ROUTES: readonly Route[] = [
     url: "/api/source-bindings/source_sales",
   },
 
+  // --- agents (CFG-5) --------------------------------------------------------
+  { method: "get", handler: "/api/agents", contract: "/api/agents", url: "/api/agents" },
+  {
+    method: "get",
+    handler: "/api/agents/:manifestId",
+    contract: "/api/agents/{manifest_id}",
+    url: "/api/agents/order-discovery-agent",
+  },
+  {
+    method: "put",
+    handler: "/api/agents/:manifestId",
+    contract: "/api/agents/{manifest_id}",
+    url: "/api/agents/order-discovery-agent",
+    body: { document: { version: "3", enabled: true } },
+    status: 202,
+  },
+
+  // --- schema releases (CFG-5) ------------------------------------------------
+  {
+    method: "get",
+    handler: "/api/schema-releases",
+    contract: "/api/schema-releases",
+    url: "/api/schema-releases",
+  },
+  {
+    method: "get",
+    handler: "/api/schema-releases/active/document",
+    contract: "/api/schema-releases/active/document",
+    url: "/api/schema-releases/active/document",
+  },
+  {
+    method: "put",
+    handler: "/api/schema-releases/active/document",
+    contract: "/api/schema-releases/active/document",
+    url: "/api/schema-releases/active/document",
+    body: { document: { entities: {} }, baseChecksum: "9f2c1a" },
+  },
+  {
+    method: "get",
+    handler: "/api/schema-releases/:releaseId/migration-plan",
+    contract: "/api/schema-releases/{release_id}/migration-plan",
+    url: "/api/schema-releases/rel-mock-1/migration-plan",
+  },
+  {
+    method: "post",
+    handler: "/api/schema-releases/:releaseId/activate",
+    contract: "/api/schema-releases/{release_id}/activate",
+    url: "/api/schema-releases/rel-mock-1/activate",
+    body: {},
+  },
+
   // --- approvals -----------------------------------------------------------
   { method: "get", handler: "/api/proposals", contract: "/api/proposals", url: "/api/proposals" },
   {
@@ -427,6 +478,20 @@ const ROUTES: readonly Route[] = [
     url: "/api/ai/requests/trace-mock-1",
   },
   { method: "get", handler: "/api/ai/requests", contract: "/api/ai/requests", url: "/api/ai/requests" },
+  {
+    method: "post",
+    handler: "/api/ai/requests/:traceId/replay",
+    contract: "/api/ai/requests/{trace_id}/replay",
+    url: "/api/ai/requests/trace-mock-1/replay",
+    body: { provider: "GOOGLE" },
+  },
+  {
+    method: "post",
+    handler: "/api/ai/requests/:traceId/compare",
+    contract: "/api/ai/requests/{trace_id}/compare",
+    url: "/api/ai/requests/trace-mock-1/compare",
+    body: { providers: ["GOOGLE", "NVIDIA"] },
+  },
   {
     method: "post",
     handler: "/api/ai/safety-test",

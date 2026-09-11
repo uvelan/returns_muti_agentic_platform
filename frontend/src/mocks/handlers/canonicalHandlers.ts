@@ -799,6 +799,75 @@ const BINDINGS = [
 ];
 
 /**
+ * `AgentSummary` rows -- the live `agents:` registry, as `/api/agents` serves
+ * it (CFG-5). One enabled agent with an AI route, one disabled agent with
+ * none, so the Agents screen's `EnumSelect` and `Toggle` columns both have
+ * something to render besides the same state twice.
+ */
+const MOCK_AGENTS = [
+  {
+    manifestId: "order-discovery-agent",
+    moduleId: "order_discovery",
+    name: "Order Discovery Agent",
+    enabled: true,
+    status: "ACTIVE",
+    configurationVersion: "3",
+    source: "RELEASE",
+  },
+  {
+    manifestId: "return-status-agent",
+    moduleId: "return_status",
+    name: "Return Status Agent",
+    enabled: false,
+    status: "DISABLED",
+    configurationVersion: "1",
+    source: "RELEASE",
+  },
+];
+
+/** `AgentConfigurationView.document`, keyed by `manifestId`. */
+const MOCK_AGENT_DOCUMENTS: Record<string, Record<string, unknown>> = {
+  "order-discovery-agent": {
+    version: "3",
+    enabled: true,
+    ai_assisted: true,
+    ai_route_ref: "order-discovery/standard",
+    allowed_business_capabilities: ["order-discovery", "candidate-disambiguation"],
+  },
+  "return-status-agent": {
+    version: "1",
+    enabled: false,
+    ai_assisted: false,
+    ai_route_ref: null,
+    allowed_business_capabilities: ["return-status"],
+  },
+};
+
+/**
+ * `ReleaseRowView` rows and the active schema document -- `/api/schema-releases`
+ * and its `active/document` sibling (CFG-5 item 1). One release, active,
+ * matching `SCHEMA_ACTIVE_DOCUMENT` below so the migration-plan preview and
+ * the active document agree with each other the way the real pair does.
+ */
+const SCHEMA_RELEASES = [
+  {
+    configurationReleaseId: "rel-mock-1",
+    configurationChecksum: "9f2c1a",
+    publishedBy: "mock-operator",
+    publishedAt: "2026-08-11T09:00:00Z",
+    active: true,
+  },
+];
+
+const SCHEMA_ACTIVE_DOCUMENT = {
+  configurationReleaseId: "rel-mock-1",
+  configurationChecksum: "9f2c1a",
+  schemaVersion: "2026.08.04",
+  document: { entities: { sales_order: { label: "Sales Order" } } },
+  fromFile: false,
+};
+
+/**
  * `ProposalDetailView`, one per kind, so the inbox shows what it is for: a
  * schema draft, a configuration edit and a feedback improvement in one queue.
  *
@@ -1903,6 +1972,145 @@ export const canonicalHandlers = [
     return HttpResponse.json(envelope({ removed: true }, "clear-binding"));
   }),
 
+  // --- agents (CFG-5 item 1) ---------------------------------------------------
+  //
+  // The live `agents:` section, as `application/agent_configuration.py` reads
+  // it (D-CFG-1). `PUT` keeps the proposal path: it answers 202 with an
+  // `AgentConfigurationProposalView`, never the edited document, because the
+  // active configuration has not changed.
+
+  http.get("/api/agents", async () => {
+    await delay(80);
+    return HttpResponse.json(envelope(MOCK_AGENTS, "agents"));
+  }),
+  http.get("/api/agents/:manifestId", async ({ params }) => {
+    await delay(80);
+    const manifestId = String(params.manifestId);
+    const summary = MOCK_AGENTS.find((agent) => agent.manifestId === manifestId);
+    // `Record` indexing types as always-present; the runtime disagrees for an
+    // unknown id, which is the case this branch serves (same pattern as the
+    // AI trace lookup above).
+    const document = MOCK_AGENT_DOCUMENTS[manifestId] as Record<string, unknown> | undefined;
+    if (summary === undefined || document === undefined) {
+      return HttpResponse.json({ detail: "Agent not found." }, { status: 404 });
+    }
+    return HttpResponse.json(
+      envelope(
+        {
+          manifestId,
+          moduleId: summary.moduleId,
+          path: `agents/${summary.moduleId}.yaml`,
+          document,
+          source: summary.source,
+        },
+        "agent",
+      ),
+    );
+  }),
+  http.put("/api/agents/:manifestId", async ({ params, request }) => {
+    await delay(120);
+    const manifestId = String(params.manifestId);
+    const body = (await request.json().catch(() => ({}))) as { document?: Record<string, unknown> };
+    return HttpResponse.json(
+      envelope(
+        {
+          proposalId: `prop-mock-agent-${manifestId}`,
+          manifestId,
+          status: "REVIEW_PENDING",
+          risk: "MEDIUM",
+          affectedKeys: Object.keys(body.document ?? {}),
+          proposedBy: "mock-operator",
+          submittedAt: new Date().toISOString(),
+        },
+        "agent-configuration-proposal",
+      ),
+      { status: 202 },
+    );
+  }),
+
+  // --- schema releases (CFG-5 item 1) ------------------------------------------
+  //
+  // Published graph-schema releases and the active document, migration plan
+  // included -- routes the analyzer's Sync/Versions surface already calls, now
+  // mocked so `dev:mock` serves them rather than 404ing quietly.
+
+  http.get("/api/schema-releases", async () => {
+    await delay(80);
+    return HttpResponse.json(
+      envelope({ releases: SCHEMA_RELEASES, activeReleaseId: "rel-mock-1" }, "schema-releases"),
+    );
+  }),
+  http.get("/api/schema-releases/active/document", async () => {
+    await delay(80);
+    return HttpResponse.json(envelope(SCHEMA_ACTIVE_DOCUMENT, "schema-active-document"));
+  }),
+  http.put("/api/schema-releases/active/document", async ({ request }) => {
+    await delay(120);
+    const body = (await request.json().catch(() => ({}))) as {
+      document?: Record<string, unknown>;
+    };
+    return HttpResponse.json(
+      envelope(
+        {
+          ...SCHEMA_ACTIVE_DOCUMENT,
+          document: body.document ?? SCHEMA_ACTIVE_DOCUMENT.document,
+          configurationChecksum: "9f2c1b",
+        },
+        "schema-active-document",
+      ),
+    );
+  }),
+  http.get("/api/schema-releases/:releaseId/migration-plan", async ({ params }) => {
+    await delay(80);
+    return HttpResponse.json(
+      envelope(
+        {
+          from_release_id: "rel-mock-1",
+          to_release_id: String(params.releaseId),
+          strategy: "NO_CHANGE",
+          change_class: "NONE",
+          node_labels_added: [],
+          node_labels_removed: [],
+          node_labels_changed: [],
+          relationships_added: [],
+          relationships_removed: [],
+          relationships_changed: [],
+          objects_to_create: [],
+          objects_to_drop: [],
+          rebuild_reasons: [],
+          resync_reasons: [],
+          affected_source_asset_ids: [],
+        },
+        "migration-plan",
+      ),
+    );
+  }),
+  http.post("/api/schema-releases/:releaseId/activate", async ({ params }) => {
+    await delay(120);
+    return HttpResponse.json(
+      envelope(
+        {
+          from_release_id: "rel-mock-1",
+          to_release_id: String(params.releaseId),
+          strategy: "NO_CHANGE",
+          change_class: "NONE",
+          node_labels_added: [],
+          node_labels_removed: [],
+          node_labels_changed: [],
+          relationships_added: [],
+          relationships_removed: [],
+          relationships_changed: [],
+          objects_to_create: [],
+          objects_to_drop: [],
+          rebuild_reasons: [],
+          resync_reasons: [],
+          affected_source_asset_ids: [],
+        },
+        "migration-plan",
+      ),
+    );
+  }),
+
   // --- approvals (UI-01) ------------------------------------------------------
 
   http.get("/api/proposals", async ({ request }) => {
@@ -2179,6 +2387,53 @@ export const canonicalHandlers = [
       return HttpResponse.json({ detail: "AI request not found" }, { status: 404 });
     }
     return HttpResponse.json(envelope(trace, "trace"));
+  }),
+  // Re-run a recorded request (CFG-5 item 1). The reply is a *new* trace, not
+  // an edit of the original -- `id` is suffixed so the original stays exactly
+  // as recorded and the pair is distinguishable in the traces list.
+  http.post("/api/ai/requests/:traceId/replay", async ({ params, request }) => {
+    await delay(150);
+    const traceId = String(params.traceId);
+    const original = MOCK_AI_TRACES[traceId] as Record<string, unknown> | undefined;
+    if (original === undefined) {
+      return HttpResponse.json({ detail: "AI request not found" }, { status: 404 });
+    }
+    const body = (await request.json().catch(() => ({}))) as { provider?: string };
+    return HttpResponse.json(
+      envelope(
+        {
+          ...original,
+          id: `${traceId}-replay-1`,
+          provider: body.provider ?? original.provider,
+          createdAt: new Date().toISOString(),
+        },
+        "trace-replay",
+      ),
+    );
+  }),
+  // The same request against two to six providers at once (CFG-5 item 1).
+  http.post("/api/ai/requests/:traceId/compare", async ({ params, request }) => {
+    await delay(200);
+    const traceId = String(params.traceId);
+    const original = MOCK_AI_TRACES[traceId] as Record<string, unknown> | undefined;
+    if (original === undefined) {
+      return HttpResponse.json({ detail: "AI request not found" }, { status: 404 });
+    }
+    const body = (await request.json().catch(() => ({ providers: [] }))) as {
+      providers?: string[];
+    };
+    const providers = body.providers ?? [];
+    return HttpResponse.json(
+      envelope(
+        providers.map((provider, index) => ({
+          ...original,
+          id: `${traceId}-compare-${String(index)}-${provider.toLowerCase()}`,
+          provider,
+          createdAt: new Date().toISOString(),
+        })),
+        "trace-compare",
+      ),
+    );
   }),
   http.get("/api/ai/metrics/summary", () =>
     // The whole `AIUsageSummaryView`, not a convenient subset. The Breakdown

@@ -2468,3 +2468,92 @@ bay.eligible_statuses             identical: True
 ```
 
 Head sha: see commit. `drop.json`'s `merge_status: PENDING` -- ready for RV round 2.
+
+## CFG-5 step:00 — base check
+
+Worktree `.claude/worktrees/cfg-5`, branch `feat/cfg-5-screens-b`, base `b03cbb59` (CFG-0..4 merged).
+
+```
+$ PYTHONPATH=<worktree>/backend/src backend/.venv/Scripts/python.exe -c "import return_platform; print(return_platform.__file__)"
+K:\Projects\Ret\returns_muti_agentic_platform\.claude\worktrees\cfg-5\backend\src\return_platform\__init__.py
+```
+
+Inside cfg-5, as required.
+
+## CFG-5 step:01 — MSW handlers + contract tests (item 1), dead `/data-console/v1/` branch
+
+`/api/source-bindings` was already mocked and contract-covered by CFG-4 (list/put/delete,
+`canonicalHandlers.contract.test.ts:314-332`); nothing to add there. Added:
+
+- `frontend/src/mocks/handlers/canonicalHandlers.ts`: `MOCK_AGENTS`/`MOCK_AGENT_DOCUMENTS` and
+  `GET /api/agents`, `GET /api/agents/:manifestId`, `PUT /api/agents/:manifestId` (202, proposal
+  response -- keeps the proposal path CFG-5's brief requires for item 5); `SCHEMA_RELEASES`/
+  `SCHEMA_ACTIVE_DOCUMENT` and `GET /api/schema-releases`, `GET`/`PUT /api/schema-releases/active/document`,
+  `GET /api/schema-releases/:releaseId/migration-plan`, `POST /api/schema-releases/:releaseId/activate`;
+  `POST /api/ai/requests/:traceId/replay` and `POST /api/ai/requests/:traceId/compare`, both reusing
+  `MOCK_AI_TRACES` so the replay/compare pair stays comparable to the original the way the real
+  `AIGatewayService.evaluate` path does.
+- `frontend/src/mocks/handlers/canonicalHandlers.contract.test.ts`: one `ROUTES` entry per new
+  handler (13 total), checked against the committed OpenAPI document the same way every other
+  canonical route is.
+
+**Dead branch (RV CFG-1 F5).** `main.tsx`'s `onUnhandledRequest` callback printed only for
+`/data-console/v1/` requests -- the legacy surface Wave F4 deleted along with the frontend that
+called it, so the branch never fires. Tried `onUnhandledRequest: "error"` first, since that is what
+the brief's own phrasing ("dead branch removal") suggested replacing it with. It works for CFG-5's
+own routes but is not equivalent to the old behaviour: MSW's `"error"` answers an unhandled request
+with a mocked 500 instead of bypassing it, and `tests/canonical-routes.spec.ts` (outside CFG-5's
+Owns) treats that as the route failing. It broke `/support/work-queue` and `/support/rma-tickets` --
+`GET /api/rma-tickets` and `GET /api/v1/return-support/work-items` have no handler in
+`supportHandlers.ts`, a real, pre-existing gap, but not this lease's surface. Settled on
+`onUnhandledRequest: "bypass"`: the explicit spelling of what the dead callback actually did (bypass
+silently, since `print` was only ever called on a path nothing hits), so every domain's route sweep
+is exactly as green or red as it already was, and the `/data-console/v1/` literal and its now-pointless
+callback are gone. Flagged the `/support` gap as a separate task (`task_1349209e`) rather than fixing
+it outside Owns.
+
+```
+$ npx vitest run src/mocks/handlers/canonicalHandlers.contract.test.ts
+ Test Files  1 passed (1)
+      Tests  73 passed (73)
+
+$ npx vitest run                       # whole frontend suite
+ Test Files  83 passed (83)
+      Tests  1022 passed (1022)
+
+$ npm run typecheck                    # tsc -b --pretty false
+typecheck exit: 0
+$ npm run lint                         # eslint . --max-warnings=0
+lint exit: 0
+```
+
+`dev:mock` route sweep, disposable webServer (`npx playwright test --project=mock-chromium
+tests/canonical-routes.spec.ts`, from `frontend/`):
+
+```
+# first run, onUnhandledRequest: "error" (before settling on "bypass"), cold webServer:
+5 failed: /support/work-queue, /support/rma-tickets, "no route scrolls sideways at 320",
+  /config and /config/agents axe color-contrast
+124 passed
+
+# isolated re-runs of each failure:
+- /support/work-queue mounts and answers: passes alone (cold-server flake, not this lease)
+- /support/rma-tickets mounts and answers: fails alone too -- GET /api/rma-tickets and
+  GET /api/v1/return-support/work-items are genuinely unhandled (see task_1349209e)
+- /config, /config/agents color-contrast: reproduces under a fully-parallel cold run, does not
+  reproduce isolated or on a warm server -- CFG-4's own F10 (`.plan/reviews/CFG-4.md`), the fixed
+  250ms `settle()` losing a race with the dev server still compiling CSS on the heaviest route's
+  first request. Not new; matches F10's own reproduction pattern (2/2 cold, 0/2 warm) exactly.
+
+# after switching to "bypass":
+127 passed, 2 failed (both /config, /config/agents color-contrast -- see above)
+
+# full re-run on a warm server:
+129 passed (0 failed)
+```
+
+`registeredRoutes()`/`ROUTES` coverage checks (leaves no handler unaccounted for, checks a handler
+for every route it claims) pass as part of the 73 contract tests above.
+
+Files: `frontend/src/mocks/handlers/canonicalHandlers.ts`, `canonicalHandlers.contract.test.ts`,
+`frontend/src/main.tsx`. `drop.json` PARTIAL: item 1 done; items 2-11 remain.

@@ -1,0 +1,43 @@
+{
+  "lease_id": "CFG-5",
+  "branch": "feat/cfg-5-screens-b",
+  "base_sha": "b03cbb59",
+  "head_sha": "PENDING",
+  "status": "PARTIAL",
+  "files": [
+    "frontend/src/mocks/handlers/canonicalHandlers.ts",
+    "frontend/src/mocks/handlers/canonicalHandlers.contract.test.ts",
+    "frontend/src/main.tsx"
+  ],
+  "tests": {
+    "npx vitest run src/mocks/handlers/canonicalHandlers.contract.test.ts": "73 passed, 0 failed",
+    "npx vitest run (whole frontend suite)": "1022 passed, 0 failed (83 files)",
+    "npm run typecheck": "clean",
+    "npm run lint": "clean",
+    "npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts (warm dev:mock server)": "129 passed, 0 failed"
+  },
+  "done": [
+    "item 1: MSW handlers + contract tests for /api/agents (list/read/PUT-proposal), /api/schema-releases/* (list, active document read+write, migration-plan, activate), /api/ai/requests/{id}/replay|compare; /api/source-bindings was already covered by CFG-4",
+    "item 1: removed the dead /data-console/v1/ branch in main.tsx (RV CFG-1 F5), settled on onUnhandledRequest: \"bypass\" after onUnhandledRequest: \"error\" was found to break /support routes outside Owns (see remaining/task_1349209e)"
+  ],
+  "remaining": [
+    "item 2: /config/workflow screen",
+    "item 3: /config/support (six tabs, move SupportTemplateSection, alias redirect)",
+    "item 4: /config/integrations screen (replaces read-only tab)",
+    "item 5: backend -- repoint PUT /api/agents/{id} and application/agent_configuration.py at the live agents: section, delete backend/config/agents/*.yaml and manifest.yaml entries, update test_agent_configuration_releases.py and backend/config/README.md, then /config/agents typed table",
+    "item 6: /config/simulation screen",
+    "item 7: /config/data-sources screen (source bindings + sync moved from /sync with redirect)",
+    "item 8: retire Business tab if empty",
+    "item 9: CFG-4 advisories G1 (409 notice clears with first keystroke), G2 (no-active-release branch test)",
+    "item 10: one Playwright spec per new screen, run once against a disposable dev server",
+    "item 11: full acceptance sweep (vitest 0 failures, typecheck, lint, backend pytest tests/configuration tests/api tests/test_configuration_api.py -q, drift check, dev:mock sweep)",
+    "registry.test.ts / routeManifest.ts not yet touched -- no new sections registered yet"
+  ],
+  "out_of_scope_flagged": [
+    {
+      "task_id": "task_1349209e",
+      "what": "supportHandlers.ts has no MSW handler for GET /api/rma-tickets or GET /api/v1/return-support/work-items; discovered while testing onUnhandledRequest: \"error\", outside CFG-5's Owns"
+    }
+  ],
+  "merge_status": "NOT_READY"
+}
