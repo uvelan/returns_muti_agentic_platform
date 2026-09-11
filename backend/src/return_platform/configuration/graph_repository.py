@@ -118,6 +118,15 @@ class ConfigurationGraphRepository(Protocol):
         self, release_id: str, domain_key: str
     ) -> dict[str, Any] | None: ...
 
+    #: The domain node's own `version` -- incremented by `save_draft_domain` on
+    #: every write, never reset. `PatchDomainPayload.expected_version` compares
+    #: against this so a PATCH built from a stale read (another editor's PATCH
+    #: landed in between) is refused with 409 rather than silently applied over
+    #: a document the caller never saw. `None` when the domain does not exist
+    #: yet in this release -- the same "nothing to compare against" a 404 from
+    #: `get_domain_config` already reports for the unpatched case.
+    async def get_domain_version(self, release_id: str, domain_key: str) -> int | None: ...
+
     async def get_all_domain_configs(self, release_id: str) -> dict[str, Any]: ...
 
     async def save_draft_domain(
@@ -173,6 +182,10 @@ class InMemoryConfigurationGraphRepository:
     async def get_domain_config(self, release_id: str, domain_key: str) -> dict[str, Any] | None:
         node = self._domains.get((release_id, domain_key))
         return copy.deepcopy(node.payload) if node else None
+
+    async def get_domain_version(self, release_id: str, domain_key: str) -> int | None:
+        node = self._domains.get((release_id, domain_key))
+        return node.version if node else None
 
     async def get_all_domain_configs(self, release_id: str) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -397,6 +410,20 @@ class Neo4jConfigurationGraphRepository:
                 record["payload_json"],
                 context=f"release {release_id} domain {domain_key}",
             )
+
+    async def get_domain_version(self, release_id: str, domain_key: str) -> int | None:
+        query = """
+        MATCH (r:ConfigurationRelease {release_id: $release_id})-[:HAS_DOMAIN]->(
+            d:ConfigurationDomain {domain_key: $domain_key}
+        )
+        RETURN d.version AS version
+        """
+        async with self._driver.session() as session:
+            result = await session.run(query, release_id=release_id, domain_key=domain_key)
+            record = await result.single()
+            if not record:
+                return None
+            return int(record["version"])
 
     async def get_all_domain_configs(self, release_id: str) -> dict[str, Any]:
         query = """

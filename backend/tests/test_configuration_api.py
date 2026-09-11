@@ -14,6 +14,7 @@ from return_platform.configuration.api.releases import (
     record_configuration_audit as _real_record_audit,
 )
 from return_platform.configuration.api.router import router
+from return_platform.configuration.cli import bootstrap_graph_configuration
 from return_platform.configuration.graph_repository import (
     InMemoryConfigurationGraphRepository,
 )
@@ -23,6 +24,11 @@ from return_platform.configuration.return_configuration import (
 )
 from return_platform.configuration.runtime_activation import RuntimeConfigurationActivator
 from return_platform.configuration.settings import Settings
+from return_platform.configuration.snapshot import (
+    AI_GATEWAY_DOMAIN_KEY,
+    DEPENDENCY_SIMULATION_DOMAIN_KEY,
+    RETURN_PLATFORM_DOMAIN_KEY,
+)
 from return_platform.data_governance import LoadedAssetCatalog
 from return_platform.dependency_simulation.configuration import (
     load_dependency_simulation_configuration,
@@ -96,8 +102,9 @@ def configuration_client(
     records: list[dict[str, Any]] = []
     app.state.audit_records = records
 
-    async def record_audit(_request: Request, **entry: Any) -> None:
+    async def record_audit(_request: Request, **entry: Any) -> str:
         records.append(dict(entry))
+        return f"audit-{len(records)}"
 
     monkeypatch.setattr(
         "return_platform.configuration.api.releases.record_configuration_audit",
@@ -407,6 +414,180 @@ def test_a_draft_cloned_from_the_active_release_carries_its_packaged_baseline(
     assert cloned["metadata"] == baseline
 
 
+def test_patch_refuses_a_stale_expected_version(
+    configuration_client: TestClient,
+) -> None:
+    """The optimistic lock: two open tabs editing the same draft, or a PATCH
+    built from a read the release has already moved past. `expected_version`
+    is optional, so a caller that never reads it back keeps working exactly
+    as before this field existed."""
+    client = configuration_client
+    _create_draft(client, "versioned")
+
+    stale = client.patch(
+        "/api/config/releases/versioned/domains/RETURN_PLATFORM",
+        json={
+            "patch": {"policy_evaluation": {"enabled": True, "disabled_reason": None}},
+            "expected_version": 999,
+        },
+    )
+    assert stale.status_code == 409, stale.text
+    assert stale.json()["detail"]["code"] == "CONFIGURATION_DOMAIN_VERSION_CONFLICT"
+    assert stale.json()["detail"]["current_version"] == 1
+
+    current = client.patch(
+        "/api/config/releases/versioned/domains/RETURN_PLATFORM",
+        json={
+            "patch": {"policy_evaluation": {"enabled": True, "disabled_reason": None}},
+            "expected_version": 1,
+        },
+    )
+    assert current.status_code == 200, current.text
+
+    # The version this domain is now at, so a second stale write against the
+    # version BEFORE the one above is also refused -- the lock advances.
+    now_stale = client.patch(
+        "/api/config/releases/versioned/domains/RETURN_PLATFORM",
+        json={
+            "patch": {"policy_evaluation": {"enabled": False, "disabled_reason": "paused"}},
+            "expected_version": 1,
+        },
+    )
+    assert now_stale.status_code == 409, now_stale.text
+    assert now_stale.json()["detail"]["current_version"] == 2
+
+    no_lock = client.patch(
+        "/api/config/releases/versioned/domains/RETURN_PLATFORM",
+        json={"patch": {"policy_evaluation": {"enabled": False, "disabled_reason": "paused"}}},
+    )
+    assert no_lock.status_code == 200, no_lock.text
+
+
+@pytest.mark.parametrize(
+    ("loc", "expected"),
+    [
+        (("a", "b"), "a.b"),
+        (("a", 2, "b"), "a[2].b"),
+        ((0, "a"), "[0].a"),
+        (("a", 1, 2), "a[1][2]"),
+    ],
+)
+def test_dotted_error_path_maps_list_indices_as_brackets(
+    loc: tuple[int | str, ...], expected: str
+) -> None:
+    """RV CFG-3a round 1 F7: the brief specifies list indices as `[n]`
+    explicitly, and only the dotted-string case was exercised by the
+    integration test below. `_dotted_error_path` is the function the brief's
+    example (`return_policy.return_method_derivation.default_method`) and
+    every validate response's `path` field go through."""
+    from return_platform.configuration.api.releases import _dotted_error_path
+
+    assert _dotted_error_path(loc) == expected
+
+
+def test_validate_a_standalone_payload_reports_path_mapped_errors(
+    configuration_client: TestClient,
+) -> None:
+    """No draft, no write, no release_id -- `payload` validates standalone."""
+    client = configuration_client
+    result = client.post("/api/config/validate/RETURN_PLATFORM", json={"payload": {}})
+    assert result.status_code == 200, result.text
+    body = result.json()["data"]
+    assert body["valid"] is False
+    assert body["errors"]
+    assert all({"path", "message", "type"} <= set(error) for error in body["errors"])
+    # `schema_version` is a required top-level field with no default: an
+    # empty payload must name it, dotted the way the brief specifies.
+    assert any(error["path"] == "schema_version" for error in body["errors"])
+
+
+def test_validate_a_standalone_valid_payload_reports_no_errors(
+    configuration_client: TestClient,
+    test_settings: Settings,
+) -> None:
+    client = configuration_client
+    valid_payload = load_return_configuration(
+        test_settings.return_configuration_path
+    ).configuration.model_dump(mode="json")
+
+    result = client.post("/api/config/validate/RETURN_PLATFORM", json={"payload": valid_payload})
+
+    assert result.status_code == 200, result.text
+    assert result.json()["data"] == {"valid": True, "errors": []}
+
+
+def test_validate_an_unknown_domain_is_404(configuration_client: TestClient) -> None:
+    client = configuration_client
+    result = client.post("/api/config/validate/NOT_A_DOMAIN", json={"payload": {}})
+    assert result.status_code == 404, result.text
+
+
+def test_validate_refuses_a_body_with_neither_or_both_shapes(
+    configuration_client: TestClient,
+) -> None:
+    client = configuration_client
+    neither = client.post("/api/config/validate/RETURN_PLATFORM", json={})
+    assert neither.status_code == 422, neither.text
+    both = client.post(
+        "/api/config/validate/RETURN_PLATFORM",
+        json={"payload": {}, "patch": {}},
+    )
+    assert both.status_code == 422, both.text
+
+
+def test_validate_a_patch_needs_an_active_release(configuration_client: TestClient) -> None:
+    """No release_id on this route: a patch validates against the ACTIVE
+    release, and there is none yet in a fresh test app."""
+    client = configuration_client
+    result = client.post("/api/config/validate/RETURN_PLATFORM", json={"patch": {}})
+    assert result.status_code == 409, result.text
+
+
+def test_validate_a_patch_against_the_active_release(configuration_client: TestClient) -> None:
+    client = configuration_client
+    _create_draft(client, "validate-base")
+    assert (
+        client.post(
+            "/api/config/releases/validate-base/promote",
+            json={"status": "VALIDATED"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            "/api/config/releases/validate-base/promote",
+            json={"status": "RELEASED", "expected_head_revision": 0},
+        ).status_code
+        == 200
+    )
+
+    valid = client.post(
+        "/api/config/validate/RETURN_PLATFORM",
+        json={"patch": {"policy_evaluation": {"enabled": True, "disabled_reason": None}}},
+    )
+    assert valid.status_code == 200, valid.text
+    assert valid.json()["data"] == {"valid": True, "errors": []}
+
+    # The packaged baseline ships `policy_evaluation.enabled: false` with a
+    # non-null `disabled_reason` (the dev-host suspension notice). Each
+    # `validate` call patches that SAME unwritten baseline -- validate never
+    # writes -- so `enabled: true` alone, with `disabled_reason` left at the
+    # packaged non-null string, is what `PolicyEvaluationConfiguration`'s own
+    # model-level validator refuses.
+    invalid = client.post(
+        "/api/config/validate/RETURN_PLATFORM",
+        json={"patch": {"policy_evaluation": {"enabled": True}}},
+    )
+    assert invalid.status_code == 200, invalid.text
+    body = invalid.json()["data"]
+    assert body["valid"] is False
+    assert any("policy_evaluation" in error["path"] for error in body["errors"])
+    # Nothing was written by either call: the release's stored payload is
+    # still the packaged baseline.
+    release = client.get("/api/config/releases/validate-base").json()["data"]
+    assert release["domains"]["RETURN_PLATFORM"]["policy_evaluation"]["enabled"] is False
+
+
 def test_an_audit_store_outage_does_not_undo_a_completed_write(
     configuration_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -467,3 +648,510 @@ def test_every_release_change_leaves_an_audit_record(
     assert patch_record["details"]["patchKeys"] == ["policy_evaluation"]
     assert "policy_evaluation.enabled" in patch_record["details"]["changedPaths"]
     assert records[2]["details"]["status"] == "VALIDATED"
+
+
+# --- publish (single transaction) ---------------------------------------------
+
+
+def test_publish_creates_patches_and_releases_in_one_call(
+    configuration_client: TestClient,
+) -> None:
+    client = configuration_client
+    response = client.post(
+        "/api/config/publish",
+        json={
+            "release_id": "published-v1",
+            "domain_key": "RETURN_PLATFORM",
+            "patch": {"policy_evaluation": {"enabled": True, "disabled_reason": None}},
+            "expected_head_revision": 0,
+            "note": "turning eligibility evaluation on",
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["release_id"] == "published-v1"
+    assert data["status"] == "RELEASED"
+    assert data["head_revision"] == 1
+    assert data["domains"]["RETURN_PLATFORM"]["policy_evaluation"]["enabled"] is True
+    # RV CFG-3a round 1 F2: the same five records the four-call path (create,
+    # patch, promote x2) plus this call's own summary would leave -- not one.
+    assert data["audit_ids"] and all(isinstance(i, str) for i in data["audit_ids"])
+    assert len(data["audit_ids"]) == 5
+    assert len(set(data["audit_ids"])) == 5  # every id distinct
+
+    records = client.app.state.audit_records
+    published_records = [
+        r for r in records if r["target"] in ("published-v1", "published-v1/RETURN_PLATFORM")
+    ]
+    assert [r["action"] for r in published_records] == [
+        "CONFIGURATION_RELEASE_CREATED",
+        "CONFIGURATION_DOMAIN_PATCHED",
+        "CONFIGURATION_RELEASE_PROMOTED",
+        "CONFIGURATION_RELEASE_PROMOTED",
+        "CONFIGURATION_RELEASE_PUBLISHED",
+    ]
+    patch_record = published_records[1]
+    assert patch_record["details"]["patchKeys"] == ["policy_evaluation"]
+    assert "policy_evaluation.enabled" in patch_record["details"]["changedPaths"]
+    assert [r["details"]["status"] for r in published_records[2:4]] == ["VALIDATED", "RELEASED"]
+
+    active = client.get("/api/config/runtime")
+    assert active.status_code == 200
+    assert active.json()["data"]["release_id"] == "published-v1"
+
+
+def test_publish_leaves_a_per_step_audit_trail_queryable_by_target(
+    configuration_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """RV CFG-3a round 1 F2: `GET /api/config/audit?target=<release>` must
+    actually list the per-step records `/publish` claims to write, not just
+    the summary one. `configuration_client`'s fixture replaces
+    `record_configuration_audit` with an in-memory recorder (there is no
+    real Mongo in this suite); this test points the READ side at that same
+    in-memory list, filtered by `target`, so the two sides of the claim are
+    checked against a single source of truth rather than trusted separately.
+    """
+    import return_platform.configuration.api.router as router_module
+    from return_platform.configuration.api.audit import AuditLog
+    from return_platform.shared.contracts import APIResponse, ResponseMeta
+
+    client = configuration_client
+    published = client.post(
+        "/api/config/publish",
+        json={
+            "release_id": "published-audited",
+            "domain_key": "RETURN_PLATFORM",
+            "patch": {"policy_evaluation": {"enabled": True, "disabled_reason": None}},
+            "expected_head_revision": 0,
+        },
+    )
+    assert published.status_code == 200, published.text
+    expected_ids = set(published.json()["data"]["audit_ids"])
+
+    records = client.app.state.audit_records
+
+    async def fake_list_audit_logs(
+        _request: Any, _user_id: Any, *, actions: Any = None, target: Any = None
+    ) -> APIResponse[list[AuditLog]]:
+        from datetime import UTC, datetime
+
+        matched = [r for r in records if target is None or r["target"] == target]
+        logs = [
+            AuditLog(
+                id=f"audit-{i}",
+                action=r["action"],
+                actor=r["actor"],
+                target=r["target"],
+                timestamp=datetime.now(UTC),
+                details=r["details"],
+            )
+            for i, r in enumerate(matched)
+        ]
+        return APIResponse(data=logs, meta=ResponseMeta(request_id="test"))
+
+    monkeypatch.setattr(router_module, "console_list_audit_logs", fake_list_audit_logs)
+
+    listed = client.get("/api/config/audit", params={"target": "published-audited"})
+    assert listed.status_code == 200, listed.text
+    actions = [entry["action"] for entry in listed.json()["data"]]
+    assert actions == [
+        "CONFIGURATION_RELEASE_CREATED",
+        "CONFIGURATION_RELEASE_PROMOTED",
+        "CONFIGURATION_RELEASE_PROMOTED",
+        "CONFIGURATION_RELEASE_PUBLISHED",
+    ]
+
+    listed_domain = client.get(
+        "/api/config/audit", params={"target": "published-audited/RETURN_PLATFORM"}
+    )
+    assert listed_domain.status_code == 200, listed_domain.text
+    assert [entry["action"] for entry in listed_domain.json()["data"]] == [
+        "CONFIGURATION_DOMAIN_PATCHED"
+    ]
+
+    # Every record `/publish` wrote (one per id it returned) is reachable
+    # through one of the two targets its own steps used -- none missing,
+    # none extra.
+    assert len(actions) + len(listed_domain.json()["data"]) == len(expected_ids)
+
+
+def test_publish_generates_a_release_id_when_none_is_given(
+    configuration_client: TestClient,
+) -> None:
+    client = configuration_client
+    response = client.post(
+        "/api/config/publish",
+        json={
+            "domain_key": "RETURN_PLATFORM",
+            "patch": {},
+            "expected_head_revision": 0,
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["release_id"].startswith("publish-")
+
+
+def test_publish_refuses_an_existing_release_id(configuration_client: TestClient) -> None:
+    """RV CFG-3a round 1 F10: the existence check sits before the `try`, so
+    a refused publish naming someone else's release id must not touch that
+    release at all -- `_archive_draft_on_refusal` archiving a release this
+    request did not create would be a new and worse bug than the one it
+    exists to prevent."""
+    client = configuration_client
+    _create_draft(client, "taken")
+    response = client.post(
+        "/api/config/publish",
+        json={
+            "release_id": "taken",
+            "domain_key": "RETURN_PLATFORM",
+            "patch": {},
+            "expected_head_revision": 0,
+        },
+    )
+    assert response.status_code == 409, response.text
+
+    taken = client.get("/api/config/releases/taken").json()["data"]
+    assert taken["status"] == "DRAFT"
+
+
+def test_publish_refuses_an_invalid_patch_and_leaves_nothing_behind(
+    configuration_client: TestClient,
+) -> None:
+    client = configuration_client
+    response = client.post(
+        "/api/config/publish",
+        json={
+            "release_id": "publish-invalid",
+            "domain_key": "RETURN_PLATFORM",
+            "patch": {"agents": {"order_discovery": None}},
+            "expected_head_revision": 0,
+        },
+    )
+    assert response.status_code == 422, response.text
+
+    releases = client.get("/api/config/releases").json()["data"]
+    statuses = {release["status"] for release in releases}
+    assert statuses <= {"ARCHIVED"}, statuses
+
+
+def test_publish_refuses_a_stale_head_and_leaves_nothing_behind(
+    configuration_client: TestClient,
+) -> None:
+    client = configuration_client
+    response = client.post(
+        "/api/config/publish",
+        json={
+            "release_id": "publish-stale",
+            "domain_key": "RETURN_PLATFORM",
+            "patch": {},
+            "expected_head_revision": 5,
+        },
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["code"] == "CONFIGURATION_REVISION_CONFLICT"
+
+    releases = client.get("/api/config/releases").json()["data"]
+    statuses = {release["status"] for release in releases}
+    assert statuses <= {"ARCHIVED"}, statuses
+
+
+def test_publish_needs_the_release_write_capability() -> None:
+    from return_platform.security import roles as r
+    from return_platform.security.capabilities import CONFIG_RELEASE_WRITE, capabilities_for_roles
+
+    app = FastAPI()
+    app.include_router(router)
+    unentitled = next(
+        role
+        for role in sorted(r.ALL_ROLES)
+        if CONFIG_RELEASE_WRITE not in capabilities_for_roles(frozenset({role}))
+    )
+
+    @app.middleware("http")
+    async def attach_principal(request: Request, call_next: Any) -> Any:
+        request.state.principal = Principal(subject="reader", roles=frozenset({unentitled}))
+        request.state.correlation_id = "test-correlation-id"
+        return await call_next(request)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/config/publish",
+        json={"domain_key": "RETURN_PLATFORM", "patch": {}, "expected_head_revision": 0},
+    )
+    assert response.status_code == 403, response.text
+
+
+# --- packaged adoption --------------------------------------------------------
+
+
+def _release_with_an_edited_discovery(client: TestClient, release_id: str) -> None:
+    """A release identical to the packaged file except `discovery`, edited away
+    from it -- the same divergence `test_graph_configuration_bootstrap.py`
+    uses, so `discovery` is what `adopt-packaged` has something to adopt."""
+    _create_draft(client, release_id)
+    patched = client.patch(
+        f"/api/config/releases/{release_id}/domains/RETURN_PLATFORM",
+        json={"patch": {"discovery": {"identification_fields": []}}},
+    )
+    assert patched.status_code == 200, patched.text
+    assert (
+        client.post(
+            f"/api/config/releases/{release_id}/promote",
+            json={"status": "VALIDATED"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            f"/api/config/releases/{release_id}/promote",
+            json={"status": "RELEASED", "expected_head_revision": 0},
+        ).status_code
+        == 200
+    )
+
+
+def test_adopt_packaged_needs_an_active_release(configuration_client: TestClient) -> None:
+    client = configuration_client
+    response = client.post(
+        "/api/config/adopt-packaged",
+        json={"units": ["discovery"], "expected_head_revision": 0},
+    )
+    assert response.status_code == 409, response.text
+
+
+def test_adopt_packaged_refuses_an_unknown_unit(configuration_client: TestClient) -> None:
+    client = configuration_client
+    _release_with_an_edited_discovery(client, "adopt-base-unknown")
+    response = client.post(
+        "/api/config/adopt-packaged",
+        json={"units": ["no_such_key"], "expected_head_revision": 1},
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_adopt_packaged_publishes_the_requested_unit(
+    configuration_client: TestClient, test_settings: Settings
+) -> None:
+    client = configuration_client
+    _release_with_an_edited_discovery(client, "adopt-base")
+
+    response = client.post(
+        "/api/config/adopt-packaged",
+        json={"units": ["discovery"], "expected_head_revision": 1},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["status"] == "RELEASED"
+    assert data["head_revision"] == 2
+    packaged_discovery = load_return_configuration(
+        test_settings.return_configuration_path
+    ).configuration.discovery.model_dump(mode="json")
+    assert data["domains"]["RETURN_PLATFORM"]["discovery"] == packaged_discovery
+    # Nothing else was left undecided: the only divergence from packaged was
+    # the one key requested, and every other key already matched.
+    assert data["undecided"] == {
+        "RETURN_PLATFORM": [],
+        "AI_GATEWAY": [],
+        "DEPENDENCY_SIMULATION": [],
+    }
+
+    records = client.app.state.audit_records
+    assert records[-1]["action"] == "CONFIGURATION_PACKAGED_ADOPTED"
+    assert records[-1]["details"]["units"] == ["discovery"]
+
+
+def test_adopt_packaged_refuses_a_stale_head_and_leaves_nothing_behind(
+    configuration_client: TestClient,
+) -> None:
+    client = configuration_client
+    _release_with_an_edited_discovery(client, "adopt-stale-base")
+
+    response = client.post(
+        "/api/config/adopt-packaged",
+        json={"units": ["discovery"], "expected_head_revision": 0},
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["code"] == "CONFIGURATION_REVISION_CONFLICT"
+
+    releases = client.get("/api/config/releases").json()["data"]
+    # The base release is RELEASED; anything this refused call created is
+    # archived, not left DRAFT or VALIDATED for a retry to trip over.
+    statuses = {release["status"] for release in releases}
+    assert statuses <= {"RELEASED", "ARCHIVED"}, statuses
+
+
+def test_adopt_packaged_needs_the_release_write_capability() -> None:
+    from return_platform.security import roles as r
+    from return_platform.security.capabilities import CONFIG_RELEASE_WRITE, capabilities_for_roles
+
+    app = FastAPI()
+    app.include_router(router)
+    unentitled = next(
+        role
+        for role in sorted(r.ALL_ROLES)
+        if CONFIG_RELEASE_WRITE not in capabilities_for_roles(frozenset({role}))
+    )
+
+    @app.middleware("http")
+    async def attach_principal(request: Request, call_next: Any) -> Any:
+        request.state.principal = Principal(subject="reader", roles=frozenset({unentitled}))
+        request.state.correlation_id = "test-correlation-id"
+        return await call_next(request)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/config/adopt-packaged",
+        json={"units": [], "expected_head_revision": 0},
+    )
+    assert response.status_code == 403, response.text
+
+
+def test_packaged_drift_reports_undecided_would_adopt_and_filled_leaves(
+    configuration_client: TestClient,
+) -> None:
+    client = configuration_client
+    _release_with_an_edited_discovery(client, "drift-base")
+
+    response = client.get("/api/config/packaged-drift")
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert {"RETURN_PLATFORM", "AI_GATEWAY", "DEPENDENCY_SIMULATION"} <= set(data)
+    for domain in data.values():
+        assert {"undecided", "would_adopt", "filled_leaves"} <= set(domain)
+    # No baseline was ever recorded for this release, so the one key that
+    # disagrees with the packaged file (discovery) is undecided, not silently
+    # adopted.
+    assert "discovery" in data["RETURN_PLATFORM"]["undecided"]
+    assert "discovery" not in data["RETURN_PLATFORM"]["would_adopt"]
+
+
+def test_packaged_drift_emits_no_warning_on_the_read_path(
+    configuration_client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """RV CFG-3a round 1 F4: a panel a browser polls must not turn
+    `adopt_packaged_configuration`'s publish-time `packaged_configuration_
+    not_adopted` warning into steady-state noise. The fixture in this test
+    has an undecided key (`discovery`, no recorded baseline) -- exactly the
+    condition that logs a WARNING on the write path -- so a clean caplog
+    here is a real assertion, not a vacuous one."""
+    client = configuration_client
+    _release_with_an_edited_discovery(client, "drift-quiet")
+
+    with caplog.at_level("WARNING"):
+        response = client.get("/api/config/packaged-drift")
+
+    assert response.status_code == 200, response.text
+    assert "discovery" in response.json()["data"]["RETURN_PLATFORM"]["undecided"]
+    assert "packaged_configuration_not_adopted" not in caplog.text
+
+
+def test_packaged_drift_with_no_active_release_shows_nothing_undecided_or_adopted(
+    configuration_client: TestClient,
+) -> None:
+    """With nothing published yet there is nothing to disagree with -- no
+    key is undecided -- and no merge has run to say anything was actually
+    taken from the file yet either (RV CFG-3a round 1 F1: `would_adopt` is
+    read off the merge result now, not guessed from "not undecided", and
+    there is no merge at all when there is no active release to merge
+    against). A first publish still carries the whole packaged file; this
+    panel just has nothing decided to report before one exists."""
+    client = configuration_client
+    response = client.get("/api/config/packaged-drift")
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["RETURN_PLATFORM"]["undecided"] == []
+    assert data["RETURN_PLATFORM"]["would_adopt"] == []
+
+
+@pytest.mark.asyncio
+async def test_adopt_packaged_api_matches_a_cli_run(
+    configuration_client: TestClient,
+    test_settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Acceptance: adopt-packaged producing the same release a CLI run would.
+
+    Same starting state (an active release whose `discovery` diverges from
+    the packaged file with no recorded baseline) fed to
+    `bootstrap_graph_configuration.main(adopt_packaged_keys=("discovery",))`
+    against one in-memory repository and to `POST /adopt-packaged` against a
+    second, freshly seeded copy of the same state. Both call
+    `adopt_packaged_configuration`; this proves the two callers actually
+    agree on its output, not just that both compile against it.
+    """
+    packaged = load_return_configuration(test_settings.return_configuration_path).configuration
+    packaged_payload = packaged.model_dump(mode="json")
+    older_payload = {
+        **packaged_payload,
+        "discovery": {**packaged_payload["discovery"], "identification_fields": []},
+    }
+    ai_gateway_payload = load_ai_gateway_configuration(
+        test_settings.ai_gateway_configuration_path
+    ).configuration.model_dump(mode="json")
+    dependency_simulation_payload = load_dependency_simulation_configuration(
+        test_settings.dependency_simulation_configuration_path
+    ).configuration.model_dump(mode="json")
+
+    async def _seed(repo: InMemoryConfigurationGraphRepository) -> None:
+        for domain_key, payload in (
+            (RETURN_PLATFORM_DOMAIN_KEY, older_payload),
+            (AI_GATEWAY_DOMAIN_KEY, ai_gateway_payload),
+            (DEPENDENCY_SIMULATION_DOMAIN_KEY, dependency_simulation_payload),
+        ):
+            await repo.save_draft_domain("base-release", domain_key, payload, actor_id="seed")
+        await repo.promote_release("base-release", "VALIDATED", actor_id="seed")
+        await repo.promote_release(
+            "base-release", "RELEASED", actor_id="seed", expected_head_revision=0
+        )
+
+    # --- CLI side: main() against its own fresh in-memory repository ---
+    cli_repo = InMemoryConfigurationGraphRepository()
+    await _seed(cli_repo)
+
+    class _Driver:
+        async def verify_connectivity(self) -> None:
+            return None
+
+        async def close(self) -> None:
+            return None
+
+    async def resolve_settings(*_args: object, **_kwargs: object) -> tuple[object, object]:
+        return test_settings, object()
+
+    monkeypatch.setattr(
+        bootstrap_graph_configuration, "resolve_runtime_settings_from_vault", resolve_settings
+    )
+    monkeypatch.setattr(
+        bootstrap_graph_configuration.AsyncGraphDatabase,
+        "driver",
+        lambda *_args, **_kwargs: _Driver(),
+    )
+    monkeypatch.setattr(
+        bootstrap_graph_configuration, "Neo4jConfigurationGraphRepository", lambda _driver: cli_repo
+    )
+
+    await bootstrap_graph_configuration.main(adopt_packaged_keys=("discovery",))
+
+    cli_active = await cli_repo.get_active_release()
+    assert cli_active is not None
+    cli_domains = await cli_repo.get_all_domain_configs(cli_active.release_id)
+
+    # --- API side: the identical starting state, through the route ---
+    client = configuration_client
+    api_repo = client.app.state.graph_configuration_repository
+    await _seed(api_repo)
+
+    response = client.post(
+        "/api/config/adopt-packaged",
+        json={"units": ["discovery"], "expected_head_revision": 1},
+    )
+    assert response.status_code == 200, response.text
+    api_release_id = response.json()["data"]["release_id"]
+    api_domains = await api_repo.get_all_domain_configs(api_release_id)
+
+    assert api_domains[RETURN_PLATFORM_DOMAIN_KEY] == cli_domains[RETURN_PLATFORM_DOMAIN_KEY]
+    assert api_domains[AI_GATEWAY_DOMAIN_KEY] == cli_domains[AI_GATEWAY_DOMAIN_KEY]
+    assert (
+        api_domains[DEPENDENCY_SIMULATION_DOMAIN_KEY]
+        == cli_domains[DEPENDENCY_SIMULATION_DOMAIN_KEY]
+    )

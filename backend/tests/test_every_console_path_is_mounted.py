@@ -124,6 +124,11 @@ CONFIGURATION_WRITE_ROUTES: tuple[tuple[str, str], ...] = (
     ("post", "/api/config/releases"),
     ("patch", "/api/config/releases/{release_id}/domains/{domain_key}"),
     ("post", "/api/config/releases/{release_id}/promote"),
+    # CFG-3a: the collapsed single-call publish path and the packaged-adoption
+    # write, both real mutations (see test_canonical_config_api.py's
+    # test_the_release_lifecycle_is_the_only_mutation_surface_here).
+    ("post", "/api/config/publish"),
+    ("post", "/api/config/adopt-packaged"),
 )
 
 
@@ -210,6 +215,17 @@ def test_configuration_release_write_routes_are_mounted(
 #: the assertion below rather than a relaxation of it.
 CONFIGURATION_CAPABILITY_ROUTES: dict[tuple[str, str], str] = {
     ("post", "/api/config/releases/{release_id}/promote"): capabilities.CONFIG_RELEASE_PROMOTE,
+    # CFG-3a: create/patch narrowed from `require_write_roles` to
+    # `config.release.write` for the same reason promote was narrowed --
+    # shaping a release's contents is the other half of what an unentitled
+    # write role could do to the lifecycle.
+    ("post", "/api/config/releases"): capabilities.CONFIG_RELEASE_WRITE,
+    (
+        "patch",
+        "/api/config/releases/{release_id}/domains/{domain_key}",
+    ): capabilities.CONFIG_RELEASE_WRITE,
+    ("post", "/api/config/publish"): capabilities.CONFIG_RELEASE_WRITE,
+    ("post", "/api/config/adopt-packaged"): capabilities.CONFIG_RELEASE_WRITE,
 }
 
 

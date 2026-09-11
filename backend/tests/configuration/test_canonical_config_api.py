@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from return_platform.configuration.api.secrets import MASKED, redact_secret_values
 
 REFERENCE = "vault://secret/production/ai/google/credentials/key-0#api_key"
@@ -131,8 +133,8 @@ def test_the_release_lifecycle_is_the_only_mutation_surface_here() -> None:
     D3 settled that in favour of the graph, so a mutation surface became
     buildable -- but only *one*, and this pins its exact shape. Configuration
     changes by a release being drafted, edited and moved along its lifecycle;
-    any mutation here that is not one of those three is a second way to change
-    what the platform is running.
+    any route here outside that set and the one deliberate exception below is
+    a second way to change what the platform is running.
 
     Promotion alone used to be the whole set, which is how the surface shipped
     able to publish a release but unable to create or edit one -- every prompt
@@ -140,6 +142,21 @@ def test_the_release_lifecycle_is_the_only_mutation_surface_here() -> None:
     `PUT .../domains/{key}` the console router also declares stays off: a merge
     patch reaches the same outcome without letting a caller overwrite fields it
     never read.
+
+    `POST /publish` and `POST /adopt-packaged` (CFG-3a) are two more genuine
+    mutations, not exceptions to this rule -- each publishes a release
+    exactly the way `/releases` + PATCH + `/promote` x2 would, collapsed
+    into one call: `/publish` from a caller-supplied patch,
+    `/adopt-packaged` from the units `adopt_packaged_configuration` decides.
+
+    **`POST /validate/{domain_key}` is not a mutation.** It is POST-shaped
+    because a payload or a patch does not fit a GET's query string, not
+    because it writes -- `test_validate_a_patch_against_the_active_release`
+    in `test_configuration_api.py` proves no write happens by reading the
+    release back unchanged after both a valid and an invalid call. Filtering
+    routes by HTTP method alone can no longer say "no write" the way it used
+    to when every non-GET route here really was one, so it is named here by
+    exception rather than silently widening what this assertion means.
     """
     from return_platform.configuration.api.router import router
 
@@ -153,6 +170,9 @@ def test_the_release_lifecycle_is_the_only_mutation_surface_here() -> None:
         ("/api/config/releases", "POST"),
         ("/api/config/releases/{release_id}/domains/{domain_key}", "PATCH"),
         ("/api/config/releases/{release_id}/promote", "POST"),
+        ("/api/config/validate/{domain_key}", "POST"),
+        ("/api/config/publish", "POST"),
+        ("/api/config/adopt-packaged", "POST"),
     }, mutations
 
 
@@ -221,3 +241,195 @@ def test_every_canonical_response_goes_through_the_scrub() -> None:
         "a handler constructs APIResponse directly instead of going through _ok(), "
         f"bypassing the secret scrub (lines {direct})"
     )
+
+
+def test_no_handler_returns_a_delegate_response_unscrubbed() -> None:
+    """RV CFG-1 F4, carried into CFG-3a: `/sources`, `/sources/{id}`,
+    `/sources/{id}/assets/{id}`, `/audit` and `/audit/{id}` used to
+    `return await console_X(...)` straight through -- the delegate's OWN
+    `APIResponse`, built in `sources.py`/`audit.py`, never touched this
+    router's `_ok`.
+
+    `test_every_canonical_response_goes_through_the_scrub` above cannot see
+    this: it only catches an `APIResponse(...)` CONSTRUCTED in router.py, and
+    these five constructed none here at all -- they returned one built
+    elsewhere. This walks every `return` statement instead and flags any
+    that directly awaits a `console_*` delegate rather than passing its
+    `.data` through `_ok`.
+    """
+    import ast
+    from pathlib import Path
+
+    source_path = (
+        Path(__file__).resolve().parents[2]
+        / "src"
+        / "return_platform"
+        / "configuration"
+        / "api"
+        / "router.py"
+    )
+    source = source_path.read_text(encoding="utf-8")
+
+    def _is_delegate_await(node: ast.expr | None) -> bool:
+        if not isinstance(node, ast.Await) or not isinstance(node.value, ast.Call):
+            return False
+        func = node.value.func
+        name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+        return name.startswith("console_")
+
+    unscrubbed = [
+        node.lineno
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Return) and _is_delegate_await(node.value)
+    ]
+
+    assert not unscrubbed, (
+        "these lines return a console_* delegate's response directly, "
+        f"bypassing redact_secret_values: {unscrubbed}"
+    )
+
+
+def test_the_audit_route_threads_actions_and_target_to_the_delegate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CFG-3a scope item 6: `?actions=...&target=...` on `GET /api/config/audit`
+    reaches `AuditService.list_logs`, not just the route's own signature --
+    `test_audit_filter.py` proves the service builds the right Mongo query
+    from those two; this proves the query string actually gets there."""
+    from fastapi import FastAPI, Request
+    from fastapi.testclient import TestClient
+
+    import return_platform.configuration.api.router as router_module
+    from return_platform.security.principal import Principal
+    from return_platform.shared.contracts import APIResponse, ResponseMeta
+
+    captured: dict[str, Any] = {}
+
+    async def fake_list(_request: Any, _user_id: Any, **kwargs: Any) -> APIResponse[list[Any]]:
+        captured.update(kwargs)
+        return APIResponse(data=[], meta=ResponseMeta(request_id="test"))
+
+    monkeypatch.setattr(router_module, "console_list_audit_logs", fake_list)
+
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def _attach(request: Request, call_next):  # type: ignore[no-untyped-def]
+        request.state.principal = Principal(subject="reader", roles=frozenset({"console_admin"}))
+        request.state.correlation_id = "test-correlation-id"
+        return await call_next(request)
+
+    app.include_router(router_module.router)
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/config/audit",
+        params=[
+            ("actions", "CONFIGURATION_*"),
+            ("actions", "AI_ROUTE_REFRESHED"),
+            ("target", "release-1"),
+        ],
+    )
+
+    assert response.status_code == 200, response.text
+    assert captured["actions"] == ["CONFIGURATION_*", "AI_ROUTE_REFRESHED"]
+    assert captured["target"] == "release-1"
+
+
+def test_the_audit_route_defaults_to_unfiltered(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi import FastAPI, Request
+    from fastapi.testclient import TestClient
+
+    import return_platform.configuration.api.router as router_module
+    from return_platform.security.principal import Principal
+    from return_platform.shared.contracts import APIResponse, ResponseMeta
+
+    captured: dict[str, Any] = {}
+
+    async def fake_list(_request: Any, _user_id: Any, **kwargs: Any) -> APIResponse[list[Any]]:
+        captured.update(kwargs)
+        return APIResponse(data=[], meta=ResponseMeta(request_id="test"))
+
+    monkeypatch.setattr(router_module, "console_list_audit_logs", fake_list)
+
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def _attach(request: Request, call_next):  # type: ignore[no-untyped-def]
+        request.state.principal = Principal(subject="reader", roles=frozenset({"console_admin"}))
+        request.state.correlation_id = "test-correlation-id"
+        return await call_next(request)
+
+    app.include_router(router_module.router)
+    client = TestClient(app)
+
+    response = client.get("/api/config/audit")
+
+    assert response.status_code == 200, response.text
+    assert captured["actions"] is None
+    assert captured["target"] is None
+
+
+def test_audit_reads_now_mask_a_secret_carried_in_details(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The behavioural proof behind the two structural tests above, on
+    `/audit` and `/audit/{id}`: an audit record's `details` is a free-form
+    `dict[str, Any]` -- exactly the shape a writer could accidentally stamp
+    a resolved credential into -- forced here to carry one, with the live
+    HTTP response read back masked.
+
+    (`/sources`, `/sources/{id}` and `/sources/{id}/assets/{id}` answer with
+    strictly-typed, `extra="forbid"` models that decline a synthetic secret
+    field outright -- which is itself a second line of defence against
+    exactly this leak, just not one a test can exercise by injecting a
+    field the schema does not declare. Those three routes are covered by
+    the structural checks above instead.)
+    """
+    from datetime import UTC, datetime
+
+    from fastapi import FastAPI, Request
+    from fastapi.testclient import TestClient
+
+    import return_platform.configuration.api.router as router_module
+    from return_platform.configuration.api.audit import AuditLog
+    from return_platform.security.principal import Principal
+    from return_platform.shared.contracts import APIResponse, ResponseMeta
+
+    secret = "AIzaSyREAL-RESOLVED-KEY"
+    record = AuditLog(
+        id="a1",
+        action="CONFIGURATION_RELEASE_PROMOTED",
+        actor="operator",
+        target="release-1",
+        timestamp=datetime.now(UTC),
+        details={"apiKey": secret},
+    )
+
+    async def fake_list(*_args: object, **_kwargs: object) -> APIResponse[list[AuditLog]]:
+        return APIResponse(data=[record], meta=ResponseMeta(request_id="test"))
+
+    async def fake_get(*_args: object, **_kwargs: object) -> APIResponse[AuditLog]:
+        return APIResponse(data=record, meta=ResponseMeta(request_id="test"))
+
+    monkeypatch.setattr(router_module, "console_list_audit_logs", fake_list)
+    monkeypatch.setattr(router_module, "console_get_audit_log", fake_get)
+
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def _attach(request: Request, call_next):  # type: ignore[no-untyped-def]
+        request.state.principal = Principal(subject="reader", roles=frozenset({"console_admin"}))
+        request.state.correlation_id = "test-correlation-id"
+        return await call_next(request)
+
+    app.include_router(router_module.router)
+    client = TestClient(app)
+
+    listed = client.get("/api/config/audit")
+    assert listed.status_code == 200, listed.text
+    assert listed.json()["data"][0]["details"]["apiKey"] == MASKED
+
+    single = client.get("/api/config/audit/a1")
+    assert single.status_code == 200, single.text
+    assert single.json()["data"]["details"]["apiKey"] == MASKED

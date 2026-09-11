@@ -823,6 +823,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/config/adopt-packaged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adopt Packaged
+         * @description Publish a release adopting the named packaged units, per-key audited.
+         *
+         *     The API's answer to a `packaged_configuration_not_adopted` warning: what
+         *     `--adopt-packaged-key` does from a terminal, this does from the
+         *     Configuration screen. On refusal the release this call created is
+         *     archived rather than left behind -- nothing is left for a retry to trip
+         *     over.
+         */
+        post: operations["adopt_packaged_api_config_adopt_packaged_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/config/adoption": {
         parameters: {
             query?: never;
@@ -862,13 +888,14 @@ export interface paths {
         };
         /**
          * List Configuration Audit
-         * @description Platform audit records.
+         * @description Platform audit records, optionally filtered.
          *
          *     Mounted under `/api/config` because that is where the plan puts it, and
          *     because the actions it records are overwhelmingly configuration ones --
          *     promotions, source edits, workspace changes. It is *not* filtered to
-         *     configuration, and the path should not be read as promising that; the
-         *     records carry their own `action` and `target`.
+         *     configuration BY DEFAULT, and the path should not be read as promising
+         *     that; the records carry their own `action` and `target`, and `actions`/
+         *     `target` are how a caller narrows to them.
          */
         get: operations["list_configuration_audit_api_config_audit_get"];
         put?: never;
@@ -890,6 +917,53 @@ export interface paths {
         get: operations["get_configuration_audit_api_config_audit__audit_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/config/packaged-drift": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Packaged Drift
+         * @description The Overview screen's undecided-keys panel: read-only, per domain.
+         *
+         *     `config.release.write`, not a read capability: this is the panel that
+         *     tells an operator what `POST /adopt-packaged` would let them request, not
+         *     a general configuration read every read-role principal needs.
+         */
+        get: operations["packaged_drift_api_config_packaged_drift_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/config/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish
+         * @description Draft, patch and publish one behaviour domain in a single call.
+         *
+         *     On refusal the draft this call created is archived, not left behind --
+         *     a retry after a 409 or 422 finds no half-published release in its way.
+         */
+        post: operations["publish_api_config_publish_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1056,6 +1130,12 @@ export interface paths {
          *     implementation, which is the whole point of the exercise. CFG-1 deleted
          *     the console `APIRouter` this handler used to also be mounted under; the
          *     body stays in `sources.py`, imported and called directly, unchanged.
+         *
+         *     Routed through `_ok` (CFG-3a, carried from RV CFG-1 F4): this and the
+         *     other four canonical reads below used to return the console handler's
+         *     `APIResponse` straight through, which bypassed `redact_secret_values` --
+         *     every OTHER handler on this router scrubs its response, and these five
+         *     were the exception nothing had closed.
          */
         get: operations["list_configured_sources_api_config_sources_get"];
         put?: never;
@@ -1113,6 +1193,30 @@ export interface paths {
         get: operations["get_configured_source_asset_api_config_sources__source_id__assets__asset_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/config/validate/{domain_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate Domain
+         * @description Check a payload or a patch against the active release, with no write.
+         *
+         *     Read roles, not write: nothing is stored, nothing is audited, and a form
+         *     validating a field as an operator types must not need the write
+         *     capability an eventual patch would.
+         */
+        post: operations["validate_domain_api_config_validate__domain_key__post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5194,6 +5298,17 @@ export interface components {
             meta: components["schemas"]["ResponseMeta"];
             page?: components["schemas"]["PageMeta"] | null;
         };
+        /** APIResponse[dict[str, dict[str, list[str]]]] */
+        APIResponse_dict_str__dict_str__list_str____: {
+            /** Data */
+            data?: {
+                [key: string]: {
+                    [key: string]: string[];
+                };
+            } | null;
+            meta: components["schemas"]["ResponseMeta"];
+            page?: components["schemas"]["PageMeta"] | null;
+        };
         /** APIResponse[dict[str, object]] */
         APIResponse_dict_str__object__: {
             /** Data */
@@ -5542,6 +5657,13 @@ export interface components {
              * @default []
              */
             to_properties: string[];
+        };
+        /** AdoptPackagedPayload */
+        AdoptPackagedPayload: {
+            /** Expected Head Revision */
+            expected_head_revision: number;
+            /** Units */
+            units?: string[];
         };
         /**
          * AgentConfigurationProposalView
@@ -8091,6 +8213,8 @@ export interface components {
         };
         /** PatchDomainPayload */
         PatchDomainPayload: {
+            /** Expected Version */
+            expected_version?: number | null;
             /** Patch */
             patch: {
                 [key: string]: unknown;
@@ -8601,6 +8725,21 @@ export interface components {
             to_dataset: string;
             /** To Source Id */
             to_source_id: string;
+        };
+        /** PublishConfigurationPayload */
+        PublishConfigurationPayload: {
+            /** Domain Key */
+            domain_key: string;
+            /** Expected Head Revision */
+            expected_head_revision: number;
+            /** Note */
+            note?: string | null;
+            /** Patch */
+            patch: {
+                [key: string]: unknown;
+            };
+            /** Release Id */
+            release_id?: string | null;
         };
         /** PublishRequest */
         PublishRequest: {
@@ -11610,6 +11749,27 @@ export interface components {
          */
         TransformationKind: "NONE" | "TRIM" | "UPPERCASE" | "LOWERCASE" | "PARSE_DATE" | "PARSE_NUMBER";
         /**
+         * ValidateDomainPayload
+         * @description Body of `POST /validate/{domain_key}` -- exactly one of two shapes.
+         *
+         *     `payload` validates a whole document standalone, with nothing read from
+         *     any release: the shape a form uses before a draft exists at all.
+         *     `patch` merges against the ACTIVE release's stored domain (never a
+         *     draft's -- this route takes no `release_id`, because "would this be
+         *     valid" is a question worth asking before a draft is even open, and the
+         *     active release is the only document a caller with no draft yet can name).
+         */
+        ValidateDomainPayload: {
+            /** Patch */
+            patch?: {
+                [key: string]: unknown;
+            } | null;
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
          * ValidationCheck
          * @enum {string}
          */
@@ -12599,6 +12759,39 @@ export interface operations {
             };
         };
     };
+    adopt_packaged_api_config_adopt_packaged_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdoptPackagedPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_release_adoption_api_config_adoption_get: {
         parameters: {
             query?: never;
@@ -12621,7 +12814,10 @@ export interface operations {
     };
     list_configuration_audit_api_config_audit_get: {
         parameters: {
-            query?: never;
+            query?: {
+                actions?: string[] | null;
+                target?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -12635,6 +12831,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_list_AuditLog__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -12657,6 +12862,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_AuditLog_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    packaged_drift_api_config_packaged_drift_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__dict_str__list_str____"];
+                };
+            };
+        };
+    };
+    publish_api_config_publish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishConfigurationPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
                 };
             };
             /** @description Validation Error */
@@ -12926,6 +13184,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_InventoryDetail_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_domain_api_config_validate__domain_key__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ValidateDomainPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
                 };
             };
             /** @description Validation Error */

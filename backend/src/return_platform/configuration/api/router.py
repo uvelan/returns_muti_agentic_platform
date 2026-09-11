@@ -29,29 +29,44 @@ reads do.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from return_platform.configuration.api.audit import AuditLog
+from return_platform.configuration.api.audit import MAX_ACTIONS, AuditLog
 from return_platform.configuration.api.audit import get_audit_log as console_get_audit_log
 from return_platform.configuration.api.audit import list_audit_logs as console_list_audit_logs
 from return_platform.configuration.api.releases import (
+    AdoptPackagedPayload,
     ConfigurationReleaseDetailView,
     ConfigurationReleaseView,
     CreateReleasePayload,
     PatchDomainPayload,
     PromoteReleasePayload,
+    PublishConfigurationPayload,
+    ValidateDomainPayload,
     resolve_configuration_repository,
 )
 from return_platform.configuration.api.releases import (
+    adopt_packaged_release as console_adopt_packaged_release,
+)
+from return_platform.configuration.api.releases import (
     create_release as console_create_release,
+)
+from return_platform.configuration.api.releases import (
+    get_packaged_drift as console_get_packaged_drift,
 )
 from return_platform.configuration.api.releases import (
     patch_domain_config as console_patch_domain_config,
 )
 from return_platform.configuration.api.releases import (
     promote_release_status as console_promote_release_status,
+)
+from return_platform.configuration.api.releases import (
+    publish_configuration as console_publish_configuration,
+)
+from return_platform.configuration.api.releases import (
+    validate_domain_config as console_validate_domain_config,
 )
 from return_platform.configuration.api.secrets import redact_secret_values
 from return_platform.configuration.api.sources import (
@@ -73,7 +88,6 @@ from return_platform.security import capabilities
 from return_platform.security.authorization import (
     require_capability,
     require_read_roles,
-    require_write_roles,
 )
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
@@ -222,7 +236,12 @@ async def get_release(
 async def create_release(
     payload: CreateReleasePayload,
     request: Request,
-    user_id: str = Depends(require_write_roles),
+    # `config.release.write`, not `require_write_roles` -- CFG-3a. The role
+    # group admits the same seven roles `/promote` used to be reachable
+    # through before `CONFIG_RELEASE_PROMOTE` narrowed it; leaving draft
+    # creation on that group would let anyone who cannot promote still shape
+    # what a promoter promotes.
+    user_id: str = Depends(require_capability(capabilities.CONFIG_RELEASE_WRITE)),
 ) -> APIResponse[Any]:
     """Open a draft, cloned from the active release or the validated baseline.
 
@@ -247,7 +266,8 @@ async def patch_release_domain(
     domain_key: str,
     body: PatchDomainPayload,
     request: Request,
-    user_id: str = Depends(require_write_roles),
+    # `config.release.write` -- see the note on `create_release` above.
+    user_id: str = Depends(require_capability(capabilities.CONFIG_RELEASE_WRITE)),
 ) -> APIResponse[Any]:
     """Merge-patch one behaviour domain of a draft.
 
@@ -265,6 +285,105 @@ async def patch_release_domain(
     same outcome.
     """
     response = await console_patch_domain_config(release_id, domain_key, body, request, user_id)
+    return _ok(request, response.data)
+
+
+# --- validation ---------------------------------------------------------------
+#
+# CFG-3a scope item 1. No console predecessor to delegate from -- this is a new
+# capability, not a re-export -- but it still delegates rather than growing a
+# second validation path: `validate_domain_config` calls the exact model
+# (`_domain_model`) `_canonical_domain_payload` validates a real write against,
+# so "would this be valid" and "is this valid" can never disagree about what
+# valid means.
+
+
+@router.post("/validate/{domain_key}", response_model=APIResponse[dict[str, Any]])
+async def validate_domain(
+    domain_key: str,
+    body: ValidateDomainPayload,
+    request: Request,
+    _user_id: str = Depends(require_read_roles),
+) -> APIResponse[Any]:
+    """Check a payload or a patch against the active release, with no write.
+
+    Read roles, not write: nothing is stored, nothing is audited, and a form
+    validating a field as an operator types must not need the write
+    capability an eventual patch would.
+    """
+    response = await console_validate_domain_config(domain_key, body, request, _user_id)
+    return _ok(request, response.data)
+
+
+# --- publish --------------------------------------------------------------
+#
+# CFG-3a scope item 2: create-from-active, canonical patch, promote
+# VALIDATED, promote RELEASED with the head check, and the audit records --
+# one call, replacing the four `/releases` + PATCH + `/promote` x2 round
+# trips every Configuration screen used to make. See
+# `publish_configuration`'s own docstring for why it composes
+# `promote_configuration_release`/`_canonical_domain_payload`/
+# `record_configuration_audit` directly rather than calling the three
+# handlers above as sub-requests.
+
+
+@router.post("/publish", response_model=APIResponse[dict[str, Any]])
+async def publish(
+    body: PublishConfigurationPayload,
+    request: Request,
+    user_id: str = Depends(require_capability(capabilities.CONFIG_RELEASE_WRITE)),
+) -> APIResponse[Any]:
+    """Draft, patch and publish one behaviour domain in a single call.
+
+    On refusal the draft this call created is archived, not left behind --
+    a retry after a 409 or 422 finds no half-published release in its way.
+    """
+    response = await console_publish_configuration(body, request, user_id)
+    return _ok(request, response.data)
+
+
+# --- packaged adoption ---------------------------------------------------------
+#
+# CFG-3a scope item 3. `adopt_packaged_configuration` is the CLI's own
+# carry-forward decision, extracted so this route and
+# `bootstrap_graph_configuration.main` can never disagree about which key an
+# edit belongs to -- see `configuration/application/packaged_adoption.py`.
+# Gated by `config.release.write`, the same capability `/releases` and PATCH
+# use: adopting a packaged unit overwrites the release exactly as a patch
+# would, through the same publish pipeline `/publish` (below, once built)
+# uses -- not a role group either handler was ever reachable through.
+
+
+@router.post("/adopt-packaged", response_model=APIResponse[dict[str, Any]])
+async def adopt_packaged(
+    body: AdoptPackagedPayload,
+    request: Request,
+    user_id: str = Depends(require_capability(capabilities.CONFIG_RELEASE_WRITE)),
+) -> APIResponse[Any]:
+    """Publish a release adopting the named packaged units, per-key audited.
+
+    The API's answer to a `packaged_configuration_not_adopted` warning: what
+    `--adopt-packaged-key` does from a terminal, this does from the
+    Configuration screen. On refusal the release this call created is
+    archived rather than left behind -- nothing is left for a retry to trip
+    over.
+    """
+    response = await console_adopt_packaged_release(body, request, user_id)
+    return _ok(request, response.data)
+
+
+@router.get("/packaged-drift", response_model=APIResponse[dict[str, dict[str, list[str]]]])
+async def packaged_drift(
+    request: Request,
+    _user_id: str = Depends(require_capability(capabilities.CONFIG_RELEASE_WRITE)),
+) -> APIResponse[Any]:
+    """The Overview screen's undecided-keys panel: read-only, per domain.
+
+    `config.release.write`, not a read capability: this is the panel that
+    tells an operator what `POST /adopt-packaged` would let them request, not
+    a general configuration read every read-role principal needs.
+    """
+    response = await console_get_packaged_drift(request, _user_id)
     return _ok(request, response.data)
 
 
@@ -355,8 +474,16 @@ async def list_configured_sources(
     implementation, which is the whole point of the exercise. CFG-1 deleted
     the console `APIRouter` this handler used to also be mounted under; the
     body stays in `sources.py`, imported and called directly, unchanged.
+
+    Routed through `_ok` (CFG-3a, carried from RV CFG-1 F4): this and the
+    other four canonical reads below used to return the console handler's
+    `APIResponse` straight through, which bypassed `redact_secret_values` --
+    every OTHER handler on this router scrubs its response, and these five
+    were the exception nothing had closed.
     """
-    return await console_get_sources(request, _user_id)
+    response = await console_get_sources(request, _user_id)
+    assert response.data is not None  # console_get_sources always sets it, or raises
+    return _ok(request, [item.model_dump(mode="json") for item in response.data])
 
 
 @router.get("/sources/{source_id}", response_model=APIResponse[SourceDetail])
@@ -365,7 +492,9 @@ async def get_configured_source(
     request: Request,
     _user_id: str = Depends(require_read_roles),
 ) -> APIResponse[Any]:
-    return await console_get_source(source_id, request, _user_id)
+    response = await console_get_source(source_id, request, _user_id)
+    assert response.data is not None  # console_get_source always sets it, or raises
+    return _ok(request, response.data.model_dump(mode="json"))
 
 
 @router.get(
@@ -418,23 +547,38 @@ async def get_configured_source_asset(
                 "message": f"Source {source_id!r} does not own asset {asset_id!r}.",
             },
         )
-    return await console_get_inventory_detail(asset.engine, asset_id, request, _user_id)
+    response = await console_get_inventory_detail(asset.engine, asset_id, request, _user_id)
+    assert response.data is not None  # console_get_inventory_detail always sets it, or raises
+    return _ok(request, response.data.model_dump(mode="json"))
 
 
 @router.get("/audit", response_model=APIResponse[list[AuditLog]])
 async def list_configuration_audit(
     request: Request,
+    # CFG-3a scope item 6. `actions` accepts repeated query params
+    # (`?actions=CONFIGURATION_RELEASE_PROMOTED&actions=CONFIGURATION_*`);
+    # each entry may end with `*` for a prefix match. `target` is exact.
+    # Both default to unset, which is the unfiltered read this route always
+    # was -- an operator's dashboard asking for one release's trail is new
+    # traffic, not a narrowing of what every existing caller already gets.
+    # Capped at MAX_ACTIONS (RV F9): refused as a 422 here, before an
+    # unbounded `$regex` alternation ever reaches Mongo.
+    actions: Annotated[list[str] | None, Query(max_length=MAX_ACTIONS)] = None,
+    target: Annotated[str | None, Query()] = None,
     _user_id: str = Depends(require_read_roles),
 ) -> APIResponse[Any]:
-    """Platform audit records.
+    """Platform audit records, optionally filtered.
 
     Mounted under `/api/config` because that is where the plan puts it, and
     because the actions it records are overwhelmingly configuration ones --
     promotions, source edits, workspace changes. It is *not* filtered to
-    configuration, and the path should not be read as promising that; the
-    records carry their own `action` and `target`.
+    configuration BY DEFAULT, and the path should not be read as promising
+    that; the records carry their own `action` and `target`, and `actions`/
+    `target` are how a caller narrows to them.
     """
-    return await console_list_audit_logs(request, _user_id)
+    response = await console_list_audit_logs(request, _user_id, actions=actions, target=target)
+    assert response.data is not None  # console_list_audit_logs always sets it
+    return _ok(request, [item.model_dump(mode="json") for item in response.data])
 
 
 @router.get("/audit/{audit_id}", response_model=APIResponse[AuditLog])
@@ -443,4 +587,6 @@ async def get_configuration_audit(
     request: Request,
     _user_id: str = Depends(require_read_roles),
 ) -> APIResponse[Any]:
-    return await console_get_audit_log(request, audit_id, _user_id)
+    response = await console_get_audit_log(request, audit_id, _user_id)
+    assert response.data is not None  # console_get_audit_log always sets it, or raises
+    return _ok(request, response.data.model_dump(mode="json"))

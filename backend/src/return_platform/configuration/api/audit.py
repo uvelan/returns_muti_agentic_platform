@@ -15,6 +15,8 @@ they called -- went with them.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any, cast
 
@@ -63,13 +65,76 @@ class AuditService:
             details=cast(dict[str, Any], document.get("details", {})),
         )
 
-    async def list_logs(self) -> list[AuditLog]:
-        cursor = self._audit.find({}).sort("timestamp", DESCENDING).limit(1_000)
+    async def list_logs(
+        self,
+        *,
+        actions: Sequence[str] | None = None,
+        target: str | None = None,
+    ) -> list[AuditLog]:
+        """Every record, or the ones matching `actions`/`target`.
+
+        Server-side, not a client-side filter over `find({})`: the `audit`
+        collection is platform-wide (AI gateway, governance kernel,
+        configuration releases all write through the same `append_audit`),
+        so a caller asking for one release's trail must not have to page
+        through a thousand unrelated records first -- `limit(1_000)` runs
+        AFTER the filter, not before it.
+
+        `actions` entries may end with `*` for a prefix match
+        (`CONFIGURATION_*`) or name one action exactly; multiple entries are
+        OR'd together, the same way a caller would read a comma-free
+        repeated query parameter. All-exact entries (no `*` in the whole
+        list) use Mongo's `$in`, which can use the `action` index; any
+        prefix entry falls back to a `$regex` alternation, which cannot
+        (RV F9). `target` is an exact match -- every writer of an audit
+        record already knows the exact target it acted on (a release id, a
+        source id), so there is no prefix case to support without inventing
+        a wildcard convention nothing produces yet.
+
+        Neither parameter changes the default: called with neither, this is
+        exactly the unfiltered `find({})` it always was.
+
+        `actions` is capped at `MAX_ACTIONS` (RV F9): the router's own
+        `Query(max_length=...)` refuses an over-long list before this ever
+        runs, but the cap is enforced here too for any other caller.
+        """
+        if actions and len(actions) > MAX_ACTIONS:
+            raise ValueError(f"actions accepts at most {MAX_ACTIONS} values, got {len(actions)}")
+        query: dict[str, Any] = {}
+        if actions:
+            if any(action.endswith("*") for action in actions):
+                query["action"] = {"$regex": _action_pattern(actions)}
+            else:
+                query["action"] = {"$in": list(actions)}
+        if target:
+            query["target"] = target
+        cursor = self._audit.find(query).sort("timestamp", DESCENDING).limit(1_000)
         return [self._log(cast(dict[str, Any], document)) async for document in cursor]
 
     async def get_log(self, audit_id: str) -> AuditLog | None:
         document = await self._audit.find_one({"_id": audit_id})
         return None if document is None else self._log(cast(dict[str, Any], document))
+
+
+#: RV CFG-3a round 1 F9: an unbounded `actions` list builds an arbitrarily
+#: long `$regex` alternation the server then runs per document. Twenty is
+#: generous for an operator narrowing a dashboard by hand and small enough
+#: that the alternation stays cheap.
+MAX_ACTIONS = 20
+
+
+def _action_pattern(actions: Sequence[str]) -> str:
+    """One alternation per `actions` entry: `NAME` matches exactly, `NAME*`
+    matches as a prefix. Every action name in this platform is written
+    `DOMAIN_VERB` with no other place a `*` is meaningful, so a trailing
+    wildcard is the whole glob vocabulary this needs. Every entry is
+    `re.escape`d -- an action name is not attacker input here, but a name
+    containing a regex metacharacter must still match literally."""
+    alternatives = [
+        f"^{re.escape(action[:-1])}" if action.endswith("*") else f"^{re.escape(action)}$"
+        for action in actions
+    ]
+    return "|".join(alternatives)
 
 
 def resolve_audit_service(request: Request) -> AuditService:
@@ -92,9 +157,18 @@ def _response_meta(request: Request) -> ResponseMeta:
 async def list_audit_logs(
     request: Request,
     _user_id: str = Depends(require_read_roles),
+    *,
+    actions: Sequence[str] | None = None,
+    target: str | None = None,
 ) -> APIResponse[list[AuditLog]]:
+    """`actions`/`target` are keyword-only and default-`None` -- the query
+    parameters `router.py`'s route declares -- so every existing caller of
+    this handler function (there are none left mounting it directly, but
+    the shape is the platform's convention for these plain-function-not-route
+    handlers) keeps calling it with just `(request, user_id)` unchanged."""
     return APIResponse(
-        data=await resolve_audit_service(request).list_logs(), meta=_response_meta(request)
+        data=await resolve_audit_service(request).list_logs(actions=actions, target=target),
+        meta=_response_meta(request),
     )
 
 

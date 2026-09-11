@@ -119,7 +119,6 @@ def shipped_payload() -> dict[str, Any]:
     composed = compose_configuration_document(
         DEFAULT_RETURN_CONFIGURATION_PATH,
         document_keys=RETURN_CONFIGURATION_DOCUMENT_KEYS,
-        ignore=frozenset({"production.yaml"}),
     )
     return composed.document
 

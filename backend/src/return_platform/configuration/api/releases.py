@@ -17,20 +17,37 @@ import copy
 import json
 import logging
 from typing import Any, Literal, cast
+from uuid import uuid4
 
 from fastapi import Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from return_platform.ai.routing.tasks import AIGatewayConfiguration, LoadedAIGatewayConfiguration
+from return_platform.ai.routing.tasks import (
+    AIGatewayConfiguration,
+    LoadedAIGatewayConfiguration,
+    load_ai_gateway_configuration,
+)
+from return_platform.configuration.application.packaged_adoption import (
+    PACKAGED_DOMAIN_KEY_DIGESTS,
+    PACKAGED_KEY_DIGESTS,
+    adopt_packaged_configuration,
+    summarize_packaged_drift,
+)
 from return_platform.configuration.application.release_promotion import (
     ReleasePromotionError,
     promote_configuration_release,
+    publish_release_with_domains,
 )
 from return_platform.configuration.graph_repository import (
     ConfigurationGraphRepository,
+    ConfigurationReleaseNode,
 )
-from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
+from return_platform.configuration.return_configuration import (
+    ReturnPlatformConfiguration,
+    load_return_configuration,
+)
 from return_platform.configuration.runtime_activation import RuntimeConfigurationActivator
+from return_platform.configuration.settings import Settings
 from return_platform.configuration.snapshot import (
     AI_GATEWAY_DOMAIN_KEY,
     DEPENDENCY_SIMULATION_DOMAIN_KEY,
@@ -39,10 +56,16 @@ from return_platform.configuration.snapshot import (
 from return_platform.dependency_simulation.configuration import (
     DependencySimulationConfiguration,
     LoadedDependencySimulationConfiguration,
+    load_dependency_simulation_configuration,
 )
 from return_platform.operations.repository import resolve_operational_repository
 from return_platform.resources import RuntimeResources
-from return_platform.security.authorization import require_write_roles
+from return_platform.security import capabilities
+from return_platform.security.authorization import (
+    require_capability,
+    require_read_roles,
+    require_write_roles,
+)
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 logger = logging.getLogger(__name__)
@@ -121,20 +144,23 @@ class CreateReleasePayload(BaseModel):
     from_active: bool = True
 
 
-async def create_release(
-    payload: CreateReleasePayload,
+async def _active_or_baseline_domains(
     request: Request,
-    user_id: str = Depends(require_write_roles),
-) -> APIResponse[dict[str, Any]]:
-    """Create a draft by cloning the active release or current validated baseline."""
+    repo: ConfigurationGraphRepository,
+    active_release: ConfigurationReleaseNode | None,
+    *,
+    from_active: bool,
+) -> dict[str, Any]:
+    """The domains a new draft starts from: the active release, or the
+    packaged baseline for whichever domain it does not carry.
 
-    repo = resolve_configuration_repository(request)
-    if await repo.get_release(payload.release_id) is not None:
-        raise HTTPException(status_code=409, detail=f"Release {payload.release_id} already exists")
-
+    Shared by `create_release` and `publish_configuration` (CFG-3a) so a
+    single-call publish clones a release exactly the way the four-round-trip
+    path always has -- one behaviour, not a second copy of it for the
+    collapsed pipeline.
+    """
     domains_to_copy: dict[str, Any] = {}
-    active_release = await repo.get_active_release()
-    if active_release is not None and payload.from_active:
+    if active_release is not None and from_active:
         domains_to_copy = await repo.get_all_domain_configs(active_release.release_id)
 
     loaded = getattr(request.app.state, "return_configuration", None)
@@ -163,6 +189,24 @@ async def create_release(
             DEPENDENCY_SIMULATION_DOMAIN_KEY,
             loaded_dependency_simulation.configuration.model_dump(mode="json"),
         )
+    return domains_to_copy
+
+
+async def create_release(
+    payload: CreateReleasePayload,
+    request: Request,
+    user_id: str = Depends(require_write_roles),
+) -> APIResponse[dict[str, Any]]:
+    """Create a draft by cloning the active release or current validated baseline."""
+
+    repo = resolve_configuration_repository(request)
+    if await repo.get_release(payload.release_id) is not None:
+        raise HTTPException(status_code=409, detail=f"Release {payload.release_id} already exists")
+
+    active_release = await repo.get_active_release()
+    domains_to_copy = await _active_or_baseline_domains(
+        request, repo, active_release, from_active=payload.from_active
+    )
 
     for domain_key, domain_payload in domains_to_copy.items():
         await repo.save_draft_domain(
@@ -216,7 +260,7 @@ async def record_configuration_audit(
     actor: str,
     target: str,
     details: dict[str, Any],
-) -> None:
+) -> str:
     """One audit record per configuration release change, in the platform's audit log.
 
     Release create, domain patch and promotion left no entry in the `audit`
@@ -232,18 +276,36 @@ async def record_configuration_audit(
     503 because the audit store was unreachable -- the operator would retry and
     cut a second release. The failure is logged with everything the record
     would have carried, so the gap is visible rather than silent.
+
+    **Returns a correlation id, not the storage primary key.** `append_audit`
+    (`operations/repository.py`, outside this lease's Owns list) assigns its
+    own `_id` and does not hand it back. `/publish` and `/adopt-packaged`
+    need something to report as `audit_ids` -- an id an operator can hand to
+    support, or grep the log line above for -- so one is generated here,
+    stamped into the stored record as `details["auditId"]`, and returned
+    unconditionally, even when the write below fails: the id is a token this
+    call assigned, not a promise the record is queryable, and the failure
+    right above it is what says whether it is.
     """
+    audit_id = str(uuid4())
     try:
         repository = resolve_operational_repository(request)
-        await repository.append_audit(action=action, actor=actor, target=target, details=details)
+        await repository.append_audit(
+            action=action,
+            actor=actor,
+            target=target,
+            details={**details, "auditId": audit_id},
+        )
     except Exception:  # noqa: BLE001 -- a failure here must not undo a completed write
         logger.exception(
-            "configuration_audit_not_recorded action=%s actor=%s target=%s details=%s",
+            "configuration_audit_not_recorded action=%s actor=%s target=%s auditId=%s details=%s",
             action,
             actor,
             target,
+            audit_id,
             json.dumps(details, sort_keys=True, default=str),
         )
+    return audit_id
 
 
 _CHANGED_PATHS_CAP = 50
@@ -275,6 +337,36 @@ def _all_changed_paths(before: Any, after: Any, prefix: str) -> list[str]:
     return [] if before == after else [prefix or "$"]
 
 
+#: The three domain models this platform reads, keyed the way every release's
+#: payload map is keyed. One place naming the association -- `_domain_model`,
+#: `_canonical_domain_payload` and `_validation_errors` all resolve a domain
+#: key through this rather than each repeating the same three-way `if`.
+_DOMAIN_MODELS: dict[
+    str,
+    type[ReturnPlatformConfiguration | AIGatewayConfiguration | DependencySimulationConfiguration],
+] = {
+    RETURN_PLATFORM_DOMAIN_KEY: ReturnPlatformConfiguration,
+    AI_GATEWAY_DOMAIN_KEY: AIGatewayConfiguration,
+    DEPENDENCY_SIMULATION_DOMAIN_KEY: DependencySimulationConfiguration,
+}
+
+
+def _domain_model(
+    domain_key: str,
+) -> type[ReturnPlatformConfiguration | AIGatewayConfiguration | DependencySimulationConfiguration]:
+    """The pydantic model that owns `domain_key`, or a 404 naming the three that exist."""
+    model = _DOMAIN_MODELS.get(domain_key)
+    if model is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Domain {domain_key} is not a configuration domain; expected one of "
+                f"{', '.join(_DOMAIN_MODELS)}"
+            ),
+        )
+    return model
+
+
 def _canonical_domain_payload(domain_key: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Validate a domain payload and return the form the platform persists.
 
@@ -292,29 +384,71 @@ def _canonical_domain_payload(domain_key: str, payload: dict[str, Any]) -> dict[
     stored unvalidated: nothing would ever read it, but it would ride along in
     every clone of the release and count in its checksum.
     """
+    model = _domain_model(domain_key)
     try:
-        if domain_key == RETURN_PLATFORM_DOMAIN_KEY:
-            return ReturnPlatformConfiguration.model_validate(payload).model_dump(mode="json")
-        if domain_key == AI_GATEWAY_DOMAIN_KEY:
-            return AIGatewayConfiguration.model_validate(payload).model_dump(mode="json")
-        if domain_key == DEPENDENCY_SIMULATION_DOMAIN_KEY:
-            return DependencySimulationConfiguration.model_validate(payload).model_dump(mode="json")
+        return model.model_validate(payload).model_dump(mode="json")
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    raise HTTPException(
-        status_code=404,
-        detail=(
-            f"Domain {domain_key} is not a configuration domain; expected one of "
-            f"{RETURN_PLATFORM_DOMAIN_KEY}, {AI_GATEWAY_DOMAIN_KEY}, "
-            f"{DEPENDENCY_SIMULATION_DOMAIN_KEY}"
-        ),
-    )
+
+
+def _dotted_error_path(loc: tuple[int | str, ...]) -> str:
+    """A pydantic error `loc` tuple, joined the way the console reads a field.
+
+    `("return_policy", "return_method_derivation", "default_method")` becomes
+    `return_policy.return_method_derivation.default_method`; a list index is
+    suffixed onto the segment before it (`agents[2].version`, not
+    `agents.2.version`) so a numeric path component never reads as a mapping
+    key named `"2"`.
+    """
+    parts: list[str] = []
+    for segment in loc:
+        if isinstance(segment, int):
+            if parts:
+                parts[-1] = f"{parts[-1]}[{segment}]"
+            else:
+                parts.append(f"[{segment}]")
+        else:
+            parts.append(str(segment))
+    return ".".join(parts)
+
+
+def _validation_errors(domain_key: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Validate `payload` against the domain it claims and report, never raise.
+
+    `POST /validate/{domain_key}` exists so a form can ask "would this be
+    valid" before committing to a draft or a patch -- the difference from
+    `_canonical_domain_payload` is exactly that: this reports pydantic's own
+    `ValidationError.errors()`, mapped to `{path, message, type}`, instead of
+    collapsing them into one string and raising. An unknown domain key still
+    404s -- there is no payload shape to report errors *about*.
+    """
+    model = _domain_model(domain_key)
+    try:
+        model.model_validate(payload)
+    except ValidationError as exc:
+        return [
+            {
+                "path": _dotted_error_path(error["loc"]),
+                "message": error["msg"],
+                "type": error["type"],
+            }
+            for error in exc.errors()
+        ]
+    return []
 
 
 class PatchDomainPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     patch: dict[str, Any]
+    #: Optimistic lock. Absent (the default) applies the patch unconditionally,
+    #: exactly as before this field existed -- the frontend pipeline that reads
+    #: a domain, patches it and never round-trips a version keeps working with
+    #: no change. Present, it must equal `get_domain_version`'s answer for this
+    #: release/domain or the write is refused with 409 rather than silently
+    #: applied over an edit the caller never saw -- two operators editing the
+    #: same draft from two open tabs is the ordinary way this happens.
+    expected_version: int | None = Field(default=None, ge=0)
 
 
 def _apply_merge_patch(target: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
@@ -351,6 +485,20 @@ async def patch_domain_config(
             status_code=404,
             detail=f"Domain {domain_key} was not found in release {release_id}",
         )
+    if body.expected_version is not None:
+        current_version = await repo.get_domain_version(release_id, domain_key)
+        if current_version != body.expected_version:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "CONFIGURATION_DOMAIN_VERSION_CONFLICT",
+                    "message": (
+                        f"Domain {domain_key} of release {release_id} is at version "
+                        f"{current_version}, not the expected {body.expected_version}"
+                    ),
+                    "current_version": current_version,
+                },
+            )
     updated_payload = _canonical_domain_payload(domain_key, _apply_merge_patch(current, body.patch))
     try:
         await repo.save_draft_domain(
@@ -373,6 +521,70 @@ async def patch_domain_config(
     )
     return APIResponse(
         data={"domain_key": domain_key, "payload": updated_payload},
+        meta=_response_meta(request),
+    )
+
+
+class ValidateDomainPayload(BaseModel):
+    """Body of `POST /validate/{domain_key}` -- exactly one of two shapes.
+
+    `payload` validates a whole document standalone, with nothing read from
+    any release: the shape a form uses before a draft exists at all.
+    `patch` merges against the ACTIVE release's stored domain (never a
+    draft's -- this route takes no `release_id`, because "would this be
+    valid" is a question worth asking before a draft is even open, and the
+    active release is the only document a caller with no draft yet can name).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    payload: dict[str, Any] | None = None
+    patch: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one_shape(self) -> ValidateDomainPayload:
+        if (self.payload is None) == (self.patch is None):
+            raise ValueError("exactly one of payload or patch must be given")
+        return self
+
+
+async def validate_domain_config(
+    domain_key: str,
+    body: ValidateDomainPayload,
+    request: Request,
+    _user_id: str = Depends(require_read_roles),
+) -> APIResponse[dict[str, Any]]:
+    """Report whether a payload or patch would validate, without writing anything.
+
+    No draft is opened, no domain is stored, no audit record is written --
+    this is the check a form runs on every keystroke or on submit, and it must
+    be side-effect-free to be safe to call that often. `errors` is pydantic's
+    own `ValidationError.errors()`, mapped to `{path, message, type}` by
+    `_validation_errors` -- the same structure a caller would get by reading
+    the exception `_canonical_domain_payload` raises on a real write, so a
+    form's error-rendering code path is exercised by both.
+    """
+    if body.payload is not None:
+        candidate = body.payload
+    else:
+        repo = resolve_configuration_repository(request)
+        active = await repo.get_active_release()
+        if active is None:
+            raise HTTPException(
+                status_code=409,
+                detail="There is no active configuration release to validate a patch against",
+            )
+        current = await repo.get_domain_config(active.release_id, domain_key)
+        if current is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Domain {domain_key} was not found in the active release",
+            )
+        candidate = _apply_merge_patch(current, cast(dict[str, Any], body.patch))
+
+    errors = _validation_errors(domain_key, candidate)
+    return APIResponse(
+        data={"valid": not errors, "errors": errors},
         meta=_response_meta(request),
     )
 
@@ -445,4 +657,468 @@ async def promote_release_status(
             "head_revision": outcome.activated_snapshot.head_revision,
             "loaded_at": outcome.activated_snapshot.loaded_at,
         }
+    return APIResponse(data=data, meta=_response_meta(request))
+
+
+# --- publish (single transaction) ---------------------------------------------
+#
+# CFG-3a scope item 2. Every screen that changes one prompt or one policy
+# used to be four round trips -- create, patch, promote VALIDATED, promote
+# RELEASED -- each one a chance for a concurrent editor's own draft to land
+# in between. This composes the three primitives the brief names
+# (`promote_configuration_release`, the canonical payload helper
+# `_canonical_domain_payload`, and `record_configuration_audit`) directly
+# rather than calling `create_release`/`patch_domain_config`/
+# `promote_release_status` as sub-requests: those three already exist as
+# HTTP handlers with their own response shapes, and composing THOSE would
+# make this a wrapper around wrappers rather than the one-transaction
+# handler the brief asks for. `_active_or_baseline_domains` is shared with
+# `create_release` for exactly the one piece that WOULD otherwise be a
+# second copy -- the baseline clone.
+
+
+class PublishConfigurationPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    #: Omit to let the server assign one; name one to make the id
+    #: predictable (a runbook, a migration script). Either way this is a NEW
+    #: release -- PATCH is the surface for editing one already in flight,
+    #: and it takes the id as a path segment for exactly that reason.
+    release_id: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]+$",
+    )
+    domain_key: str
+    patch: dict[str, Any]
+    expected_head_revision: int = Field(ge=0)
+    note: str | None = Field(default=None, max_length=2000)
+
+
+async def publish_configuration(
+    body: PublishConfigurationPayload,
+    request: Request,
+    user_id: str = Depends(require_capability(capabilities.CONFIG_RELEASE_WRITE)),
+) -> APIResponse[dict[str, Any]]:
+    """Create-from-active, canonical patch, VALIDATED, RELEASED -- one call.
+
+    **On any refusal the draft this call created is archived, not left
+    behind** (`_archive_draft_on_refusal`): a caller retrying after a 409 or
+    422 must not find a half-published release occupying the id it asked
+    for.
+
+    **Writes the same per-step audit records the four-call path writes.**
+    `create_release`, `patch_domain_config` and `promote_release_status`
+    each call `record_configuration_audit` themselves; this handler calls
+    `promote_configuration_release` and `_canonical_domain_payload`
+    directly (the brief's own primitives, not the three route handlers --
+    see the module note above), so it must call `record_configuration_audit`
+    itself at each step or the trail those three would have left simply
+    would not exist. RV F2: an earlier version of this handler wrote one
+    summary `CONFIGURATION_RELEASE_PUBLISHED` record and claimed the
+    per-step trail existed anyway -- it did not. Now: `CONFIGURATION_
+    RELEASE_CREATED`, `CONFIGURATION_DOMAIN_PATCHED` (with `changedPaths`,
+    the same before/after leaf diff the four-call path records), two
+    `CONFIGURATION_RELEASE_PROMOTED` (VALIDATED then RELEASED), and the
+    summary record last -- every id returned in `audit_ids`, in that order,
+    all independently queryable via `GET /audit?target=<release>`.
+    """
+    repo = resolve_configuration_repository(request)
+    release_id = body.release_id or f"publish-{uuid4().hex[:16]}"
+    if await repo.get_release(release_id) is not None:
+        raise HTTPException(status_code=409, detail=f"Release {release_id} already exists")
+
+    audit_ids: list[str] = []
+    try:
+        active_release = await repo.get_active_release()
+        domains_to_copy = await _active_or_baseline_domains(
+            request, repo, active_release, from_active=True
+        )
+        for domain_key, domain_payload in domains_to_copy.items():
+            await repo.save_draft_domain(
+                release_id, domain_key, cast(dict[str, Any], domain_payload), actor_id=user_id
+            )
+        if active_release is not None and active_release.metadata:
+            await repo.set_release_metadata(release_id, dict(active_release.metadata))
+        audit_ids.append(
+            await record_configuration_audit(
+                request,
+                action="CONFIGURATION_RELEASE_CREATED",
+                actor=user_id,
+                target=release_id,
+                details={
+                    "clonedFrom": (
+                        active_release.release_id if active_release is not None else None
+                    ),
+                    "domains": sorted(domains_to_copy),
+                },
+            )
+        )
+
+        current = await repo.get_domain_config(release_id, body.domain_key)
+        if current is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Domain {body.domain_key} was not found in release {release_id}",
+            )
+        updated_payload = _canonical_domain_payload(
+            body.domain_key, _apply_merge_patch(current, body.patch)
+        )
+        try:
+            await repo.save_draft_domain(
+                release_id, body.domain_key, updated_payload, actor_id=user_id
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        audit_ids.append(
+            await record_configuration_audit(
+                request,
+                action="CONFIGURATION_DOMAIN_PATCHED",
+                actor=user_id,
+                target=f"{release_id}/{body.domain_key}",
+                details={
+                    "patchKeys": sorted(body.patch),
+                    "changedPaths": _changed_paths(current, updated_payload),
+                },
+            )
+        )
+
+        resources = getattr(request.app.state, "resources", None)
+        store = resources if isinstance(resources, RuntimeResources) else None
+        activator = getattr(request.app.state, "runtime_configuration_activator", None)
+        promotion_kwargs: dict[str, Any] = {
+            "repository": repo,
+            "release_id": release_id,
+            "actor_id": user_id,
+            "mongo": store.mongo if store is not None else None,
+            "mongo_database": store.settings.mongo_database if store is not None else None,
+            "activator": (
+                activator if isinstance(activator, RuntimeConfigurationActivator) else None
+            ),
+        }
+        try:
+            validated_outcome = await promote_configuration_release(
+                target_status="VALIDATED", **promotion_kwargs
+            )
+        except ReleasePromotionError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        audit_ids.append(
+            await record_configuration_audit(
+                request,
+                action="CONFIGURATION_RELEASE_PROMOTED",
+                actor=user_id,
+                target=release_id,
+                details={
+                    "status": "VALIDATED",
+                    "headRevision": validated_outcome.head_revision,
+                    "checksumSha256": validated_outcome.release.checksum_sha256,
+                    "activatedReleaseId": None,
+                },
+            )
+        )
+
+        try:
+            outcome = await promote_configuration_release(
+                target_status="RELEASED",
+                expected_head_revision=body.expected_head_revision,
+                **promotion_kwargs,
+            )
+        except ReleasePromotionError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        audit_ids.append(
+            await record_configuration_audit(
+                request,
+                action="CONFIGURATION_RELEASE_PROMOTED",
+                actor=user_id,
+                target=release_id,
+                details={
+                    "status": "RELEASED",
+                    "headRevision": outcome.head_revision,
+                    "checksumSha256": outcome.release.checksum_sha256,
+                    "activatedReleaseId": (
+                        outcome.activated_snapshot.release_id
+                        if outcome.activated_snapshot is not None
+                        else None
+                    ),
+                },
+            )
+        )
+    except HTTPException:
+        await _archive_draft_on_refusal(repo, release_id, user_id)
+        raise
+
+    details: dict[str, Any] = {
+        "domainKey": body.domain_key,
+        "patchKeys": sorted(body.patch),
+        "clonedFrom": active_release.release_id if active_release is not None else None,
+        "headRevision": outcome.head_revision,
+        "checksumSha256": outcome.release.checksum_sha256,
+    }
+    if body.note:
+        details["note"] = body.note
+    audit_ids.append(
+        await record_configuration_audit(
+            request,
+            action="CONFIGURATION_RELEASE_PUBLISHED",
+            actor=user_id,
+            target=release_id,
+            details=details,
+        )
+    )
+
+    data = outcome.release.model_dump(mode="json")
+    data["domains"] = outcome.domains
+    data["head_revision"] = outcome.head_revision
+    data["audit_ids"] = audit_ids
+    if outcome.activated_snapshot is not None:
+        data["runtime_activation"] = {
+            "release_id": outcome.activated_snapshot.release_id,
+            "checksum_sha256": outcome.activated_snapshot.checksum_sha256,
+            "head_revision": outcome.activated_snapshot.head_revision,
+            "loaded_at": outcome.activated_snapshot.loaded_at,
+        }
+    return APIResponse(data=data, meta=_response_meta(request))
+
+
+# --- packaged adoption ---------------------------------------------------------
+#
+# CFG-3a scope item 3. `adopt_packaged_configuration` is
+# `bootstrap_graph_configuration.main`'s own carry-forward decision, extracted
+# so this route and the CLI can never disagree about which key an edit
+# belongs to -- see `configuration/application/packaged_adoption.py`.
+
+
+def _packaged_domain_payloads(request: Request) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    """The packaged files on disk, read fresh, as dicts.
+
+    **Not `app.state.return_configuration`/`ai_gateway_configuration`.**
+    Those hold the RUNTIME snapshot: `RuntimeConfigurationActivator.refresh`
+    overwrites them with whatever the ACTIVE RELEASE contains the moment one
+    is promoted (`runtime_activation.py:375`), so after this process has ever
+    activated a release, `app.state.return_configuration` no longer reflects
+    the packaged file at all -- it reflects the release, which is exactly the
+    other side of the comparison this function exists to make possible. The
+    CLI reads `settings.return_configuration_path` fresh on every invocation
+    for the same reason; this does the same read, from the same paths, so
+    "packaged" means the same thing to both callers of
+    `adopt_packaged_configuration`.
+    """
+    settings = getattr(request.app.state, "settings", None)
+    if not isinstance(settings, Settings):
+        raise HTTPException(status_code=503, detail="Packaged configuration is unavailable")
+    try:
+        loaded = load_return_configuration(settings.return_configuration_path)
+        loaded_ai_gateway = load_ai_gateway_configuration(settings.ai_gateway_configuration_path)
+        loaded_dependency_simulation = load_dependency_simulation_configuration(
+            settings.dependency_simulation_configuration_path
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503, detail=f"Packaged configuration is unavailable: {exc}"
+        ) from exc
+    return (
+        loaded.configuration.model_dump(mode="json"),
+        {
+            AI_GATEWAY_DOMAIN_KEY: loaded_ai_gateway.configuration.model_dump(mode="json"),
+            DEPENDENCY_SIMULATION_DOMAIN_KEY: (
+                loaded_dependency_simulation.configuration.model_dump(mode="json")
+            ),
+        },
+    )
+
+
+async def _archive_draft_on_refusal(
+    repo: ConfigurationGraphRepository, release_id: str, actor_id: str
+) -> None:
+    """Leave nothing behind: a release this request itself created and did
+    not reach RELEASED is archived rather than left an orphaned DRAFT or
+    VALIDATED node.
+
+    `ARCHIVED` is reachable from both `DRAFT` and `VALIDATED`
+    (`RELEASE_TRANSITIONS`) -- this is the existing lifecycle's own way to
+    retire a release nobody will publish, not a new transition invented for
+    the rollback. Best-effort and silent on failure: a release that never got
+    created (the refusal happened before the first `save_draft_domain`) has
+    nothing to archive, and either case must not turn a real refusal into a
+    second, more confusing error.
+    """
+    try:
+        current = await repo.get_release(release_id)
+        if current is not None and current.status in {"DRAFT", "VALIDATED"}:
+            await repo.promote_release(release_id, "ARCHIVED", actor_id=actor_id)
+    except Exception:  # noqa: BLE001 -- the original refusal is what must surface
+        logger.exception(
+            "configuration_release_rollback_failed release_id=%s",
+            release_id,
+        )
+
+
+class AdoptPackagedPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    #: `<key>` (a RETURN_PLATFORM top-level key, `discovery`) or
+    #: `<DOMAIN>/<unit>` (`AI_GATEWAY/tasks.RETURN_STATUS_SUMMARY_V1`,
+    #: `DEPENDENCY_SIMULATION/dependencies.OMC`) -- the same vocabulary
+    #: `--adopt-packaged-key` uses, checked by the same `_adopt_requests`.
+    units: list[str] = Field(default_factory=list)
+    expected_head_revision: int = Field(ge=0)
+
+
+async def adopt_packaged_release(
+    body: AdoptPackagedPayload,
+    request: Request,
+    user_id: str = Depends(require_capability(capabilities.CONFIG_RELEASE_WRITE)),
+) -> APIResponse[dict[str, Any]]:
+    """Publish a release that adopts the named packaged units.
+
+    The API's answer to a `packaged_configuration_not_adopted` warning,
+    without a CLI invocation: everything named in `units` is taken from the
+    packaged file for that key/unit; everything else keeps the active
+    release's value exactly as the CLI's carry-forward would leave it.
+    Publishes through `publish_release_with_domains` -- the same clone,
+    overlay, VALIDATED-then-RELEASED sequence `/publish` and the governance
+    kernel use -- with `expected_head_revision` as the caller's own
+    optimistic lock rather than a value read fresh at the moment of
+    publishing, since an operator resolving a drift panel is acting on a
+    `GET /packaged-drift` read that may already be stale.
+
+    On refusal the release this call created is archived, not left behind.
+    """
+    repo = resolve_configuration_repository(request)
+    active = await repo.get_active_release()
+    if active is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "There is no active configuration release to adopt packaged configuration into"
+            ),
+        )
+
+    packaged_return_platform, packaged_domains = _packaged_domain_payloads(request)
+    active_domain_payloads = await repo.get_all_domain_configs(active.release_id)
+
+    try:
+        adoption = adopt_packaged_configuration(
+            packaged_return_platform=packaged_return_platform,
+            packaged_domains=packaged_domains,
+            active_return_platform=active_domain_payloads.get(RETURN_PLATFORM_DOMAIN_KEY),
+            active_domains={
+                key: value
+                for key, value in active_domain_payloads.items()
+                if key in packaged_domains
+            },
+            active_metadata=active.metadata,
+            adopt_packaged_keys=tuple(body.units),
+            release_id=active.release_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if RETURN_PLATFORM_DOMAIN_KEY not in adoption.merged_domains:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "The active release's RETURN_PLATFORM domain no longer validates against "
+                "the packaged configuration; nothing was published"
+            ),
+        )
+
+    resources = getattr(request.app.state, "resources", None)
+    store = resources if isinstance(resources, RuntimeResources) else None
+    activator = getattr(request.app.state, "runtime_configuration_activator", None)
+    release_id = f"adopt-packaged-{uuid4().hex[:16]}"
+
+    try:
+        outcome = await publish_release_with_domains(
+            repository=repo,
+            release_id=release_id,
+            domains=adoption.merged_domains,
+            actor_id=user_id,
+            mongo=store.mongo if store is not None else None,
+            mongo_database=store.settings.mongo_database if store is not None else None,
+            activator=(activator if isinstance(activator, RuntimeConfigurationActivator) else None),
+            expected_head_revision=body.expected_head_revision,
+        )
+    except ReleasePromotionError as exc:
+        await _archive_draft_on_refusal(repo, release_id, user_id)
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    # Metadata sits outside the checksum (frozen at VALIDATED), so it may be
+    # set after RELEASED -- the same ordering `bootstrap_graph_configuration.main`
+    # uses. `adoption.recordable_baseline`/`recordable_domain_baselines`
+    # already carry forward every previously-known digest (`_carry_forward`
+    # starts from the active release's own baseline), so this replaces the
+    # release's metadata wholesale rather than merging it -- exactly what the
+    # CLI's `set_release_metadata(release_id, release_metadata)` does.
+    await repo.set_release_metadata(
+        release_id,
+        {
+            PACKAGED_KEY_DIGESTS: adoption.recordable_baseline,
+            PACKAGED_DOMAIN_KEY_DIGESTS: adoption.recordable_domain_baselines,
+        },
+    )
+
+    undecided = {key: list(value) for key, value in adoption.undecided.items()}
+    await record_configuration_audit(
+        request,
+        action="CONFIGURATION_PACKAGED_ADOPTED",
+        actor=user_id,
+        target=release_id,
+        details={"units": sorted(body.units), "undecided": undecided},
+    )
+
+    data = outcome.release.model_dump(mode="json")
+    data["domains"] = outcome.domains
+    data["head_revision"] = outcome.head_revision
+    data["undecided"] = undecided
+    return APIResponse(data=data, meta=_response_meta(request))
+
+
+async def get_packaged_drift(
+    request: Request,
+    _user_id: str = Depends(require_capability(capabilities.CONFIG_RELEASE_WRITE)),
+) -> APIResponse[dict[str, dict[str, list[str]]]]:
+    """The Overview screen's undecided-keys panel: `{undecided, would_adopt,
+    filled_leaves}` per domain, read-only.
+
+    Runs `summarize_packaged_drift`, which itself runs
+    `adopt_packaged_configuration` with nothing explicitly requested -- the
+    same computation `POST /adopt-packaged` would run for an empty `units`
+    list. `undecided` is read straight off that result. `would_adopt` is
+    derived from the MERGE `adopt_packaged_configuration` actually produced,
+    not from `undecided`'s complement (RV F1: a key with a recorded baseline
+    that an operator edited away from the file is decided -- `_carry_forward`
+    keeps the release's value and does not mark it undecided -- but that is
+    not the same as the file being taken, and only the merge result can say
+    which one happened). Gated the same way `/adopt-packaged` is: this is
+    the panel that tells an operator what there is to request, not a
+    general configuration read.
+    """
+    repo = resolve_configuration_repository(request)
+    active = await repo.get_active_release()
+    packaged_return_platform, packaged_domains = _packaged_domain_payloads(request)
+    active_domain_payloads = (
+        await repo.get_all_domain_configs(active.release_id) if active is not None else {}
+    )
+
+    drift = summarize_packaged_drift(
+        packaged_return_platform=packaged_return_platform,
+        packaged_domains=packaged_domains,
+        active_return_platform=active_domain_payloads.get(RETURN_PLATFORM_DOMAIN_KEY),
+        active_domains={
+            key: value for key, value in active_domain_payloads.items() if key in packaged_domains
+        },
+        active_metadata=active.metadata if active is not None else {},
+        release_id=active.release_id if active is not None else None,
+    )
+
+    data = {
+        domain_key: {
+            "undecided": list(domain_drift.undecided),
+            "would_adopt": list(domain_drift.would_adopt),
+            "filled_leaves": list(domain_drift.filled_leaves),
+        }
+        for domain_key, domain_drift in drift.items()
+    }
     return APIResponse(data=data, meta=_response_meta(request))

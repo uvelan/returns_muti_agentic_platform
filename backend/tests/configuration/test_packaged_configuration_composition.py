@@ -21,6 +21,7 @@ nothing:
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -159,7 +160,6 @@ def test_composing_the_directory_equals_loading_it_as_one_file_returns(tmp_path:
     composed = compose_configuration_document(
         RETURNS_DIR,
         document_keys=frozenset({"schema_version", "assumption_set_version"}),
-        ignore=frozenset({"production.yaml"}),
     )
     single_file = tmp_path / "composed.yaml"
     single_file.write_text(yaml.safe_dump(composed.document, sort_keys=False), encoding="utf-8")
@@ -294,3 +294,98 @@ def test_two_entry_stems_colliding_under_casefold_are_refused(tmp_path: Path) ->
     message = str(excinfo.value)
     assert "Example.yaml" in message
     assert "EXAMPLE.yml" in message
+
+
+# --- CFG-3a carry-overs from RV CFG-2 (F1, F2) --------------------------
+
+
+def test_a_re_added_production_yaml_is_refused_as_an_unlisted_file(tmp_path: Path) -> None:
+    """RV CFG-2 F1: the transitional `ignore={"production.yaml"}` this composer
+    used to accept outlived the deletion commit and would have silently
+    skipped a re-added file forever -- a bad merge, a stray editor save, or a
+    revert that brings the monolith back alongside the part files that
+    replaced it. CFG-3a removed the parameter; this proves the removal
+    actually restores the no-globbing guarantee rather than merely deleting
+    dead code.
+    """
+    directory = tmp_path / "returns"
+    shutil.copytree(RETURNS_DIR, directory)
+    # The exact file CFG-2 deleted, re-added by mistake. Its content is
+    # irrelevant -- the composer must refuse it as unlisted before it ever
+    # reads the YAML.
+    (directory / "production.yaml").write_text("schema_version: '1.0'\n", encoding="utf-8")
+
+    with pytest.raises(ValueError) as excinfo:
+        compose_configuration_document(
+            directory,
+            document_keys=frozenset({"schema_version", "assumption_set_version"}),
+        )
+
+    message = str(excinfo.value)
+    assert "production.yaml" in message
+    assert "does not glob" in message
+
+
+#: The 25 prompt-section names that were YAML anchors in the single-file
+#: `backend/config/ai_gateway.yaml`, aliased (`*name`) by at least one other
+#: task in that file -- i.e. genuinely *shared* text, not merely named.
+#: Enumerated directly from `git show 73c276d2:backend/config/ai_gateway.yaml`
+#: (the CFG-2 lease's own base sha, before the split): every `&name` anchor
+#: with at least one `*name` alias elsewhere in the file.
+FORMER_SHARED_ANCHOR_NAMES = (
+    "role-and-untrusted-input",
+    "action-payload-contract",
+    "statement-and-identifier-rules",
+    "when-to-search-instead-of-asking",
+    "identity-before-order",
+    "honouring-a-confirmation",
+    "after-the-confirmation",
+    "answering-about-the-return",
+    "choosing-the-next-question",
+    "measuring-with-aggregates",
+    "offering-values-and-confirming",
+    "graph-query-shape",
+    "evidence-and-scope",
+    "voice",
+    "candidate-pages",
+    "paging-the-cached-search",
+    "search-intent-fields",
+    "carrying-the-search-forward",
+    "reporting-observed-facts",
+    "naming-a-fact",
+    "not-asking-twice",
+    "source-system-escalation",
+    "reading-the-transcript",
+    "support-untrusted-input",
+    "support-tone-and-disclosure",
+)
+
+
+def test_the_former_shared_anchor_prompt_blocks_have_not_drifted_apart(tmp_path: Path) -> None:
+    """RV CFG-2 F2: one task per file ended YAML anchors crossing a file
+    boundary, so each of the 25 blocks above is independently typed into
+    every `ai_gateway/tasks/*.yaml` file that carries it -- with nothing left
+    to stop the copies drifting the way a real anchor could not. This is the
+    sync guard: every task that carries a given name must carry the *same*
+    text, or the test names exactly which tasks disagree.
+    """
+    directory = tmp_path / "ai_gateway"
+    shutil.copytree(AI_GATEWAY_DIR, directory)
+    configuration = load_ai_gateway_configuration(directory).configuration
+
+    carriers: dict[str, dict[str, str]] = {name: {} for name in FORMER_SHARED_ANCHOR_NAMES}
+    for task_id, task in configuration.tasks.items():
+        for section in task.systemPromptSections:
+            if section.name in carriers:
+                carriers[section.name][task_id] = section.text
+
+    never_carried = sorted(name for name, tasks in carriers.items() if not tasks)
+    assert not never_carried, (
+        f"no task file carries former shared anchor(s): {never_carried} -- "
+        "either the name was renamed in the split or this list is stale"
+    )
+
+    drifted = {
+        name: sorted(tasks) for name, tasks in carriers.items() if len(set(tasks.values())) > 1
+    }
+    assert not drifted, f"former shared anchor(s) now disagree across tasks: {drifted}"

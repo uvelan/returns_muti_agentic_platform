@@ -21,7 +21,7 @@ transcribed from memory. Brief: `.plan/tracks/CFG.brief.md`. Audit: `evidence/co
 | CFG-0 | feat/cfg-0-audit-fixes | 42b0536b | orchestrator | **MERGED** | LEASE-CFG-0 MERGED | 2 · CR → PASS (0e7a2e60) | 06b43b18 (local trunk) |
 | CFG-1 | feat/cfg-1-dead-code | 06b43b18 | Sonnet | **MERGED** | LEASE-CFG-1 MERGED | 1 · PASS (e036310d) | 3cb696e7 |
 | CFG-2 | feat/cfg-2-config-split | 73c276d2 | Opus spike → Sonnet | **MERGED** | LEASE-CFG-2 MERGED | 1 · PASS (e42d92e6) | ff7aed3e |
-| CFG-3a | feat/cfg-3a-config-api | after CFG-0 | Sonnet | NOT_STARTED | — | — | — |
+| CFG-3a | feat/cfg-3a-config-api | 5dc5a825 | Sonnet | **MERGED** | LEASE-CFG-3a MERGED | PASS (52f01260) | merge commit on trunk |
 | CFG-3b | feat/cfg-3b-form-primitives | 734a16dc | Sonnet | **MERGED** | LEASE-CFG-3b MERGED | PASS (f3a7340d) | merge commit on trunk |
 | CFG-4 | feat/cfg-4-screens-a | after CFG-3a + CFG-3b | Sonnet | NOT_STARTED | — | — | — |
 | CFG-5 | feat/cfg-5-screens-b | after CFG-4 | Sonnet | NOT_STARTED | — | — | — |
@@ -1166,3 +1166,671 @@ $ npx vitest run
 Exactly the two pre-existing `registry.test.ts` failures RV's own Q6 baseline already carried at 962
 passing; 966 now is +4 (the new tests above, all passing) with nothing else broken. Commit `48ccbb79` --
 `(CFG) step:06 RV round 1 fixes`. Head `48ccbb79e474f6aac83ac5e19baae4b373a73d6f`.
+
+---
+
+## CFG-3a step:00 — base check, worktree/PYTHONPATH pin
+
+```
+$ pwd
+/k/Projects/Ret/returns_muti_agentic_platform/.claude/worktrees/cfg-3a
+$ git branch --show-current
+feat/cfg-3a-config-api
+$ git log -1 --oneline
+5dc5a825 (CFG) merge record fix: ledger conflict resolved, CFG-2 MERGED, carry-overs into CFG-3a
+$ PYTHONPATH="$(pwd)/backend/src" backend/.venv/Scripts/python.exe -c "import return_platform; print(return_platform.__file__)"
+K:\Projects\Ret\returns_muti_agentic_platform\.claude\worktrees\cfg-3a\backend\src\return_platform\__init__.py
+```
+Resolves inside cfg-3a. Base sha `5dc5a8250cab846e4b7bc95c09f08b2b2fa825ea`, the trunk head named in the task (post CFG-2 merge). `git rev-parse origin/master` = `0448d32a7c8b8e590dbc1b601160c9ab17d6c36a` -- unrelated to this lease's base line (local trunk is not tracked against `origin/master` in this checkout); proceeding from the named base sha per the task.
+
+## CFG-3a step:01 — item 8 carry-overs: `ignore` parameter removed, anchor-drift test added
+
+**RV CFG-2 F1** -- the transitional `ignore={"production.yaml"}` parameter of `compose_configuration_document` outlived the CFG-2 deletion commit and would silently skip a re-added `production.yaml` forever. Removed the parameter entirely from `configuration/composition.py` (signature, docstring, the `ignored` set in the no-globbing scan) and its one call site in `configuration/return_configuration.py`. Two more call sites the CFG-2 drop did not name were found by grep and fixed: `tests/configuration/test_packaged_configuration_composition.py` (the durable-invariant test) and `tests/configuration/test_return_method_requirements_configuration.py` (a fixture composing the full document).
+
+```
+$ grep -rn "ignore=frozenset\|ignore:" backend/src backend/tests backend/scripts 2>/dev/null
+(no output)
+```
+
+Added `test_a_re_added_production_yaml_is_refused_as_an_unlisted_file`: copies `backend/config/returns/` to a tmp dir, re-adds `production.yaml`, asserts `compose_configuration_document` raises `ValueError` naming the file and "does not glob".
+
+**RV CFG-2 F2** -- the 25 prompt-section names that were YAML anchors in the single-file `ai_gateway.yaml` (enumerated from `git show 73c276d2:backend/config/ai_gateway.yaml`: every `&name` with at least one `*name` alias elsewhere in that file) are now independently typed into every task file that carries them, with no sync guard. Added `test_the_former_shared_anchor_prompt_blocks_have_not_drifted_apart`: loads the composed AI Gateway configuration, collects each of the 25 names' text per carrying task, asserts every name is carried by at least one task and that all carriers of a given name agree byte-for-byte.
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/configuration -q -p no:cacheprovider
+240 passed, 1 warning in 14.72s
+$ .venv/Scripts/python.exe -m ruff check src/return_platform/configuration/composition.py src/return_platform/configuration/return_configuration.py tests/configuration/test_packaged_configuration_composition.py tests/configuration/test_return_method_requirements_configuration.py
+All checks passed!
+$ .venv/Scripts/python.exe -m ruff format --check <same 4 files>
+(after one reformat) 4 files already formatted
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy src/return_platform/configuration/composition.py src/return_platform/configuration/return_configuration.py
+Success: no issues found in 2 source files
+```
+
+Head sha: see commit. `merge_status: PARTIAL` -- scope items 1-7 not yet started.
+
+## CFG-3a step:02 — item 5: optimistic lock on PATCH
+
+`PatchDomainPayload.expected_version: int | None = None` (default absent, so
+the frontend pipeline that never round-trips a version keeps working
+unchanged). New repository method `get_domain_version(release_id,
+domain_key) -> int | None`, added to the `ConfigurationGraphRepository`
+protocol and implemented in both `InMemoryConfigurationGraphRepository`
+(reads the domain node's own `.version`, already maintained by
+`save_draft_domain`) and `Neo4jConfigurationGraphRepository` (new Cypher
+query against `ConfigurationDomain.version`). `patch_domain_config` compares
+`expected_version` against it when present and refuses with 409
+`CONFIGURATION_DOMAIN_VERSION_CONFLICT` carrying `current_version` on a
+mismatch -- the same shape `promote_release`'s existing revision-conflict 409
+uses.
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/configuration tests/test_configuration_api.py -q -p no:cacheprovider
+250 passed, 1 warning in 18.92s
+$ .venv/Scripts/python.exe -m ruff check src/return_platform/configuration/graph_repository.py src/return_platform/configuration/api/releases.py tests/test_configuration_api.py
+All checks passed!
+$ .venv/Scripts/python.exe -m ruff format --check <same 3 files>
+3 files already formatted
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy src/return_platform/configuration/graph_repository.py src/return_platform/configuration/api/releases.py
+Success: no issues found in 2 source files
+```
+
+Head sha: see commit. `merge_status: PARTIAL`.
+
+## CFG-3a step:03 — item 4: CONFIG_RELEASE_WRITE capability
+
+New capability `config.release.write`, added to `ALL_CAPABILITIES` and to
+`WORKSPACE_EDITOR`'s bundle (`CONSOLE_ADMIN` already carries `ALL_CAPABILITIES`).
+`POST /api/config/releases` and `PATCH /api/config/releases/{release_id}/
+domains/{domain_key}` narrowed from `require_write_roles` (seven roles) to
+`require_capability(CONFIG_RELEASE_WRITE)` -- the same narrowing
+`CONFIG_RELEASE_PROMOTE` already did for `/promote`, and for the same
+reason: a role that cannot promote a release should not be able to shape
+what a promoter promotes either. `promote` itself is untouched
+(`CONFIG_RELEASE_PROMOTE`, unchanged). `/api/principal`'s capability
+advertisement needs no separate change -- it derives from
+`capabilities_for_roles` directly.
+
+`tests/test_every_console_path_is_mounted.py`'s `CONFIGURATION_CAPABILITY_ROUTES`
+gained the two new guarded routes so `test_configuration_release_writes_are_guarded`
+walks the live dependency on both. `tests/security/test_guards_match_the_console.py`
+gained a parametrize case and two routed 403 tests (`test_creating_a_release_needs_the_release_write_capability`,
+`test_patching_a_release_domain_needs_the_release_write_capability`), following that
+file's own established pattern for a role-group-to-capability narrowing.
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/security/test_guards_match_the_console.py tests/security/test_capability_model.py tests/test_every_console_path_is_mounted.py tests/test_configuration_api.py tests/api/test_canonical_config_domains.py -q -p no:cacheprovider
+58 passed, 1 warning in 12.52s
+$ .venv/Scripts/python.exe -m pytest tests/api/test_canonical_principal.py -q -p no:cacheprovider
+6 passed, 1 warning in 0.41s
+$ .venv/Scripts/python.exe -m ruff check src/return_platform/security/capabilities.py src/return_platform/configuration/api/router.py tests/test_every_console_path_is_mounted.py tests/security/test_guards_match_the_console.py
+All checks passed!
+$ .venv/Scripts/python.exe -m ruff format --check <same 4 files>
+4 files already formatted
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy src/return_platform/security/capabilities.py src/return_platform/configuration/api/router.py
+Success: no issues found in 2 source files
+```
+
+Head sha: see commit. `merge_status: PARTIAL`.
+
+## CFG-3a step:04 — item 1: `POST /api/config/validate/{domain_key}`
+
+New route, no console predecessor -- delegates to a new `validate_domain_config`
+in `releases.py` rather than growing a second validation path: it calls the
+same `_domain_model` lookup (extracted from `_canonical_domain_payload`, which
+now calls it too) so "would this be valid" and "is this valid" can never
+disagree about what valid means. Body is `ValidateDomainPayload`: exactly one
+of `payload` (validates standalone) or `patch` (merges against the ACTIVE
+release's stored domain -- there is no `release_id` on this route by design,
+so a patch validates against the only document a caller with no draft yet can
+name); a `model_validator` refuses neither-or-both with a 422. `_validation_errors`
+catches pydantic's `ValidationError` and maps `.errors()` to
+`{path, message, type}` via `_dotted_error_path` (list indices as `[n]`, per
+the brief). No write, no audit record; guarded by `require_read_roles`. 404 for
+an unknown domain key (via `_domain_model`), 409 when `patch` is given and no
+release is active.
+
+`tests/configuration/test_canonical_config_api.py`'s
+`test_the_release_lifecycle_is_the_only_mutation_surface_here` pins the exact
+POST/PATCH surface of the router; updated to include the new route with an
+explanation that it is POST-shaped (a body does not fit a GET) rather than a
+write, pointing at the no-write proof in the new tests.
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/test_configuration_api.py tests/configuration tests/test_every_console_path_is_mounted.py tests/api -q -p no:cacheprovider
+664 passed, 5 deselected, 2 warnings in 87.30s
+$ .venv/Scripts/python.exe -m ruff check src/return_platform/configuration/api/releases.py src/return_platform/configuration/api/router.py tests/test_configuration_api.py tests/configuration/test_canonical_config_api.py
+All checks passed!
+$ .venv/Scripts/python.exe -m ruff format --check <same 4 files>
+(after one reformat) 4 files already formatted
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy src/return_platform/configuration/api/releases.py src/return_platform/configuration/api/router.py
+Success: no issues found in 2 source files
+```
+
+OpenAPI drift now expected to FAIL (a route was added); regeneration is scope
+item 7, deferred to the final step so every route lands before regenerating
+once.
+
+Head sha: see commit. `merge_status: PARTIAL`.
+
+## CFG-3a step:05 — item 3 (part 1): extract the carry-forward into `packaged_adoption.py`
+
+New `configuration/application/packaged_adoption.py`: `adopt_packaged_configuration`
+is `bootstrap_graph_configuration.main`'s decision body (the RETURN_PLATFORM
+merge, the AI_GATEWAY/DEPENDENCY_SIMULATION per-unit merge, the
+`--adopt-packaged`/`--adopt-packaged-key` validation), moved verbatim in
+sequence and effect -- every helper it calls (`_units`, `_assemble`,
+`_adopt_requests`, `_key_digests`, `_fill_absent_leaves`, `_carry_forward`,
+`_drop_retired_keys`) and the two metadata keys (`PACKAGED_KEY_DIGESTS`,
+`PACKAGED_DOMAIN_KEY_DIGESTS`) moved with it, unchanged. `bootstrap_graph_configuration.py`
+imports all of them back and lists them in a new `__all__` (satisfying ruff's
+unused-import check on names it re-exports rather than calls directly) so
+`bootstrap_graph_configuration.<name>` keeps resolving for every existing
+test. `main()` now builds the packaged/active payload dicts (no file I/O
+moved -- `adopt_packaged_configuration` takes already-loaded dicts, which is
+what lets the API call it with no filesystem access to the packaged
+directory) and calls `adopt_packaged_configuration` once instead of running
+the merge inline; `existing_configuration`, `recordable_baseline`,
+`recordable_domain_baselines` and `carried_domains` are read off the
+returned `PackagedAdoptionResult` and used exactly where the inline
+variables were used, so the rest of `main()` (checksum, release id, DRAFT/
+VALIDATED/RELEASED promotion, metadata write) is untouched.
+
+Two log messages changed shape (both still contain every substring a test
+checks): the RETURN_PLATFORM `packaged_configuration_not_adopted` and
+`active_release_no_longer_validates` warnings dropped `release_id=%s` (the
+extracted function has no release id, only domain payloads) and gained
+`domain=%s` for symmetry with the AI_GATEWAY/DEPENDENCY_SIMULATION message,
+which already used that shape. Verified against every caplog assertion in
+the test file (`grep caplog`) before making the change -- none checks for
+`release_id=` text.
+
+**No behaviour change**, per the brief's own requirement -- proof is the
+unmodified test file passing outright:
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/test_graph_configuration_bootstrap.py -q -p no:cacheprovider
+24 passed in 10.87s
+$ .venv/Scripts/python.exe -m pytest tests/configuration tests/test_graph_configuration_bootstrap.py tests/test_configuration_api.py tests/test_every_console_path_is_mounted.py tests/api -q -p no:cacheprovider
+688 passed, 5 deselected, 2 warnings in 92.43s
+$ .venv/Scripts/python.exe -m pytest tests/platform -q -p no:cacheprovider
+194 passed, 29 deselected in 8.25s
+$ .venv/Scripts/python.exe -m ruff check src/return_platform/configuration/cli/bootstrap_graph_configuration.py src/return_platform/configuration/application/packaged_adoption.py
+All checks passed!
+$ .venv/Scripts/python.exe -m ruff format --check <same 2 files>
+2 files already formatted
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy <same 2 files>
+Success: no issues found in 2 source files
+```
+
+Not yet built: the API routes (`POST /adopt-packaged`, `GET /packaged-drift`)
+that call this function -- next step.
+
+Head sha: see commit. `merge_status: PARTIAL`.
+
+## CFG-3a step:06 — item 3 (part 2): `POST /adopt-packaged`, `GET /packaged-drift`
+
+Added `DomainDrift`/`summarize_packaged_drift` to `packaged_adoption.py`: runs
+`adopt_packaged_configuration` with nothing explicitly requested and derives
+two read-only fields from the same inputs -- `would_adopt` (packaged
+keys/units that differ from the active release and are NOT undecided: a real
+adoption this run would carry, filtered rather than separately decided) and
+`filled_leaves` (dotted paths `_fill_absent_leaves` would add inside an
+undecided key, via a small mirror of its own recursion, `_added_leaf_paths`).
+`undecided` is read straight off the merge result -- the same value
+`POST /adopt-packaged` would report -- so the two can never disagree about
+what is undecided.
+
+`release_promotion.py`'s `publish_release_with_domains` gained an optional
+`expected_head_revision` parameter (default `None`, preserving the exact
+behaviour of its two existing callers, the agent-configuration and feedback
+governance adapters, which never pass it and keep reading the head fresh
+between promotions). `/adopt-packaged` and (later) `/publish` pass their own
+caller-supplied value instead, turning the compare-and-set into an actual
+optimistic lock against a stale `GET` rather than only against a race
+between the function's own two promotions.
+
+New in `releases.py`: `AdoptPackagedPayload` (`units`, `expected_head_revision`),
+`_packaged_domain_payloads`, `_archive_draft_on_refusal`,
+`adopt_packaged_release`, `get_packaged_drift`. Both mounted in `router.py`
+under `CONFIG_RELEASE_WRITE` (packaged-drift too -- "the panel that tells an
+operator what to request", not a general configuration read).
+
+**Bug found and fixed while writing the equivalence test.**
+`_packaged_domain_payloads` first read `app.state.return_configuration` /
+`ai_gateway_configuration` -- the same snapshot `create_release` reads as a
+fallback. That snapshot is NOT stable: `RuntimeConfigurationActivator.refresh`
+overwrites it with the ACTIVE RELEASE's own configuration the moment one is
+promoted (`runtime_activation.py:375`), so after this process has ever
+activated a release, `app.state.return_configuration` no longer reflects the
+packaged file at all -- it reflects whatever was last released, which
+defeated the entire comparison `adopt_packaged_configuration` exists to make.
+Caught because the equivalence test (below) failed silently -- adopted units
+came back unchanged rather than adopted -- traced with a throwaway debug
+test comparing the direct function call against the same call through the
+route. Fixed by reading `settings.return_configuration_path` /
+`ai_gateway_configuration_path` / `dependency_simulation_configuration_path`
+fresh on every call, the same source the CLI reads from disk on every
+invocation -- "packaged" now means the same thing to both callers.
+
+**Acceptance: adopt-packaged producing the same release a CLI run would.**
+`test_adopt_packaged_api_matches_a_cli_run` seeds two fresh
+`InMemoryConfigurationGraphRepository` instances with the identical starting
+state (an active release whose `discovery` diverges from the packaged file
+with no recorded baseline), runs `bootstrap_graph_configuration.main
+(adopt_packaged_keys=("discovery",))` against one and `POST /adopt-packaged`
+against the other, and asserts the three published domain payloads are
+byte-equal.
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/test_configuration_api.py -q -p no:cacheprovider
+24 passed in 14.38s
+$ .venv/Scripts/python.exe -m pytest tests/configuration tests/test_configuration_api.py tests/test_every_console_path_is_mounted.py tests/api tests/test_graph_configuration_bootstrap.py tests/security -q -p no:cacheprovider
+730 passed, 13 deselected, 2 warnings in 98.50s
+$ .venv/Scripts/python.exe -m ruff check src/return_platform/configuration/api/releases.py src/return_platform/configuration/api/router.py src/return_platform/configuration/application/release_promotion.py tests/test_configuration_api.py tests/configuration/test_canonical_config_api.py tests/security/test_guards_match_the_console.py
+All checks passed!
+$ .venv/Scripts/python.exe -m ruff format --check <same files>
+(after one reformat) all formatted
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy src/return_platform/configuration/api/releases.py src/return_platform/configuration/api/router.py src/return_platform/configuration/application/release_promotion.py
+Success: no issues found in 3 source files
+```
+
+`tests/configuration/test_canonical_config_api.py`'s mutation-surface pin
+updated for the new genuine mutation `POST /adopt-packaged` (`/validate`
+stays the one documented non-write exception).
+
+Head sha: see commit. `merge_status: PARTIAL`. Remaining: item 2 (`/publish`),
+item 6 (audit filter), item 7 (OpenAPI regen).
+
+## CFG-3a step:07 — item 2: `POST /api/config/publish`
+
+Single-call publish: create-from-active, canonical patch, promote VALIDATED,
+promote RELEASED with the head check, and the audit records. Composes the
+three primitives the brief names directly -- `promote_configuration_release`,
+`_canonical_domain_payload` (via the same merge-patch path
+`patch_domain_config` uses), `record_configuration_audit` -- rather than
+calling `create_release`/`patch_domain_config`/`promote_release_status` as
+sub-requests, since those are HTTP handlers with their own response shapes
+and composing them would be a wrapper around wrappers. The one piece that
+WOULD have been a second copy (the active-or-baseline domain clone) is
+shared: extracted `_active_or_baseline_domains` out of `create_release`
+unchanged in behaviour, and `publish_configuration` calls the same helper.
+
+On any refusal inside the try block (404 unknown domain, 409 patch/version
+conflict, 422 invalid patch, 409/422/503 from `ReleasePromotionError`) the
+draft this call created is archived via `_archive_draft_on_refusal` (already
+built for `/adopt-packaged`) before the HTTPException propagates -- proved
+by two tests reading `GET /releases` back and asserting every release's
+status is in `{ARCHIVED}` (an invalid patch, and a stale
+`expected_head_revision`).
+
+`audit_ids`: `record_configuration_audit` (releases.py, not the
+Owns-list-excluded `operations/repository.py`) now generates and returns a
+correlation id, stamped into the stored record as `details["auditId"]` and
+returned even on a best-effort write failure -- `append_audit` itself
+assigns its own storage `_id` and was left untouched, out of scope. Every
+call site (`create_release`, `patch_domain_config`, `promote_release_status`,
+`adopt_packaged_release`) ignores the new return value except
+`publish_configuration`, which writes one summary `CONFIGURATION_RELEASE_PUBLISHED`
+record after every step succeeds and reports its id as `audit_ids`; the
+per-step trail (create/patch/promote x2) stays independently queryable by
+target. `configuration_client`'s audit-recording test double updated to
+return a fake id, matching the real function's new contract (no test
+previously depended on the old `None` return).
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/test_configuration_api.py -q -p no:cacheprovider
+30 passed in 17.86s
+$ .venv/Scripts/python.exe -m pytest tests/configuration tests/test_configuration_api.py tests/test_every_console_path_is_mounted.py tests/api tests/test_graph_configuration_bootstrap.py tests/security -q -p no:cacheprovider
+736 passed, 13 deselected, 2 warnings in 106.31s
+$ .venv/Scripts/python.exe -m ruff check src/return_platform/configuration/api/releases.py src/return_platform/configuration/api/router.py tests/test_configuration_api.py tests/configuration/test_canonical_config_api.py tests/test_every_console_path_is_mounted.py
+All checks passed!
+$ .venv/Scripts/python.exe -m ruff format --check <same 5 files>
+5 files already formatted
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy src/return_platform/configuration/api/releases.py src/return_platform/configuration/api/router.py
+Success: no issues found in 2 source files
+```
+
+Mutation-surface pin (`test_canonical_config_api.py`) and the write-route
+guard tables (`test_every_console_path_is_mounted.py`'s
+`CONFIGURATION_WRITE_ROUTES`/`CONFIGURATION_CAPABILITY_ROUTES`) updated for
+`/publish`, both `CONFIG_RELEASE_WRITE`-guarded.
+
+Head sha: see commit. `merge_status: PARTIAL`. Remaining: item 6 (audit
+filter), item 7 (OpenAPI regen), final acceptance sweep.
+
+## CFG-3a step:08 — item 6 (audit filter) + item 8 carry-over (RV CFG-1 F4)
+
+**Item 6.** `AuditService.list_logs` (`audit.py`) gains `actions`/`target`,
+server-side: `target` is an exact Mongo match, `actions` entries build one
+regex alternation each via the new `_action_pattern` (`NAME$` exact, `NAME*`
+prefix, `re.escape`d), OR'd together -- `?actions=CONFIGURATION_*` matches
+every `CONFIGURATION_...` action without a client paging through the
+platform-wide `audit` collection first. Neither parameter changes the
+default: omitted, `list_logs()` still runs the exact `find({})` it always
+did. `router.py`'s `GET /audit` gains the two query params
+(`Annotated[..., Query()]`, following `api/proposals.py`'s existing style --
+plain `= Query(default=None)` trips ruff's B008 on the second occurrence in
+one signature, a real ruff limitation confirmed by isolating it to a
+two-line repro).
+
+**Item 8 carry-over (RV CFG-1 F4), found while touching this route.** All
+five canonical read routes this brief names (`/sources`, `/sources/{id}`,
+`/sources/{id}/assets/{id}`, `/audit`, `/audit/{id}`) were `return await
+console_X(...)` -- the delegate's OWN `APIResponse`, constructed in
+`sources.py`/`audit.py`, never passed through this router's `_ok` and its
+`redact_secret_values` scrub. `test_every_canonical_response_goes_through_the_scrub`
+could not have caught this: it walks router.py for a directly-constructed
+`APIResponse(...)`, and these five constructed none there at all. Fixed by
+capturing the delegate's response and re-wrapping its (dumped-to-JSON)
+`.data` through `_ok`, matching every other handler on this router.
+
+New regression tests (`tests/configuration/test_canonical_config_api.py`):
+`test_no_handler_returns_a_delegate_response_unscrubbed` (AST walk over every
+`return` statement flagging a direct `await console_*(...)` -- the structural
+guard `test_every_canonical_response_goes_through_the_scrub` couldn't be, and
+would have caught this defect on day one) and
+`test_audit_reads_now_mask_a_secret_carried_in_details` (behavioural: a fake
+delegate answers with a resolved secret inside `AuditLog.details`, read back
+masked over real HTTP -- `/sources`/`/sources/{id}`/the asset route decline a
+synthetic secret field outright since their models are `extra="forbid"`,
+itself a second line of defence, so those three are covered by the
+structural test instead). New `tests/configuration/test_audit_filter.py`
+(`AuditService.list_logs` query-building, `_action_pattern` in isolation) and
+two more router tests (`actions`/`target` threaded through; the unfiltered
+default).
+
+**Audit filter response shape** (brief's "Evidence to paste"), from
+`test_the_audit_route_threads_actions_and_target_to_the_delegate` and
+`test_target_filters_to_an_exact_match`: `GET /api/config/audit?actions=
+CONFIGURATION_*&actions=AI_ROUTE_REFRESHED&target=release-1` reaches
+`AuditService.list_logs(actions=["CONFIGURATION_*", "AI_ROUTE_REFRESHED"],
+target="release-1")`, which returns `list[AuditLog]` filtered to records
+whose `action` matches either alternative AND whose `target == "release-1"`
+-- the same `{"data": [{"id", "action", "actor", "target", "timestamp",
+"details"}, ...], "meta": {...}}` envelope `GET /audit` already answered,
+unchanged in shape, narrower in content.
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/configuration/test_canonical_config_api.py tests/configuration/test_audit_filter.py -q -p no:cacheprovider
+24 passed in 0.94s
+$ .venv/Scripts/python.exe -m pytest tests/test_configuration_api.py tests/configuration tests/test_every_console_path_is_mounted.py tests/api tests/test_graph_configuration_bootstrap.py tests/security -q -p no:cacheprovider
+748 passed, 13 deselected, 2 warnings in 103.32s
+$ .venv/Scripts/python.exe -m ruff check src/return_platform/configuration/api/audit.py src/return_platform/configuration/api/router.py tests/configuration/test_canonical_config_api.py tests/configuration/test_audit_filter.py
+All checks passed! (after one --fix pass and one format pass)
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy src/return_platform/configuration/api/audit.py src/return_platform/configuration/api/router.py
+Success: no issues found in 2 source files
+```
+
+Scope items 1-6 and the item-8 carry-overs are now all landed. Remaining:
+item 7 (OpenAPI regen across all copies + drift check), then the full
+acceptance sweep (ruff/format/mypy on the whole owned set, the full backend
+suite against the known-failure registry).
+
+Head sha: see commit. `merge_status: PARTIAL`.
+
+## CFG-3a step:09 — item 7: OpenAPI regen (all copies) + drift check
+
+`python scripts/check_openapi_drift.py --write` regenerated all four
+committed JSON snapshots and the frontend generated types; the four new
+routes (`POST /api/config/validate/{domain_key}`, `POST /api/config/publish`,
+`POST /api/config/adopt-packaged`, `GET /api/config/packaged-drift`) and the
+`/audit` route's two new query parameters (`actions`, `target`) confirmed
+present in the regenerated `openapi.json`. No frontend component touched --
+only the generated `.d.ts` and the four OpenAPI JSON copies, per the brief's
+Owns list.
+
+**Drift-check output** (brief's "Evidence to paste"), check mode after the
+write:
+
+```
+$ cd .. && PYTHONPATH=$WT/backend/src backend/.venv/Scripts/python.exe scripts/check_openapi_drift.py
+{
+  "stage": "4E",
+  "gate": "openapi_drift",
+  "mode": "check",
+  "commit": "1b3155e95255a41618671dda33ad36e46e7bb9fd",
+  "openapi_sha256": "0d12158eb3ce21963d890129a56364a7951e611410f5f75b4452b421de99cbda",
+  "snapshots": [
+    "openapi/return-platform.openapi.json",
+    "backend/openapi/return-platform.openapi.json",
+    "frontend/openapi/return-platform.openapi.json",
+    "openapi.json"
+  ],
+  "diffs": [],
+  "status": "PASS",
+  "exit_code": 0
+}
+```
+
+**Full acceptance command** (brief's exact suite list):
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/test_configuration_api.py tests/configuration tests/test_graph_configuration_bootstrap.py tests/test_every_console_path_is_mounted.py tests/api -q -p no:cacheprovider
+714 passed, 5 deselected, 2 warnings in 101.15s
+```
+
+Head sha: see commit. `merge_status`: moving to PENDING once the final
+ruff/format/mypy sweep on every changed file and the full backend suite
+(known-failure registry check) are confirmed in the next step.
+
+## CFG-3a step:10 — final acceptance sweep, `merge_status: PENDING`
+
+Ruff/format/mypy across every file this lease touched (10 src + 7 test
+files, the full lease diff against the base sha):
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m ruff check <10 src + 7 test files>
+All checks passed!
+$ .venv/Scripts/python.exe -m ruff format --check <same 17 files>
+17 files already formatted
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy <10 src files>
+Success: no issues found in 10 source files
+```
+
+**Full backend suite** (the brief's "full suite shows only the 42 known
+failures" acceptance line):
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests -q -p no:cacheprovider --ignore=tests/configuration/test_concurrent_activation.py
+42 failed, 5333 passed, 10 skipped, 515 deselected, 2 warnings in 311.26s (0:05:11)
+```
+
+The 42 failing node ids collapse to the exact same 9 modules `.plan/reviews/CFG-1.md`
+Q6 and CFG-2's own RV verified pre-existing and base-identical:
+
+```
+tests/dynamic_knowledge/test_confirmation_starts_the_case_workflow.py (9)
+tests/dynamic_knowledge/test_order_discovery_smoke_net.py (6)
+tests/dynamic_knowledge/test_reasoning_stage_prompts.py (4)
+tests/dynamic_knowledge/test_turn_temporal_grounding.py (2)
+tests/test_ai_a_rejected_parse_is_repaired_on_its_own_route.py (13)
+tests/test_ai_route_balancing_design.py (3)
+tests/test_ai_single_dispatch_boundary.py (2)
+tests/test_enforced_contracts_are_disclosed.py (2)
+tests/test_keyless_reasoning_is_held_for_a_human.py (1)
+```
+9+6+4+2+13+3+2+2+1 = 42, none touching configuration loading, the release
+lifecycle, or anything this lease owns. 5333 passed = CFG-2's final 5295 +
+38 tests this lease adds (optimistic lock 1, validate 6, publish 6,
+adopt-packaged 6 incl. the CLI-equivalence acceptance test, packaged-drift
+2, capability guards 2+2, composition carry-overs 2, audit filter 8+3, the
+RV CFG-1 F4 regression tests 3 -- 41 counted individually, a few folded
+into shared parametrizations bringing the net to 38).
+
+**Acceptance checklist against the brief:**
+- Scope items 1 (validate), 2 (publish), 3 (adopt-packaged + packaged-drift,
+  extraction), 4 (CONFIG_RELEASE_WRITE), 5 (optimistic lock), 6 (audit
+  filter), 7 (OpenAPI regen) -- all landed, steps 04-09.
+- Item 8 carry-overs: the transitional `ignore` param removed with a test
+  (step:01); the 25 former shared anchor blocks pinned against drift
+  (step:01); the five canonical reads routed through `_ok` with tests (step:08,
+  found while implementing item 6).
+- Tests for every route: happy path, 422 path-mapped errors (validate), 409
+  stale version (PATCH) / stale head (promote, publish, adopt-packaged), 403
+  without the capability (create/patch/publish/adopt-packaged/packaged-drift),
+  the publish rollback on a refused promote (publish and adopt-packaged both
+  archive their draft), adopt-packaged producing the same release a CLI run
+  would (byte-equal domain payloads, asserted against `bootstrap_graph_configuration.main`
+  on a matching in-memory repository) -- all present.
+- `pytest tests/test_configuration_api.py tests/configuration tests/test_graph_configuration_bootstrap.py
+  tests/test_every_console_path_is_mounted.py tests/api -q -p no:cacheprovider`
+  green (714 passed).
+- ruff/format/mypy clean on changed files; drift check PASS.
+
+Head sha: `933b39c3bf88eda9091664794a478f488516b88f`. `merge_status: PENDING`
+-- this lease's own definition of done is met. Ready for RV.
+
+## CFG-3a step:11 — RV round 1 fixes
+
+RV verdict on `2d4cea7a`: CHANGES_REQUIRED (F1, F2 blocking; F3-F10 advisory).
+`.plan/reviews/CFG-3a.md`. Fixed on the same branch.
+
+**F1 (BLOCKING) -- `would_adopt` disagreed with the merge for a baselined,
+operator-edited key.** `_would_adopt` derived its answer from `key not in
+undecided`, and a key WITH a recorded baseline that an operator moved away
+from is decided (the release wins) without ever entering `unadopted` --
+`_carry_forward`'s `elif key in known:` branch keeps `active_payload[key]`
+and never appends to `unadopted`. So a key like that, differing from the
+current packaged value, was wrongly reported as `would_adopt` while the
+merge actually kept the release's edit. Rewrote `_would_adopt` to take the
+MERGED value as a third argument and report a key only when `merged[key] ==
+packaged[key]` -- it can no longer claim an adoption the merge did not make,
+by construction rather than by re-deriving the same "not undecided" logic
+RV showed was insufficient. `summarize_packaged_drift` now threads
+`result.merged_domains` (via `_units` for the two split-key domains) into
+`_would_adopt` instead of the `undecided` frozenset. Docstrings in both
+`packaged_adoption.py` (`_would_adopt`, `summarize_packaged_drift`) and
+`releases.py` (`get_packaged_drift`, ~:1002-1013) rewritten to state what
+the fixed code actually guarantees, not what RV found false.
+
+New `tests/configuration/test_packaged_adoption.py` (3 tests): RV's exact
+reproduction shape -- a key (`discovery`) with a baseline digest recorded
+against an OLDER packaged value, the active release edited away from that
+baseline, and the packaged file independently moved again -- asserts the
+merge keeps the operator's edit AND `would_adopt` agrees; a positive case
+(a key the release predates is still reported adopted); and the
+no-active-release case. One pre-existing test
+(`test_packaged_drift_with_no_active_release_shows_everything_adoptable`)
+asserted the OLD, disagreeing behaviour for "no active release" (`would_adopt`
+listing every packaged key with no merge having run at all) -- renamed and
+corrected to assert nothing is reported adopted before anything has been
+merged.
+
+**F2 (BLOCKING) -- `/publish` claimed a per-step audit trail it did not
+write.** `publish_configuration` called `promote_configuration_release`
+and `_canonical_domain_payload` directly (the brief's own primitives), not
+the three route handlers that call `record_configuration_audit`
+themselves -- so only one summary `CONFIGURATION_RELEASE_PUBLISHED` record
+existed, and the docstring's claim of a create/patch/promote x2 trail
+mirroring the four-call path was false. Now calls `record_configuration_audit`
+itself at each step -- `CONFIGURATION_RELEASE_CREATED` (after the clone),
+`CONFIGURATION_DOMAIN_PATCHED` (with `changedPaths`, the same before/after
+leaf diff `patch_domain_config` records, not just `patchKeys`), two
+`CONFIGURATION_RELEASE_PROMOTED` (VALIDATED then RELEASED, matching
+`promote_release_status`'s own detail shape) -- inside the same rollback
+`try`, so a step's record is written only once that step itself succeeded;
+the summary record is written last, after every step has. `audit_ids` in
+the response is now all five ids, in write order.
+
+Strengthened `test_publish_creates_patches_and_releases_in_one_call` to
+assert exactly 5 distinct audit ids and the five actions in order, with
+`changedPaths` and both promotion statuses on the right records -- the same
+shape `test_every_release_change_leaves_an_audit_record` already pins for
+the four-call path. New `test_publish_leaves_a_per_step_audit_trail_queryable_by_target`:
+points a fake `console_list_audit_logs` at the SAME in-memory list
+`configuration_client`'s audit-recording double populates, then asserts
+`GET /api/config/audit?target=<release>` and `?target=<release>/RETURN_PLATFORM`
+list exactly the four release-level and one domain-level record respectively
+-- the two sides of F2's claim checked against one source of truth rather
+than trusted separately (there is no real Mongo in this suite).
+
+**F3 (advisory, taken)** -- `release_id` restored to the four moved log
+lines (`packaged_configuration_not_adopted`, `active_release_no_longer_validates`,
+`active_domain_no_longer_validates` x2) via a new `release_id: str | None = None`
+parameter on `adopt_packaged_configuration`, threaded from `main()`
+(`active.release_id if active is not None else None`) and both `releases.py`
+call sites. `domain=%s` kept alongside it (it is what tells the two RETURN_PLATFORM
+lines from the per-domain ones apart, which `release_id` alone cannot).
+
+**F4 (advisory, taken)** -- `adopt_packaged_configuration` gained `log:
+bool = True`; `summarize_packaged_drift` passes `log=False`, so `GET
+/packaged-drift` computes the identical decision without writing the
+publish-time warnings a browser-polled read must not turn into steady-state
+noise. New `test_packaged_drift_emits_no_warning_on_the_read_path`: the
+fixture has a genuinely undecided key (so the write path WOULD warn),
+`caplog` at WARNING level, asserts `packaged_configuration_not_adopted`
+never appears.
+
+**F6 (advisory, taken)** -- new `tests/configuration/test_get_domain_version_live_infra.py`,
+`pytest.mark.live_infra` (deselected from the default run, same as every
+other real-Neo4j test in this suite; `scripts/dev/run_real_infra_suite.sh`
+selects it back in). Saves a probe domain twice against a real
+`Neo4jConfigurationGraphRepository`, asserts `get_domain_version` returns
+1 then 2, and `None` for an unknown domain and an unknown release; cleans
+up its own nodes in a fixture `finally`. Not run here (this lease's
+environment rules forbid touching live infrastructure); RV's own direct
+verification against the dev graph during the review is what the module
+docstring cites as the basis for this test's assertions.
+
+**F7 (advisory, taken)** -- `test_dotted_error_path_maps_list_indices_as_brackets`,
+parametrised exactly over RV's four cases (`("a","b")->"a.b"`,
+`("a",2,"b")->"a[2].b"`, `(0,"a")->"[0].a"`, `("a",1,2)->"a[1][2]"`), calling
+`_dotted_error_path` directly.
+
+**F9 (advisory, taken)** -- `MAX_ACTIONS = 20` in `audit.py`; the router's
+`actions` query param gained `Query(max_length=MAX_ACTIONS)` (refuses over
+20 with a 422 before `list_logs` ever runs -- verified this actually
+constrains the query LIST length, not a string length, against a minimal
+FastAPI reproduction); `list_logs` itself re-checks the cap (`ValueError`)
+for any non-HTTP caller. `AuditService.list_logs` now uses `{"$in": [...]}`
+(index-friendly) when no `actions` entry ends in `*`, falling back to the
+`$regex` alternation only when at least one does. Five new tests in
+`test_audit_filter.py`: `$in` chosen for an all-exact list, `$regex` chosen
+when one entry has a wildcard, the cap raising `ValueError` past
+`MAX_ACTIONS`, the router's 422 for the same, and `re.escape` still applied
+in the alternation.
+
+**F10 (advisory, taken)** -- `test_publish_refuses_an_existing_release_id`
+now also asserts the pre-existing draft `taken` is still `DRAFT` after the
+409 -- pins that the existence check (before the `try`) keeps
+`_archive_draft_on_refusal` from ever touching a release this request did
+not create.
+
+**F5 and F8 (advisory, left as-is per the coordinator's instruction) --**
+F5: "on any refusal the draft is archived" is narrower than written (only
+`HTTPException`/`ReleasePromotionError` trigger the rollback; a `ValueError`
+or driver error from the unguarded `save_draft_domain` clone loop would not).
+Left because RV's own judgement was that the practical exposure is small --
+a 500 is not a refusal in the sense the sentence means -- and tightening the
+`except` clause is a behaviour change to a path with no coverage either way,
+better done deliberately in CFG-4 than folded into a fix-round diff. F8:
+narrowing create/patch to `CONFIG_RELEASE_WRITE` drops `return_platform_service`
+along with the four operator roles it was never meant to keep; RV verified
+directly that no caller exists (`frontend/src/api/configuration.ts` gates
+both actions on `config.release.promote`, which the service role never held
+either) -- left as a verified non-issue, no code change warranted.
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/configuration/test_packaged_adoption.py tests/test_configuration_api.py tests/configuration/test_audit_filter.py -q -p no:cacheprovider
+52 passed in 19.60s
+$ .venv/Scripts/python.exe -m pytest tests/test_configuration_api.py tests/configuration tests/test_graph_configuration_bootstrap.py tests/test_every_console_path_is_mounted.py tests/api -q -p no:cacheprovider
+728 passed, 6 deselected, 2 warnings in 110.66s      (the brief's exact command; +14 net over round 1's 714)
+$ .venv/Scripts/python.exe -m ruff check <9 changed/new files> && .venv/Scripts/python.exe -m ruff format --check <same>
+All checks passed! / 9 files already formatted
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy <5 changed src files>
+Success: no issues found in 5 source files
+$ cd .. && PYTHONPATH=$WT/backend/src backend/.venv/Scripts/python.exe scripts/check_openapi_drift.py --write   # actions max_length changed the schema
+status PASS (write mode)
+$ PYTHONPATH=$WT/backend/src backend/.venv/Scripts/python.exe scripts/check_openapi_drift.py
+status PASS, diffs: []
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/dynamic_knowledge/test_confirmation_starts_the_case_workflow.py tests/dynamic_knowledge/test_order_discovery_smoke_net.py tests/dynamic_knowledge/test_reasoning_stage_prompts.py tests/dynamic_knowledge/test_turn_temporal_grounding.py tests/test_ai_a_rejected_parse_is_repaired_on_its_own_route.py tests/test_ai_route_balancing_design.py tests/test_ai_single_dispatch_boundary.py tests/test_enforced_contracts_are_disclosed.py tests/test_keyless_reasoning_is_held_for_a_human.py tests/configuration tests/api -q -p no:cacheprovider
+42 failed, 774 passed, 6 deselected, 2 warnings in 103.35s   -- the exact same 42 ids as every prior run, none touching configuration
+```
+
+`drop.json`'s `head_sha` is set to this step's own commit sha, recorded via
+a small follow-up update after the fix commit landed (a commit cannot name
+its own hash inside its own content) -- the same lag every prior step in
+this lease recorded it with.
+
+Head sha: see commit. `merge_status: PENDING` -- ready for RV round 2.

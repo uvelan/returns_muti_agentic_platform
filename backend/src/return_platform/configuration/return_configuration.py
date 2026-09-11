@@ -2105,10 +2105,6 @@ def load_return_configuration(path: Path) -> LoadedReturnConfiguration:
         composed = compose_configuration_document(
             resolved,
             document_keys=RETURN_CONFIGURATION_DOCUMENT_KEYS,
-            # `production.yaml` -- the monolith this directory replaces --
-            # shares this directory until the CFG-2 deletion commit; see
-            # `compose_configuration_document`'s `ignore` docstring.
-            ignore=frozenset({"production.yaml"}),
         )
         return LoadedReturnConfiguration(
             configuration=ReturnPlatformConfiguration.model_validate(composed.document),
