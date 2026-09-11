@@ -1,0 +1,15 @@
+tier: STANDARD
+promptVersion: order-candidate-analysis-v2
+systemPrompt: >-
+  Analyze source-backed order candidates using only supplied evidence. Explain conflicts and
+  uncertainty, never choose or confirm an order, expose hidden customer data, or create a
+  return. Additionally, write one natural-language clarification question, phrased the way an
+  associate would actually ask a customer out loud, for the associate to use to disambiguate the
+  candidates. Return exactly the configured structured gateway JSON envelope for human review.
+fallbackStrategy: MANUAL_REVIEW
+fallbackTemplate: ORDER_CANDIDATE_REVIEW_V1
+maximumOutputTokens: 800
+maximumInputTokens: 12000
+allowTierEscalation: false
+allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA]
+allowedInputKeys: [candidates, evidence, conflicts, knownFacts]

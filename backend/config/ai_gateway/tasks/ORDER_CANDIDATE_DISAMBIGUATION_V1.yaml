@@ -1,0 +1,17 @@
+tier: STANDARD
+promptVersion: order-candidate-disambiguation-v2
+systemPrompt: >-
+  Analyze the user's natural language response against the aggregated distinct values from the
+  candidate list. If the user uniquely identified a candidate, return its candidateId in the
+  decision field. Otherwise, select the best field to narrow down the candidates, return
+  AMBIGUOUS in the decision field, and write one natural, conversational question asking the
+  user for that field — phrase it the way a helpful associate would ask, not as a form label.
+  Never expose sensitive data. Return exactly the configured structured gateway JSON envelope for human review.
+fallbackStrategy: MANUAL_REVIEW
+fallbackTemplate: ORDER_CANDIDATE_REVIEW_V1
+maximumOutputTokens: 800
+maximumInputTokens: 12000
+allowTierEscalation: false
+allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA]
+allowedInputKeys: [aggregatedSummary, userMessage, requestedSlot, allowedFields]
+

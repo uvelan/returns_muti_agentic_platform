@@ -1,0 +1,463 @@
+support:
+  authority_mode: INTERNAL_PLATFORM
+  external_mirror_enabled: false
+  default_priority: NORMAL
+  queues:
+    - RETURNS_SUPPORT
+    - LOGISTICS
+    - WAREHOUSE_EXCEPTION
+    - OMC_EXCEPTION
+  external_ticket_outbox_topic: return-support.ticket.create
+
+context_assembly:
+  # How a case's facts become the context a model reasons over (contracts.md
+  # sect. 10). Every value here is the code default, restated: the block is
+  # written out so a deployment changing one is editing configuration rather
+  # than discovering that the knob exists.
+  #
+  # Names that are always in the assembled context, whatever the budget says.
+  # Empty by default: a name pinned here that no case writes would be a
+  # reservation against a fact that never arrives, and the pins that matter are
+  # the ones a consumer adds when it knows what it is reasoning about.
+  pinned_fact_names: []
+  # The ceiling, measured by `tokenizer_version` below.
+  token_budget: 8000
+  # Pinned with promptVersion. `assemble_case_context` refuses a version it
+  # cannot measure rather than falling back to another estimator -- a silent
+  # fallback is the one outcome a pin exists to rule out.
+  tokenizer_version: wordpiece-approx.v1
+  compaction:
+    # Ask for a summary at four fifths of the budget, leaving the last fifth as
+    # headroom for the next few facts before anything has to be left out.
+    trigger_fraction_millionths: 800000
+    summary_task_id: support.context.summarize.v1
+
+support_ingress:
+  # What the platform accepts from Support and how it answers back
+  # (contracts.md sect. 5). Every value here is the code default restated, so
+  # a deployment changing one is editing configuration rather than discovering
+  # that the knob exists.
+  #
+  # The natural-language door starts shut. The structured
+  # `.../return-outcome` path is unaffected by this switch and is always on
+  # (DR-2): this gates only the free-text endpoint. Messages that arrive while
+  # it is false are persisted PARKED and reprocessed in stream order when it
+  # is flipped -- never refused -- so shipping it shut costs no message.
+  nl_enabled: false
+  # The closed classification taxonomy (contracts.md sect. 5). Widening this
+  # list widens what is *recognised*; it cannot widen what is executed,
+  # because anything outside the set becomes `other` in code.
+  intents:
+    - info_request
+    - rma_issued
+    - label_issued
+    - shipping_instruction
+    - tracking_provided
+    - partial_fulfillment
+    - rejection
+    - acknowledgement
+    - other
+  parking:
+    # A month. Long enough that flipping the switch after a quiet period still
+    # finds the traffic that arrived during it.
+    retention_seconds: 2592000
+    # A case holding this many parked messages is not a case with a backlog;
+    # it is a case nobody is reading, and it escalates.
+    per_case_quota: 50
+    # One alert per case per quarter hour. A disabled switch with live traffic
+    # behind it would otherwise page in proportion to the traffic.
+    alert_dedupe_window_seconds: 900
+  # The prompt section carrying the do-not-mix framing for a message that fans
+  # out to several return records. The key, not the text: the wording lives
+  # with the other prompt text and this names which of it applies.
+  multi_record_framing_prompt_key: support-multi-record-do-not-mix
+  agent_disclosure:
+    # Carried on every agent-authored Channel B message (contracts.md sect. 9),
+    # both through the shared prompt-section anchor on the `support.*` tasks
+    # and through the templated sends.
+    display_name: Returns Assistant
+    disclosure_line: >-
+      This message was written by the Returns Assistant, an automated agent working on this
+      return case. A branch associate reviews and can answer anything it cannot.
+  # Outbound Channel B text by template id, under sect. 8's interpolation-only
+  # grammar. Empty by default: the templates that matter are the ones a
+  # deployment writes for its own voice, and a model composes only where a
+  # deployment has configured it to.
+  outbound_templates: {}
+  limits:
+    # Refused with 413 rather than truncated: the cut half of a truncated
+    # support message may be the tracking number.
+    max_body_characters: 16000
+    # Per case rather than per principal -- the resource being protected is
+    # the case's analysis pipeline, and one transport speaking for many
+    # principals is the ordinary shape.
+    max_messages_per_case_per_window: 60
+    rate_window_seconds: 60
+    max_identifier_characters: 256
+
+support_resolver:
+  # How the platform answers a question Support asked (contracts.md sect. 9).
+  # Every value here is the code default restated, so a deployment changing one
+  # is editing configuration rather than discovering that the knob exists.
+  #
+  # Both thresholds are millionths, matching the gateway's
+  # `confidenceMillionths` envelope so the released number and the measured
+  # number are the same unit with no conversion between them. They are high on
+  # purpose: the failure this slice must not have is a confident-sounding wrong
+  # answer sent to Support under the platform's own name. Below the threshold
+  # the ladder does not try harder with the same evidence -- it descends a rung,
+  # and escalates to an associate when the rungs run out.
+  fact_confidence_millionths: 900000
+  graph_confidence_millionths: 900000
+  # Which capabilities a validated intent makes eligible. Empty means **no tool
+  # is eligible for any intent** and the ladder's tool rung refuses every time.
+  # That is the closed default the tool boundary implies: a tool a deployment
+  # has not bound is a tool that cannot run, and binding one is precisely what
+  # sect. 9 calls a config-only tool addition. A binding names a `tool_id`, the
+  # `intents` it serves, a `capability` and `contract` published in the
+  # CapabilityRegistry, an `input_schema_ref` from the code-side allowlist in
+  # platform/capabilities/tool_schemas.py, and a `credential_binding_id` naming
+  # a CredentialBindingConfiguration profile key. Every field is a reference;
+  # none is a value, an expression or a template.
+  tool_bindings: []
+  reply_gate:
+    # Review required for every intent, including ones a later release adds to
+    # the taxonomy: `default` is the floor and `per_intent` is the exception
+    # list, stated that way round because the safe value is the one that applies
+    # to intents nobody thought about. `auto_reply` is a per-intent opt-in and
+    # is never a global.
+    default: review_required
+    per_intent: {}
+  # An answered clarification pushes the review deadline out again. True,
+  # because the associate answered promptly and the clock they were racing was
+  # started by a question the platform asked *them*. The reset never moves a
+  # deadline inwards.
+  clarification_resets_deadline: true
+  # Model invocations one case may spend on resolution, across all its support
+  # questions. Exhaustion is not a silent stop: it writes
+  # `support_resolver_budget_exhausted` and escalates, so a case that outruns
+  # its budget becomes visible work rather than an unanswered message.
+  per_case_llm_budget: 12
+  # Which classified intents reach the resolution ladder at all, and therefore
+  # which support messages the platform tries to answer by itself.
+  #
+  # `info_request` alone. Of the closed taxonomy under `support_ingress.intents`
+  # -- info_request, rma_issued, label_issued, shipping_instruction,
+  # tracking_provided, partial_fulfillment, rejection, acknowledgement -- it is
+  # the only member in which Support is *asking* rather than *telling*. The
+  # other seven are Support informing the platform, and the extraction stage
+  # already commits what they say; running a ladder over one of them would
+  # compose a reply to a statement.
+  #
+  # Narrowing this to `[]` disables automatic resolution entirely: every inbound
+  # support question then reaches an associate, which is a legitimate way to run
+  # the platform and not a broken configuration.
+  #
+  # `other` is refused at parse time. It is not a classification -- it is the
+  # sink every unrecognised classification is coerced into -- so naming it here
+  # would trigger the ladder on every unclassifiable message on every case.
+  #
+  # Every value must also appear in `support_ingress.intents`; one that does not
+  # can never be produced by the classifier, and the resolver would be
+  # configured, deployed and silently inert. Refused when the process starts.
+  trigger_intents:
+    - info_request
+
+# The support-handoff template (contracts.md sect. 8). The default variant
+# reproduces the text `compose_support_handoff` composes today -- line for
+# line, on every branch its conditionals take, which
+# `TestComposedEquivalenceMatrix` renders and compares case by case. The one
+# thing it does not reproduce is the *subject*: `_subject` joins its parts
+# conditionally and shortens them, and sect. 8's subject grammar is
+# interpolation only, so the subject here is a different (and simpler) line by
+# contract rather than by oversight.
+#
+# Four of today's lines are conditional -- the contact block's two arms, the
+# unresolved-bay reason, the manual-bay action, the outstanding-support list --
+# and the sect. 8 clause grammar describes the shape of a *case*
+# (shipping mode, reason class, order source, item count), never the presence
+# of a value. Those lines are therefore bound to keys that
+# `operations/support_template_draft.py` makes **present or absent**, with no
+# `fallback`: an absent key omits its line, exactly as the composed path omits
+# it. Giving them a fallback is what made the first version of this block
+# silently print "Not available" where the truth was "no bay could be
+# recommended, resolve manually".
+#
+# Formatters are ids from the code-side allowlist; `literal:` bindings are
+# constant text (contracts.md AMENDMENT-1). Every `case_fact:` name is declared
+# in `support_template_draft.TEMPLATE_CASE_FACT_KEYS`, and a test compares this
+# block against it in both directions.
+# The review gate over the outbound support request (contracts.md sect. 6,
+# DR-4). Enabled: a message this platform composes about somebody's return, to
+# a human queue, gets looked at by a person first.
+#
+# Every duration is in *working* seconds -- resolved through
+# `resolve_business_deadline` against `return_case.business_calendar_id`, so a
+# draft raised at 16:00 on Friday is not overdue by Saturday lunchtime.
+#
+# `on_timeout: hold` is the one value that cannot send a message nobody read.
+# `auto_send` is expressible and is not what this deployment chose; note that
+# even under `auto_send` an unresolved required gap forces the hold anyway
+# (contracts.md sect. 6), so the setting can only ever make the gate *stricter*
+# than it reads, never looser.
+support_gate:
+  # One case, one request, one review. The other two groupings are declared in
+  # the enum because the contract declares them; selecting one this deployment
+  # has not exercised would be a decision, not a default.
+  request_grouping: one_per_case
+  template_review:
+    enabled: true
+    # One working day.
+    #
+    # Deliberately NOT copied from `return_case.support_response_wait_seconds`,
+    # which this file has set to 1800 as an explicitly-marked DEV SETTING
+    # ("BEFORE LIVE: restore 28800") to close an overselling window. That is a
+    # dev shortcut on Support's SLA; inheriting it here would give a branch
+    # associate thirty minutes to review a draft and would carry a temporary
+    # workaround into a block that has nothing to do with item holds. A
+    # reviewer's clock and Support's clock are two promises, and this one is the
+    # real value.
+    review_wait_seconds: 28800
+    reminder_interval_seconds: 7200
+    # A case total, not a per-review one (DR-7): one cadence, one deadline, and
+    # the reminder names every review still pending.
+    max_reminders: 3
+    on_timeout: hold
+
+support_template:
+  template_id: support-handoff
+  default_variant_id: default
+  variants:
+    - variant_id: default
+      # Deliberately clause-less: a rule with no clauses matches nothing, and
+      # this variant renders because it is named default, not because it was
+      # listed first.
+      selector: {}
+      subject_template: "Return {order_number} · {customer_name}"
+      sections:
+        - &tpl_sec_banner
+          section_id: banner
+          title: RETURN SUPPORT REQUEST
+        - &tpl_sec_case
+          section_id: case
+          title: "Case:"
+          fields:
+            - field_id: case_id
+              label: Case ID
+              source_binding: "case_fact:case_id"
+              required: true
+            - field_id: work_item_id
+              label: Work Item ID
+              source_binding: "case_fact:work_item_id"
+              fallback: Not available
+            - field_id: created_at
+              label: Created Date/Time
+              source_binding: "case_fact:created_at"
+              formatter: date
+              fallback: Not available
+            - field_id: workflow_status
+              label: Workflow Status at Handoff
+              source_binding: "case_fact:workflow_status_at_handoff"
+              fallback: Not available
+        - &tpl_sec_customer
+          section_id: customer
+          title: "Customer:"
+          fields:
+            - field_id: customer_name
+              label: Customer Name
+              source_binding: "case_fact:customer_name"
+              fallback: Not available
+            - field_id: customer_reference
+              label: Customer Reference
+              source_binding: "case_fact:customer_id"
+              fallback: Not available
+            - field_id: customer_account
+              label: Account
+              source_binding: "case_fact:customer_account"
+              fallback: Not available
+            # The contact block, two mutually exclusive arms. Exactly one arm's
+            # three keys is ever present, so the other arm's three lines are
+            # omitted -- never rendered as "Not available", which is what lost
+            # the customer's own phone and email on every case with no named
+            # branch associate. No `fallback` on any of the six, on purpose.
+            - field_id: contact_associate_name
+              label: Branch Associate
+              source_binding: "case_fact:contact_associate_name"
+            - field_id: contact_associate_email
+              label: Branch Associate Email
+              source_binding: "case_fact:contact_associate_email"
+            - field_id: contact_associate_phone
+              label: Branch Associate Phone
+              source_binding: "case_fact:contact_associate_phone"
+            - field_id: contact_customer_notice
+              label: Branch Associate
+              source_binding: "case_fact:contact_customer_notice"
+            - field_id: contact_customer_phone
+              label: Customer Phone
+              source_binding: "case_fact:contact_customer_phone"
+            - field_id: contact_customer_email
+              label: Customer Email
+              source_binding: "case_fact:contact_customer_email"
+        - &tpl_sec_order
+          section_id: order
+          title: "Order:"
+          fields:
+            - field_id: order_number
+              label: Order Number
+              source_binding: "case_fact:confirmed_order_reference"
+              fallback: Not available
+            - field_id: selected_items
+              source_binding: "case_fact:selected_items"
+              formatter: item_list
+              fallback: "- Selected lines: Not available"
+        - &tpl_sec_return_details
+          section_id: return_details
+          title: "Return Details:"
+          fields:
+            - field_id: return_method
+              label: Return Method
+              source_binding: "case_fact:return_method"
+              fallback: Not available
+            - field_id: requested_resolution
+              label: Requested Resolution
+              source_binding: "case_fact:requested_resolution"
+              fallback: Not available
+            - field_id: product_presence
+              label: Product Presence
+              source_binding: "case_fact:product_presence"
+              fallback: Not available
+            # Whatever else the release requires, already labelled by the
+            # release rather than by this template -- which is what lets a
+            # release add a required detail without either being edited.
+            # Absent when the case carries none.
+            - field_id: return_details_additional
+              source_binding: "case_fact:return_details_additional"
+            # The rendered notes, not the raw fact: anything in an associate's
+            # words that could impersonate this message's framing is stripped
+            # before it gets here, and binding the raw fact would drop that.
+            - field_id: associate_notes
+              label: Associate Notes
+              source_binding: "case_fact:associate_notes_rendered"
+              fallback: Not available
+        - &tpl_sec_bay
+          section_id: bay_assignment
+          title: "Bay Assignment:"
+          fields:
+            - field_id: bay_status
+              label: Assignment Status
+              source_binding: "case_fact:bay_assignment_status"
+              fallback: UNRESOLVED
+            - field_id: bay_reference
+              label: Recommended Bay
+              source_binding: "case_fact:bay_reference"
+              fallback: Not available
+            - field_id: bay_warehouse
+              label: Warehouse/Branch
+              source_binding: "case_fact:bay_warehouse_reference"
+              fallback: Not available
+            - field_id: bay_return_location
+              label: Return Location
+              source_binding: "case_fact:bay_return_location"
+              fallback: Not available
+            - field_id: bay_handling
+              label: Handling/Staging Instructions
+              source_binding: "case_fact:bay_handling_instructions"
+              fallback: Not available
+            # Present only when no bay was recommended, which is exactly when
+            # Support needs it. No fallback: absence omits the line.
+            - field_id: bay_unresolved_reason
+              label: Unresolved Reason
+              source_binding: "case_fact:bay_unresolved_reason"
+        - &tpl_sec_verification
+          section_id: verification
+          title: "Verification:"
+          fields:
+            - field_id: order_confirmation
+              label: Order Confirmation
+              source_binding: "case_fact:order_confirmation"
+              fallback: Not confirmed
+            - field_id: required_return_information
+              label: Required Return Information
+              source_binding: "case_fact:required_return_information"
+              fallback: Incomplete
+            # Three states, and the third is silence: nothing outstanding omits
+            # the line, an unreadable case state says so in words. "Nothing is
+            # outstanding" and "we could not find out" send Support to opposite
+            # actions, so neither may render as the other.
+            - field_id: awaiting_from_support
+              label: Awaiting From Support
+              source_binding: "case_fact:awaiting_from_support"
+            - field_id: policy_evaluation
+              label: Policy Evaluation
+              source_binding: "case_fact:policy_evaluation_rendered"
+              fallback: Not evaluated
+            - field_id: bay_source
+              label: Bay Assignment Source
+              source_binding: "literal:Bay Assignment Agent"
+        - section_id: requested_action
+          title: "Requested Support Action:"
+          fields:
+            - field_id: action_review
+              source_binding: "literal:- Review the complete return request."
+            - field_id: action_bay
+              source_binding: "literal:- Review or confirm the bay recommendation."
+            - field_id: manual_bay_action
+              source_binding: "case_fact:manual_bay_action_line"
+            - field_id: action_verify
+              source_binding: "literal:- Verify all Support-owned conditions, including warranty when applicable."
+            - field_id: action_rma
+              source_binding: "literal:- Create or decline the RMA through the authoritative Support workflow."
+    - variant_id: parcel
+      selector:
+        shipping_modes: [PREPAID_PARCEL, OFFSITE_PARCEL]
+      subject_template: "Return {order_number} · {customer_name}"
+      sections:
+        - *tpl_sec_banner
+        - *tpl_sec_case
+        - *tpl_sec_customer
+        - *tpl_sec_order
+        - *tpl_sec_return_details
+        - *tpl_sec_bay
+        - *tpl_sec_verification
+        - section_id: requested_action
+          title: "Requested Support Action:"
+          fields:
+            - field_id: action_review
+              source_binding: "literal:- Review the complete return request."
+            - field_id: action_bay
+              source_binding: "literal:- Review or confirm the bay recommendation."
+            - field_id: manual_bay_action
+              source_binding: "case_fact:manual_bay_action_line"
+            - field_id: action_label
+              source_binding: "literal:- Issue the prepaid parcel return label."
+            - field_id: action_verify
+              source_binding: "literal:- Verify all Support-owned conditions, including warranty when applicable."
+            - field_id: action_rma
+              source_binding: "literal:- Create or decline the RMA through the authoritative Support workflow."
+    - variant_id: ltl
+      selector:
+        shipping_modes: [BRANCH_LTL, OFFSITE_LTL]
+      subject_template: "Return {order_number} · {customer_name}"
+      sections:
+        - *tpl_sec_banner
+        - *tpl_sec_case
+        - *tpl_sec_customer
+        - *tpl_sec_order
+        - *tpl_sec_return_details
+        - *tpl_sec_bay
+        - *tpl_sec_verification
+        - section_id: requested_action
+          title: "Requested Support Action:"
+          fields:
+            - field_id: action_review
+              source_binding: "literal:- Review the complete return request."
+            - field_id: action_bay
+              source_binding: "literal:- Review or confirm the bay recommendation."
+            - field_id: manual_bay_action
+              source_binding: "case_fact:manual_bay_action_line"
+            - field_id: action_freight
+              source_binding: "literal:- Arrange LTL freight pickup and issue the Bill of Lading."
+            - field_id: action_verify
+              source_binding: "literal:- Verify all Support-owned conditions, including warranty when applicable."
+            - field_id: action_rma
+              source_binding: "literal:- Create or decline the RMA through the authoritative Support workflow."

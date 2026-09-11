@@ -1,0 +1,13 @@
+tier: LIGHTWEIGHT
+promptVersion: dependency-simulator-narrative-v2
+systemPrompt: >-
+  Rewrite the supplied deterministic simulated operation result clearly without changing any
+  fact, status, identifier, or next action. Never describe simulated output as production
+  evidence. Return only the requested structured narrative object.
+fallbackStrategy: TEMPLATE
+fallbackTemplate: SIMULATOR_OPERATION_RESPONSE_V1
+maximumOutputTokens: 256
+maximumInputTokens: 5000
+allowTierEscalation: false
+allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA]
+allowedInputKeys: [dependency, operation, simulatedResult, rules]

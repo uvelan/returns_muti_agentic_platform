@@ -1,0 +1,89 @@
+integrations:
+  omc_return_create:
+    enabled: true
+    topic: omc.return.create
+    authority: OMC
+    ai_may_fabricate_success: false
+  external_support_mirror:
+    enabled: false
+    topic: return-support.ticket.create
+    authority: EXTERNAL_TICKET_SYSTEM
+    ai_may_fabricate_success: false
+  carrier_booking:
+    enabled: true
+    topic: carrier.return.book
+    authority: CARRIER_OR_TMS
+    ai_may_fabricate_success: false
+  customer_notification:
+    enabled: true
+    topic: customer.return.notify
+    authority: NOTIFICATION_PROVIDER
+    ai_may_fabricate_success: false
+
+copilot:
+  # The agent policy every Copilot conversation turn is routed to. It must name
+  # a key under `agent_policies` in the active schema release
+  # (config/dynamic_knowledge/active-schema.return-order.yaml); a dangling value
+  # is a hard error, not a fallback, because the alternative is the 422 that
+  # this setting exists to remove.
+  order_discovery_agent_id: order-discovery-agent
+
+runtime_integrations:
+  ai_providers: []
+  data_sources:
+    - source_key: platform-mongodb
+      source_type: MONGODB
+      enabled: true
+      access_mode: READ_WRITE
+      uri: mongodb://runtime-resolved.invalid/return_platform
+      database: return_platform
+      bootstrap_managed: true
+      required_datasets:
+        - associate_conversations
+        - discovery_locks
+    - source_key: source-mongodb
+      source_type: MONGODB
+      enabled: true
+      access_mode: READ_ONLY
+      uri: mongodb://runtime-resolved.invalid/return_source
+      database: return_source
+      bootstrap_managed: true
+      required_datasets:
+        - customers
+        - salesInv
+        - products
+    - source_key: configuration-neo4j
+      source_type: NEO4J
+      enabled: true
+      access_mode: READ_WRITE
+      uri: bolt://runtime-resolved.invalid:7687
+      username: neo4j
+      database: neo4j
+      bootstrap_managed: true
+      required_datasets:
+        - customer_name_search_v2
+        - product_description_search_v2
+    - source_key: omc-sqlserver
+      source_type: SQLSERVER
+      enabled: true
+      access_mode: READ_ONLY
+      host: runtime-resolved.invalid
+      port: 1433
+      username: sa
+      database: return_platform
+      bootstrap_managed: true
+    - source_key: valkey
+      source_type: VALKEY
+      enabled: true
+      access_mode: READ_WRITE
+      host: runtime-resolved.invalid
+      port: 6379
+      bootstrap_managed: true
+    - source_key: temporal
+      source_type: TEMPORAL
+      enabled: true
+      access_mode: READ_WRITE
+      host: runtime-resolved.invalid
+      port: 7233
+      bootstrap_managed: true
+

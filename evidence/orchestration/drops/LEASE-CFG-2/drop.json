@@ -5,22 +5,28 @@
   "head_sha": "PENDING",
   "files": [
     "backend/src/return_platform/configuration/settings.py (return_configuration_path/ai_gateway_configuration_path moved to a new validate_packaged_configuration_path validator; directory-accepting, strict widening)",
-    "backend/tests/configuration/test_settings_configuration_paths.py (new; synthetic tmp_path fixtures for the widened validator)"
+    "backend/tests/configuration/test_settings_configuration_paths.py (new; synthetic tmp_path fixtures for the widened validator)",
+    "backend/src/return_platform/configuration/composition.py (new; the composer)",
+    "backend/src/return_platform/configuration/return_configuration.py (load_return_configuration: directory support)",
+    "backend/src/return_platform/ai/routing/tasks.py (load_ai_gateway_configuration: directory support)",
+    "backend/config/returns/{index.yaml,agents.yaml,discovery.yaml,discovery_resolution.yaml,return_policy.yaml,workflow.yaml,support.yaml,fulfilment.yaml,integrations.yaml} (new; split trees, production.yaml untouched beside them)",
+    "backend/config/ai_gateway/{index.yaml,tasks/<25>.yaml} (new; split trees, anchors materialized -- see ledger step:02 deviation 1)",
+    "backend/tests/data/pre_split/{returns_production.yaml,ai_gateway.yaml} (new; frozen pre-split bytes)",
+    "backend/tests/configuration/test_packaged_configuration_composition.py (new; equivalence + error tests)",
+    "backend/tests/harness/configuration_tree.py (new; copied_configuration_tree)"
   ],
   "tests": {
-    "backend/tests/configuration/test_settings_configuration_paths.py": "7 passed"
+    "backend/tests/configuration/test_packaged_configuration_composition.py + test_settings_configuration_paths.py": "19 passed",
+    "backend/tests/platform/test_layering.py + test_no_module_cross_imports.py + test_ai_lane_boundary.py": "6 passed",
+    "backend/tests/configuration + tests/platform + tests/api (cwd=backend/)": "834 passed, 34 deselected",
+    "ruff check/format on owned src": "clean",
+    "mypy on owned src": "47 pre-existing errors in 6 unowned files, confirmed present on the unmodified base with a fresh cache -- not introduced by this lease; none of the four owned files affected"
   },
   "remaining": [
-    "composition.py composer module + its own unit tests",
-    "directory support wired into load_return_configuration and load_ai_gateway_configuration",
-    "write the split trees (backend/config/returns/**, backend/config/ai_gateway/**) beside the originals",
-    "freeze pre-split bytes at backend/tests/data/pre_split/**",
-    "backend/tests/configuration/test_packaged_configuration_composition.py (equivalence + error tests)",
-    "backend/tests/harness/configuration_tree.py",
     "repoint defaults: settings.py:13,17; compose.yaml:14,16; backend/Dockerfile:124,126; .env.example:204,297",
     "repoint the seven raw-text test readers",
     "deletion commit (git rm production.yaml, ai_gateway.yaml) -- last, once everything runs against the directories",
-    "docs updates",
+    "docs updates (backend/config/README.md, configuration/README.md, ai/README.md, return_session.yaml)",
     "full acceptance run (pytest, ruff, mypy, check_openapi_drift.py) and deliberate-failure check pasted in the ledger"
   ],
   "merge_status": "PARTIAL"

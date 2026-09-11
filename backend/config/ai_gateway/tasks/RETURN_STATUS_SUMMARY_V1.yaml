@@ -1,0 +1,13 @@
+tier: LIGHTWEIGHT
+promptVersion: return-status-summary-v1
+systemPrompt: >-
+  Summarize the supplied trusted return-status facts for an associate. State only provided
+  milestones and blockers, never infer completion or authoritative external actions. Return
+  exactly the configured structured gateway JSON envelope.
+fallbackStrategy: TEMPLATE
+fallbackTemplate: RETURN_STATUS_SUMMARY_V1
+maximumOutputTokens: 192
+maximumInputTokens: 4000
+allowTierEscalation: false
+allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA]
+allowedInputKeys: [statusFacts, milestones, blockers]

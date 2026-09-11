@@ -1,0 +1,97 @@
+schemaVersion: "1.0"
+domain: FERGUSON_RETURN_OPERATIONS
+circuitBreaker:
+  failureThreshold: 3
+  openSeconds: 60
+  authFailureOpenSeconds: 900
+  rateLimitCooldownSeconds: 60
+retry:
+  maximumAttemptsPerRoute: 1
+  # Enough to walk every route of the first provider -- four Google keys times
+  # two standard models -- before the second provider is asked at all. Six ran
+  # out with most of those untried on 2026-09-09. A rate-limited key costs a
+  # second per attempt; the global timeout, not this, bounds a slow provider.
+  maximumTotalAttempts: 12
+  initialBackoffMilliseconds: 200
+  maximumBackoffMilliseconds: 2000
+  jitter: true
+rateLimits:
+  application:
+    requestsPerMinute: 500
+    tokensPerMinute: 5000000
+  lightweight:
+    requestsPerMinute: 300
+    tokensPerMinute: 1000000
+    maximumConcurrency: 20
+  standard:
+    requestsPerMinute: 60
+    tokensPerMinute: 800000
+    maximumConcurrency: 6
+providerLimits:
+  GOOGLE:
+    requestsPerMinute: 120
+    tokensPerMinute: 1200000
+    maximumConcurrency: 8
+  NVIDIA:
+    requestsPerMinute: 100
+    tokensPerMinute: 1000000
+    maximumConcurrency: 8
+  OPENAI:
+    requestsPerMinute: 100
+    tokensPerMinute: 1000000
+    maximumConcurrency: 8
+  ANTHROPIC:
+    requestsPerMinute: 100
+    tokensPerMinute: 1000000
+    maximumConcurrency: 8
+  OLLAMA:
+    requestsPerMinute: 300
+    tokensPerMinute: 2000000
+    maximumConcurrency: 8
+  SIMULATOR:
+    requestsPerMinute: 1000
+    tokensPerMinute: 10000000
+    maximumConcurrency: 32
+  MANUAL:
+    requestsPerMinute: 60
+    tokensPerMinute: 1000000
+    maximumConcurrency: 4
+# How much each model can actually read. Only models whose window has been
+# observed or documented are listed; an unlisted model is treated as unmeasured
+# and is never refused on that basis. A model whose window is below a task's
+# `maximumInputTokens` is dropped from that task's candidate routes before the
+# request is built. Evidence per entry:
+# docs/configuration/order-agent-prompt-changelog.md.
+modelContexts:
+  - provider: NVIDIA
+    model: nvidia/nemotron-mini-4b-instruct
+    maximumContextTokens: 4096
+    source: NVIDIA integrate API 400 response, observed 2026-08-16
+parts: []
+entries:
+  tasks:
+    - tasks/RETURN_DISCOVERY_INTENT_V1.yaml
+    - tasks/RETURN_ELIGIBILITY_V1.yaml
+    - tasks/RETURN_CLARIFICATION_FIELD_V2.yaml
+    - tasks/RETURN_PROGRESSIVE_DISAMBIGUATION_V1.yaml
+    - tasks/RETURN_STATUS_SUMMARY_V1.yaml
+    - tasks/CUSTOMER_NOTIFICATION_DRAFT_V1.yaml
+    - tasks/SIMULATOR_OPERATION_NARRATIVE_V1.yaml
+    - tasks/ORDER_CANDIDATE_ANALYSIS_V1.yaml
+    - tasks/SUPPORT_CASE_ANALYSIS_V1.yaml
+    - tasks/EXTERNAL_STATE_RECONCILIATION_V1.yaml
+    - tasks/FEEDBACK_RECOMMENDATION_V1.yaml
+    - tasks/ORDER_CANDIDATE_DISAMBIGUATION_V1.yaml
+    - tasks/ORDER_AGENT_REASONING_V1.yaml
+    - tasks/ORDER_AGENT_REASONING_OPENING_V1.yaml
+    - tasks/ORDER_AGENT_REASONING_NARROWING_V1.yaml
+    - tasks/ORDER_AGENT_REASONING_WIDE_V1.yaml
+    - tasks/ORDER_AGENT_REASONING_UNRESOLVED_V1.yaml
+    - tasks/ORDER_AGENT_REASONING_COMPLETING_V1.yaml
+    - tasks/GRAPH_SCHEMA_AGENT_V1.yaml
+    - tasks/GRAPH_SCHEMA_PROPOSAL_V1.yaml
+    - tasks/support.message.classify.v1.yaml
+    - tasks/support.message.extract.v1.yaml
+    - tasks/support.question.resolve.v1.yaml
+    - tasks/support.outbound.compose.v1.yaml
+    - tasks/support.context.summarize.v1.yaml

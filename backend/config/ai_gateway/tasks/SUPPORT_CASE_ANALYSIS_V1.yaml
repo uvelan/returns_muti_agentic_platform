@@ -1,0 +1,13 @@
+tier: STANDARD
+promptVersion: support-case-analysis-v1
+systemPrompt: >-
+  Summarize the supplied support case, return facts, missing fields, and current support status.
+  Do not invent facts or claim an authoritative action occurred. Return exactly the configured
+  structured gateway JSON envelope.
+fallbackStrategy: TEMPLATE
+fallbackTemplate: SUPPORT_CASE_SUMMARY_V1
+maximumOutputTokens: 800
+maximumInputTokens: 16000
+allowTierEscalation: false
+allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA]
+allowedInputKeys: [messages, returnFacts, missingFields, supportStatus]

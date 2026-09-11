@@ -1,0 +1,2490 @@
+schema_version: "1.0"
+assumption_set_version: "FERGUSON-RETURN-ASSUMPTIONS-1.0"
+
+# Each agent's live settings and nothing else. The blocks used to carry
+# `human_confirmation_required`, `capabilities`, `implementation_id`,
+# `task_queue` and `state_namespace` -- none was read by any runtime code
+# (agents are constructed by AgentRegistry.build and task queues come from
+# Settings), so the fields were documentation posing as configuration. They
+# remain optional on `AgentConfiguration` so releases published before this
+# change still parse; new releases stop writing them.
+agents:
+  order_analysis:
+    name: "Order Analysis Agent"
+    version: "2.0"
+    enabled: true
+    ai_assisted: true
+    # Read by the agent (the one source for the analysis task id).
+    ai_route_ref: "ORDER_CANDIDATE_ANALYSIS_V1"
+  order_discovery:
+    name: "Order Discovery Agent"
+    version: "2.0"
+    enabled: true
+    ai_assisted: true
+  return_workflow:
+    name: "Return Workflow Agent"
+    version: "2.0"
+    enabled: true
+    ai_assisted: true
+  return_fulfillment:
+    name: "Return Fulfillment Agent"
+    version: "2.0"
+    enabled: true
+    ai_assisted: false
+  bay_assignment:
+    name: "Bay Assignment Agent"
+    version: "2.0"
+    enabled: true
+    ai_assisted: false
+  feedback_learning:
+    name: "Feedback Learning Agent"
+    version: "2.0"
+    enabled: true
+    # The agent is four deterministic threshold rules and calls no model. This
+    # said `ai_assisted: true` with an `ai_route_ref` no code ever read -- a
+    # declared capability the implementation does not have. Stated honestly now;
+    # flip this back only when the agent actually routes through the gateway.
+    ai_assisted: false
+  support_response:
+    name: "Support Response Agent"
+    version: "1.0"
+    enabled: true
+    ai_assisted: false
+
+discovery:
+  web_order_pattern: "^W[0-9]{9,12}$"
+  ambiguity_gap_millionths: 100000
+  auto_confirmation_allowed: false
+  anchor_weights:
+    ORDER_NUMBER: 1000000
+    CUSTOMER_ID: 900000
+    TRACKING_NUMBER: 850000
+    PHONE: 650000
+    EMAIL: 650000
+    SKU: 450000
+    CUSTOMER_NAME: 300000
+    PRODUCT_DESCRIPTION: 250000
+  conflict_penalty_millionths: 300000
+  strong_anchors:
+    - ORDER_NUMBER
+    - CUSTOMER_ID
+    - TRACKING_NUMBER
+    - PHONE
+    - EMAIL
+  anchor_extractors:
+    - anchor_type: ORDER_NUMBER
+      patterns:
+        - "^W[0-9]{9,12}$"
+        - "\\b(?:ORD|SO)-[A-Z0-9-]{3,}\\b"
+        - "\\bW[0-9]{9,12}\\b"
+    - anchor_type: CUSTOMER_ID
+      patterns:
+        - "\\b(?:CUST|PTY)-[A-Z0-9-]{3,}\\b"
+    - anchor_type: TRACKING_NUMBER
+      patterns:
+        - "\\b1Z[A-Z0-9]{10,}\\b"
+    - anchor_type: PHONE
+      patterns:
+        - "(?<!\\w)\\+?[0-9][0-9 ()-]{7,}[0-9](?!\\w)"
+    - anchor_type: EMAIL
+      patterns:
+        - "\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b"
+    - anchor_type: SKU
+      patterns:
+        - "\\b(?:SKU|PRD)-[A-Z0-9-]{3,}\\b"
+  free_text_fallback_anchor: PRODUCT_DESCRIPTION
+  conversation:
+    greeting_patterns:
+      - "^(?:hi|hello|hey|greetings|good\\s+(?:morning|afternoon|evening)|help|start|howdy|hi\\s+there|hello\\s+there)[\\s!.,]*$"
+    greeting_response: "Hi there! I'm your AI Copilot, ready to help you with this return. What details do you have? You can give me an order number, a customer's name and zip code, or even just tell me what's wrong with the item."
+    greeting_status: "AWAITING_ANCHOR"
+    greeting_title: "Return Assistance"
+    initial_match_template: "I located {count} matching order(s) for {anchor_type} '{anchor_value}'. Please review the evidence below and confirm the exact customer and order line to proceed."
+    initial_no_match_template: "I searched our order records for {anchor_type} '{anchor_value}', but couldn't find a direct match. Could you provide another identifier such as an order number, customer ID, tracking number, or SKU?"
+    continue_match_template: "Great! Using {anchor_type} '{anchor_value}', I found {count} matching candidate order(s). Please review the updated list and confirm the item being returned."
+    continue_no_match_template: "I checked for {anchor_type} '{anchor_value}', but still couldn't locate a matching order in our systems. Please double-check the number or try searching by customer phone, email, or exact SKU."
+    confirmation_associate_template: "Confirmed order {order_reference}, line item {order_line_id}."
+    confirmation_assistant_template: "Order line {order_line_id} is now locked for return processing. Please provide the return reason, quantity, number of packages, preferred shipping method, and any optional notes."
+    submission_associate_template: "Confirmed return handling details."
+    submission_assistant_template: "Return session {session_id} has been created and transferred to Return Support processing."
+  # Every signal the canonical Order Discovery agent can search on.
+  #
+  # This catalogue is the whole of it. Adding an identification field is adding
+  # an entry here: no Python edit, no TypeScript edit, no release. Seven places
+  # in the backend used to have to agree about the seventeen fields below --
+  # the intent model, a signature tuple, a numbered branch per field in the plan
+  # builder, an address pair list, a date-field constant, an unsupported-field
+  # tuple and a scoring block per field. They are one list now.
+  #
+  # Each entry answers, in order: what the model calls it, what it means, how it
+  # is normalized and validated, which graph reads can answer it, and what a
+  # match is worth when candidates are ranked.
+  #
+  # `searches` are tried independently and their results merged, which is what
+  # lets an associate be answered from partial information -- a name *or* a ZIP
+  # *or* a date, in any combination. A search whose entity/property/operator the
+  # active schema does not offer is dropped at startup with a reason rather than
+  # failing inside a turn; a field left with none is reported to the associate
+  # as a signal that could not be used.
+  identification_fields:
+    - field_id: order_number
+      intent_key: orderNumbers
+      label: "order number"
+      description: "The Ferguson sales order number or web order number."
+      aliases: [order number, sales order number, web order, SO number]
+      normalization: LOWER_ALPHANUMERIC
+      sensitivity: NONE
+      ranking_weight_millionths: 500000
+      exact_match_bonus_millionths: 500000
+      # Highest weight as a *search* signal and nearly the lowest as a
+      # *question*, and the two are different jobs. An order number given to
+      # the agent identifies an order outright, which is what the weight above
+      # says. Asking for one is the question of last resort: the prompt puts it
+      # plainly -- "an associate calling about a customer has the customer in
+      # front of them and rarely the paperwork" -- and at 120 this outranked
+      # every field they can actually answer, so the ranked discriminators
+      # offered "order number" first to an associate holding a part and a name.
+      # Observed: five customers of the same given name, split perfectly by
+      # their surname, and the agent led with five order numbers to choose
+      # between.
+      clarification_priority: 20
+      searches:
+        - entity: sales_order
+          field: sales_order_number
+          strategy: EXACT
+          limit: 1
+
+    # A second key for the same target, because the model distinguishes an
+    # identifier it was given from one it inferred, and both are order numbers.
+    - field_id: order_id
+      intent_key: orderIds
+      label: "order identifier"
+      aliases: [order id]
+      normalization: LOWER_ALPHANUMERIC
+      ranking_weight_millionths: 500000
+      exact_match_bonus_millionths: 500000
+      # Below `order_number` for the same reason, and below it specifically:
+      # an associate who has neither is no likelier to produce the internal
+      # identifier than the number printed on the paperwork.
+      clarification_priority: 18
+      searches:
+        - entity: sales_order
+          field: sales_order_number
+          strategy: EXACT
+          limit: 1
+
+    - field_id: customer_name
+      intent_key: customerNames
+      label: "name on the order"
+      description: "Customer or company name as it appears on the order."
+      aliases: [customer name, company name, business name, account name]
+      normalization: LOWER_ALPHANUMERIC
+      sensitivity: PERSONAL
+      ranking_weight_millionths: 300000
+      clarification_priority: 85
+      searches:
+        # When the associate also names a product, this becomes "customers of
+        # this name who have that product on an order" -- one query from the
+        # order line up to the customer -- rather than every customer of this
+        # name. Without the path the two signals were two searches whose rows
+        # could never meet: five ACOSTAs and five strangers' orders, and the one
+        # ACOSTA order carrying the product in neither. When no product is
+        # given the search runs broad, exactly as before.
+        # The limit bounds the page, never the corpus (SRCH-01): a filled page
+        # is counted by the platform and reported as truncated, so the total is
+        # honest whatever the number here. It matches the cached-candidate
+        # window because that is how many the turn can page through: at five,
+        # seven customers sharing one trade name came back as five, and the
+        # two on the account the associate had just confirmed were never seen
+        # (2026-09-10).
+        - entity: customer
+          field: customer_name
+          strategy: CONTAINS
+          limit: 25
+          narrow_with:
+            - intent_key: productNames
+              path:
+                - relationship: order_has_line
+                  direction: INBOUND
+                  target: sales_order
+                - relationship: customer_placed_order
+                  direction: INBOUND
+                  target: customer
+            # The contact-point signals -- street, city, state, ZIP, email,
+            # phone -- are one hop the other way, and each is a question about
+            # WHICH customer of this name. "SERGIO on CURRY road" used to be
+            # five SERGIOs plus everyone on CURRY road; with the paths it is
+            # the SERGIO whose contact point is on CURRY road. Contact names
+            # are deliberately absent: that signal searches first name OR last
+            # name, and a narrowing can only AND one of them.
+            - intent_key: streetAddresses
+              path:
+                - relationship: customer_has_contact_point
+                  direction: INBOUND
+                  target: customer
+            - intent_key: cities
+              path:
+                - relationship: customer_has_contact_point
+                  direction: INBOUND
+                  target: customer
+            - intent_key: states
+              path:
+                - relationship: customer_has_contact_point
+                  direction: INBOUND
+                  target: customer
+            - intent_key: postalCodes
+              path:
+                - relationship: customer_has_contact_point
+                  direction: INBOUND
+                  target: customer
+            - intent_key: emails
+              path:
+                - relationship: customer_has_contact_point
+                  direction: INBOUND
+                  target: customer
+            - intent_key: phones
+              path:
+                - relationship: customer_has_contact_point
+                  direction: INBOUND
+                  target: customer
+        # The misspelling recovery. Deferred, so it runs only when every exact
+        # and partial search in the turn came back empty: an indexed approximate
+        # match is imprecise next to an exact one and would dilute it. The index
+        # ranks the complete customer set server-side, so the correct customer
+        # cannot fall outside a client-side window (SRCH-01).
+        - entity: customer
+          field: customer_name
+          strategy: FULLTEXT
+          limit: 25
+          result_fields: [account_id, customer_id, customer_name]
+          only_when_nothing_found: true
+          match_label: customer_name_fuzzy
+          deferred_score_ceiling_millionths: 600000
+        # The name was a person, not the company. "find order for CAMERON" is
+        # ambiguous and the model resolves it to `customerNames` -- correctly, on
+        # the evidence it has -- so `contactNames` is never populated and the
+        # contact searches configured under it never run. Waiting for the model
+        # to guess which kind of name it heard is not a mechanism; this is.
+        #
+        # Deferred for the same reason as the fuzzy search above: while the name
+        # DOES match a company, that is the better answer and this would only
+        # dilute it. It earns its turn only once every other search in the turn
+        # has come back empty, which is exactly the "no company is called that"
+        # case. Ceiling below the fuzzy recovery's: matching a contact when the
+        # associate may have meant the business is a weaker claim than matching
+        # the business name approximately, and the associate still confirms.
+        - entity: contact_point
+          field: contact_first_name
+          strategy: CONTAINS
+          limit: 10
+          result_fields: [account_id, customer_id, customer_name, contact_first_name, contact_last_name]
+          only_when_nothing_found: true
+          match_label: contact_name_fallback
+          deferred_score_ceiling_millionths: 500000
+        - entity: contact_point
+          field: contact_last_name
+          strategy: CONTAINS
+          limit: 10
+          result_fields: [account_id, customer_id, customer_name, contact_first_name, contact_last_name]
+          only_when_nothing_found: true
+          match_label: contact_name_fallback
+          deferred_score_ceiling_millionths: 500000
+        # And the full name on the same fallback path, because the model
+        # misclassifying the name does not make the associate say it differently:
+        # "the order for Cameron Solberg" arrives here as `customerNames`, no
+        # company is called that, and the two CONTAINS passes above answer a
+        # single name only. Without this the fallback recovers exactly the
+        # utterances that were already the easy half.
+        #
+        # Lowest ceiling of the four deferred passes, and it is the weakest claim
+        # of the four: an approximate match, on a contact, reached from a signal
+        # the associate may have meant as a company.
+        - entity: contact_point
+          field: contact_first_name
+          strategy: FULLTEXT
+          fulltext_index: contact_name_search_v1
+          limit: 25
+          result_fields: [account_id, customer_id, customer_name, contact_first_name, contact_last_name]
+          only_when_nothing_found: true
+          match_label: contact_name_fallback
+          deferred_score_ceiling_millionths: 450000
+
+    # The person, as distinct from the company above. `customer_name` searches
+    # `customer.customer_name`, which in this corpus only ever holds a trade
+    # name -- so an associate saying "find the order for Cameron" was answered
+    # with "couldn't find any matches" while thirteen orders carried CAMERON in
+    # `contact_point.contact_first_name`. The data, the graph property and the
+    # schema's `searchable: true` were all already there; nothing asked for it.
+    #
+    # PERSONAL, and weighted well below `customer_name`: a given name is shared
+    # by many contacts across different accounts, so it narrows to a shortlist
+    # rather than to a customer. Low clarification priority for the same reason
+    # -- asking "what is the contact's first name?" is a poor question next to
+    # asking for an email or a phone number, which identify.
+    - field_id: contact_name
+      intent_key: contactNames
+      label: "name of the person on the order's contact row"
+      description: "Given or family name of the contact, not the company."
+      aliases: [contact, contact name, person, person name, attention, attn, ordered by]
+      normalization: LOWER_ALPHANUMERIC
+      sensitivity: PERSONAL
+      ranking_weight_millionths: 120000
+      exact_match_bonus_millionths: 100000
+      clarification_priority: 40
+      searches:
+        # Both halves, because an associate given one name does not know which
+        # of the two it is: "Cameron" is a first name here and a family name
+        # elsewhere, and asking only one loses half the corpus.
+        #
+        # CONTAINS answers ONE name, and only one. It cannot answer "Cameron
+        # Solberg": containment runs from the stored value outwards, so the
+        # question it asks is whether `CAMERON` contains `CAMERON SOLBERG`, and
+        # that is false for every row in the corpus. The full name is the most
+        # natural way for an associate to say it and it matched nothing at all,
+        # while the given name alone matched eight. The indexed pass below is
+        # what answers it.
+        - entity: contact_point
+          field: contact_first_name
+          strategy: CONTAINS
+          limit: 10
+          result_fields: [account_id, customer_id, customer_name, contact_first_name, contact_last_name]
+        - entity: contact_point
+          field: contact_last_name
+          strategy: CONTAINS
+          limit: 10
+          result_fields: [account_id, customer_id, customer_name, contact_first_name, contact_last_name]
+        # The full name, and the misspelled one. `contact_name_search_v1`
+        # (migration 0016) covers both name columns, and `build_fulltext_query`
+        # AND-es the tokens of one value across them, so `cameron* AND solberg*`
+        # reaches the row that stores the two halves in two columns -- which no
+        # single-column CONTAINS above can do.
+        #
+        # Deferred, exactly like `customer_name_fuzzy` and for the same reason:
+        # when the associate gave one name the CONTAINS passes already answered
+        # it exactly, and an approximate pass running beside them would only
+        # dilute. It earns its turn precisely in the case the CONTAINS passes
+        # cannot answer -- they came back empty. Ceiling below the company
+        # recovery's 600000: this is the right classification but a weaker field,
+        # since a given name is shared across accounts and a trade name is not.
+        - entity: contact_point
+          field: contact_first_name
+          strategy: FULLTEXT
+          fulltext_index: contact_name_search_v1
+          limit: 25
+          result_fields: [account_id, customer_id, customer_name, contact_first_name, contact_last_name]
+          only_when_nothing_found: true
+          match_label: contact_name_fuzzy
+          deferred_score_ceiling_millionths: 550000
+
+    - field_id: email
+      intent_key: emails
+      label: "email used on the order"
+      aliases: [email, email address, e-mail]
+      normalization: LOWER_ALPHANUMERIC
+      sensitivity: CONTACT
+      ranking_weight_millionths: 200000
+      exact_match_bonus_millionths: 250000
+      clarification_priority: 95
+      searches:
+        # A complete address is an identifier and matches exactly; a fragment is
+        # all the associate could read off a screen, and only CONTAINS finds it.
+        # Which one is issued is decided by the value, not by a branch in code.
+        - entity: contact_point
+          field: email
+          strategy: EXACT
+          limit: 5
+          result_fields: [account_id, customer_id, customer_name, email]
+          applies_when_pattern: "@"
+          narrow_with:
+            - intent_key: customerNames
+              path:
+                - relationship: customer_has_contact_point
+                  direction: OUTBOUND
+                  target: contact_point
+        - entity: contact_point
+          field: email
+          strategy: CONTAINS
+          limit: 5
+          result_fields: [account_id, customer_id, customer_name, email]
+          applies_when_pattern: "^[^@]*$"
+          narrow_with:
+            - intent_key: customerNames
+              path:
+                - relationship: customer_has_contact_point
+                  direction: OUTBOUND
+                  target: contact_point
+
+    - field_id: phone
+      intent_key: phones
+      label: "phone number used on the order"
+      aliases: [phone, phone number, telephone, mobile, cell]
+      normalization: DIGITS
+      sensitivity: CONTACT
+      ranking_weight_millionths: 200000
+      exact_match_bonus_millionths: 200000
+      clarification_priority: 90
+      searches:
+        # As typed, in case it is stored formatted the way the associate read it
+        # out; as bare digits, so a stored form with different punctuation -- or
+        # a country code nobody mentioned -- still matches.
+        - entity: contact_point
+          field: phone_number
+          strategy: EXACT
+          limit: 5
+          result_fields: [account_id, customer_id, customer_name, phone_number]
+          narrow_with:
+            - intent_key: customerNames
+              path:
+                - relationship: customer_has_contact_point
+                  direction: OUTBOUND
+                  target: contact_point
+        - entity: contact_point
+          field: phone_number
+          strategy: CONTAINS
+          limit: 5
+          result_fields: [account_id, customer_id, customer_name, phone_number]
+          value_form: DIGITS
+          narrow_with:
+            - intent_key: customerNames
+              path:
+                - relationship: customer_has_contact_point
+                  direction: OUTBOUND
+                  target: contact_point
+        # `ship_to_phone` is EXACT-only, so only the digits form is worth asking
+        # for: a formatted value would have to match character for character.
+        - entity: sales_order
+          field: ship_to_phone
+          strategy: EXACT
+          limit: 5
+          result_fields: [sales_order_number, customer_id, ship_to_phone]
+          value_form: DIGITS
+
+    - field_id: street_address
+      intent_key: streetAddresses
+      label: "street address"
+      aliases: [street, address, street address, delivery address]
+      normalization: LOWER_ALPHANUMERIC
+      sensitivity: PERSONAL
+      ranking_weight_millionths: 300000
+      clarification_priority: 58
+      searches:
+        # No order-side counterpart: `sales_order` records the ship-to city,
+        # state and postal code but not the street.
+        - entity: contact_point
+          field: address_line1
+          strategy: CONTAINS
+          limit: 10
+          result_fields: [account_id, customer_id, customer_name, address_line1]
+          narrow_with:
+            - intent_key: customerNames
+              path:
+                - relationship: customer_has_contact_point
+                  direction: OUTBOUND
+                  target: contact_point
+
+    - field_id: city
+      intent_key: cities
+      label: "city on the order"
+      aliases: [city, town]
+      normalization: LOWER_ALPHANUMERIC
+      ranking_weight_millionths: 150000
+      clarification_priority: 57
+      searches:
+        # Two homes, deliberately: the contact point is where the *customer* is
+        # registered, the order records where this particular order was sent. An
+        # associate saying "Dallas" could mean either, and asking only one would
+        # miss an order shipped to a job site.
+        - entity: contact_point
+          field: city
+          strategy: CONTAINS
+          limit: 10
+          result_fields: [account_id, customer_id, customer_name, city]
+          narrow_with:
+            - intent_key: customerNames
+              path:
+                - relationship: customer_has_contact_point
+                  direction: OUTBOUND
+                  target: contact_point
+        - entity: sales_order
+          field: ship_to_city
+          strategy: CONTAINS
+          limit: 10
+          result_fields: [sales_order_number, customer_id, ship_to_city]
+
+    - field_id: state
+      intent_key: states
+      label: "state on the order"
+      aliases: [state, province]
+      normalization: LOWER_ALPHANUMERIC
+      # Narrows a result set; identifies nobody. It must not outrank a name or a
+      # contact detail.
+      ranking_weight_millionths: 50000
+      clarification_priority: 54
+      searches:
+        # EXACT on both sides because that is what the schema enables. A
+        # configured CONTAINS here would be dropped at startup with a reason.
+        - entity: contact_point
+          field: state
+          strategy: EXACT
+          limit: 10
+          result_fields: [account_id, customer_id, customer_name, state]
+          narrow_with:
+            - intent_key: customerNames
+              path:
+                - relationship: customer_has_contact_point
+                  direction: OUTBOUND
+                  target: contact_point
+        - entity: sales_order
+          field: ship_to_state
+          strategy: EXACT
+          limit: 10
+          result_fields: [sales_order_number, customer_id, ship_to_state]
+
+    - field_id: postal_code
+      intent_key: postalCodes
+      label: "ZIP code on the order"
+      aliases: [zip, ZIP code, postcode, postal code]
+      normalization: LOWER_ALPHANUMERIC
+      ranking_weight_millionths: 200000
+      clarification_priority: 75
+      searches:
+        - entity: contact_point
+          field: postal_code
+          strategy: EXACT
+          limit: 10
+          result_fields: [account_id, customer_id, customer_name, postal_code]
+          narrow_with:
+            - intent_key: customerNames
+              path:
+                - relationship: customer_has_contact_point
+                  direction: OUTBOUND
+                  target: contact_point
+        - entity: sales_order
+          field: ship_to_postal_code
+          strategy: EXACT
+          limit: 10
+          result_fields: [sales_order_number, customer_id, ship_to_postal_code]
+
+    - field_id: sku
+      intent_key: skus
+      label: "SKU or item number"
+      aliases: [sku, item number, part number, product code]
+      normalization: LOWER_ALPHANUMERIC
+      ranking_weight_millionths: 200000
+      exact_match_bonus_millionths: 200000
+      clarification_priority: 70
+      searches:
+        - entity: product
+          field: sku
+          strategy: EXACT
+          limit: 5
+
+    - field_id: product_description
+      intent_key: productNames
+      label: "product description"
+      aliases: [product, item, description, what was ordered]
+      normalization: LOWER_ALPHANUMERIC
+      ranking_weight_millionths: 200000
+      clarification_priority: 65
+      searches:
+        # Read from order_line so the order the line belongs to comes back too.
+        #
+        # The mirror of the customer_name narrowing above: with a customer name
+        # in hand this is "lines carrying the product on that customer's
+        # orders", starting at the customer and walking down to the line. The
+        # limit is 25 rather than 5 because a description alone can match
+        # dozens of lines ("STRT LGTH PEX-B POT" matched 81) and the read
+        # carries no sort, so 5 was an arbitrary five and the associate's order
+        # was as likely to be cut as kept. account_id is returned so the panel
+        # can show which branch the order sits on beside the customer rows.
+        - entity: order_line
+          field: product_description
+          strategy: CONTAINS
+          limit: 25
+          result_fields: [sales_order_number, account_id, product_description, ordered_quantity]
+          narrow_with:
+            - intent_key: customerNames
+              path:
+                - relationship: customer_placed_order
+                  direction: OUTBOUND
+                  target: sales_order
+                - relationship: order_has_line
+                  direction: OUTBOUND
+                  target: order_line
+            # A colour is a question about the product, so it narrows this
+            # search and nothing else: the line's catalogue entry must carry
+            # the colour. Walked from `product` back to the line, one hop.
+            # Whether a colour may ever search on its own is decided on the
+            # colour field (`searches_only_with`), not here.
+            - intent_key: colors
+              path:
+                - relationship: line_references_product
+                  direction: INBOUND
+                  target: order_line
+
+    - field_id: ordered_quantity
+      intent_key: quantities
+      label: "how many were ordered"
+      aliases: [quantity, how many, count]
+      value_type: INTEGER
+      ranking_weight_millionths: 100000
+      clarification_priority: 40
+      searches:
+        # A quantity alone matches thousands of lines. Paired with whatever
+        # product description the associate also gave, it is a real narrowing --
+        # and when they gave none, the broad pass still runs rather than being
+        # dropped.
+        - entity: order_line
+          field: ordered_quantity
+          strategy: EXACT
+          limit: 5
+          result_fields: [sales_order_number, product_description, ordered_quantity]
+          narrow_with: productNames
+
+    - field_id: order_date_from
+      intent_key: dateFrom
+      label: "earliest order date"
+      aliases: [from, since, after, earliest]
+      value_type: DATE_LOWER_BOUND
+      multiple: false
+      ranking_weight_millionths: 200000
+      clarification_priority: 60
+      searches:
+        # `order_date`, not `delivered_at`: the schema is derived from the real
+        # salesInv documents and there is no delivery timestamp in them. Date
+        # properties expose range operators only, never EXACT.
+        - entity: sales_order
+          field: order_date
+          strategy: GTE
+          limit: 10
+          result_fields: [sales_order_number, customer_id, order_date]
+
+    - field_id: order_date_to
+      intent_key: dateTo
+      label: "latest order date"
+      aliases: [to, until, before, latest]
+      value_type: DATE_UPPER_BOUND
+      multiple: false
+      ranking_weight_millionths: 200000
+      clarification_priority: 59
+      searches:
+        - entity: sales_order
+          field: order_date
+          strategy: LTE
+          limit: 10
+          result_fields: [sales_order_number, customer_id, order_date]
+
+    - field_id: approximate_order_date
+      intent_key: approximateDate
+      label: "approximate order date"
+      aliases: [around, roughly, about that date]
+      value_type: DATE_POINT
+      multiple: false
+      ranking_weight_millionths: 200000
+      clarification_priority: 60
+      searches:
+        # BETWEEN declared here is also what proves the operator is available
+        # for a merged dateFrom/dateTo window on the same property.
+        - entity: sales_order
+          field: order_date
+          strategy: BETWEEN
+          limit: 10
+          result_fields: [sales_order_number, customer_id, order_date]
+
+    - field_id: product_colour
+      intent_key: colors
+      label: "product colour"
+      description: >-
+        The colour of the item, matched against the colour the product
+        catalogue records for it (`product.colour_finish`, the first entry of
+        `eco.colorFinish`). A colour is a question about a product and is
+        searched only beside one: "the white one" narrows the product search
+        to lines whose catalogue entry is white, and on its own it searches
+        nothing -- the next question is the product. Never matched against
+        product_description, which would put "Blue Ridge Faucet" in front of
+        someone who said the tap was blue.
+      aliases: [colour, color, finish, shade]
+      normalization: LOWER_ALPHANUMERIC
+      # The finishes the catalogue records (`product.colour_finish`), so the
+      # model sees the vocabulary and the search-intent guard can lift a colour
+      # the model left inside the product phrase -- "black ABS DWV vent ell"
+      # under productNames searched nothing on 2026-09-09 -- into this signal.
+      # "Red" is deliberately absent: in this catalogue RED is a reducer.
+      known_values:
+        - White
+        - Black
+        - Matte Black
+        - Gray
+        - Grey
+        - Silver
+        - Brass
+        - Chrome
+        - Polished Chrome
+        - Brushed Nickel
+        - Stainless
+        - Copper
+        - Bronze
+        - Oil Rubbed Bronze
+        - Brown
+        - Sand
+        - Almond
+        - Biscuit
+        - Bone
+        - Blue
+        - Green
+      ranking_weight_millionths: 100000
+      clarification_priority: 56
+      # Operator-configurable: remove this line and the search below runs on
+      # its own, returning every product of that colour.
+      searches_only_with: productNames
+      searches:
+        # Consulted only as the `colors` narrowing on product_description's
+        # search (see `narrow_with` there); never planned by itself while
+        # `searches_only_with` is set.
+        - entity: product
+          field: colour_finish
+          strategy: CONTAINS
+          limit: 10
+          result_fields: [sku, product_description, colour_finish]
+
+    - field_id: free_text
+      intent_key: freeTextTerms
+      label: "anything else the associate said"
+      aliases: [other details]
+      normalization: LOWER_ALPHANUMERIC
+      # Lowest of everything: leftover descriptive text is the weakest evidence
+      # in the catalogue and must never outrank a named signal.
+      ranking_weight_millionths: 50000
+      clarification_priority: 10
+      searches:
+        # `sales_order_number` supports EXACT only, so unclassified text is
+        # searched against product_description, which supports CONTAINS and is
+        # the likelier home for leftover descriptive words anyway.
+        - entity: order_line
+          field: product_description
+          strategy: CONTAINS
+          limit: 5
+          result_fields: [sales_order_number, product_description, ordered_quantity]
+
+  progressive:
+    enabled: true
+    customer_fulltext_index: customer_name_search_v2
+    product_fulltext_index: product_description_search_v2
+    candidate_limit: 10
+    max_edit_distance: 2
+    one_edit_min_token_length: 4
+    two_edit_min_token_length: 8
+    candidate_ttl_seconds: 900
+    max_clarification_options: 10
+    dialogue_states:
+      no_candidates: ENTITY_IDENTIFICATION
+      single_candidate: LINE_SELECTION
+      slot_disambiguation: CUSTOMER_DISAMBIGUATION
+      generic_disambiguation: ORDER_DISAMBIGUATION
+    weak_anchor_source_fallback_enabled: true
+    weak_anchor_targeted_graph_upsert_enabled: false
+
+    fuzzy_search_anchors:
+      - CUSTOMER_NAME
+      - PRODUCT_DESCRIPTION
+      - SHIPPING_ADDRESS
+      - ZIP_CODE
+      - DATE_RANGE
+      - PRODUCT_COLOUR
+    disambiguation_attributes:
+      - slot: customer_name
+        candidate_field: customerName
+        label: "customer name"
+        priority: 120
+      - slot: billing_city
+        candidate_field: billingCity
+        label: "customer account city"
+        priority: 100
+      - slot: postal_code
+        candidate_field: postalCode
+        label: "customer account postal code"
+        priority: 90
+      - slot: account_type
+        candidate_field: accountType
+        label: "customer account type"
+        priority: 80
+      - slot: product_description
+        candidate_field: productDescription
+        label: "product"
+        priority: 75
+      - slot: order_status
+        candidate_field: orderStatus
+        label: "order status"
+        priority: 70
+      - slot: order_number
+        candidate_field: orderReference
+        label: "order number"
+        priority: 10
+
+source_resolution:
+  sales_invoice_collection: salesInv
+  customer_collection: customerOutboundCDM
+  shipment_collection: shipmentInfo
+  product_collection: lkpSearchProduct
+  order_number_paths:
+    - salesHdrEventData.orderId
+    - salesHdr.salesHdrData.orderId
+  # THE BASIS OF THE STANDARD RETURN WINDOW.
+  #
+  # Verified 2026-08-15 against the 100-order reference extract:
+  #
+  #   salesHdr.salesHdrData.orderDate   present on 100/100, always midnight UTC
+  #   salesHdrEventData.orderDate       present on   0/100  (never written)
+  #   salesHdr.salesHdrData.invoiceDate present on  99/100, differs from
+  #                                     orderDate on 67 of them
+  #   salesHdr.salesHdrData.entryDate   present on 100/100, differs on 18
+  #
+  # So `orderDate` is the only field that both exists everywhere and names the
+  # purchase itself. `invoiceDate` is when the order was billed and `entryDate`
+  # is when it was keyed into the ERP; either would answer a 30-day boundary
+  # with a date that is not the purchase, so neither is listed as a fallback.
+  # An order carrying no `orderDate` leaves the window undated, and the case
+  # reviews on PURCHASE_DATE_UNKNOWN rather than being decided from a guess.
+  order_date_paths:
+    - salesHdr.salesHdrData.orderDate
+  # WHAT PROVES THE ORDER WAS DELIVERED, as `salesInv` decides it.
+  #
+  # Not `order_status`, which carries ERP states (INVOICED, CALLCSR,
+  # READY-FOR-PICKUP) and never says delivered, and not `commitDate`, which the
+  # active schema documents as "Committed delivery date. NOT proof of
+  # delivery". Delivery is a completed carrier route plus a signature captured
+  # at the door, on an order that was driven rather than collected.
+  #
+  # The ship-via exclusion is a condition and not a refinement. All fourteen
+  # `podSigTd` values in the original reference extract sat on CPU/WCL orders,
+  # where the signature is the customer signing at the counter -- so a reader
+  # taking the signature alone called every counter pick-up delivered.
+  #
+  # `podSigTd` is both the proof and the date: its value is the delivery
+  # instant, and the standard-return and delivery-claim windows are counted
+  # from it.
+  delivery_proof:
+    order_code_paths:
+      - salesHdrEventData.orderCode
+    invoice_order_codes: [IO, ID]
+    file_paths:
+      - salesHdrEventData.trilogieFile
+    order_file_value: ORDER
+    ship_via_paths:
+      - salesHdr.salesHdrData.shipping.shipViaCode
+      - salesHdrEventData.shipViaCode
+    collected_ship_via_codes: [CPU, WCL, BO]
+    route_status_paths:
+      - salesHdr.salesHdrData.shipping.fleetwiseStatus
+    route_completed_value: Completed
+    signature_paths:
+      - salesHdr.salesHdrData.shipping.podSigTd
+  web_order_paths:
+    - salesHdrEventData.webOrderId
+    - salesHdrEventData.webOrderNumber
+    - salesHdr.salesHdrData.webOrderId
+    - salesHdr.salesHdrData.webOrderNumber
+  trilogie_order_paths:
+    - salesHdrEventData.trilOrdNum
+    - salesHdrEventData.orderId
+    - salesHdr.salesHdrData.trilOrdNum
+  customer_id_paths:
+    - salesHdr.salesHdrData.custId
+    - salesHdrEventData.customerId
+  # How the goods left, for the return-method derivation. Both places the source
+  # writes it, header first.
+  ship_via_paths:
+    - salesHdr.salesHdrData.shipping.shipViaCode
+    - salesHdrEventData.shipViaCode
+  # The account, and how to reach the customer on it. `customer.address[]` is
+  # the array `contact_point` is exploded from; the resolver searches its rows
+  # rather than indexing the first, because in this corpus the row carrying the
+  # phone is frequently not the row carrying the email.
+  customer_account_paths:
+    - salesHdrEventData.accountId
+  customer_phone_paths:
+    - customer.address.phoneNumber
+  customer_email_paths:
+    - customer.address.email
+  customer_name_paths:
+    - salesHdr.salesHdrData.custName
+    - salesHdrEventData.customerName
+  # WHERE A PRODUCT'S COLOUR COMES FROM.
+  #
+  # On `lkpSearchProduct`, keyed by master product id -- not on the order line,
+  # which carries a description and no colour. Verified against the loaded
+  # catalogue: `eco.colorFinish` is present on 253 of 1000 products and is an
+  # array ("Sandtone", "Polished Chrome", "Matte Black"), so the first entry is
+  # taken and the rest are left alone.
+  #
+  # A product the catalogue does not describe a colour for reports no colour.
+  # Nothing here reads it off the description: "16X20 STL W/ FLTR FRAME RTN AIR
+  # GRL WHIT" is a description that happens to end in a colour word, and
+  # treating that as a statement of colour would be a guess dressed as a fact.
+  product_colour_paths:
+    - eco.colorFinish
+  customer_city_paths:
+    - salesHdr.salesHdrData.billToCity
+    - salesHdrEventData.billingCity
+    - salesHdrEventData.city
+  customer_postal_code_paths:
+    - salesHdr.salesHdrData.billToZip
+    - salesHdrEventData.billingPostalCode
+    - salesHdrEventData.postalCode
+  customer_account_type_paths:
+    - salesHdr.salesHdrData.accountType
+    - salesHdrEventData.accountType
+    - salesHdrEventData.customerName
+  line_id_paths:
+    - orderLineId
+    - lineId
+    - salesLineId
+  product_id_paths:
+    - productId
+    - productUniqueId
+  sku_paths:
+    - sku
+    - modelNumber
+  product_description_paths:
+    - productDesc
+    - productDescription
+  shipped_quantity_paths:
+    - shipQty
+    - shippedQuantity
+    - quantityShipped
+  phone_field: phoneNumber
+  email_field: email
+  customer_master_id_field: customerId
+  tracking_field: shipmentInfoEventData.trkNum
+  tracking_order_field: shipmentInfoEventData.trilOrdNum
+
+clarification_policy:
+  version: v2
+  max_prompts_per_turn: 1
+  max_fields_per_turn: 1
+  max_distinct_values_for_ai: 5
+  phrasing_owner: LLM
+  field_selection_owner: LLM
+  fields:
+    - field: order_number
+      label: "Ferguson order number or web order number"
+      priority: 120
+      customer_answerable: true
+      field_group: ORDER_ANCHOR
+      anchor_type: ORDER_NUMBER
+      candidate_field: orderReference
+    - field: customer_id
+      label: "customer ID"
+      priority: 115
+      customer_answerable: true
+      field_group: CUSTOMER_ANCHOR
+      anchor_type: CUSTOMER_ID
+      candidate_field: customerReference
+    - field: tracking_number
+      label: "tracking number"
+      priority: 110
+      customer_answerable: true
+      field_group: SHIPMENT_ANCHOR
+      anchor_type: TRACKING_NUMBER
+    - field: invoice_number
+      label: "invoice number"
+      priority: 105
+      customer_answerable: true
+      field_group: ORDER_ANCHOR
+    - field: customer_po_number
+      label: "customer PO number"
+      priority: 100
+      customer_answerable: true
+      field_group: ORDER_ANCHOR
+    - field: email
+      label: "email used on the order"
+      priority: 95
+      customer_answerable: true
+      field_group: CUSTOMER_ANCHOR
+      anchor_type: EMAIL
+      candidate_field: email
+    - field: phone
+      label: "phone number used on the order"
+      priority: 90
+      customer_answerable: true
+      field_group: CUSTOMER_ANCHOR
+      anchor_type: PHONE
+      candidate_field: phone
+    - field: customer_name
+      label: "name on the order"
+      priority: 85
+      customer_answerable: true
+      field_group: CUSTOMER_NARROWING
+      anchor_type: CUSTOMER_NAME
+      candidate_field: customerName
+    - field: company_name
+      label: "company name"
+      priority: 80
+      customer_answerable: true
+      field_group: CUSTOMER_NARROWING
+    - field: zip_code
+      label: "ZIP code on the order"
+      priority: 75
+      customer_answerable: true
+      field_group: CUSTOMER_NARROWING
+      anchor_type: ZIP_CODE
+      candidate_field: postalCode
+    - field: product_sku
+      label: "SKU or item number"
+      priority: 70
+      customer_answerable: true
+      field_group: LINE_NARROWING
+      anchor_type: SKU
+      candidate_field: sku
+    - field: product_description
+      label: "product description"
+      priority: 65
+      customer_answerable: true
+      field_group: LINE_NARROWING
+      anchor_type: PRODUCT_DESCRIPTION
+      candidate_field: productDescription
+    - field: approximate_purchase_date
+      label: "approximate purchase date"
+      priority: 60
+      customer_answerable: true
+      field_group: DATE_NARROWING
+      anchor_type: DATE_RANGE
+      candidate_field: orderDate
+    - field: shipping_address
+      label: "shipping address"
+      priority: 58
+      customer_answerable: true
+      field_group: CUSTOMER_NARROWING
+      anchor_type: SHIPPING_ADDRESS
+      candidate_field: shippingAddress
+    - field: product_colour
+      label: "product colour"
+      priority: 56
+      customer_answerable: true
+      field_group: LINE_NARROWING
+      anchor_type: PRODUCT_COLOUR
+      candidate_field: productColor
+    - field: purchase_channel_hint
+      label: "where the order was placed"
+      priority: 55
+      customer_answerable: true
+      field_group: SOURCE_NARROWING
+    - field: product_presence
+      label: "current product location"
+      priority: 50
+      customer_answerable: true
+      field_group: RETURN_CONTEXT
+    - field: return_reason
+      label: "reason for return"
+      priority: 45
+      customer_answerable: true
+      field_group: RETURN_CONTEXT
+  goals:
+    IDENTIFY_ORDER:
+      preferred_field_groups:
+        - ORDER_ANCHOR
+        - SHIPMENT_ANCHOR
+        - CUSTOMER_ANCHOR
+        - DATE_NARROWING
+      preferred_fields:
+        - order_number
+        - tracking_number
+        - customer_id
+        - invoice_number
+        - customer_po_number
+        - email
+        - phone
+        - approximate_purchase_date
+    IDENTIFY_CUSTOMER:
+      preferred_field_groups:
+        - CUSTOMER_ANCHOR
+        - CUSTOMER_NARROWING
+      preferred_fields:
+        - customer_id
+        - phone
+        - email
+        - customer_name
+        - company_name
+        - zip_code
+    IDENTIFY_ORDER_LINE:
+      preferred_field_groups:
+        - LINE_NARROWING
+        - ORDER_ANCHOR
+      preferred_fields:
+        - product_sku
+        - product_description
+        - order_number
+        - invoice_number
+    DISAMBIGUATE_MULTIPLE_ORDERS:
+      preferred_field_groups:
+        - ORDER_ANCHOR
+        - DATE_NARROWING
+        - LINE_NARROWING
+      preferred_fields:
+        - order_number
+        - invoice_number
+        - customer_po_number
+        - approximate_purchase_date
+        - product_sku
+        - product_description
+    IDENTIFY_SOURCE_CHANNEL:
+      preferred_field_groups:
+        - ORDER_ANCHOR
+        - SOURCE_NARROWING
+        - CUSTOMER_ANCHOR
+      preferred_fields:
+        - order_number
+        - purchase_channel_hint
+        - email
+        - phone
+    CAPTURE_RETURN_CONTEXT:
+      preferred_field_groups:
+        - RETURN_CONTEXT
+      preferred_fields:
+        - return_reason
+        - product_presence
+
+return_policy:
+  photo_required_reason_codes:
+    - DAMAGED
+    - DEFECTIVE
+    - WRONG_ITEM
+  supported_product_presence:
+    - PRESENT_AT_BRANCH
+    - OFFSITE_CUSTOMER_RESIDENCE
+    - OFFSITE_CUSTOMER_JOBSITE
+    - OFFSITE_COMMERCIAL_SITE
+    - OFFSITE_VENDOR_SITE
+    - OFFSITE_OTHER
+    - NOT_APPLICABLE
+  # How the parcel-vs-freight class is decided from the product, so Support is
+  # told the method rather than asked for it.
+  #
+  # `_derive_return_method` has always been able to do this -- "the
+  # parcel-vs-freight class, from what the product is, never asked" -- and has
+  # always answered `None` here, because this block did not exist. So every
+  # handoff went out with no method, every case sat on `awaiting:
+  # ["RETURN_METHOD"]`, and the Support agent's first message on every thread
+  # was "Before the RMA can be issued, please confirm: return method."
+  #
+  # One freight-class line decides the whole shipment: the parcel network cannot
+  # carry it, so a consignment holding a water heater and a box of fittings goes
+  # LTL entire. The keywords are matched against the resolved product
+  # description and SKU, upper-cased.
+  #
+  # Derived, not decided. The answer is recorded as a `return_method` fact with
+  # `DERIVED` acquisition and travels to Support with that provenance, and
+  # Support remains free to record a different one on the outcome -- which
+  # supersedes it, as a stated value should.
+  return_method_derivation:
+    default_method: PREPAID_PARCEL
+    freight_method: BRANCH_LTL
+    # Observed codes in this corpus: CPU counter pick-up (56%), WCL will-call,
+    # OT our truck, XPW express parcel, M mail.
+    #
+    # CPU and WCL are inferred rows and want operator review, in the sense the
+    # requirements table already uses: a customer who collected at the counter
+    # can carry it back to the counter, and `BRANCH_UPS` is this catalogue's
+    # nearest entry for the branch handling the return leg -- but whether that
+    # is what the desk means by it is a business answer, not a reading.
+    ship_via_methods:
+      CPU: BRANCH_UPS
+      WCL: BRANCH_UPS
+      OT: BRANCH_LTL
+      XPW: PREPAID_PARCEL
+      M: PREPAID_PARCEL
+    freight_keywords:
+      # Water heaters, tanks and boilers -- the commonest LTL class in this
+      # catalogue and the one an associate is most likely to meet.
+      - WHTR
+      - WATER HEATER
+      - TKLS
+      - TANK
+      - BOILER
+      - FURN
+      # Bath and fixture ware that ships crated.
+      - TUB
+      - SHOWER BASE
+      - TOILET
+      - LAVATORY
+      - SINK
+      # Mechanical plant.
+      - CONDENSER
+      - AIR HANDLER
+      - PUMP
+      - COMPRESSOR
+      # Length, which is what puts pipe and duct on a truck regardless of weight.
+      - PIPE
+      - DUCT
+  normalized_return_methods:
+    - PREPAID_PARCEL
+    - BRANCH_UPS
+    - BRANCH_LTL
+    - OFFSITE_PARCEL
+    - OFFSITE_LTL
+    - DIRECT_VENDOR
+    - FIELD_SCRAP
+    - NO_PHYSICAL_RETURN
+    - CUSTOMER_KEEP
+    - UNKNOWN
+  # What each return method needs before the return is business-complete.
+  # `awaiting[]` is `required(method) - satisfied(case)` and `businessComplete`
+  # is that difference being empty, so this table is the whole definition of
+  # "done" for a return -- it sits beside the catalogue above because adding a
+  # method without saying what it requires is an incomplete release.
+  #
+  # Three structural rules, enforced at load rather than described here:
+  #   * every row must require RMA -- a method that completes without an
+  #     authorization completes without a return;
+  #   * no row may name UNKNOWN -- UNKNOWN is the absence of a method, and a row
+  #     for it would let an undecided case complete;
+  #   * a method with NO row is unmapped, which leaves the completion profile
+  #     unresolved and the case awaiting RETURN_METHOD. That is the safe
+  #     direction and the reason an empty `requires` list is rejected: "no row"
+  #     must never read as "requires nothing".
+  #
+  # Dimensions: RMA, LABEL, TRACKING, BOL, PICKUP, RETURN_LOCATION.
+  return_method_requirements:
+    # --- Stated verbatim in the remediation plan (sect. 6.4).
+    # RECEIPT on every row whose goods come back to us: the paperwork being
+    # complete is not the return being complete, and a case that closed on
+    # RMA, label and tracking alone closed with the parcel still on the
+    # counter. Satisfied by the warehouse receipt (`POST /api/cases/{id}/receipt`)
+    # or a package reading delivered/received; never by a bay recommendation.
+    - method: PREPAID_PARCEL
+      requires: [RMA, LABEL, TRACKING, RECEIPT]
+    - method: BRANCH_LTL
+      requires: [RMA, BOL, PICKUP, RECEIPT]
+    - method: OFFSITE_LTL
+      requires: [RMA, BOL, PICKUP, RETURN_LOCATION, RECEIPT]
+    - method: CUSTOMER_KEEP
+      requires: [RMA]
+    - method: NO_PHYSICAL_RETURN
+      requires: [RMA]
+    # --- INFERRED FROM THE CATALOGUE -- OPERATOR REVIEW REQUIRED.
+    #     The four rows below were derived when the table moved out of code.
+    #     The plan does not state them, so each is a reading rather than a
+    #     decision, and each is wrong in a way that shows up late: too few
+    #     requirements lets a return report itself complete without the
+    #     paperwork, too many hangs it forever on an artifact nobody produces.
+    #     Confirm each with Returns operations and delete this banner.
+    #
+    #     A parcel tendered at a branch: the branch is the origin, so there is
+    #     no return location to establish, but there is still a label to print
+    #     and a number to follow.
+    - method: BRANCH_UPS
+      requires: [RMA, LABEL, TRACKING, RECEIPT]
+    #     A parcel from a customer site -- BRANCH_UPS plus the location, for the
+    #     same reason OFFSITE_LTL is BRANCH_LTL plus one.
+    - method: OFFSITE_PARCEL
+      requires: [RMA, LABEL, TRACKING, RETURN_LOCATION, RECEIPT]
+    #     Straight back to the vendor. Somebody has to say where; the carrier
+    #     paperwork is the vendor's, not ours.
+    - method: DIRECT_VENDOR
+      requires: [RMA, RETURN_LOCATION]
+    #     Scrapped where it stands. Nothing ships, so nothing but the
+    #     authorization can be required -- the same shape as NO_PHYSICAL_RETURN,
+    #     reached for a different reason.
+    - method: FIELD_SCRAP
+      requires: [RMA]
+    # --- UNKNOWN has no row, and cannot have one. See the second rule above.
+  # Which shipping instruction types tender a bill of lading. Recording
+  # shipping instructions of one of these types emits BOL_TENDERED alongside
+  # SHIPPING_INSTRUCTIONS_ISSUED, and the same set decides what the acting role
+  # has to be authorized for -- the check and the act read one list.
+  #
+  # Carries both the instruction-type vocabulary Support uses (LTL, BOL,
+  # HEAVY_TRUCK_PICKUP) and the normalized return methods above that are
+  # freight (BRANCH_LTL, OFFSITE_LTL), because `shippingInstructionType` is
+  # populated from either.
+  bol_tendering_instruction_types:
+    - LTL
+    - BOL
+    - BRANCH_LTL
+    - OFFSITE_LTL
+    - HEAVY_TRUCK_PICKUP
+  rga_required_product_resolutions:
+    - RTV
+  heavy_pickup_required_fields:
+    - address
+    - contact_name
+    - contact_phone
+    - handling_unit_count
+    - estimated_weight
+    - dimensions
+    - palletized
+    - available_windows
+  branch_staging:
+    require_return_number_tag: true
+    allow_manufacturer_box_marking: false
+    allow_branch_inventory_addition: false
+
+# What an associate may say about a line they are selecting (plan sect. 12.4).
+#
+# Top-level rather than nested inside `return_policy` on purpose. The publisher
+# merges this file underneath the active release one TOP-LEVEL key at a time, so
+# a key added inside `return_policy` would be dropped by the release's own
+# `return_policy` and could never reach a deployment that has ever published
+# (defect D11, observed with `copilot.order_discovery_agent_id`). A new
+# top-level key is in no existing release, so this one arrives on the next
+# publish.
+#
+# An empty list here means "no catalogue published", which leaves the field as
+# length-bounded free text -- the behaviour before this block existed. It does
+# not mean "reject everything": that would take a branch's returns offline over
+# a key nobody had been asked for.
+selection_vocabulary:
+  # Constrained at load to `policy.vocabulary.ReturnReason`, the evaluator's own
+  # closed vocabulary. A reason outside it resolves to UNKNOWN in
+  # `case_policy_facts` and routes the return to a human with nothing in the
+  # audit trail saying why, so the release is refused instead.
+  #
+  # UNKNOWN is absent and cannot be listed: it is the absence of an answer, not
+  # something an associate chooses.
+  reasons:
+    # Delivery-related. The same four `return_eligibility_policy.delivery_claim`
+    # already routes as a claim.
+    - SHIPPING_DAMAGE
+    - SHORTAGE
+    - SHIPMENT_ERROR
+    - IMPROPER_DELIVERY
+    # Warranty-related. The same four `return_eligibility_policy.warranty_issue`
+    # already routes to warranty verification.
+    - MANUFACTURING_DEFECT
+    - PRODUCT_FAILURE_AFTER_INSTALLATION
+    - COVERED_PRIVATE_LABEL_DEFECT
+    - MANUFACTURER_WARRANTY_ISSUE
+    # Ordinary returns. These take the standard-stock path.
+    - CHANGED_MIND
+    - ORDERED_IN_ERROR
+    - NO_LONGER_NEEDED
+    - OTHER
+  # --- DERIVED FROM THE ELIGIBILITY POLICY -- OPERATOR REVIEW REQUIRED.
+  #     There is no condition vocabulary anywhere in code to copy, and inventing
+  #     one in Python is the defect this block removes. Every entry below is
+  #     instead the associate-facing name of a condition
+  #     `return_eligibility_policy.standard_stock_return.requirements` already
+  #     reads: the five `condition` facts and the eight `prohibited_states`.
+  #     They are a reading of that table, not a decision Returns operations has
+  #     taken. Confirm the wording with the counter staff who will pick from it
+  #     and delete this banner.
+  #
+  #     Deleting an entry is safe -- an associate can no longer choose it.
+  #     Adding one is safe too: nothing downstream branches on a condition, so
+  #     the value is recorded and read by a human.
+  conditions:
+    # Satisfies the resale requirements: new, suitable for resale, original
+    # packaging, packaging undamaged, all original parts.
+    - NEW_IN_ORIGINAL_PACKAGING
+    # New, but the packaging no longer proves it.
+    - NEW_PACKAGING_OPENED
+    - NEW_PACKAGING_DAMAGED
+    - MISSING_ORIGINAL_PARTS
+    # The eight prohibited states, one entry each, so an associate naming the
+    # state names the one the policy refuses on.
+    - USED
+    - INSTALLED
+    - MODIFIED
+    - REBUILT
+    - RECONDITIONED
+    - REPAIRED
+    - ALTERED
+    - DAMAGED
+
+workflow:
+  version: "2.0"
+  stages:
+    - INTAKE
+    - ORDER_DISCOVERY
+    - ORDER_CONFIRMATION
+    - RETURN_DETAILS
+    - SUPPORT_REQUEST
+    - RETURN_CREATION
+    - PHYSICAL_RETURN_SETUP
+    - RETURN_SHIPMENT
+    - RECEIPT
+    - CUSTOMER_RESOLUTION
+    - PRODUCT_DISPOSITION
+    - WAREHOUSE_PROCESSING
+    - CUSTOMER_RETURN_COMPLETE
+    - VENDOR_RECOVERY
+    - FULLY_CLOSED
+  sla_minutes:
+    support_acknowledgement: 5
+    support_clarification: 30
+    return_creation: 1440
+    shipping_instructions: 7200
+    pickup_scheduling: 2880
+  completion_dimensions:
+    - customer_resolution_complete
+    - physical_return_complete
+    - warehouse_processing_complete
+    - vendor_recovery_complete
+    - case_fully_closed
+
+support:
+  authority_mode: INTERNAL_PLATFORM
+  external_mirror_enabled: false
+  default_priority: NORMAL
+  queues:
+    - RETURNS_SUPPORT
+    - LOGISTICS
+    - WAREHOUSE_EXCEPTION
+    - OMC_EXCEPTION
+  external_ticket_outbox_topic: return-support.ticket.create
+
+omc:
+  v2_customer_return_table: omc.returns.returnMerchandiseAuthorization
+  v1_customer_return_table: omc.dbo.returns
+  customer_return_display:
+    V2: "RMA {id}"
+    V1: "Return {id}"
+  normalized_statuses:
+    REQUESTED: IN_PROGRESS
+    ENTERED: IN_PROGRESS
+    ISSUED: IN_PROGRESS
+    PROCESSED: PHYSICAL_COMPLETE
+    CREDITED: CUSTOMER_RESOLUTION_COMPLETE
+    REFUNDED: CUSTOMER_RESOLUTION_COMPLETE
+    DENIED: REJECTED
+    CANCELLED: CANCELLED
+  tendered_is_pickup: false
+  license_plate_implies_receipt: true
+  rga_is_customer_return: false
+
+bay:
+  authority_mode: PROJECTION
+  # Pre-arrival placement is allowed: the case asks for a bay at creation, so
+  # the recommendation has to be producible before the goods exist to
+  # receive. `AWAITING_RECEIPT` is the pre-arrival status
+  # (`case_placement.PRE_ARRIVAL_STATUS`) and is eligible for the same reason.
+  require_physical_receipt: false
+  allow_prearrival_reservation: true
+  eligible_statuses:
+    - AWAITING_RECEIPT
+    - WAREHOUSE_RECEIVED
+    - INSPECTION_COMPLETE
+
+# How long a case waits and how often it chases. Every value is editable
+# through a configuration release; a running workflow keeps the values it
+# started with, so changes apply to new cases rather than moving a deadline
+# under a return already waiting on it.
+return_case:
+  # Bay is advisory and sits in front of every return, so this is dead time on
+  # the critical path before the Support handoff can begin. Deliberately short.
+  bay_wait_seconds: 120
+  # A Support request nobody has described is a task a human cannot act on.
+  #
+  # The default is false, which opens the thread the moment the case is cleared
+  # and lets the detail follow -- and what Support received was a request whose
+  # own verification block read "Required Return Information: Incomplete", with
+  # no reason, no quantity and no condition, while the associate was still being
+  # asked for them in the chat. The first thing the human does with that is come
+  # back and ask.
+  #
+  # Turning it on is an operator's decision, which is why it defaults off, and
+  # this deployment is making it: wait for the description, and park rather than
+  # hand over a return nobody finished describing. The wait is satisfied by any
+  # surface that records a detail -- the item pane, the conversation, an
+  # operator -- and the case is asked directly, so answering the agent's
+  # question in chat counts.
+  return_details_required: true
+  # The same thirty minutes as the reservation hold above, and for the same
+  # reason: they bound one live counter conversation from two directions, and a
+  # selection whose hold has expired is a selection the associate is no longer
+  # making.
+  return_details_wait_seconds: 1800
+  # How long a selected line's quantity is held for this case before the hold
+  # expires and the units go back to everyone else (plan sect. 12.3). Wall
+  # clock, not business hours: it bounds a live counter conversation, and a
+  # hold that survived a weekend would make Monday's associate wait for
+  # Friday's abandoned one. Thirty minutes.
+  item_reservation_ttl_seconds: 1800
+  # Business hours, not wall clock -- eight hours over a weekend is a different
+  # instant entirely. `business_calendar_id` names the calendar that decides.
+  #
+  # DEV SETTING (2026-08-15, operator decision: "change to ttl seconds in dev").
+  # Set equal to `item_reservation_ttl_seconds` above, to close the overselling
+  # window described in D46: the availability formula counts only ACTIVE holds
+  # and RMA-covered items, so between a hold lapsing and Support answering the
+  # units belonged to neither and a second case could be authorized for them.
+  # At 28800 against a 30-minute hold that window was hours, and up to ~72
+  # wall-clock hours across a weekend.
+  #
+  # This value alone is NOT sufficient -- it is measured on the business
+  # calendar while the TTL is wall clock, so outside 09:00-17:00 it would still
+  # stretch. `business_calendars.default` is therefore ALSO set to 24/7 below,
+  # which the calendar's own documentation names as the way to get wall-clock
+  # behaviour back exactly. The two changes only work together.
+  #
+  # BEFORE LIVE: restore 28800 (or the desk's real SLA) and restore the real
+  # Mon-Fri calendar. A 30-minute Support SLA is not a real-world commitment;
+  # the production answer to D46 is a fourth term in the availability formula
+  # for "selected but not yet authorized", not a shortened SLA.
+  support_response_wait_seconds: 1800
+  reminder_interval_seconds: 7200
+  max_reminders: 3
+  # A reminder cap with no terminal branch leaves the case sitting forever with
+  # nobody told.
+  on_reminders_exhausted: PARK_FOR_OPERATIONS
+  business_calendar_id: default
+  timezone: UTC
+
+# When the support desk is open. Declared, never assumed: there is no Mon-Fri
+# anywhere in the code that reads this, so a deployment whose desk works
+# Saturdays adds a Saturday period and gets one, and a 24/7 operation declares
+# every day 0..1440 and gets wall-clock behaviour back exactly.
+#
+# `weekday` is Monday-0. `end_minute` is exclusive, so 1020 is 17:00 and 1440
+# is midnight at the end of the day.
+business_calendars:
+  - calendar_id: default
+    # The desk's own zone. `return_case.timezone` is only a fallback for a
+    # calendar that declares none -- a holiday has to fall on the same day for
+    # every reader whatever zone the worker computing it runs in.
+    timezone: America/New_York
+    # DEV SETTING (2026-08-15) -- 24/7, i.e. every day 0..1440. This is the
+    # mechanism this file's own header names: "a 24/7 operation declares every
+    # day 0..1440 and gets wall-clock behaviour back exactly."
+    #
+    # It exists to make `support_response_wait_seconds: 1800` mean thirty
+    # *wall-clock* minutes, matching `item_reservation_ttl_seconds`. Without it
+    # the two clocks disagree and D46's overselling window reopens outside
+    # office hours -- which, for a dev stack worked on at any hour, is most of
+    # the time.
+    #
+    # Blast radius, stated rather than discovered later: every deadline and
+    # reminder computed on this calendar becomes wall clock too. In dev that is
+    # the point -- nothing should sit until Monday.
+    #
+    # BEFORE LIVE: restore the Mon-Fri 540..1020 pattern below, together with
+    # `support_response_wait_seconds: 28800`.
+    working_periods:
+      - { weekday: 0, start_minute: 0, end_minute: 1440 }
+      - { weekday: 1, start_minute: 0, end_minute: 1440 }
+      - { weekday: 2, start_minute: 0, end_minute: 1440 }
+      - { weekday: 3, start_minute: 0, end_minute: 1440 }
+      - { weekday: 4, start_minute: 0, end_minute: 1440 }
+      - { weekday: 5, start_minute: 0, end_minute: 1440 }
+      - { weekday: 6, start_minute: 0, end_minute: 1440 }
+    # The real Mon-Fri desk, kept here so restoring it is a copy rather than a
+    # reconstruction:
+    #   - { weekday: 0, start_minute: 540, end_minute: 1020 }
+    #   - { weekday: 1, start_minute: 540, end_minute: 1020 }
+    #   - { weekday: 2, start_minute: 540, end_minute: 1020 }
+    #   - { weekday: 3, start_minute: 540, end_minute: 1020 }
+    #   - { weekday: 4, start_minute: 540, end_minute: 1020 }
+    #
+    # Whole non-working days in the calendar's own zone. Extend per year; an
+    # empty list is legitimate and means the weekly pattern is the whole story.
+    # Emptied in dev for the same reason: a holiday is a day nothing progresses.
+    holidays: []
+    # The real holiday list, for restoration:
+    #   2026-01-01, 2026-07-03, 2026-11-26, 2026-11-27, 2026-12-25
+
+
+integrations:
+  omc_return_create:
+    enabled: true
+    topic: omc.return.create
+    authority: OMC
+    ai_may_fabricate_success: false
+  external_support_mirror:
+    enabled: false
+    topic: return-support.ticket.create
+    authority: EXTERNAL_TICKET_SYSTEM
+    ai_may_fabricate_success: false
+  carrier_booking:
+    enabled: true
+    topic: carrier.return.book
+    authority: CARRIER_OR_TMS
+    ai_may_fabricate_success: false
+  customer_notification:
+    enabled: true
+    topic: customer.return.notify
+    authority: NOTIFICATION_PROVIDER
+    ai_may_fabricate_success: false
+
+# The deterministic eligibility gate. Suspended here, in the file, rather than
+# only on a published release: an operator's disable lives in the graph
+# configuration and does not survive a reset, so the gate came back on by itself
+# the moment the release was rebuilt from this file -- which is how a walkthrough
+# case ended up routed to REVIEW_REQUIRED on OUTSIDE_STANDARD_RETURN_WINDOW.
+#
+# Disabling is not an approval and is never read as one: the case records
+# `policy_evaluation_state = SKIPPED_BY_CONFIGURATION` and the reason below, with
+# no route and no decision, so "no rule was applied" stays distinguishable from
+# "a rule approved this". Publishing a policy is unaffected --
+# `return_eligibility_policy` below still has to be a valid rule set, because a
+# deployment must be able to switch the gate back on without cutting a release.
+policy_evaluation:
+  enabled: false
+  disabled_reason: >-
+    Suspended on this development host while order-discovery turns are answered
+    through the MANUAL provider. Re-enable before any case that is not a
+    walkthrough.
+
+context_assembly:
+  # How a case's facts become the context a model reasons over (contracts.md
+  # sect. 10). Every value here is the code default, restated: the block is
+  # written out so a deployment changing one is editing configuration rather
+  # than discovering that the knob exists.
+  #
+  # Names that are always in the assembled context, whatever the budget says.
+  # Empty by default: a name pinned here that no case writes would be a
+  # reservation against a fact that never arrives, and the pins that matter are
+  # the ones a consumer adds when it knows what it is reasoning about.
+  pinned_fact_names: []
+  # The ceiling, measured by `tokenizer_version` below.
+  token_budget: 8000
+  # Pinned with promptVersion. `assemble_case_context` refuses a version it
+  # cannot measure rather than falling back to another estimator -- a silent
+  # fallback is the one outcome a pin exists to rule out.
+  tokenizer_version: wordpiece-approx.v1
+  compaction:
+    # Ask for a summary at four fifths of the budget, leaving the last fifth as
+    # headroom for the next few facts before anything has to be left out.
+    trigger_fraction_millionths: 800000
+    summary_task_id: support.context.summarize.v1
+
+support_ingress:
+  # What the platform accepts from Support and how it answers back
+  # (contracts.md sect. 5). Every value here is the code default restated, so
+  # a deployment changing one is editing configuration rather than discovering
+  # that the knob exists.
+  #
+  # The natural-language door starts shut. The structured
+  # `.../return-outcome` path is unaffected by this switch and is always on
+  # (DR-2): this gates only the free-text endpoint. Messages that arrive while
+  # it is false are persisted PARKED and reprocessed in stream order when it
+  # is flipped -- never refused -- so shipping it shut costs no message.
+  nl_enabled: false
+  # The closed classification taxonomy (contracts.md sect. 5). Widening this
+  # list widens what is *recognised*; it cannot widen what is executed,
+  # because anything outside the set becomes `other` in code.
+  intents:
+    - info_request
+    - rma_issued
+    - label_issued
+    - shipping_instruction
+    - tracking_provided
+    - partial_fulfillment
+    - rejection
+    - acknowledgement
+    - other
+  parking:
+    # A month. Long enough that flipping the switch after a quiet period still
+    # finds the traffic that arrived during it.
+    retention_seconds: 2592000
+    # A case holding this many parked messages is not a case with a backlog;
+    # it is a case nobody is reading, and it escalates.
+    per_case_quota: 50
+    # One alert per case per quarter hour. A disabled switch with live traffic
+    # behind it would otherwise page in proportion to the traffic.
+    alert_dedupe_window_seconds: 900
+  # The prompt section carrying the do-not-mix framing for a message that fans
+  # out to several return records. The key, not the text: the wording lives
+  # with the other prompt text and this names which of it applies.
+  multi_record_framing_prompt_key: support-multi-record-do-not-mix
+  agent_disclosure:
+    # Carried on every agent-authored Channel B message (contracts.md sect. 9),
+    # both through the shared prompt-section anchor on the `support.*` tasks
+    # and through the templated sends.
+    display_name: Returns Assistant
+    disclosure_line: >-
+      This message was written by the Returns Assistant, an automated agent working on this
+      return case. A branch associate reviews and can answer anything it cannot.
+  # Outbound Channel B text by template id, under sect. 8's interpolation-only
+  # grammar. Empty by default: the templates that matter are the ones a
+  # deployment writes for its own voice, and a model composes only where a
+  # deployment has configured it to.
+  outbound_templates: {}
+  limits:
+    # Refused with 413 rather than truncated: the cut half of a truncated
+    # support message may be the tracking number.
+    max_body_characters: 16000
+    # Per case rather than per principal -- the resource being protected is
+    # the case's analysis pipeline, and one transport speaking for many
+    # principals is the ordinary shape.
+    max_messages_per_case_per_window: 60
+    rate_window_seconds: 60
+    max_identifier_characters: 256
+
+support_resolver:
+  # How the platform answers a question Support asked (contracts.md sect. 9).
+  # Every value here is the code default restated, so a deployment changing one
+  # is editing configuration rather than discovering that the knob exists.
+  #
+  # Both thresholds are millionths, matching the gateway's
+  # `confidenceMillionths` envelope so the released number and the measured
+  # number are the same unit with no conversion between them. They are high on
+  # purpose: the failure this slice must not have is a confident-sounding wrong
+  # answer sent to Support under the platform's own name. Below the threshold
+  # the ladder does not try harder with the same evidence -- it descends a rung,
+  # and escalates to an associate when the rungs run out.
+  fact_confidence_millionths: 900000
+  graph_confidence_millionths: 900000
+  # Which capabilities a validated intent makes eligible. Empty means **no tool
+  # is eligible for any intent** and the ladder's tool rung refuses every time.
+  # That is the closed default the tool boundary implies: a tool a deployment
+  # has not bound is a tool that cannot run, and binding one is precisely what
+  # sect. 9 calls a config-only tool addition. A binding names a `tool_id`, the
+  # `intents` it serves, a `capability` and `contract` published in the
+  # CapabilityRegistry, an `input_schema_ref` from the code-side allowlist in
+  # platform/capabilities/tool_schemas.py, and a `credential_binding_id` naming
+  # a CredentialBindingConfiguration profile key. Every field is a reference;
+  # none is a value, an expression or a template.
+  tool_bindings: []
+  reply_gate:
+    # Review required for every intent, including ones a later release adds to
+    # the taxonomy: `default` is the floor and `per_intent` is the exception
+    # list, stated that way round because the safe value is the one that applies
+    # to intents nobody thought about. `auto_reply` is a per-intent opt-in and
+    # is never a global.
+    default: review_required
+    per_intent: {}
+  # An answered clarification pushes the review deadline out again. True,
+  # because the associate answered promptly and the clock they were racing was
+  # started by a question the platform asked *them*. The reset never moves a
+  # deadline inwards.
+  clarification_resets_deadline: true
+  # Model invocations one case may spend on resolution, across all its support
+  # questions. Exhaustion is not a silent stop: it writes
+  # `support_resolver_budget_exhausted` and escalates, so a case that outruns
+  # its budget becomes visible work rather than an unanswered message.
+  per_case_llm_budget: 12
+  # Which classified intents reach the resolution ladder at all, and therefore
+  # which support messages the platform tries to answer by itself.
+  #
+  # `info_request` alone. Of the closed taxonomy under `support_ingress.intents`
+  # -- info_request, rma_issued, label_issued, shipping_instruction,
+  # tracking_provided, partial_fulfillment, rejection, acknowledgement -- it is
+  # the only member in which Support is *asking* rather than *telling*. The
+  # other seven are Support informing the platform, and the extraction stage
+  # already commits what they say; running a ladder over one of them would
+  # compose a reply to a statement.
+  #
+  # Narrowing this to `[]` disables automatic resolution entirely: every inbound
+  # support question then reaches an associate, which is a legitimate way to run
+  # the platform and not a broken configuration.
+  #
+  # `other` is refused at parse time. It is not a classification -- it is the
+  # sink every unrecognised classification is coerced into -- so naming it here
+  # would trigger the ladder on every unclassifiable message on every case.
+  #
+  # Every value must also appear in `support_ingress.intents`; one that does not
+  # can never be produced by the classifier, and the resolver would be
+  # configured, deployed and silently inert. Refused when the process starts.
+  trigger_intents:
+    - info_request
+
+copilot:
+  # The agent policy every Copilot conversation turn is routed to. It must name
+  # a key under `agent_policies` in the active schema release
+  # (config/dynamic_knowledge/active-schema.return-order.yaml); a dangling value
+  # is a hard error, not a fallback, because the alternative is the 422 that
+  # this setting exists to remove.
+  order_discovery_agent_id: order-discovery-agent
+
+runtime_integrations:
+  ai_providers: []
+  data_sources:
+    - source_key: platform-mongodb
+      source_type: MONGODB
+      enabled: true
+      access_mode: READ_WRITE
+      uri: mongodb://runtime-resolved.invalid/return_platform
+      database: return_platform
+      bootstrap_managed: true
+      required_datasets:
+        - associate_conversations
+        - discovery_locks
+    - source_key: source-mongodb
+      source_type: MONGODB
+      enabled: true
+      access_mode: READ_ONLY
+      uri: mongodb://runtime-resolved.invalid/return_source
+      database: return_source
+      bootstrap_managed: true
+      required_datasets:
+        - customers
+        - salesInv
+        - products
+    - source_key: configuration-neo4j
+      source_type: NEO4J
+      enabled: true
+      access_mode: READ_WRITE
+      uri: bolt://runtime-resolved.invalid:7687
+      username: neo4j
+      database: neo4j
+      bootstrap_managed: true
+      required_datasets:
+        - customer_name_search_v2
+        - product_description_search_v2
+    - source_key: omc-sqlserver
+      source_type: SQLSERVER
+      enabled: true
+      access_mode: READ_ONLY
+      host: runtime-resolved.invalid
+      port: 1433
+      username: sa
+      database: return_platform
+      bootstrap_managed: true
+    - source_key: valkey
+      source_type: VALKEY
+      enabled: true
+      access_mode: READ_WRITE
+      host: runtime-resolved.invalid
+      port: 6379
+      bootstrap_managed: true
+    - source_key: temporal
+      source_type: TEMPORAL
+      enabled: true
+      access_mode: READ_WRITE
+      host: runtime-resolved.invalid
+      port: 7233
+      bootstrap_managed: true
+
+# The deterministic return eligibility rule set. Authority:
+# docs/RETURN_COPILOT_POLICY_BASELINE.md -- Ferguson's public Returns and
+# Cancellations Policy and Terms and Conditions of Sale (Rev. May 2025).
+#
+# `percentage` and `amount` are null and typed `None` in the model: Ferguson
+# publishes no universal restocking-fee percentage, so a release attempting to
+# write one fails to parse rather than shipping an invented number. The engine
+# determines that a fee APPLIES; the amount comes from the seller or the
+# manufacturer.
+return_eligibility_policy:
+  id: ferguson-standard-return-policy
+  version: "2026-08-15"
+  authority: FERGUSON_PUBLIC_TERMS
+  source_document: Ferguson Terms and Conditions of Sale
+  source_revision: "Terms and Conditions of Sale - Rev. May 2025"
+  precedence:
+    - CUSTOMER_CONTRACT_OVERRIDE
+    - SPECIAL_ORDER_MANUFACTURER_POLICY
+    - FERGUSON_STANDARD_RETURN
+  standard_stock_return:
+    purchase_window: { days: 30, basis: PURCHASE_DATE }
+    requirements:
+      seller_stocked: true
+      special_order: false
+      condition:
+        new: true
+        suitable_for_resale: true
+        original_packaging: true
+        packaging_undamaged: true
+        all_original_parts: true
+      prohibited_states:
+        used: false
+        installed: false
+        modified: false
+        rebuilt: false
+        reconditioned: false
+        repaired: false
+        altered: false
+        damaged: false
+    decision_when_satisfied: APPROVE
+    conditions:
+      - RESTOCKING_FEE_APPLIES
+    # WHAT AN UNSTATED CONDITION FACT IS ALLOWED TO DECIDE.
+    #
+    #   REVIEW_REQUIRED  silence queues the return; nothing approves until the
+    #                    conversation has captured all thirteen facts above
+    #   NOT_EVALUATED    silence decides nothing; the checks it left unanswered
+    #                    are recorded and the return window decides the case
+    #
+    # Set to NOT_EVALUATED by operator decision (2026-08-16): "only evaluate
+    # basic policy -- is the item in the return window". Extraction currently
+    # captures `return_reason` and `product_presence` and nothing else, so under
+    # REVIEW_REQUIRED every single return queued on REQUIRED_FACT_UNKNOWN and
+    # the only route to APPROVE was a supervisor override. That is a rule set
+    # that decides nothing.
+    #
+    # This does NOT weaken the requirements above. A fact somebody *did* state
+    # still decides: an item the customer says was installed is still REJECTed,
+    # and still rejected before the window is looked at. What changes is only
+    # that an unanswered question no longer counts as an objection.
+    #
+    # Every decision taken this way carries the applied rule
+    # CONDITION_FACTS_NOT_EVALUATED together with the names of the checks that
+    # were skipped, exactly as STOCK_CLASS_FROM_CONFIGURATION marks a decision
+    # taken on an assumed stock class -- so an approval granted on the window
+    # alone is never indistinguishable in the audit trail from one granted on
+    # full evidence.
+    #
+    # TO SWITCH THE OTHER CHECKS BACK ON: change this line to REVIEW_REQUIRED
+    # and publish. No code change, no deployment. Do it once conversational
+    # extraction actually captures the condition and packaging facts, or the
+    # returns will simply queue again.
+    unstated_condition_facts: NOT_EVALUATED
+  # `percentage` and `amount` stay null: Ferguson publishes no universal
+  # restocking-fee percentage, so a number there would claim Ferguson's
+  # authority for a rate Ferguson has not set.
+  #
+  # `seller_schedule` is the seller's OWN standing rate. Every determination it
+  # produces carries FeeAmountSource.SELLER_CONFIGURATION, so an audit can always
+  # tell it from a manufacturer's fee or from published policy. It is a rate in
+  # basis points (1500 = 15.00%) rather than a currency amount because the
+  # evaluator is pure and holds no line prices; the figure is computed downstream
+  # where order_line.net_price exists.
+  #
+  # ---------------------------------------------------------------------------
+  # DEV RATE -- ACCEPTED BY THE OPERATOR FOR NON-PRODUCTION USE (2026-08-15).
+  # 1500 bp (15%) is an arbitrary working figure so the lifecycle can complete and
+  # a refund can render. It is NOT sourced from any Ferguson document and carries
+  # no business authority.
+  #
+  # This is deliberately still loud. The operator's decision was "it's dev, put a
+  # number in" -- which settles this environment, not the next one. Before any
+  # live deployment, replace it with the seller's real schedule, or remove
+  # `seller_schedule` entirely to go back to emitting applicability with no figure
+  # attached. `FeeAmountSource.SELLER_CONFIGURATION` on every outcome it produces
+  # is what keeps it from ever passing as published Ferguson policy in the interim.
+  # ---------------------------------------------------------------------------
+  restocking_fee:
+    applies_by_default: true
+    percentage: null
+    amount: null
+    amount_source: [SELLER_CONFIGURATION, SELLER_OVERRIDE, MANUFACTURER]
+    seller_can_waive: true
+    invent_default_amount: false
+    seller_schedule:
+      default_rate_basis_points: 1500
+      currency: USD
+  # WHERE STOCKED-VS-SPECIAL-ORDER COMES FROM.
+  #
+  # Not from the source. Verified 2026-08-15 against the real `salesInv` extract:
+  # no field carries the distinction. `lineType` is the only candidate and it is
+  # undocumented in all four Ferguson vendor dictionaries; its `MP` majority
+  # contains 89 procure-to-order lines (`taggedPoId` with `prodAvailQty == 0`)
+  # sitting exactly on the "normally stocked" seam, so reading `MP` as "stocked"
+  # would turn 89 unknowns into approval evidence. Ferguson's public policy
+  # describes what happens TO a special order; it does not say which products
+  # ARE one.
+  #
+  # So the operator says, here, and can change it without code.
+  #
+  #   unresolved_default:
+  #     STANDARD_STOCK   unclassified lines are ordinary stock; returns flow
+  #     SPECIAL_ORDER    unclassified lines take the manufacturer path
+  #     REVIEW_REQUIRED  leave unknown; every return queues for a human
+  #
+  # Set to STANDARD_STOCK by operator decision: the alternative queues every
+  # return, which is safe but decides nothing. Every decision taken this way
+  # carries the applied rule STOCK_CLASS_FROM_CONFIGURATION, so an approval made
+  # on this assumption is distinguishable in the audit trail from one made on
+  # evidence. Change this line to REVIEW_REQUIRED to go back to fail-safe.
+  #
+  # The designation lists override the default for named products. They are
+  # empty on purpose. The reference data shows 8 `SP`-prefixed master product
+  # ids that look like special orders (all with `taggedPoId`, all
+  # `cntrtCostType: P`) -- but the same `SP` token appears as `origProdStatus`
+  # on four ordinary catalogue products, and no vendor document defines either.
+  # Adding "SP" to special_order_sku_prefixes is an assertion for an operator to
+  # make, not a guess for this file to ship.
+  stock_classification:
+    unresolved_default: STANDARD_STOCK
+    special_order_skus: []
+    special_order_sku_prefixes: []
+    special_order_product_ids: []
+
+  special_or_nonstock:
+    manufacturer_acceptance_required: true
+    buyer_fee_acceptance_required: true
+    decisions:
+      manufacturer_acceptance_unknown: REVIEW_REQUIRED
+      manufacturer_acceptance_rejected: REJECT
+      manufacturer_acceptance_accepted_buyer_fee_unknown: REVIEW_REQUIRED
+      manufacturer_acceptance_accepted_buyer_fee_rejected: REJECT
+      manufacturer_acceptance_accepted_buyer_fee_accepted: APPROVE
+  outside_standard_window:
+    decision: REVIEW_REQUIRED
+    reason_code: OUTSIDE_STANDARD_RETURN_WINDOW
+  delivery_claim:
+    conditions: [SHIPPING_DAMAGE, SHORTAGE, SHIPMENT_ERROR, IMPROPER_DELIVERY]
+    reporting_window: { business_days: 2, basis: DELIVERY_DATE }
+  warranty_issue:
+    reasons:
+      - MANUFACTURING_DEFECT
+      - PRODUCT_FAILURE_AFTER_INSTALLATION
+      - COVERED_PRIVATE_LABEL_DEFECT
+      - MANUFACTURER_WARRANTY_ISSUE
+
+# The return-shipment status catalog. Two ladders, because the product decides
+# parcel vs freight; every code, label, transition and colour is operator
+# configuration -- a status code appearing in Python or JSX is a defect.
+shipment_tracking:
+  initial_status_parcel: label_created
+  initial_status_freight: bol_created
+  freight_methods:
+    - BRANCH_LTL
+    - OFFSITE_LTL
+  collection: shipmentInfo
+  fields: {}
+  # The graph reads this collection as the carrier feed (`source_shipments`,
+  # active schema entity `shipment`): tracking under
+  # shipmentInfoEventData.trkNum, status under .currentStatus, the change
+  # cursor under shipmentInfoEventMeta.lastUpdateTs. A return shipment the
+  # console seeds is mirrored into that shape so the targeted sync finds it
+  # and the case's own reading of the parcel can move past AWAITING_HANDOFF.
+  source_mirror:
+    shipmentInfoEventData.trkNum: tracking_reference
+    shipmentInfoEventData.currentStatus: current_status
+    shipmentInfoEventData.shipmentId: shipment_id
+    shipmentInfoEventData.trilOrdNum: rma_reference
+    shipmentInfoEventMeta.lastUpdateTs: updated_at
+  source_constants:
+    shipmentInfoEventData.srcSystem: RETURN_PLATFORM
+  statuses:
+    # ---- parcel ladder -----------------------------------------------------
+    - code: label_created
+      projection_status: AWAITING_HANDOFF
+      label: Label created
+      ladder: parcel
+      ordinal: 0
+      color_token: progress
+      allowed_next: [picked_up, exception, return_to_sender]
+    - code: picked_up
+      projection_status: IN_TRANSIT
+      label: Picked up
+      ladder: parcel
+      ordinal: 1
+      color_token: progress
+      allowed_next: [in_transit, exception, return_to_sender]
+    - code: in_transit
+      projection_status: IN_TRANSIT
+      label: In transit
+      ladder: parcel
+      ordinal: 2
+      color_token: progress
+      allowed_next: [arrived_at_facility, out_for_delivery, exception, return_to_sender]
+    # The carrier's sort hub, not our warehouse: a parcel can arrive here more
+    # than once on a multi-leg journey (hence `in_transit` in allowed_next),
+    # and it is still moving as far as the case is concerned. The last leg to
+    # warehouse 628 is `out_for_delivery`, and arrival at our dock is
+    # `delivered`. Labelled to say so, because "facility" read as ours.
+    - code: arrived_at_facility
+      projection_status: IN_TRANSIT
+      label: At carrier hub
+      ladder: parcel
+      ordinal: 3
+      color_token: progress
+      allowed_next: [in_transit, out_for_delivery, exception, return_to_sender]
+    - code: out_for_delivery
+      projection_status: IN_TRANSIT
+      label: Out for delivery
+      ladder: parcel
+      ordinal: 4
+      color_token: progress
+      allowed_next: [delivered, delivery_attempted, exception, return_to_sender]
+    - code: delivered
+      projection_status: DELIVERED
+      label: Delivered
+      ladder: parcel
+      ordinal: 5
+      terminal: true
+      color_token: success
+      allowed_next: []
+    - code: delivery_attempted
+      projection_status: IN_TRANSIT
+      label: Delivery attempted
+      ladder: parcel
+      ordinal: 4
+      exception_state: true
+      color_token: warning
+      allowed_next: [out_for_delivery, in_transit, exception, return_to_sender]
+    - code: exception
+      projection_status: IN_TRANSIT
+      label: Exception
+      ladder: parcel
+      ordinal: 2
+      exception_state: true
+      color_token: error
+      allowed_next: [picked_up, in_transit, arrived_at_facility, out_for_delivery, return_to_sender]
+    # The carrier could not deliver -- refused, undeliverable, damaged in
+    # transit -- and is carrying the parcel back to whoever tendered it: the
+    # customer or the branch. Terminal for this parcel and CANCELLED to the
+    # case, which therefore keeps awaiting receipt until a new parcel is
+    # tendered under the same RMA or the return is closed another way.
+    - code: return_to_sender
+      projection_status: CANCELLED
+      label: Sent back to sender
+      ladder: parcel
+      ordinal: 5
+      terminal: true
+      color_token: error
+      allowed_next: []
+    # ---- freight / LTL ladder ----------------------------------------------
+    - code: bol_created
+      projection_status: AWAITING_HANDOFF
+      label: BOL created
+      ladder: freight
+      ordinal: 0
+      color_token: progress
+      allowed_next: [pending_pickup, exception]
+    - code: pending_pickup
+      projection_status: AWAITING_HANDOFF
+      label: Pending pickup
+      ladder: freight
+      ordinal: 1
+      color_token: progress
+      allowed_next: [picked_up, exception]
+    - code: picked_up
+      projection_status: IN_TRANSIT
+      label: Picked up
+      ladder: freight
+      ordinal: 2
+      color_token: progress
+      allowed_next: [at_origin_terminal, exception, on_hand]
+    - code: at_origin_terminal
+      projection_status: IN_TRANSIT
+      label: At origin terminal
+      ladder: freight
+      ordinal: 3
+      color_token: progress
+      allowed_next: [in_transit, on_hand, exception]
+    - code: in_transit
+      projection_status: IN_TRANSIT
+      label: In transit
+      ladder: freight
+      ordinal: 4
+      color_token: progress
+      allowed_next: [at_destination_terminal, on_hand, exception]
+    - code: at_destination_terminal
+      projection_status: IN_TRANSIT
+      label: At destination terminal
+      ladder: freight
+      ordinal: 5
+      color_token: progress
+      allowed_next: [out_for_delivery, on_hand, exception]
+    - code: out_for_delivery
+      projection_status: IN_TRANSIT
+      label: Out for delivery
+      ladder: freight
+      ordinal: 6
+      color_token: progress
+      allowed_next: [delivered, on_hand, exception]
+    - code: delivered
+      projection_status: DELIVERED
+      label: Delivered
+      ladder: freight
+      ordinal: 7
+      terminal: true
+      color_token: success
+      allowed_next: []
+    - code: on_hand
+      projection_status: DELIVERED
+      label: On hand at terminal
+      ladder: freight
+      ordinal: 4
+      exception_state: true
+      color_token: warning
+      allowed_next: [in_transit, at_destination_terminal, out_for_delivery, exception]
+    - code: exception
+      projection_status: IN_TRANSIT
+      label: Exception
+      ladder: freight
+      ordinal: 4
+      exception_state: true
+      color_token: error
+      allowed_next: [pending_pickup, picked_up, at_origin_terminal, in_transit, at_destination_terminal, out_for_delivery, on_hand]
+
+# The support-handoff template (contracts.md sect. 8). The default variant
+# reproduces the text `compose_support_handoff` composes today -- line for
+# line, on every branch its conditionals take, which
+# `TestComposedEquivalenceMatrix` renders and compares case by case. The one
+# thing it does not reproduce is the *subject*: `_subject` joins its parts
+# conditionally and shortens them, and sect. 8's subject grammar is
+# interpolation only, so the subject here is a different (and simpler) line by
+# contract rather than by oversight.
+#
+# Four of today's lines are conditional -- the contact block's two arms, the
+# unresolved-bay reason, the manual-bay action, the outstanding-support list --
+# and the sect. 8 clause grammar describes the shape of a *case*
+# (shipping mode, reason class, order source, item count), never the presence
+# of a value. Those lines are therefore bound to keys that
+# `operations/support_template_draft.py` makes **present or absent**, with no
+# `fallback`: an absent key omits its line, exactly as the composed path omits
+# it. Giving them a fallback is what made the first version of this block
+# silently print "Not available" where the truth was "no bay could be
+# recommended, resolve manually".
+#
+# Formatters are ids from the code-side allowlist; `literal:` bindings are
+# constant text (contracts.md AMENDMENT-1). Every `case_fact:` name is declared
+# in `support_template_draft.TEMPLATE_CASE_FACT_KEYS`, and a test compares this
+# block against it in both directions.
+# The review gate over the outbound support request (contracts.md sect. 6,
+# DR-4). Enabled: a message this platform composes about somebody's return, to
+# a human queue, gets looked at by a person first.
+#
+# Every duration is in *working* seconds -- resolved through
+# `resolve_business_deadline` against `return_case.business_calendar_id`, so a
+# draft raised at 16:00 on Friday is not overdue by Saturday lunchtime.
+#
+# `on_timeout: hold` is the one value that cannot send a message nobody read.
+# `auto_send` is expressible and is not what this deployment chose; note that
+# even under `auto_send` an unresolved required gap forces the hold anyway
+# (contracts.md sect. 6), so the setting can only ever make the gate *stricter*
+# than it reads, never looser.
+support_gate:
+  # One case, one request, one review. The other two groupings are declared in
+  # the enum because the contract declares them; selecting one this deployment
+  # has not exercised would be a decision, not a default.
+  request_grouping: one_per_case
+  template_review:
+    enabled: true
+    # One working day.
+    #
+    # Deliberately NOT copied from `return_case.support_response_wait_seconds`,
+    # which this file has set to 1800 as an explicitly-marked DEV SETTING
+    # ("BEFORE LIVE: restore 28800") to close an overselling window. That is a
+    # dev shortcut on Support's SLA; inheriting it here would give a branch
+    # associate thirty minutes to review a draft and would carry a temporary
+    # workaround into a block that has nothing to do with item holds. A
+    # reviewer's clock and Support's clock are two promises, and this one is the
+    # real value.
+    review_wait_seconds: 28800
+    reminder_interval_seconds: 7200
+    # A case total, not a per-review one (DR-7): one cadence, one deadline, and
+    # the reminder names every review still pending.
+    max_reminders: 3
+    on_timeout: hold
+
+support_template:
+  template_id: support-handoff
+  default_variant_id: default
+  variants:
+    - variant_id: default
+      # Deliberately clause-less: a rule with no clauses matches nothing, and
+      # this variant renders because it is named default, not because it was
+      # listed first.
+      selector: {}
+      subject_template: "Return {order_number} · {customer_name}"
+      sections:
+        - &tpl_sec_banner
+          section_id: banner
+          title: RETURN SUPPORT REQUEST
+        - &tpl_sec_case
+          section_id: case
+          title: "Case:"
+          fields:
+            - field_id: case_id
+              label: Case ID
+              source_binding: "case_fact:case_id"
+              required: true
+            - field_id: work_item_id
+              label: Work Item ID
+              source_binding: "case_fact:work_item_id"
+              fallback: Not available
+            - field_id: created_at
+              label: Created Date/Time
+              source_binding: "case_fact:created_at"
+              formatter: date
+              fallback: Not available
+            - field_id: workflow_status
+              label: Workflow Status at Handoff
+              source_binding: "case_fact:workflow_status_at_handoff"
+              fallback: Not available
+        - &tpl_sec_customer
+          section_id: customer
+          title: "Customer:"
+          fields:
+            - field_id: customer_name
+              label: Customer Name
+              source_binding: "case_fact:customer_name"
+              fallback: Not available
+            - field_id: customer_reference
+              label: Customer Reference
+              source_binding: "case_fact:customer_id"
+              fallback: Not available
+            - field_id: customer_account
+              label: Account
+              source_binding: "case_fact:customer_account"
+              fallback: Not available
+            # The contact block, two mutually exclusive arms. Exactly one arm's
+            # three keys is ever present, so the other arm's three lines are
+            # omitted -- never rendered as "Not available", which is what lost
+            # the customer's own phone and email on every case with no named
+            # branch associate. No `fallback` on any of the six, on purpose.
+            - field_id: contact_associate_name
+              label: Branch Associate
+              source_binding: "case_fact:contact_associate_name"
+            - field_id: contact_associate_email
+              label: Branch Associate Email
+              source_binding: "case_fact:contact_associate_email"
+            - field_id: contact_associate_phone
+              label: Branch Associate Phone
+              source_binding: "case_fact:contact_associate_phone"
+            - field_id: contact_customer_notice
+              label: Branch Associate
+              source_binding: "case_fact:contact_customer_notice"
+            - field_id: contact_customer_phone
+              label: Customer Phone
+              source_binding: "case_fact:contact_customer_phone"
+            - field_id: contact_customer_email
+              label: Customer Email
+              source_binding: "case_fact:contact_customer_email"
+        - &tpl_sec_order
+          section_id: order
+          title: "Order:"
+          fields:
+            - field_id: order_number
+              label: Order Number
+              source_binding: "case_fact:confirmed_order_reference"
+              fallback: Not available
+            - field_id: selected_items
+              source_binding: "case_fact:selected_items"
+              formatter: item_list
+              fallback: "- Selected lines: Not available"
+        - &tpl_sec_return_details
+          section_id: return_details
+          title: "Return Details:"
+          fields:
+            - field_id: return_method
+              label: Return Method
+              source_binding: "case_fact:return_method"
+              fallback: Not available
+            - field_id: requested_resolution
+              label: Requested Resolution
+              source_binding: "case_fact:requested_resolution"
+              fallback: Not available
+            - field_id: product_presence
+              label: Product Presence
+              source_binding: "case_fact:product_presence"
+              fallback: Not available
+            # Whatever else the release requires, already labelled by the
+            # release rather than by this template -- which is what lets a
+            # release add a required detail without either being edited.
+            # Absent when the case carries none.
+            - field_id: return_details_additional
+              source_binding: "case_fact:return_details_additional"
+            # The rendered notes, not the raw fact: anything in an associate's
+            # words that could impersonate this message's framing is stripped
+            # before it gets here, and binding the raw fact would drop that.
+            - field_id: associate_notes
+              label: Associate Notes
+              source_binding: "case_fact:associate_notes_rendered"
+              fallback: Not available
+        - &tpl_sec_bay
+          section_id: bay_assignment
+          title: "Bay Assignment:"
+          fields:
+            - field_id: bay_status
+              label: Assignment Status
+              source_binding: "case_fact:bay_assignment_status"
+              fallback: UNRESOLVED
+            - field_id: bay_reference
+              label: Recommended Bay
+              source_binding: "case_fact:bay_reference"
+              fallback: Not available
+            - field_id: bay_warehouse
+              label: Warehouse/Branch
+              source_binding: "case_fact:bay_warehouse_reference"
+              fallback: Not available
+            - field_id: bay_return_location
+              label: Return Location
+              source_binding: "case_fact:bay_return_location"
+              fallback: Not available
+            - field_id: bay_handling
+              label: Handling/Staging Instructions
+              source_binding: "case_fact:bay_handling_instructions"
+              fallback: Not available
+            # Present only when no bay was recommended, which is exactly when
+            # Support needs it. No fallback: absence omits the line.
+            - field_id: bay_unresolved_reason
+              label: Unresolved Reason
+              source_binding: "case_fact:bay_unresolved_reason"
+        - &tpl_sec_verification
+          section_id: verification
+          title: "Verification:"
+          fields:
+            - field_id: order_confirmation
+              label: Order Confirmation
+              source_binding: "case_fact:order_confirmation"
+              fallback: Not confirmed
+            - field_id: required_return_information
+              label: Required Return Information
+              source_binding: "case_fact:required_return_information"
+              fallback: Incomplete
+            # Three states, and the third is silence: nothing outstanding omits
+            # the line, an unreadable case state says so in words. "Nothing is
+            # outstanding" and "we could not find out" send Support to opposite
+            # actions, so neither may render as the other.
+            - field_id: awaiting_from_support
+              label: Awaiting From Support
+              source_binding: "case_fact:awaiting_from_support"
+            - field_id: policy_evaluation
+              label: Policy Evaluation
+              source_binding: "case_fact:policy_evaluation_rendered"
+              fallback: Not evaluated
+            - field_id: bay_source
+              label: Bay Assignment Source
+              source_binding: "literal:Bay Assignment Agent"
+        - section_id: requested_action
+          title: "Requested Support Action:"
+          fields:
+            - field_id: action_review
+              source_binding: "literal:- Review the complete return request."
+            - field_id: action_bay
+              source_binding: "literal:- Review or confirm the bay recommendation."
+            - field_id: manual_bay_action
+              source_binding: "case_fact:manual_bay_action_line"
+            - field_id: action_verify
+              source_binding: "literal:- Verify all Support-owned conditions, including warranty when applicable."
+            - field_id: action_rma
+              source_binding: "literal:- Create or decline the RMA through the authoritative Support workflow."
+    - variant_id: parcel
+      selector:
+        shipping_modes: [PREPAID_PARCEL, OFFSITE_PARCEL]
+      subject_template: "Return {order_number} · {customer_name}"
+      sections:
+        - *tpl_sec_banner
+        - *tpl_sec_case
+        - *tpl_sec_customer
+        - *tpl_sec_order
+        - *tpl_sec_return_details
+        - *tpl_sec_bay
+        - *tpl_sec_verification
+        - section_id: requested_action
+          title: "Requested Support Action:"
+          fields:
+            - field_id: action_review
+              source_binding: "literal:- Review the complete return request."
+            - field_id: action_bay
+              source_binding: "literal:- Review or confirm the bay recommendation."
+            - field_id: manual_bay_action
+              source_binding: "case_fact:manual_bay_action_line"
+            - field_id: action_label
+              source_binding: "literal:- Issue the prepaid parcel return label."
+            - field_id: action_verify
+              source_binding: "literal:- Verify all Support-owned conditions, including warranty when applicable."
+            - field_id: action_rma
+              source_binding: "literal:- Create or decline the RMA through the authoritative Support workflow."
+    - variant_id: ltl
+      selector:
+        shipping_modes: [BRANCH_LTL, OFFSITE_LTL]
+      subject_template: "Return {order_number} · {customer_name}"
+      sections:
+        - *tpl_sec_banner
+        - *tpl_sec_case
+        - *tpl_sec_customer
+        - *tpl_sec_order
+        - *tpl_sec_return_details
+        - *tpl_sec_bay
+        - *tpl_sec_verification
+        - section_id: requested_action
+          title: "Requested Support Action:"
+          fields:
+            - field_id: action_review
+              source_binding: "literal:- Review the complete return request."
+            - field_id: action_bay
+              source_binding: "literal:- Review or confirm the bay recommendation."
+            - field_id: manual_bay_action
+              source_binding: "case_fact:manual_bay_action_line"
+            - field_id: action_freight
+              source_binding: "literal:- Arrange LTL freight pickup and issue the Bill of Lading."
+            - field_id: action_verify
+              source_binding: "literal:- Verify all Support-owned conditions, including warranty when applicable."
+            - field_id: action_rma
+              source_binding: "literal:- Create or decline the RMA through the authoritative Support workflow."

@@ -1,0 +1,13 @@
+tier: STANDARD
+promptVersion: external-state-reconciliation-v1
+systemPrompt: >-
+  Compare the supplied platform and external-system states, identify inconsistencies, and
+  recommend human review when evidence conflicts. Never mutate state or declare reconciliation
+  complete. Return exactly the configured structured gateway JSON envelope.
+fallbackStrategy: MANUAL_REVIEW
+fallbackTemplate: EXTERNAL_STATE_REVIEW_V1
+maximumOutputTokens: 900
+maximumInputTokens: 20000
+allowTierEscalation: false
+allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA]
+allowedInputKeys: [platformState, omcState, carrierState, lsiState, temporalState]

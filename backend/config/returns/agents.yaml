@@ -1,0 +1,50 @@
+# Each agent's live settings and nothing else. The blocks used to carry
+# `human_confirmation_required`, `capabilities`, `implementation_id`,
+# `task_queue` and `state_namespace` -- none was read by any runtime code
+# (agents are constructed by AgentRegistry.build and task queues come from
+# Settings), so the fields were documentation posing as configuration. They
+# remain optional on `AgentConfiguration` so releases published before this
+# change still parse; new releases stop writing them.
+agents:
+  order_analysis:
+    name: "Order Analysis Agent"
+    version: "2.0"
+    enabled: true
+    ai_assisted: true
+    # Read by the agent (the one source for the analysis task id).
+    ai_route_ref: "ORDER_CANDIDATE_ANALYSIS_V1"
+  order_discovery:
+    name: "Order Discovery Agent"
+    version: "2.0"
+    enabled: true
+    ai_assisted: true
+  return_workflow:
+    name: "Return Workflow Agent"
+    version: "2.0"
+    enabled: true
+    ai_assisted: true
+  return_fulfillment:
+    name: "Return Fulfillment Agent"
+    version: "2.0"
+    enabled: true
+    ai_assisted: false
+  bay_assignment:
+    name: "Bay Assignment Agent"
+    version: "2.0"
+    enabled: true
+    ai_assisted: false
+  feedback_learning:
+    name: "Feedback Learning Agent"
+    version: "2.0"
+    enabled: true
+    # The agent is four deterministic threshold rules and calls no model. This
+    # said `ai_assisted: true` with an `ai_route_ref` no code ever read -- a
+    # declared capability the implementation does not have. Stated honestly now;
+    # flip this back only when the agent actually routes through the gateway.
+    ai_assisted: false
+  support_response:
+    name: "Support Response Agent"
+    version: "1.0"
+    enabled: true
+    ai_assisted: false
+
