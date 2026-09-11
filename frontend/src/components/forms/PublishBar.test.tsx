@@ -29,6 +29,24 @@ describe("PublishBar", () => {
     expect(screen.getByText("config.release.promote is required")).toBeInTheDocument();
   });
 
+  // A7 (CFG-3b RV, carried to CFG-4): `title` on a disabled button is not
+  // reliably announced -- the visible reason now also reaches the button
+  // through `aria-describedby`, not only through a sibling `<span>`.
+  it("wires the disabled reason to the Publish button through aria-describedby", () => {
+    render(<PublishBar dirtyCount={2} onPublish={vi.fn()} disabledReason="config.release.promote is required" />);
+    const button = screen.getByRole("button", { name: "Publish" });
+    const describedBy = button.getAttribute("aria-describedby");
+    expect(describedBy).not.toBeNull();
+    expect(document.getElementById(describedBy ?? "")).toHaveTextContent(
+      "config.release.promote is required",
+    );
+  });
+
+  it("leaves Publish with no aria-describedby when there is no disabled reason", () => {
+    render(<PublishBar dirtyCount={2} onPublish={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Publish" })).not.toHaveAttribute("aria-describedby");
+  });
+
   it("offers Validate only when onValidate is given, disabled until something is staged", () => {
     const { rerender } = render(<PublishBar dirtyCount={0} onPublish={vi.fn()} />);
     expect(screen.queryByRole("button", { name: /Validate/ })).not.toBeInTheDocument();

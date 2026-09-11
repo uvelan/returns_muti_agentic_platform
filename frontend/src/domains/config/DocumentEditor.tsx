@@ -830,6 +830,23 @@ function DataKeyedObjectNode({
     if (pending === null) reportBlocked(path, null);
   }, [pending, path, reportBlocked]);
 
+  // C1 (CFG-3b RV, carried to CFG-4): clear this node's block when it
+  // unmounts, not only while it is mounted and resolved. Switching to JSON
+  // mode unmounts the whole form editor, `DataKeyedObjectNode` included --
+  // with no cleanup, a duplicate key held at that moment left `blocked`
+  // naming a row no longer on screen, and Save stayed disabled with a
+  // `title` an operator who had already switched away could not act on.
+  //
+  // A second effect, deliberately not folded into the one above: that one
+  // has `pending` in its dependency array, so its cleanup re-runs on every
+  // keystroke that changes `pending`, not only on unmount. Putting the
+  // unconditional `reportBlocked(path, null)` there cleared a genuine,
+  // still-open block the instant the operator typed the very next character
+  // of the rename. This effect's only dependencies are `path` and
+  // `reportBlocked`, both stable for the node's life, so its cleanup fires
+  // on unmount (or a real path change) and nowhere else.
+  useEffect(() => () => { reportBlocked(path, null); }, [path, reportBlocked]);
+
   const entries: KeyValueEntry[] =
     pending ?? Object.entries(value).map(([key, child]) => ({ key, value: child }));
   const nestedErrors = Array.from(errorsByPath.entries()).filter(

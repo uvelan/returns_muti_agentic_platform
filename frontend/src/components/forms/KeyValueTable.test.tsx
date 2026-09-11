@@ -67,6 +67,55 @@ describe("KeyValueTable", () => {
     expect(screen.getByRole("button", { name: "Add key" })).toBeDisabled();
   });
 
+  // A5 (CFG-3b RV, carried to CFG-4): the new-key input had `aria-invalid`
+  // and a disabled Add button but no element either pointed to -- `title` on
+  // a disabled button is not reliably announced. It now has a real,
+  // `aria-describedby`-wired error, the same convention every row's own key
+  // error already uses.
+  it("gives the new-key input a real, described error for a taken key", async () => {
+    const user = userEvent.setup();
+    render(<ControlledTable initial={[{ key: "CPU", value: "COUNTER" }]} />);
+    const newKey = screen.getByRole("textbox", { name: "New key" });
+    await user.type(newKey, "CPU");
+    expect(newKey).toHaveAttribute("aria-invalid", "true");
+    const describedBy = newKey.getAttribute("aria-describedby");
+    expect(describedBy).not.toBeNull();
+    expect(document.getElementById(describedBy ?? "")).toHaveTextContent("That key already exists.");
+  });
+
+  it("gives the new-key input a real, described error for a key that fails the pattern", async () => {
+    const user = userEvent.setup();
+    render(<ControlledTable initial={[]} keyPattern={/^[a-z_]+$/} />);
+    const newKey = screen.getByRole("textbox", { name: "New key" });
+    await user.type(newKey, "Not Valid");
+    const describedBy = newKey.getAttribute("aria-describedby");
+    expect(describedBy).not.toBeNull();
+    expect(document.getElementById(describedBy ?? "")).toHaveTextContent(
+      "Does not match the required pattern.",
+    );
+  });
+
+  it("has no new-key error element while the draft is empty or valid", () => {
+    render(<ControlledTable initial={[]} />);
+    expect(screen.getByRole("textbox", { name: "New key" })).not.toHaveAttribute("aria-describedby");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  // A6 (CFG-3b RV, carried to CFG-4): a table-level error, for a refusal
+  // that names the whole mapping rather than one row -- an empty required map.
+  it("shows a table-level error as an alert", () => {
+    render(
+      <KeyValueTable
+        label="Ship via methods"
+        error="At least one entry is required."
+        entries={[]}
+        onChange={vi.fn()}
+        valueKind="string"
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("At least one entry is required.");
+  });
+
   it("deletes a row", async () => {
     const user = userEvent.setup();
     render(<ControlledTable initial={[{ key: "CPU", value: "COUNTER" }]} />);

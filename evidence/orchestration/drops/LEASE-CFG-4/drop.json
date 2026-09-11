@@ -1,0 +1,33 @@
+{
+  "lease_id": "CFG-4",
+  "branch": "feat/cfg-4-screens-a",
+  "base_sha": "656ba175",
+  "head_sha": "PENDING",
+  "files": [
+    "frontend/src/domains/config/DocumentEditor.tsx",
+    "frontend/src/domains/config/DocumentEditor.test.tsx",
+    "frontend/src/components/forms/KeyValueTable.tsx",
+    "frontend/src/components/forms/KeyValueTable.test.tsx",
+    "frontend/src/components/forms/OrderedList.tsx",
+    "frontend/src/components/forms/OrderedList.test.tsx",
+    "frontend/src/components/forms/PublishBar.tsx",
+    "frontend/src/components/forms/PublishBar.test.tsx"
+  ],
+  "tests": {
+    "npx vitest run src/components/forms src/domains/config/DocumentEditor.test.tsx": "88 passed (14 files)",
+    "npm run typecheck": "clean",
+    "npm run lint": "clean"
+  },
+  "remaining": [
+    "API client methods + MSW handlers + contract tests for validate/publish/adopt-packaged/packaged-drift",
+    "/config/overview undecided-keys panel",
+    "/config/discovery",
+    "/config/return-policy",
+    "/config/fulfilment",
+    "registry/routeManifest/BusinessSection removals + registry test fix + known_test_failures.json",
+    "F5/F11 advisories (drift panel wording, packaged-drift shape rendering + test)",
+    "Playwright specs, run once against the live stack and reverted",
+    "final acceptance: vitest/typecheck/lint whole project, dev:mock route sweep"
+  ],
+  "merge_status": "PARTIAL"
+}

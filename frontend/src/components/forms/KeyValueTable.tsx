@@ -32,6 +32,7 @@ function blankValue(kind: KeyValueKind): JsonValue {
 export function KeyValueTable({
   label,
   hint,
+  error,
   entries,
   onChange,
   valueKind,
@@ -42,6 +43,8 @@ export function KeyValueTable({
 }: {
   label: string;
   hint?: string;
+  /** A table-level error -- "at least one entry is required", say -- not tied to any one row. */
+  error?: string;
   entries: readonly KeyValueEntry[];
   onChange: (next: KeyValueEntry[]) => void;
   valueKind: KeyValueKind;
@@ -113,6 +116,9 @@ export function KeyValueTable({
       <div>
         <p className="premium-kicker">{label}</p>
         {hint !== undefined ? <p className="mt-0.5 text-[10px] text-outline">{hint}</p> : null}
+        {error !== undefined ? (
+          <p role="alert" className="mt-0.5 text-xs text-error">{error}</p>
+        ) : null}
       </div>
 
       <table className="w-full border-separate border-spacing-y-1.5 text-sm">
@@ -205,27 +211,44 @@ export function KeyValueTable({
         </tbody>
       </table>
 
-      <div className="flex items-center gap-2 rounded-lg border border-dashed border-outline-variant bg-surface-container-low/60 p-2">
-        <label htmlFor={`${base}-new-key`} className="sr-only">{`New ${keyLabel.toLowerCase()}`}</label>
-        <input
-          id={`${base}-new-key`}
-          value={newKey}
-          onChange={(event) => { setNewKey(event.target.value); }}
-          onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addRow(); } }}
-          placeholder={`new_${keyLabel.toLowerCase()}`}
-          aria-invalid={newKeyTaken || newKeyInvalid ? true : undefined}
-          className="premium-field min-w-0 flex-1 py-1.5 font-mono text-xs"
-        />
-        <button
-          type="button"
-          onClick={addRow}
-          disabled={newKeyTrimmed === "" || newKeyTaken || newKeyInvalid}
-          title={newKeyTaken ? "That key already exists" : newKeyInvalid ? "Does not match the required pattern" : undefined}
-          className="flex items-center gap-1 rounded-lg border border-outline-control bg-surface-container-lowest px-2.5 py-2 text-[11px] font-medium text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <Plus size={12} aria-hidden="true" />
-          {`Add ${keyLabel.toLowerCase()}`}
-        </button>
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2 rounded-lg border border-dashed border-outline-variant bg-surface-container-low/60 p-2">
+          <label htmlFor={`${base}-new-key`} className="sr-only">{`New ${keyLabel.toLowerCase()}`}</label>
+          <input
+            id={`${base}-new-key`}
+            value={newKey}
+            onChange={(event) => { setNewKey(event.target.value); }}
+            onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addRow(); } }}
+            placeholder={`new_${keyLabel.toLowerCase()}`}
+            aria-invalid={newKeyTaken || newKeyInvalid ? true : undefined}
+            aria-describedby={newKeyTaken || newKeyInvalid ? `${base}-new-key-error` : undefined}
+            className="premium-field min-w-0 flex-1 py-1.5 font-mono text-xs"
+          />
+          <button
+            type="button"
+            onClick={addRow}
+            disabled={newKeyTrimmed === "" || newKeyTaken || newKeyInvalid}
+            title={newKeyTaken ? "That key already exists" : newKeyInvalid ? "Does not match the required pattern" : undefined}
+            className="flex items-center gap-1 rounded-lg border border-outline-control bg-surface-container-lowest px-2.5 py-2 text-[11px] font-medium text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Plus size={12} aria-hidden="true" />
+            {`Add ${keyLabel.toLowerCase()}`}
+          </button>
+        </div>
+        {/*
+          A5 (CFG-3b RV, carried to CFG-4): the new-key input was invalid --
+          `aria-invalid`, a disabled Add button -- with no element the failure
+          could point to. `title` on a disabled button is not reliably
+          announced (some screen readers skip a disabled control's
+          accessible-description sources entirely), so the reason now also
+          exists as a real, `aria-describedby`-wired error paragraph, the same
+          convention every row's own key error already uses.
+        */}
+        {newKeyTaken || newKeyInvalid ? (
+          <p id={`${base}-new-key-error`} role="alert" className="text-[10px] text-error">
+            {newKeyTaken ? "That key already exists." : "Does not match the required pattern."}
+          </p>
+        ) : null}
       </div>
     </div>
   );

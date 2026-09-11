@@ -1834,3 +1834,84 @@ its own hash inside its own content) -- the same lag every prior step in
 this lease recorded it with.
 
 Head sha: see commit. `merge_status: PENDING` -- ready for RV round 2.
+
+## CFG-4 step:00 — worktree confirmed, base verified; carried advisories triaged
+
+Worktree `.claude/worktrees/cfg-4`, branch `feat/cfg-4-screens-a`, base `656ba175` (trunk with
+CFG-0..3b merged, per the lease). Frontend-only lease so far.
+
+```
+$ git rev-parse HEAD
+656ba175...
+$ git log --oneline -5
+656ba175 (CFG) merge CFG-3a -- configuration API v2 ...
+1729dd36 (CFG) RV PASS for CFG-3a (52f01260)
+52f01260 (CFG) step:11 drop.json head_sha -- RV round 1 fixes
+29936af9 (CFG) step:11 RV round 1 fixes
+c2d219c4 (CFG) brief for CFG-4 (typed screens wave A) with CFG-3b advisories carried
+```
+
+Read, in the order the brief specifies: `CFG-4.brief.md`, `frontend/src/components/forms/README.md`,
+`.plan/reviews/CFG-3b.md` (A2, A5-A8, C1 carried to this lease) and `.plan/reviews/CFG-3a.md` (F5, F11
+carried), the CFG-3a routes in `backend/src/return_platform/configuration/api/router.py` and
+`releases.py` (read-only), `frontend/src/api/generated/return-platform.d.ts`, the existing pages in
+`frontend/src/domains/config/` with their tests, `registry.ts`/`routeManifest.ts`, and
+`frontend/src/mocks/handlers/canonicalHandlers.ts` + its contract test. Did not read the audit PART
+files.
+
+Two research passes (read-only, backend-model field extraction for the typed forms) confirmed exact
+field names/types/enum values for `discovery`, `source_resolution`, `clarification_policy`,
+`selection_vocabulary`, `return_policy` (incl. `return_method_derivation`, `return_method_requirements`),
+`return_eligibility_policy`, `policy_evaluation`, `shipment_tracking`, `source_mirror`,
+`source_constants`, `bay`, `omc` on `ReturnPlatformConfiguration` -- none of these documents use an
+alias generator, so the wire shape is exactly the Python field names (snake_case), matching every
+other config document this platform already edits as a merge patch.
+
+**Carried advisories triaged up front**, since three of the five land in shared primitives every new
+screen will use:
+- **C1** (`DocumentEditor.tsx`) -- taken. The `blocked`-clearing effect on `DataKeyedObjectNode` gained
+  a *second*, separate effect whose only job is the unmount cleanup (`useEffect(() => () =>
+  reportBlocked(path, null), [path, reportBlocked])`). Folding the cleanup into the existing
+  `[pending, path, reportBlocked]`-keyed effect (the review's literal two-line suggestion) was tried
+  first and is wrong: that effect's cleanup then re-runs on every keystroke that changes `pending`, so
+  it cleared a genuine, still-open duplicate-key block the instant the operator typed the next
+  character -- caught by the pre-existing B1/P5 regression test going red. New test in
+  `DocumentEditor.test.tsx`: block on a duplicate, switch to JSON mode (unmounts the table), Save
+  re-enables; switch back to Key-value, the table remounts clean from the document (which holds the
+  last unique prefix the abandoned rename passed through, per the README's own note -- not the
+  original value, since only the colliding keystroke never reached the document).
+- **A5** (`KeyValueTable.tsx`) -- taken. The new-key input's invalid state (taken / pattern mismatch)
+  now has a real `role="alert"` paragraph, `aria-describedby`-wired to the input, alongside the
+  existing `aria-invalid` and the button's `title` (not reliably announced for a disabled control).
+  Two new tests.
+- **A6** (`KeyValueTable.tsx`, `OrderedList.tsx`) -- taken. Both gained an optional `error?: string`
+  prop, rendered as a `role="alert"` paragraph at the top of the control, for a refusal that names the
+  whole list/mapping rather than one row/item (an empty required list, say) -- the same shape `Field`
+  already gives every scalar control. One new test each.
+- **A7** (`PublishBar.tsx`) -- taken. `disabledReason` now reaches the Publish button through
+  `aria-describedby` (a stable id shared with the reason `<span>`), not only through `title` and a
+  sibling element with no relationship to the button. Two new tests.
+- **A2** -- no code change (re-confirmed the CFG-3b RV's own judgement: a data-keyed key containing
+  `.` is not addressable by either error-path convention, documented as a limit in the forms README,
+  not a defect).
+- **A8** -- discharged by this lease's own scope (the typed screens and `/validate` usage below).
+
+```
+$ npx vitest run src/components/forms src/domains/config/DocumentEditor.test.tsx
+ Test Files  14 passed (14)
+      Tests  88 passed (88)
+$ npm run typecheck
+(no output, exit 0)
+$ npm run lint
+(no output, exit 0)
+```
+
+`drop.json` written PARTIAL, `head_sha: "PENDING"` until this step's commit lands (recorded in a
+follow-up, the same one-commit lag every prior CFG step used).
+
+## CFG-4 step:01 — carried advisories: C1, A5, A6, A7 (see step:00)
+
+Combined into step:00 above since triaging which advisories needed code came first and the fixes
+followed directly from it; no separate narrative. Commit `(CFG) step:01 carried advisories -- C1
+unmount cleanup, A5/A6/A7 described errors` covers `DocumentEditor.tsx`, `KeyValueTable.tsx`,
+`OrderedList.tsx`, `PublishBar.tsx` and their tests.

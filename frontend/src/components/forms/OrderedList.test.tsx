@@ -58,4 +58,26 @@ describe("OrderedList", () => {
     const items = screen.getAllByRole("listitem").map((item) => item.textContent ?? "");
     expect(items[0]).toContain("Inspect");
   });
+
+  // A6 (CFG-3b RV, carried to CFG-4): a list-level error, for a refusal that
+  // names the whole sequence rather than one of its items -- an empty
+  // required list, an unreachable rung.
+  it("shows a list-level error as an alert, and none when no error is given", () => {
+    const { rerender } = render(
+      <OrderedList label="Stage sequence" items={STAGES} onChange={vi.fn()} keyOf={(s) => s.id} renderItem={(s) => <span>{s.name}</span>} />,
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    rerender(
+      <OrderedList
+        label="Stage sequence"
+        error="At least one stage is required."
+        items={STAGES}
+        onChange={vi.fn()}
+        keyOf={(s) => s.id}
+        renderItem={(s) => <span>{s.name}</span>}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("At least one stage is required.");
+  });
 });
