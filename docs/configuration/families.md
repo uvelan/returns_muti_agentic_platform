@@ -66,6 +66,47 @@ facts.
 | `business_calendars` | `INTERNAL` | `RUNTIME` | Yes | Yes | **`PINNED`** | See below |
 | `integrations` | `INTERNAL` | `RUNTIME` | Yes | Yes | `PINNED` | `ai_may_fabricate_success` is a **`SECURITY`** field per topic |
 | `runtime_integrations` | `INTERNAL` | `RUNTIME` | Yes | Yes | `PINNED` | Safe |
+| `deployment.ai.provider_order` | **`SECURITY`** | `RUNTIME` | Yes | Yes | `IMMEDIATE` | **`SIMULATOR`/`MANUAL` rejected at validation in production.** The only source of AI provider order — see "`deployment`: the env→release switches" below |
+| `deployment.ai.model_pools` | `INTERNAL` | `RUNTIME` | Yes | Yes | `IMMEDIATE` | Read-only in the UI, and ignored on adoption, for a provider `runtime_integrations` governs |
+| `deployment.ai.google` (`thinking_budget`, `response_schema`) | `INTERNAL` | `RUNTIME` | Yes | Yes | `IMMEDIATE` | Safe |
+| `deployment.dependencies` | **`SECURITY`** | `RUNTIME` | Yes | Yes | `IMMEDIATE` | **`SIMULATED` rejected at validation in production** |
+| `deployment.feedback_learning` | `INTERNAL` | `RUNTIME` | Yes | (b) | `IMMEDIATE` | Safe |
+| `deployment.support_ticket` | `INTERNAL` | `RUNTIME` | Yes | Yes | `IMMEDIATE` | `base_url` required at validation for `INTERNAL_WITH_EXTERNAL_MIRROR`/`EXTERNAL_AUTHORITY` |
+
+### `deployment`: the env→release switches (D-CFG-4, CFG-6)
+
+Eight business switches that used to live only in `.env`/compose now live in
+the release, at `deployment`, hot-adopted like everything else in this table:
+AI provider order, the per-provider model pools, the two GOOGLE extras
+(`thinking_budget`, `response_schema`), the four dependency-simulation modes,
+feedback learning, and the support-ticket mode/base URL. Edited at
+`/config/deployment`; every option production refuses to run renders
+**disabled with the reason on the option**, not hidden.
+
+**Precedence with `runtime_integrations`.** `runtime_integrations` (the AI
+Control Center's provider bindings) still governs *availability* — credentials
+and the model pool — for every provider it enables. `deployment.ai.provider_order`
+is the only source of *order*, and the only way to name `SIMULATOR`/`MANUAL`:
+a provider `runtime_integrations` enables but `deployment.ai.provider_order`
+does not name gets zero routes, exactly as an uncredentialed provider does.
+Enabling a new provider in the AI Control Center is therefore two steps, not
+one: enable it there, then add it to the order at `/config/deployment`.
+
+**The env stays the bootstrap default.** A value actually set in `.env`/compose
+(not a pydantic default nobody configured) becomes the packaged `deployment.yaml`
+default the FIRST release publish carries forward. Once a release exists, the
+env is no longer read for these eight switches — the release is authoritative,
+env and all — until a `git revert` drops the `deployment` key from the model,
+at which point the next bootstrap run republishes without it and env is
+authoritative again (`_drop_retired_keys`; no data migration).
+
+(b) `deployment.feedback_learning.enabled` reads live off `Settings` at call
+time, but `FeedbackLearningService`/`ReturnOrchestrator` (the class that
+constructs it) currently has **no production construction site** in
+`backend/src` — only tests instantiate it. A future wiring site must construct
+it with the live `resources.settings` object for this hot-adopt to actually
+reach production traffic; a regression test asserts that requirement without
+itself supplying the missing site (CFG-6 scope item 6c).
 
 ### Validation rules that fail closed
 

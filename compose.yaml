@@ -66,6 +66,11 @@ x-platform-environment: &platform-environment
   PLATFORM_GRAPH_SYNC_MAX_RECORDS: ${PLATFORM_GRAPH_SYNC_MAX_RECORDS:-10000}
   PLATFORM_AI_STUDIO_MAX_RECORDS: ${PLATFORM_AI_STUDIO_MAX_RECORDS:-500}
   PLATFORM_AI_STUDIO_MONGO_DATABASE: ${PLATFORM_AI_STUDIO_MONGO_DATABASE:-ai_studio_validation}
+  # CFG-6: bootstrap defaults only. MODE, BASE_URL, dependency modes, provider
+  # order, model pools and feedback learning below are all authoritative from
+  # the release (`deployment`) once one publishes -- edit them at
+  # /config/deployment. Deleting these lines is wrong: they seed the packaged
+  # default the FIRST publish carries forward.
   PLATFORM_SUPPORT_TICKET_MODE: ${PLATFORM_SUPPORT_TICKET_MODE:-INTERNAL}
   PLATFORM_SUPPORT_TICKET_BASE_URL: ${PLATFORM_SUPPORT_TICKET_BASE_URL:-}
   PLATFORM_SUPPORT_TICKET_API_KEY: ${PLATFORM_SUPPORT_TICKET_API_KEY:-}
