@@ -24,7 +24,7 @@ transcribed from memory. Brief: `.plan/tracks/CFG.brief.md`. Audit: `evidence/co
 | CFG-3a | feat/cfg-3a-config-api | 5dc5a825 | Sonnet | **MERGED** | LEASE-CFG-3a MERGED | PASS (52f01260) | merge commit on trunk |
 | CFG-3b | feat/cfg-3b-form-primitives | 734a16dc | Sonnet | **MERGED** | LEASE-CFG-3b MERGED | PASS (f3a7340d) | merge commit on trunk |
 | CFG-4 | feat/cfg-4-screens-a | 656ba175 | Sonnet | **MERGED** | LEASE-CFG-4 MERGED | PASS (45c14660) | merge commit on trunk |
-| CFG-5 | feat/cfg-5-screens-b | after CFG-4 | Sonnet | NOT_STARTED | — | — | — |
+| CFG-5 | feat/cfg-5-screens-b | b03cbb59 | Sonnet | **MERGED** | LEASE-CFG-5 MERGED | PASS (b3d8f06e) | merge commit on trunk |
 | CFG-6 | feat/cfg-6-deployment-section | after CFG-2 + CFG-3a | Opus spike → Sonnet | NOT_STARTED | — | — | — |
 | CFG-7 | feat/cfg-7-acceptance | after CFG-5 + CFG-6 | Haiku + Sonnet + RV | NOT_STARTED | — | — | — |
 
@@ -2483,3 +2483,915 @@ The serving worktree `cfg-verify` was moved to `b03cbb59` without a backend rest
 change; Vite hot-reloads): `/config/discovery` answers 200, backend head 117 (the e2e runs of the two
 review rounds published and reverted through `POST /api/config/publish`; every touched value verified
 byte-identical by RV). CFG-5 implementer started on `feat/cfg-5-screens-b` from `b03cbb59`.
+
+---
+
+## CFG-5 step:00 — base check
+
+Worktree `.claude/worktrees/cfg-5`, branch `feat/cfg-5-screens-b`, base `b03cbb59` (CFG-0..4 merged).
+
+```
+$ PYTHONPATH=<worktree>/backend/src backend/.venv/Scripts/python.exe -c "import return_platform; print(return_platform.__file__)"
+K:\Projects\Ret\returns_muti_agentic_platform\.claude\worktrees\cfg-5\backend\src\return_platform\__init__.py
+```
+
+Inside cfg-5, as required.
+
+## CFG-5 step:01 — MSW handlers + contract tests (item 1), dead `/data-console/v1/` branch
+
+`/api/source-bindings` was already mocked and contract-covered by CFG-4 (list/put/delete,
+`canonicalHandlers.contract.test.ts:314-332`); nothing to add there. Added:
+
+- `frontend/src/mocks/handlers/canonicalHandlers.ts`: `MOCK_AGENTS`/`MOCK_AGENT_DOCUMENTS` and
+  `GET /api/agents`, `GET /api/agents/:manifestId`, `PUT /api/agents/:manifestId` (202, proposal
+  response -- keeps the proposal path CFG-5's brief requires for item 5); `SCHEMA_RELEASES`/
+  `SCHEMA_ACTIVE_DOCUMENT` and `GET /api/schema-releases`, `GET`/`PUT /api/schema-releases/active/document`,
+  `GET /api/schema-releases/:releaseId/migration-plan`, `POST /api/schema-releases/:releaseId/activate`;
+  `POST /api/ai/requests/:traceId/replay` and `POST /api/ai/requests/:traceId/compare`, both reusing
+  `MOCK_AI_TRACES` so the replay/compare pair stays comparable to the original the way the real
+  `AIGatewayService.evaluate` path does.
+- `frontend/src/mocks/handlers/canonicalHandlers.contract.test.ts`: one `ROUTES` entry per new
+  handler (**10** total -- agents 3, schema-releases 5, replay/compare 2; corrected by RV round 1,
+  F7, which was right that this said 13), checked against the committed OpenAPI document the same
+  way every other canonical route is.
+
+**Dead branch (RV CFG-1 F5).** `main.tsx`'s `onUnhandledRequest` callback printed only for
+`/data-console/v1/` requests -- the legacy surface Wave F4 deleted along with the frontend that
+called it, so the branch never fires. Tried `onUnhandledRequest: "error"` first, since that is what
+the brief's own phrasing ("dead branch removal") suggested replacing it with. It works for CFG-5's
+own routes but is not equivalent to the old behaviour: MSW's `"error"` answers an unhandled request
+with a mocked 500 instead of bypassing it, and `tests/canonical-routes.spec.ts` (outside CFG-5's
+Owns) treats that as the route failing. It broke `/support/work-queue` and `/support/rma-tickets` --
+`GET /api/rma-tickets` and `GET /api/v1/return-support/work-items` have no handler in
+`supportHandlers.ts`, a real, pre-existing gap, but not this lease's surface. Settled on
+`onUnhandledRequest: "bypass"`: the explicit spelling of what the dead callback actually did (bypass
+silently, since `print` was only ever called on a path nothing hits), so every domain's route sweep
+is exactly as green or red as it already was, and the `/data-console/v1/` literal and its now-pointless
+callback are gone. Flagged the `/support` gap as a separate task (`task_1349209e`) rather than fixing
+it outside Owns.
+
+```
+$ npx vitest run src/mocks/handlers/canonicalHandlers.contract.test.ts
+ Test Files  1 passed (1)
+      Tests  73 passed (73)
+
+$ npx vitest run                       # whole frontend suite
+ Test Files  83 passed (83)
+      Tests  1022 passed (1022)
+
+$ npm run typecheck                    # tsc -b --pretty false
+typecheck exit: 0
+$ npm run lint                         # eslint . --max-warnings=0
+lint exit: 0
+```
+
+`dev:mock` route sweep, disposable webServer (`npx playwright test --project=mock-chromium
+tests/canonical-routes.spec.ts`, from `frontend/`):
+
+```
+# first run, onUnhandledRequest: "error" (before settling on "bypass"), cold webServer:
+5 failed: /support/work-queue, /support/rma-tickets, "no route scrolls sideways at 320",
+  /config and /config/agents axe color-contrast
+124 passed
+
+# isolated re-runs of each failure:
+- /support/work-queue mounts and answers: passes alone (cold-server flake, not this lease)
+- /support/rma-tickets mounts and answers: fails alone too -- GET /api/rma-tickets and
+  GET /api/v1/return-support/work-items are genuinely unhandled (see task_1349209e)
+- /config, /config/agents color-contrast: reproduces under a fully-parallel cold run, does not
+  reproduce isolated or on a warm server -- CFG-4's own F10 (`.plan/reviews/CFG-4.md`), the fixed
+  250ms `settle()` losing a race with the dev server still compiling CSS on the heaviest route's
+  first request. Not new; matches F10's own reproduction pattern (2/2 cold, 0/2 warm) exactly.
+
+# after switching to "bypass":
+127 passed, 2 failed (both /config, /config/agents color-contrast -- see above)
+
+# full re-run on a warm server:
+129 passed (0 failed)
+```
+
+`registeredRoutes()`/`ROUTES` coverage checks (leaves no handler unaccounted for, checks a handler
+for every route it claims) pass as part of the 73 contract tests above.
+
+Files: `frontend/src/mocks/handlers/canonicalHandlers.ts`, `canonicalHandlers.contract.test.ts`,
+`frontend/src/main.tsx`. `drop.json` PARTIAL: item 1 done; items 2-11 remain.
+
+## CFG-5 step:02 — `/config/workflow` screen (item 2)
+
+**`workflow`'s real shape disagrees with the brief's own design table**, and the screen is built
+against the model, not the brief: `WorkflowConfiguration` (`return_configuration.py:886`) is
+`version`, a flat `stages: tuple[str, ...]` (min 2, unique), `sla_minutes: dict[str, int]` and
+`completion_dimensions`. There is no per-stage handler type and no agent reference to bind --
+`domain/workflow.py`'s `WorkflowConfig`/`WorkflowStageEntry.handler` is a different model nothing on
+`ReturnPlatformConfiguration` uses, and `WorkflowStageHandlerType` itself lost its `AGENT` member
+when AGT-02 removed agent dispatch, so the model the brief described has had nothing to point an
+agent at for a while either. `WorkflowSection.tsx`'s own module comment records this rather than
+silently building a different form than the table implies. `housekeeping` is present on
+`ReturnPlatformConfiguration` (checked per the brief's own instruction), so it is included --
+collapsed by default (`FieldGroup collapsible defaultOpen={false}`), since its seven reclaimer
+blocks are the part of the page an operator tunes least often.
+
+Typed form: stage sequence as `OrderedList` of editable strings, `sla_minutes` as `KeyValueTable`,
+`completion_dimensions` as `TagListInput`; `return_case` waits as `DurationField`s (bay wait, item
+reservation TTL, return-details wait, support-response wait, reminder interval), `max_reminders`
+`NumberField`, `on_reminders_exhausted` `EnumSelect` (the model's own two-member `Literal`), reason
+required toggle; `business_calendars` as an `OrderedList` of calendar cards, each a nested
+`OrderedList` of working periods (weekday `EnumSelect`, start/end minute `NumberField`s -- not
+`DurationField`: a working period's `start_minute`/`end_minute` are minutes-since-midnight, a time
+of day, and `DurationField` is for an elapsed duration, so a plain `NumberField` with a minutes-
+since-midnight hint is the honest control) plus holidays `TagListInput`; `housekeeping` as a
+collapsible `FieldGroup` with a `Toggle`/`DurationField` pair at the top and one compact block per
+reclaimer (`temporal_executions`, `graph_generations`, `stalled_sync_runs`, `probe_databases`,
+`order_line_reservations`, `ai_interceptions` -- the last two carry no `enabled` switch in the
+model, and the screen does not invent one).
+
+Registry: `"Workflow"` added to `CONFIG_SECTIONS` (between Fulfilment and Runtime) with the `Workflow`
+lucide icon; `registry.test.ts` needed no changes (it derives its checks from `CONFIG_SECTIONS`
+generically). `ConfigurationPage.tsx`'s `TabBody` switch gained the `"Workflow"` case.
+`canonicalHandlers.ts`'s mock runtime configuration gained `MOCK_WORKFLOW`/`MOCK_RETURN_CASE`/
+`MOCK_BUSINESS_CALENDARS`/`MOCK_HOUSEKEEPING`, matching the typed screen's own field reads.
+
+One bug caught by the screen's own tests before commit: `SlaMinutesTable`'s `KeyValueTable`
+`keyLabel="Stage"` collided with the stage-sequence `OrderedList` -- both would render an
+accessible-name "Stage 1" for row 1 (`KeyValueTable` labels each row `${keyLabel} ${index+1}`),
+which made `screen.findByRole("textbox", { name: /Stage 1/ })` ambiguous. Renamed to `"SLA stage"`.
+
+```
+$ npx vitest run src/domains/config/WorkflowSection.test.tsx
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+
+$ npx vitest run                       # whole frontend suite
+ Test Files  84 passed (84)
+      Tests  1030 passed (1030)
+
+$ npm run typecheck
+typecheck exit: 0
+$ npm run lint
+lint exit: 0
+```
+
+`dev:mock` route sweep, scoped to `/config/workflow` (warm server):
+
+```
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g "workflow"
+  ok /config/workflow mounts and answers
+  ok /config/workflow lets the keyboard past the chrome
+  ok /config/workflow has no critical or serious violation
+  3 passed
+```
+
+Live e2e run, disposable `vite --port 5199` (proxying `/api` to `http://localhost:8000` via
+`vite.config.ts`'s own `backendTarget`), stopped afterwards; `:5173`/`:8000` never restarted (both
+independently curled 200 before and after):
+
+```
+$ E2E_REAL_BASE_URL=http://localhost:5199 npx playwright test --project=cfg4-e2e e2e/config-workflow.spec.ts --workers=1 --reporter=list --timeout=60000
+  ok Workflow -- real stack › adds a completion dimension, publishes, and the runtime snapshot
+     reflects it -- then reverts (9.3s)
+  1 passed
+```
+
+`GET /api/config/runtime` read independently, before and after:
+
+```
+head_revision before/after: 117 119                (one publish, one revert)
+release       before/after: publish-a02f3efc7aa54bcb publish-574d703efc4a45a0
+workflow.completion_dimensions  identical: True (test dimension absent both times it matters)
+```
+
+Files: `frontend/src/domains/config/WorkflowSection.tsx`, `WorkflowSection.test.tsx`,
+`frontend/src/domains/registry.ts`, `frontend/src/domains/config/ConfigurationPage.tsx`,
+`frontend/src/mocks/handlers/canonicalHandlers.ts`, `frontend/e2e/config-workflow.spec.ts`.
+`drop.json` PARTIAL: items 1-2 done; items 3-11 remain.
+
+## CFG-5 step:03 — `/config/support` screen, six tabs (item 3)
+
+`SupportSection.tsx`: local tab state (not a URL segment -- the brief's design table lists
+`/config/support` as one row), six tabs over six `RETURN_PLATFORM` keys. **Template** is
+`SupportTemplateSection`, moved here unchanged (imported, not edited) -- it stays on its own
+four-round-trip publish pipeline rather than `TypedSectionScreen`'s single call, which is not this
+lease's change to make. **Gate** (`support_gate`), **Ingress** (`support_ingress`), **Resolver**
+(`support_resolver`) and **Context assembly** (`context_assembly`) are typed `TypedSectionScreen`
+forms built from the four models under `backend/src/return_platform/configuration/`
+(`support_gate_configuration.py`, `support_ingress_configuration.py`,
+`support_resolver_configuration.py`, `context_assembly_configuration.py`). **Queues** is
+`SupportConfiguration` (the `support` key) -- authority mode, external mirror, default priority,
+queues, outbox topic.
+
+Coverage is deliberately partial on Resolver: `tool_bindings` (five references per binding, one
+validated against the tool-schema registry at parse time) has no typed control -- the same
+partial-coverage choice CFG-4 made for `source_resolution`'s nineteen path lists. Advanced mode
+edits the same slice as JSON.
+
+**Alias redirect.** `Support Template` is `Support`'s `Template` tab now, so `/config/support-template`
+is a stale bookmark. `useDomainSection`'s own unrecognised-slug fallback lands an unrecognised path
+on the domain's *first* section (`Overview`), which is not what a `support-template` visitor wants
+-- so `ConfigurationPage.tsx` checks for the legacy path ahead of that resolution and renders a real
+`<Redirect to="/config/support" replace />` (wouter), verified in a test that checks
+`window.location.pathname` after the redirect, not just that something rendered.
+
+**Business tab correction, this step and a fix to step:02's own oversight.** `BusinessSection.tsx`'s
+`BUSINESS_GROUPS` still offered `workflow`/`return_case`/`business_calendars`/`housekeeping` as a
+group after step:02 shipped a typed screen for all four -- a second write path CFG-4's own
+precedent (discovery/return-policy/fulfilment) says not to leave standing. Removed that group this
+step, alongside the new `support` group's five keys, and added all nine to `EDITED_ELSEWHERE` as
+pointers. `BusinessSection.test.tsx` rewritten: the "platform" group (`integrations`/`copilot`) and
+"simulation" group are what the offered-sections tests now exercise; the removed-sections test gained
+the nine new keys. Business tab is not empty yet -- `platform`/`simulation` remain -- so it is not
+retired (item 8, pending items 4 and 6).
+
+Mock fixtures added for all five new keys (`support_gate`/`support_ingress`/`support_resolver`/
+`context_assembly`/`support`) in `canonicalHandlers.ts`'s runtime configuration.
+
+```
+$ npx vitest run                       # whole frontend suite
+ Test Files  85 passed (85)
+      Tests  1036 passed (1036)
+
+$ npm run typecheck
+typecheck exit: 0
+$ npm run lint
+lint exit: 0
+```
+
+`dev:mock` route sweep, scoped to `support` (warm server):
+
+```
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g "support"
+  12 passed -- /support, /support/work-queue, /support/rma-tickets, /config/support, each for
+  render + keyboard + axe (confirms step:01's /support fix holds, and task_1349209e's gap is
+  unaffected by anything this step touched)
+```
+
+Live e2e run, disposable `vite --port 5199`, stopped afterwards; `:5173`/`:8000` never restarted:
+
+```
+$ E2E_REAL_BASE_URL=http://localhost:5199 npx playwright test --project=cfg4-e2e e2e/config-support.spec.ts --workers=1 --reporter=list --timeout=60000
+  ok Support -- real stack › adds an ingress intent, publishes, and the runtime snapshot reflects
+     it -- then reverts (5.8s)
+  1 passed
+```
+
+One bug caught before the spec passed: `TagListInput` with `suggestions` sets the input's `list`
+attribute, which gives Chromium's accessibility tree the implicit role `combobox`, not `textbox`
+(HTML-AAM) -- `config-discovery.spec.ts`'s "Item conditions" field has no suggestions and stays
+`textbox`, which is what made this the first CFG-4/5 spec to hit it. Fixed by querying `combobox`.
+
+```
+head_revision before/after: 119 121                (one publish, one revert)
+release       before/after: publish-574d703efc4a45a0 publish-6e8616f231584f6f
+support_ingress.intents  identical: True (test intent absent both times it matters)
+```
+
+Files: `frontend/src/domains/config/SupportSection.tsx`, `SupportSection.test.tsx`,
+`BusinessSection.tsx`, `BusinessSection.test.tsx`, `ConfigurationPage.tsx`, `ConfigurationPage.test.tsx`,
+`frontend/src/domains/registry.ts`, `frontend/src/mocks/handlers/canonicalHandlers.ts`,
+`frontend/e2e/config-support.spec.ts`. `drop.json` PARTIAL: items 1-3 done; items 4-11 remain.
+
+## CFG-5 step:04 — `/config/integrations` screen (item 4)
+
+Replaces `ConfigurationPage.tsx`'s `UNBACKED.Integrations` entry (which pointed at the Runtime tab's
+raw JSON -- a read) with `IntegrationsSection.tsx`, a typed `TypedSectionScreen` form over
+`integrations` and `copilot`.
+
+**Two more places the brief's design table didn't match the live model**, in the same vein as
+step:02's workflow finding. `integrations` is `IntegrationConfiguration` -- four *named* fixed
+fields (`omc_return_create`, `external_support_mirror`, `carrier_booking`, `customer_notification`),
+`extra="forbid"` refusing a fifth -- not a data-keyed map, so `KeyValueTable` (add/rename/delete)
+would build controls that always 422; built as four fixed rows instead.
+`copilot.candidate_columns` is `CandidateColumnConfiguration` (`{label, fields}`, `fields` an alias
+chain), not a flat string list, so an `OrderedList` of small cards, not `TagListInput`. No
+"poll intervals" field exists anywhere on `CopilotConfiguration` or `RuntimeIntegrationsConfiguration`
+(already pointed at "AI Control Center -- Providers & Models" elsewhere); not invented.
+
+`order_discovery_agent_id` is an `EnumSelect` sourced from `agentConfigApi.list()` (the live agents,
+matching the brief's "from the agents present"), with an explicit "Not set" option when the release
+carries `None` rather than snapping to the first agent.
+
+**Live e2e run caught a real, unconditional validator.** Tried `ai_may_fabricate_success` first
+(the field the design table names) and the real backend refused it with "AI cannot fabricate success
+for authoritative integrations" on *every* environment --
+`ReturnPlatformConfiguration.validate_required_agents` (`return_configuration.py:1879`) checks all
+four topics unconditionally, not only in production. `IntegrationsSection.tsx`'s hint text, originally
+written from the model's own "must stay off in production"-sounding docstring elsewhere in the file,
+was corrected. Switched the e2e spec to `external_support_mirror.enabled` (confirmed safe with a
+direct `POST /api/config/validate/RETURN_PLATFORM` call before rewriting the spec).
+
+**`BusinessSection.tsx`'s `platform` group (`integrations`, `copilot`) removed**, continuing the
+step:03 pattern -- `BUSINESS_GROUPS` now holds only `simulation` (CFG-5 item 6 is what empties it).
+The now-dead `section()` helper and `RETURN_PLATFORM_DOMAIN_KEY` constant (both had no remaining
+call site once `platform` was gone) were removed rather than left as unused exports.
+`BusinessSection.test.tsx` rewritten around the single remaining group; the "patches under its own
+key on RETURN_PLATFORM" test is retired with a comment explaining why (no live subject exercises that
+branch of `onSubmit` any more), and "sends a removed entry as null" is re-proven through the
+`DEPENDENCY_SIMULATION`-domain subject instead, which does not need the branch to demonstrate it.
+
+```
+$ npx vitest run                       # whole frontend suite
+ Test Files  86 passed (86)
+      Tests  1042 passed (1042)
+
+$ npm run typecheck
+typecheck exit: 0
+$ npm run lint
+lint exit: 0
+```
+
+`dev:mock` route sweep, scoped to `/config/integrations` (warm server):
+
+```
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g "integrations"
+  3 passed -- render, keyboard, axe
+```
+
+Live e2e run, disposable `vite --port 5199`, stopped afterwards; `:5173`/`:8000` never restarted:
+
+```
+$ E2E_REAL_BASE_URL=http://localhost:5199 npx playwright test --project=cfg4-e2e e2e/config-integrations.spec.ts --workers=1 --reporter=list --timeout=60000
+  ok Integrations -- real stack › flips external_support_mirror.enabled, publishes, and the runtime
+     snapshot reflects it -- then reverts (10.4s)
+  1 passed
+```
+
+One more bug caught and fixed along the way: `Toggle`'s real checkbox is visually `sr-only` under a
+CSS-drawn switch `<span>` that covers its coordinates -- clicking the checkbox locator directly
+(even `force: true`, which only skips Playwright's actionability checks, not the browser's real
+hit-testing) lands on the covering span and never fires. Clicking the associated `<label>` (a real,
+uncovered sibling) is what actually toggles it; used in both the e2e spec and worth carrying into any
+future spec that flips a `Toggle` live.
+
+```
+head_revision before/after: 121 123                (one publish, one revert)
+release       before/after: publish-6e8616f231584f6f publish-885b6d9363fe4963
+integrations.external_support_mirror.enabled  identical: True (False both times it matters)
+```
+
+Files: `frontend/src/domains/config/IntegrationsSection.tsx`, `IntegrationsSection.test.tsx`,
+`BusinessSection.tsx`, `BusinessSection.test.tsx`, `ConfigurationPage.tsx`, `ConfigurationPage.test.tsx`,
+`frontend/src/mocks/handlers/canonicalHandlers.ts`, `frontend/e2e/config-integrations.spec.ts`.
+`drop.json` PARTIAL: items 1-4 done; items 5-11 remain.
+
+## CFG-5 step:05 — checkpoint: item 5 researched, not yet implemented
+
+Read the four files the brief names (`configuration/api/agents.py`, `application/agent_configuration.py`,
+`application/loader.py`, `backend/tests/configuration/test_agent_configuration_releases.py`) plus
+`backend/config/manifest.yaml`, `backend/config/agents/order_discovery.yaml`, and dispatched a
+read-only research pass (`Explore` agent) to trace every runtime consumer before touching anything --
+this is a governance/activation-pipeline change, and a wrong move here is not a test failure, it is a
+broken proposal-approval path. Full findings, so the next step does not re-derive them:
+
+**The architecture, confirmed with file:line evidence:**
+
+- `AgentRegistry.build()` (`agents/registry/registry.py:52-62`) and every agent class
+  (`bay_assignment.py:39`, `feedback.py:18`, `fulfillment.py:18`, `order_analysis.py:77`,
+  `order_discovery.py:38`, `return_workflow.py:20`) read only
+  `ReturnPlatformConfiguration.agents["<id>"]` -- the small model at
+  `return_configuration.py:51-92` (`name`, `version`, `enabled`, `ai_assisted`, `ai_route_ref`; the
+  model's own docstring calls everything below `human_confirmation_required` "Dead knobs, kept only
+  so stored release payloads still parse"). Nothing at runtime reads `AGENT_MODULES`, the packaged
+  `backend/config/agents/*.yaml` files, or `AgentConfigurationService`'s effective document -- every
+  consumer of those (`main.py:563,575`, `configuration/api/agents.py`,
+  `bootstrap/adapters/governance_agent_configuration.py:93-102`,
+  `agent_configuration.py:258`'s `AgentConfigNode` sanity check) is the `/api/agents` console path
+  itself, not a production behaviour path. `order_discovery.yaml`'s real content beyond
+  name/enabled/ai_assisted (`execution_mode`, `input_contexts`/`output_context`, `capabilities`,
+  `dependencies`) is dead: `OrderDiscoveryAgent` is itself frozen ("superseded by
+  `dynamic_knowledge.order_agent`"), and live discovery behaviour is `configuration.discovery:
+  DiscoveryConfiguration` plus the `dynamic_knowledge.order_agent` package.
+- `ConfigurationLoader` (`application/loader.py`) is constructed in exactly two places, both inside
+  `agent_configuration.py` (`:137,243`) -- no other file in `backend/src` or `backend/tests`
+  instantiates it. `backend/config/manifest.yaml`'s non-agent entries (`workflow.return_session`,
+  `sync.order_partial`, `sync.order_full`, `source.sales_inv`, `mapping.sales_inv_order`,
+  `graph.order_discovery`) are loaded by nothing at all -- `AgentConfigurationService._packaged()`
+  filters to `module_type == "AGENT"` only, and nothing else reads the manifest. Their target files
+  do exist on disk (`backend/config/workflows/return_session.yaml`, `sync/order_partial.yaml`,
+  `sync/order_full.yaml`, `sources/sales_inv.yaml`, `mappings/sales_inv_order.yaml`,
+  `graph/order_discovery.yaml`), just unreferenced by any loader.
+- `platform.system_store` (the brief's "leave" entry) is also never read through `ConfigurationLoader`
+  -- `backend/config/platform/system_store.yaml` is loaded by an entirely separate mechanism,
+  `platform/system_store/manifest_loader.py::load_system_store_config`, driven by its own
+  `Settings.system_store_manifest_path` (`configuration/settings.py:25,75`), confirmed by
+  `configuration/README.md:36-37` ("read by its own loader"). The manifest.yaml entry is inert either
+  way; left alone per the brief regardless.
+- publish_release_with_domains (`application/release_promotion.py:198-238`) replaces a domain
+  document whole, not by merge patch: `merged.update({key: dict(value) for key, value in
+  domains.items()})` overwrites the entire `RETURN_PLATFORM` entry with whatever is passed. So
+  repointing the activator at `agents.<id>` cannot send a bare `{"agents": {id: doc}}` -- it must read
+  the active release's current full `RETURN_PLATFORM` document, set `document["agents"][manifest_id]
+  = edited_document` on a copy, and pass the whole modified document as the one domain to overlay.
+  `AgentConfigurationService` needs an `active` callable that returns the whole `RETURN_PLATFORM`
+  document (not just the `agents` sub-mapping it currently overlays), sourced from
+  `app.state.return_configuration_snapshot.domain_payloads["RETURN_PLATFORM"]` the same way
+  `main.py:560-564`'s `_released_agent_modules` closure already reads `AGENT_MODULES` from that
+  snapshot.
+
+**The concrete plan for the next step**, in order:
+
+1. `agent_configuration.py`: drop `ConfigurationLoader`/YAML entirely. Constructor takes
+   `active: Callable[[], Mapping[str, Any]]` returning the current `RETURN_PLATFORM` document (or `{}`
+   pre-bootstrap). `list_agents`/`read` build from `active().get("agents", {})` directly against the
+   `AgentConfiguration` shape. `validate_candidate` becomes `AgentConfiguration(**document)` (plain
+   pydantic validation) plus a sha256 receipt of the canonical serialization -- no more disposable-
+   directory loader round-trip. Add `released_return_platform_document()` returning the whole current
+   `RETURN_PLATFORM` document (deep-copied) for the activator to patch one key of.
+   `AgentSummary`/`AgentConfigurationView`'s `moduleId` collapses to the manifest id (no more separate
+   module concept); `path` becomes a descriptive `"RETURN_PLATFORM.agents.<id>"`; `source` is always
+   `"RELEASE"` now (document why the PACKAGED_BASELINE branch is gone -- `agents` is a required key
+   the release validator already enforces, so there is no longer a state with no release value to fall
+   back from).
+2. `governance_agent_configuration.py`: replace the "clone every module, overwrite one, publish
+   `AGENT_MODULES` whole" sequence with "clone the current whole `RETURN_PLATFORM` document, set
+   `agents[manifest_id]`, publish that one document under `RETURN_PLATFORM_DOMAIN_KEY`" -- still one
+   `publish_release_with_domains` call, same shape, different domain and a narrower overlay.
+3. `main.py`: replace `_released_agent_modules` with a closure reading `domain_payloads.get("RETURN_PLATFORM")`;
+   drop the `AGENT_MODULES_DOMAIN_KEY` import if step 1-2 leave it with no remaining reference (check
+   `configuration/snapshot.py`'s other uses of the constant before removing the constant itself, not
+   just this file's import); update the `AgentConfigurationService(...)` construction call (drop the
+   `settings.configuration_directory` positional argument).
+4. Delete `backend/config/agents/*.yaml` (8 files) and their `agent.*` manifest.yaml entries; delete
+   `workflow.return_session`, `sync.order_partial`, `sync.order_full`, `source.sales_inv`,
+   `mapping.sales_inv_order`, `graph.order_discovery` entries and their now-orphaned target files
+   (`backend/config/workflows/`, `sync/`, `sources/`, `mappings/sales_inv_order.yaml`,
+   `graph/order_discovery.yaml`) since nothing loads them either, per the brief's own instruction to
+   verify with grep and record it -- done above. Keep `platform.system_store`.
+5. `test_agent_configuration_releases.py`: the `AGENT_MODULES_DOMAIN_KEY`-keyed assertions
+   (`modules[AGENT_ID]["payload"]["enabled"]`, "every other agent travelled with it") become
+   `RETURN_PLATFORM_DOMAIN_KEY`-keyed assertions against `agents[AGENT_ID]`; "every other agent
+   travelled with it" is now "every other RETURN_PLATFORM field travelled with it unchanged" (a merge-
+   patch-adjacent claim, not a domain-replacement one); the "no active release" refusal test's premise
+   (a release with only `AGENT_MODULES`, no `RETURN_PLATFORM` to clone from) needs re-justification
+   since target and dependency are now the same domain -- likely becomes "no active release at all"
+   rather than "no RETURN_PLATFORM domain specifically".
+6. `backend/config/README.md`: record the deletions and that `ConfigurationLoader`/`manifest.yaml` now
+   has no remaining consumer except the (intentionally undisturbed) `platform.system_store` entry.
+7. Frontend: `/config/agents` typed table (name, version, `enabled`/`ai_assisted` `Toggle`s,
+   `ai_route_ref` `EnumSelect` from the AI gateway tasks) replacing `AgentsSection.tsx`'s current
+   `DocumentEditor`-over-the-whole-YAML-document approach -- the new `AgentConfigurationView.document`
+   is the small `AgentConfiguration` shape, so the typed form is now a direct fit rather than a
+   simplification of something richer. Keeps the proposal path (`PUT` -> proposal id -> link to
+   `/approvals`) unchanged; `agentConfig.ts`'s types need the narrower `AgentConfiguration` shape too.
+
+Why this step stops here rather than implementing the plan under budget pressure: the change
+touches app-startup wiring (`main.py`), the governance proposal-activation pipeline shared with
+`AI_GATEWAY`/feedback-improvement proposals, and the one release-domain replacement primitive every
+governed write goes through. `test_agent_configuration_releases.py`'s two tests need genuine
+re-justification, not a mechanical rename, and a wrong move here breaks agent editing for every
+operator, not just this lease's own screens. Better implemented in its own budget with room to run the
+full backend suite after each of steps 1-3 rather than once at the end.
+
+Files read only this step; no source changed. `drop.json` PARTIAL: items 1-4 done; item 5 researched
+and planned in full above, not yet implemented; items 6-11 remain (6 and 8 depend on 5's
+`RETURN_PLATFORM_DOMAIN_KEY` import staying available; unrelated otherwise).
+
+## CFG-5 step:06 — `/config/simulation` screen, and the Business tab retired (items 6 and 8)
+
+`SimulationSection.tsx`: typed `TypedSectionScreen` form over the whole `DEPENDENCY_SIMULATION`
+domain document. **A sibling of `configuration`, not a key inside it** -- this domain has always
+lived at `snapshot.dependency_simulation_configuration` (the old `BusinessSection.tsx`'s own
+`simulation` group already read it that way), so `loaded` is the *whole* domain document (not a
+`sliceOf` a shared one) and `domainKey="DEPENDENCY_SIMULATION"` is passed through explicitly. A
+`simulationSliceOf` adapter parallels `runtimeSliceOf`, reading the sibling key with the shared
+`releaseId`/`headRevision`.
+
+**`dependencies` is four required, fixed keys, not a data-keyed map** -- the same correction as
+`IntegrationsSection.tsx`'s four topics, for the same reason: `validate_dependencies`
+(`dependency_simulation/configuration.py:59-67`) refuses any document whose `dependencies` are not
+exactly `{OMC, PARCEL, FREIGHT, LSI}`, so a `KeyValueTable` (the brief's own design table) would
+offer renaming or removing a key the model requires. Four fixed rows instead, each with an
+`operations` and a `statusSequence` `TagListInput`. `ai.fallbackAlwaysEnabled` has no control at
+all -- the model's own validator refuses `false` unconditionally, so there is no state for a toggle
+to represent. `ai.providerOrder`/`ai.pricingMicrousdPerMillionTokens` are Advanced-only (not in the
+brief's design table either).
+
+**The Business tab is retired in this same step, not deferred to a later one.** The coordinator's
+own item order lists it after item 7, but the condition it names -- "no section remains without a
+page" -- was already true the moment this step's typed screen landed: `BusinessSection.tsx`'s own
+`BUSINESS_GROUPS` held only the `simulation` group after step:04 (`platform`) and step:03
+(`workflow`/`support`) emptied the rest, and `/config/data-sources` (item 7) was never one of
+`BusinessSection.tsx`'s groups to begin with -- Data Sources left `CONFIG_SECTIONS` entirely before
+this lease started (it is the Graph Schema Analyzer's own section). Leaving the tab registered and
+empty for one more commit would have contradicted this file's own step:04 note ("not left as a
+shell with nothing to show") for no reason tied to item 7. `BusinessSection.tsx` and
+`BusinessSection.test.tsx` are deleted; `"Business"` is removed from `CONFIG_SECTIONS` and its icon
+map (`Briefcase`, now unused, removed from the import list); `ConfigurationPage.tsx`'s module
+docstring, `UNBACKED` comment, and switch statement updated to match. `Agents` is untouched, per the
+coordinator's own note -- it keeps its existing tab regardless of this item.
+
+```
+$ npx vitest run                       # whole frontend suite
+ Test Files  86 passed (86)
+      Tests  1043 passed (1043)
+
+$ npm run typecheck
+typecheck exit: 0
+$ npm run lint
+lint exit: 0
+```
+
+`dev:mock` route sweep, scoped to `/config/simulation` (warm server; `/config/business` correctly
+has no route left to sweep):
+
+```
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g "simulation|business"
+  3 passed -- /config/simulation render, keyboard, axe (no /config/business match, as intended)
+```
+
+Live e2e run, disposable `vite --port 5199`, stopped afterwards; `:5173`/`:8000` never restarted:
+
+```
+$ E2E_REAL_BASE_URL=http://localhost:5199 npx playwright test --project=cfg4-e2e e2e/config-simulation.spec.ts --workers=1 --reporter=list --timeout=60000
+  ok Simulation -- real stack › adds an LSI operation, publishes, and the runtime snapshot reflects
+     it -- then reverts (5.5s)
+  1 passed
+```
+
+```
+head_revision before/after: 123 125                (one publish, one revert)
+dependencies.LSI.operations  identical: True (test operation absent both times it matters)
+```
+
+Files: `frontend/src/domains/config/SimulationSection.tsx`, `SimulationSection.test.tsx`,
+`frontend/src/domains/registry.ts`, `frontend/src/domains/config/ConfigurationPage.tsx`,
+`frontend/src/mocks/handlers/canonicalHandlers.ts`, `frontend/e2e/config-simulation.spec.ts`;
+deleted `frontend/src/domains/config/BusinessSection.tsx`, `BusinessSection.test.tsx`.
+`drop.json` PARTIAL: items 1-4, 6, 8 done; item 5 split to CFG-5b (out of scope here); items 7, 9,
+10, 11 remain.
+
+## CFG-5 step:07 — `/config/source-bindings` screen (item 7)
+
+`DataSourcesSection.tsx`: source-binding overrides plus the sync trigger and run history, moved from
+`/sync`.
+
+**Named "Source Bindings", not "Data Sources" -- audit finding D1.** The brief's own design table
+calls the route `/config/data-sources`; `registry.ts` already explains why that label was removed
+from `CONFIG_SECTIONS` once (`"Data Sources" is deliberately absent... It is now the Graph Schema
+Analyzer's Data Sources section`), and reusing it here would restore exactly the collision D1 names.
+The URL is `/config/source-bindings` instead -- a deliberate deviation from the brief's literal path,
+recorded here rather than silently followed into the same defect an earlier lease already fixed.
+
+**Source bindings are a direct write, not a configuration release.** `PUT`/`DELETE
+/api/source-bindings/{dataset}` write immediately (`sourceBindings.ts`'s own docstring: no draft, no
+Validate, no Publish), so this screen does not ride `TypedSectionScreen` -- a new panel instead, gated
+on `config.source.rebind`, with a per-dataset Rebind form (source asset id, connector type, object
+reference as a `KeyValueTable`, incremental cursor field) and a Clear action.
+
+**The sync half moved from `SyncControlPage.tsx` (`/sync`), logic unchanged.** `RunListPane`,
+`StartSyncForm`, `RunDetailPane`, `StatusPill`, `Pane`, `Facts` are the same functions, same behaviour
+-- only the `DomainRail` portal (which renders nothing outside a domain's own rail slot, confirmed by
+the fact the original tests never exercised its content) is replaced with an inline summary panel
+that actually renders inside a Configuration tab. `SyncControlPage.tsx` and its test are deleted;
+`/sync` now renders `SyncRedirect.tsx` (`<Redirect to="/config/source-bindings" replace />`) via
+`domainScreens.ts`, the domain entry itself staying registered so a bookmark still lands somewhere
+real, the same shape `/config/support-template`'s alias uses.
+
+**`routeManifest.ts` needed a real fix, not a suppression.** `/sync` redirecting before paint means it
+renders no heading of its own -- the sweep's generic per-domain loop expected `<h1>Source Sync</h1>`
+and got Configuration's heading instead. `HEADING_MISMATCH` was the wrong tool: `routeManifest.test.ts`
+asserts `HEADING_MISMATCH_ROUTES` stays *empty*, by design (a permanent "acceptable mismatch" entry
+would be exactly the defect that invariant exists to catch). Fixed the way `ROOT_PATH` already handles
+its own redirect: `/sync` is now hand-added to `CANONICAL_ROUTES` with `domain: null, name: ""`
+(matching any heading rather than asserting a specific, absent one) and excluded from the generic
+per-domain loop via a new `REDIRECTING_DOMAINS` set, keeping both `page identity` invariants
+genuinely empty rather than gaining a permanent, documented exception.
+
+Live-sweep confirms the fix: `/sync mounts and answers` passes, along with the rest of the full sweep
+(134/135; the one failure is the already-documented F10 color-contrast flake on `/config`, reproduced
+2/2 under `-g` filtering and 0/1 in a standalone isolated probe -- the same cold/contended-server
+signature CFG-4's review and this lease's steps 01 and 03 already recorded, not a regression).
+
+```
+$ npx vitest run                       # whole frontend suite
+ Test Files  86 passed (86)
+      Tests  1047 passed (1047)
+
+$ npm run typecheck
+typecheck exit: 0
+$ npm run lint
+lint exit: 0
+```
+
+`dev:mock` route sweep:
+
+```
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g "sync|source-bindings"
+  9 passed -- /sync, /config/source-bindings, /graph-schema/sync, each render + keyboard + axe
+
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts       # full sweep
+  134 passed, 1 failed (/config axe color-contrast -- F10-class flake, see above)
+```
+
+Live e2e run, disposable `vite --port 5199`, stopped afterwards; `:5173`/`:8000` never restarted:
+
+```
+$ E2E_REAL_BASE_URL=http://localhost:5199 npx playwright test --project=cfg4-e2e e2e/config-source-bindings.spec.ts --workers=1 --reporter=list --timeout=60000
+  ok Source bindings -- real stack › rebinds source_products' cursor field, then clears the override
+     (6.0s)
+  1 passed
+```
+
+No configuration head revision to compare (source bindings are outside the release lifecycle);
+verified instead by reading `GET /api/source-bindings` before, after the rebind, and after the clear:
+
+```
+source_products.incrementalCursorField  before: source_updated_at
+                                         after rebind: e2e_cfg5_test_cursor, overridden: true
+                                         after clear: source_updated_at, overridden: false  (identical to before)
+```
+
+**RV round 1, F5 -- four of the paths above are outside CFG-5's declared Owns
+(`frontend/src/domains/config/**`, `registry.ts` + test, `routeManifest.ts`, `api/**` named files,
+`mocks/**`, `main.tsx`'s dead branch only, `e2e/**`; Owns names nothing under `domains/sync/**` and no
+`domainScreens.ts`), recorded here as item 7's own consequences rather than left implicit:**
+`frontend/src/domains/sync/SyncRedirect.tsx` (new -- the `<Redirect>` component `/sync` now renders),
+`frontend/src/domains/sync/SyncControlPage.tsx` and `SyncControlPage.test.tsx` (deleted -- their logic
+moved into the owned `DataSourcesSection.tsx`, so the originals are dead weight, not a parallel copy),
+and `frontend/src/domains/domainScreens.ts` (one line changed: `/sync`'s entry now points at
+`SyncRedirect` instead of `SyncControlPage`). All four are unavoidable consequences of item 7's own
+requirement -- "source bindings + sync moved from `/sync` with redirect" -- rather than scope creep: a
+redirect has to render something, the file it used to render cannot both move and stay, and the route
+table has to name whichever of the two is current. None of the four carry any change beyond what
+retiring `/sync` as a standalone page requires.
+
+Files: `frontend/src/domains/config/DataSourcesSection.tsx`, `DataSourcesSection.test.tsx`,
+`frontend/src/domains/sync/SyncRedirect.tsx`, `frontend/src/domains/domainScreens.ts`,
+`frontend/src/domains/registry.ts`, `frontend/src/domains/routeManifest.ts`,
+`frontend/src/domains/config/ConfigurationPage.tsx`, `frontend/e2e/config-source-bindings.spec.ts`;
+deleted `frontend/src/domains/sync/SyncControlPage.tsx`, `SyncControlPage.test.tsx`.
+`drop.json` PARTIAL: items 1-4, 6, 7, 8 done; item 5 split to CFG-5b; item 10 (a Playwright spec per
+new screen) is complete too -- workflow, support, integrations, simulation and source-bindings each
+have one, run once and reverted; items 9, 11 remain.
+
+## CFG-5 step:08 — CFG-4 advisories G1, G2, F6 (item 9)
+
+**G1 (`TypedSectionScreen.tsx`'s `set()`).** After a 409, the first keystroke cleared
+`conflictNotice` but not `publish`'s own errored mutation state -- `PublishBar`'s `error` prop falls
+back to `publish.error.message` once `conflictNotice` is `null`, and a `useMutation` stays in its
+errored state until the *next* `mutate()` call, not the next keystroke. The friendly notice
+disappeared and the raw 409 message ("Configuration head revision changed from 41 to 44") reappeared
+underneath it, reading as a second, unrelated failure arriving while the operator was still fixing
+the first. Fixed by calling `publish.reset()` alongside `setConflictNotice(null)` in `set()`, so both
+clear together. New test in `DiscoverySection.test.tsx`: publishes into a 409, asserts the friendly
+notice shows, types one more character (not another Publish click), asserts *both* the friendly
+notice and the raw 409 text are gone. Caught one ordering bug of my own while writing it -- queuing
+the post-conflict `runtime()` mock *before* `render()` fed it to the initial mount instead of the
+`onError` refetch, which is the same "queued after mount consumes the base" discipline the existing
+409-recovery test already documents; fixed to match.
+
+**G2 (`UndecidedKeysPanel.tsx`'s `!hasActiveRelease` branch).** F1's own fix moved "is there an
+active release" from `would_adopt` (which cannot answer it) to `headRevision` (which can) -- but
+every existing fixture, F1's own two included, passes a `head_revision`, so the branch the original
+false sentence lived in had no test asserting it post-fix. New test in `OverviewSection.test.tsx`:
+`head_revision: null`, asserts the panel still says "No active release to compare against yet" (now
+correctly, for a state where it is true) and the "Take packaged file" button is disabled with
+`title="No head revision to lock against"`.
+
+**F6 (`TypedSectionScreen.tsx`'s `dirtyCount`).** Was `Object.keys(patch).length` -- top-level merge-
+patch keys, i.e. sections, not edits. Two edits nested under one section (`discovery.ambiguity_gap_millionths`
+and `discovery.strong_anchors`, say) both read "1 change staged". New `countPatchLeaves` in
+`jsonPath.ts` walks a merge patch recursively: a nested plain-object value is a partial update and its
+own keys are counted instead of the parent key; a scalar, `null` (RFC 7396's deletion marker) or an
+array is one leaf each, because a merge patch replaces an array wholesale and there is nothing inside
+it to attribute a change to. `PublishBar`'s own "N changes staged" label needed no wording change --
+it already read as change-count, not section-count. Eight focused unit tests in the new
+`jsonPath.test.ts` (flat, nested, deep, sibling sections, null-as-one-leaf, array-as-one-leaf, mixed,
+empty); the whole frontend suite's other 1047 tests all still pass unchanged, confirming no screen's
+test had been asserting the old section-counting number.
+
+```
+$ npx vitest run                       # whole frontend suite
+ Test Files  87 passed (87)
+      Tests  1057 passed (1057)
+
+$ npm run typecheck
+typecheck exit: 0
+$ npm run lint
+lint exit: 0
+```
+
+`dev:mock` spot check (discovery/overview, the two screens the new tests exercise directly):
+
+```
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g "config/discovery|config/overview"
+  6 passed -- render, keyboard, axe for both
+```
+
+Files: `frontend/src/domains/config/TypedSectionScreen.tsx`, `jsonPath.ts`, `jsonPath.test.ts`,
+`DiscoverySection.test.tsx`, `OverviewSection.test.tsx`. `drop.json` PARTIAL: items 1-4, 6, 7, 8, 9,
+10 done; item 5 split to CFG-5b; item 11 (backend pytest, final full sweep) is what remains.
+
+## CFG-5 step:09 — acceptance sweep (item 11)
+
+`npx vitest run` (whole frontend suite), `npm run typecheck`, `npm run lint`, the full `dev:mock`
+canonical-route sweep, and the backend acceptance suites, all run fresh at this lease's head.
+
+**One genuine, reproducible defect found and fixed along the way, not left as a flake.**
+`/config/agents has no critical or serious violation` failed *deterministically* (every run, including
+isolated single-worker re-runs) until fixed -- unlike the F10-class flakiness below, which never
+failed the same way twice. `AgentsSection.tsx`'s `moduleId` span used `text-outline` on
+`bg-secondary-container` (the selected row's own background): 4.47:1 contrast, under WCAG's 4.5:1
+floor. It was invisible to every previous route sweep because `/api/agents` had no mock handler
+before this lease's own step:01 -- the route answered an error and never rendered this span at all.
+Swapped to `text-on-surface-variant`, the token every other small label on the same row already uses;
+confirmed passing, deterministically, five runs in a row afterward. `AgentsSection.tsx` is otherwise
+untouched -- CFG-5b's own repoint replaces the whole screen, so nothing beyond this one class name was
+worth touching here.
+
+**The remaining flakiness matches CFG-4's own documented F10 exactly, reproduced and re-confirmed
+rather than assumed.** Chased two distinct manifestations by hand before concluding this:
+`/config/workflow (+23px)` on "no route scrolls sideways at 320" (full sweep, once) and `/config`/
+`/config/overview` color-contrast (multiple runs, including isolated single-worker re-runs that
+*also* failed once and passed twice). A dedicated overflow probe (measuring every element's
+`getBoundingClientRect()` against the viewport width, the same method the real test uses) against a
+fresh, non-`--force` dev server found *zero* overflowing elements on `/config/workflow` at 320px --
+the failure did not reproduce outside the full, `--force`-cold, fully-parallel sweep that originally
+reported it. Combined with the axe failure's own inconsistent pass/fail record on identical code and
+identical routes, this is the same signature CFG-4's review already characterized and left as F10:
+"the fixed 250ms `settle()` losing a race with the dev server still compiling CSS," now observed on a
+slightly wider set of routes under the same conditions rather than a new, different defect. Not this
+lease's surface to fix (`tests/canonical-routes.spec.ts`, `playwright.config.ts`'s `webServer`, both
+outside CFG-5's Owns).
+
+*A debugging note for whoever next investigates F10 properly*: the Claude Browser MCP tool's preview
+tab cannot register the app's Mock Service Worker in this environment ("[MSW] Failed to register the
+Service Worker: ... unknown error occurred when fetching the script"), so `dev:mock` never renders
+through it -- confirmed both on a stale, already-running `frontend-mock` preview (which turned out to
+be serving a build from well before this lease, missing every CFG-4/5 section from its own sidebar --
+not a code defect, a stale process) and on a freshly-started one. Live-stack e2e (`cfg4-e2e`, against
+the real backend, no MSW) is unaffected. Playwright's own `mock-chromium` project handles the service
+worker correctly and is the only reliable way to drive `dev:mock` visually in this setup.
+
+```
+$ npx vitest run
+ Test Files  87 passed (87)
+      Tests  1057 passed (1057)
+
+$ npm run typecheck
+typecheck exit: 0
+
+$ npm run lint
+lint exit: 0
+
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts --workers=1
+134 passed, 1 failed (/config axe color-contrast, F10-class -- passed on both an isolated re-run and
+a second full-sweep re-run immediately after)
+```
+
+Backend: zero files under `backend/` changed anywhere in this lease (`git diff --stat b03cbb59..HEAD -- backend/`
+is empty) -- item 5's repoint went to CFG-5b instead, per the coordinator's scope change. Run anyway,
+to prove it rather than assume it:
+
+```
+$ PYTHONPATH=<worktree>/backend/src backend/.venv/Scripts/python.exe -c "import return_platform; print(return_platform.__file__)"
+K:\Projects\Ret\...\worktrees\cfg-5\backend\src\return_platform\__init__.py
+
+$ PYTHONPATH=<worktree>/backend/src backend/.venv/Scripts/python.exe -m pytest tests/configuration tests/api tests/test_configuration_api.py -q
+698 passed, 6 deselected, 2 warnings in 119.29s
+```
+
+`check_openapi_drift.py` not run: no backend response shape changed (confirmed by the empty backend
+diff above and by `git diff --stat b03cbb59..HEAD -- frontend/openapi/` also being empty), so there is
+nothing for a drift check to find.
+
+Files: `frontend/src/domains/config/AgentsSection.tsx` (one class name). `drop.json` **PENDING**: all
+eleven brief items resolved -- items 1-4, 6-11 implemented in this lease; item 5 split to CFG-5b per
+the coordinator's explicit scope change, with its full architecture plan recorded in step:05.
+
+## CFG-5 step:12 — RV round 1 fixes
+
+RV round 1 returned CHANGES_REQUIRED (`.plan/reviews/CFG-5.md`): one blocker (F1) and seven advisories
+(F2-F8). All eight taken.
+
+**Correction to step:09's own dispositions -- the sweep's one deterministic failure was misdiagnosed
+as CFG-4's F10 flake. It was not.** Step:09 recorded the `/config`/`/config/overview` axe
+color-contrast failure as F10-class, on the strength of an inconsistent pass/fail record across a
+handful of runs. RV reproduced the real cause 3/3 on a warm server and 0/1 only with a 2500ms settle
+added: `UndecidedKeysPanel.tsx`'s "Take packaged file" button used `disabled:opacity-40` on
+`text-on-surface-variant`, which composites to 2.04:1 against the white panel background while the
+button is disabled -- under WCAG's 4.5:1 floor, and deterministic once a row renders before
+`headRevision` resolves (`packaged-drift` and `config/runtime` do not always settle in the same tick,
+which is why step:09's own handful of runs saw it pass sometimes: the race, not the rendering, was
+what varied). This was a real, fixable defect wearing a flake's coloring -- not a timing artifact of
+the dev server compiling CSS, which is what F10 actually is. The claim in step:09's prose and in
+`drop.json`'s `acceptance`/`done` fields calling this F10 is wrong and is superseded by this entry;
+`drop.json` is corrected below.
+
+**F1 (BLOCKING) -- fixed the contrast defect, not by re-adding opacity elsewhere.**
+`text-on-surface-variant` at full opacity is 7:1+ against a background this light (confirmed against
+the same token over `bg-secondary-container` in `AgentsSection.tsx`), so the button's resting colour
+already clears the floor -- the only thing wrong was fading it while disabled. Dropped the opacity
+utility entirely; the disabled state stays visibly inert via `cursor-not-allowed` and new
+`disabled:hover:border-outline-control disabled:hover:text-on-surface-variant` classes that re-assert
+the resting colours, so a disabled button never picks up the hover treatment (a disabled button that
+*looked* interactive on hover would be its own defect). Added a regression test in
+`OverviewSection.test.tsx` asserting the disabled button's `className` carries no `opacity-\d` utility
+-- there is no contrast-computation helper in this repo (the review's own probe used an external axe
+run), so a className assertion is what fails loudly the moment this exact defect returns.
+
+**F2 (advisory) -- `onUnhandledRequest` switched from `"bypass"` to `"warn"`.** `"warn"` is MSW v2's
+own default (`node_modules/msw/lib/core/utils/request/onUnhandledRequest.js`): it still bypasses the
+request (nothing the app does differently) but also reports it via `console.warn`, which
+`canonical-routes.spec.ts` never fails on (only `console.error` and 4xx/5xx fail a route). This
+answers the original F2 objection -- unhandled requests like `/support`'s missing `/api/rma-tickets`
+and `/api/v1/return-support/work-items` handlers are now visible in the sweep's own console output --
+without failing any route over a gap this lease does not own. Confirmed with
+`npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g "support" --workers=1`:
+both warnings appear, all 12 tests still pass.
+
+**F3 (advisory) -- `ai_may_fabricate_success` is read-only now, not an interactive toggle that can
+never be flipped on.** `validate_required_agents` (`return_configuration.py:1878-1879`) refuses `true`
+on any of the four topics unconditionally, in every environment, so a `Toggle` here had exactly one
+reachable transition and it always 422s -- the same shape `IntegrationsSection.tsx`'s own module
+docstring already rejects `KeyValueTable` for on this section. Replaced with a local, non-interactive
+`AiMayFabricateSuccessStatus` component: states the release's actual current value (not assumed
+`false` -- a release predating the validator could in principle still carry `true`) plus the refusal
+reason, rather than a hint attached to a control nothing can change. Kept inside the owned
+`IntegrationsSection.tsx` rather than touching `Toggle` itself (`components/forms/**` is outside
+CFG-5's Owns).
+
+**F4 (advisory) -- restored the sync section's dropped rationale comments.** Diffed the current
+`DataSourcesSection.tsx` against the original `SyncControlPage.tsx` (`git show
+b03cbb59:frontend/src/domains/sync/SyncControlPage.tsx`) and put back seventeen comment blocks the
+move had silently dropped: the module-level "two mechanisms, one history" and "nodeWrites is on the
+card" paragraphs; JSDoc on `READS`, the `start` mutation, and `StartSyncForm`; the STALLED-vs-FAILED
+and "fifteen hours" rationale in `StatusPill`; the three-state (not two) comment in `RunListPane`; why
+only incremental runs get a badge; why `nodeWrites` is the number that matters; the `incremental`
+default's rationale; why the error paragraph stays visible after the form collapses; why
+`maxRecordsPerAsset` is omitted rather than sent as `NaN`; the scopes-match rationale; the
+zero-`nodeWrites`-on-success warning's own two-part rationale; the no-cursor-field skip note; and what
+a targeted run is for. Logic untouched throughout -- comments only.
+
+**F5 (advisory) -- the four out-of-Owns paths from item 7 recorded as consequences, not left
+implicit.** Added a paragraph to step:07's own entry naming `SyncRedirect.tsx` (new),
+`SyncControlPage.tsx`/`SyncControlPage.test.tsx` (deleted), and `domainScreens.ts` (one line) as
+unavoidable consequences of "source bindings + sync moved from `/sync` with redirect" -- none of the
+four carry any change beyond what retiring `/sync` as a standalone page requires.
+
+**F6 (advisory) -- fixed the stale "see `BusinessSection.tsx`" pointer.** `registry.ts`'s comment
+above the CFG-4 wave-A entries pointed at `BusinessSection.tsx`'s own note for why those four groups
+were removed from the Business tab -- but `BusinessSection.tsx` itself is deleted as of this lease's
+item 8. Repointed to `ConfigurationPage.tsx`'s module docstring instead, which now carries that
+history. The half-dozen other historical `BusinessSection` mentions RV named
+(`SimulationSection.tsx:23`, `registry.ts:196/200`, `canonicalHandlers.ts:802`,
+`IntegrationsSection.tsx:42`) were confirmed by the review itself as "fine as history" and left as is.
+
+**F7 (advisory) -- `drop.json`'s `head_sha` and the routes-count claim corrected.** The step:01 ledger
+entry said "one `ROUTES` entry per new handler (13 total)"; corrected to the real count, 10 (agents 3,
+schema-releases 5, replay/compare 2). `drop.json`'s `head_sha` is corrected below to this step's own
+commit.
+
+**F8 (advisory) -- `config-integrations.spec.ts` no longer selects a field by position.**
+`.getByRole("checkbox", { name: "Enabled" }).nth(1)` picked `external_support_mirror`'s toggle by its
+place in `TOPICS`' declared order; reordering or renaming a topic would have silently retargeted a
+spec that publishes to the live stack, with no failure to say so. Scoped to the topic's own card
+instead -- `page.locator("div.rounded-lg", { hasText: "External support mirror" })` (`.rounded-lg` is
+the topic card `<div>`'s own class in `IntegrationsSection.tsx`; the enclosing `FieldGroup` renders a
+`<section>`, not a `<div>`, so nothing else on the page collides) -- then queried the checkbox and
+label within that scope. Updated the file's module docstring, which had explained and justified the
+positional approach, to describe the card-scoping instead.
+
+```
+$ npx vitest run
+ Test Files  87 passed (87)
+      Tests  1058 passed (1058)
+
+$ npm run typecheck
+typecheck exit: 0
+
+$ npm run lint
+lint exit: 0
+
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts --workers=1
+135 passed (0 failed) -- the F1 fix resolves the color-contrast failure step:09 had misattributed to
+F10. A first run of this sweep after the fix still showed one failure, `/config/return-policy (+214px)`
+reflow at 390px -- a route this lease does not touch -- which then passed both in isolation
+(`-g "no route scrolls sideways at 390"`, 1 passed) and on an immediate full re-sweep (135 passed): the
+same fails-only-in-the-cold-full-sweep, passes-in-isolation-and-on-repeat signature step:09 already
+characterized as F10, now on a different route now that the deterministic failure that used to mask it
+is gone.
+
+$ E2E_REAL_BASE_URL=http://localhost:5199 npx playwright test --project=cfg4-e2e e2e/config-overview.spec.ts --workers=1 --reporter=list --timeout=60000
+  ok Overview -- real stack › reads the active release and renders the undecided-keys panel from the live packaged-drift (2.1s)
+  1 passed
+```
+Disposable `vite --port 5199`, stopped afterward; `:5173`/`:8000` confirmed still up and untouched
+before and after.
+
+Backend, run to prove no regression rather than assume it (zero backend files changed anywhere in this
+lease -- `git diff --stat b03cbb59..HEAD -- backend/` is empty):
+
+```
+$ cd backend && PYTHONPATH=<worktree>/backend/src backend/.venv/Scripts/python.exe -c "import return_platform; print(return_platform.__file__)"
+K:\Projects\Ret\...\worktrees\cfg-5\backend\src\return_platform\__init__.py
+
+$ PYTHONPATH=<worktree>/backend/src backend/.venv/Scripts/python.exe -m pytest tests/configuration tests/api tests/test_configuration_api.py -q
+698 passed, 6 deselected, 2 warnings in 97.87s
+```
+
+Files: `frontend/src/domains/config/UndecidedKeysPanel.tsx`, `OverviewSection.test.tsx`,
+`frontend/src/main.tsx`, `frontend/src/domains/config/IntegrationsSection.tsx`,
+`frontend/src/domains/config/DataSourcesSection.tsx`, `frontend/src/domains/registry.ts`,
+`frontend/e2e/config-integrations.spec.ts`, `.plan/tracks/CFG.ledger.md` (this entry, the F5 addendum
+to step:07, and the F7 correction to step:01). `drop.json`: `head_sha` corrected to this step's commit,
+`status` moved from PENDING to RV-ready, and the F10 misattribution in `acceptance`/`done` corrected to
+name the real cause.

@@ -75,6 +75,38 @@ export function asStringArray(value: Json | undefined): string[] {
 }
 
 /**
+ * How many leaf values a merge patch actually changes, not how many
+ * top-level keys it touches.
+ *
+ * RV CFG-4 round 2, F6 (advisory, left at the time: "the fix is a patch walk
+ * better done deliberately"). `TypedSectionScreen`'s `dirtyCount` used to be
+ * `Object.keys(patch).length` -- one edit inside `discovery.identification_fields`
+ * and a second inside `discovery.ambiguity_gap_millionths` both nest under
+ * the single top-level key `discovery` in the merge patch (RFC 7396 patches
+ * are structured by path, not by edit), so both changes together still read
+ * "1 change staged" -- correct as a *label for what will be sent* (nothing
+ * gates on it) but not as an answer to "how much did I change", which is
+ * what an operator reads it as.
+ *
+ * A patch is walked recursively: a plain-object value is a partial update to
+ * that nested object, so its own keys are counted instead of the parent key
+ * itself; a scalar, `null` (RFC 7396's own deletion marker) or an array is
+ * always one leaf, because a JSON merge patch replaces an array wholesale
+ * rather than diffing its elements -- there is no way to say *which* items
+ * inside it changed from the patch alone, so it does not get walked into.
+ */
+export function countPatchLeaves(patch: Readonly<Record<string, unknown>>): number {
+  let count = 0;
+  for (const value of Object.values(patch)) {
+    count +=
+      typeof value === "object" && value !== null && !Array.isArray(value)
+        ? countPatchLeaves(value as Readonly<Record<string, unknown>>)
+        : 1;
+  }
+  return count;
+}
+
+/**
  * `"fields[3].priority"` -> `"fields.3.priority"` -- the only path convention
  * this codebase's generated forms understand internally is dot-plus-index,
  * but a backend validator is equally likely to report a pydantic-`loc`-shaped

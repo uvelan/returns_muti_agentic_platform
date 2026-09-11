@@ -64,13 +64,37 @@ async function enableMocking() {
     return;
   }
   const { worker } = await import("./mocks/browser");
-  return worker.start({
-    onUnhandledRequest(request, print) {
-      if (request.url.includes("/data-console/v1/")) {
-        print.error();
-      }
-    }
-  });
+  // RV CFG-1 F5: this used to print only for `/data-console/v1/` requests --
+  // the legacy Data Console surface Wave F4 deleted along with the frontend
+  // that called it. That request is never made any more, so the branch was
+  // dead code with no live effect either way -- deleted rather than kept as
+  // a check against a path nothing can hit.
+  //
+  // **Tried `onUnhandledRequest: "error"` here first, to turn the dead
+  // branch into the loud check its own comment described.** It works for
+  // this lease's own routes, but MSW's `"error"` does not merely warn: an
+  // unhandled request is answered with a mocked 500 rather than bypassed,
+  // which `tests/canonical-routes.spec.ts` (outside CFG-5's Owns) treats as
+  // the route itself failing. Against the mock stack today that broke
+  // `/support/work-queue` and `/support/rma-tickets` -- `GET /api/rma-tickets`
+  // and `GET /api/v1/return-support/work-items` have no handler in
+  // `supportHandlers.ts`, a real gap, but one outside `frontend/src/domains/
+  // config/**` and this lease's mandate.
+  //
+  // RV round 1, F2: settled on `"bypass"` next, on the mistaken belief that
+  // omitting the option entirely -- MSW's own default -- "leaves every
+  // unhandled request to fall through to Vite's dev server unremarked".
+  // MSW v2's actual default is `"warn"`
+  // (`node_modules/msw/lib/core/utils/request/onUnhandledRequest.js`), and
+  // `"warn"` both bypasses the request *and* reports it, through
+  // `console.warn` rather than `console.error`. That is the option that
+  // answers the original objection with nothing given up:
+  // `tests/canonical-routes.spec.ts` only fails a route on `console.error`
+  // or a 4xx/5xx response, so `"warn"` fails no route (`"error"`'s own
+  // problem) while still surfacing exactly the kind of gap the `/support`
+  // routes above turned out to have -- which `"bypass"`, by construction,
+  // can never report at all.
+  return worker.start({ onUnhandledRequest: "warn" });
 }
 
 /**

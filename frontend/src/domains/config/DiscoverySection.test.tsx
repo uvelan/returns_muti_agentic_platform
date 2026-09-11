@@ -247,4 +247,42 @@ describe("Discovery screen", () => {
     expect(secondCallOptions.expectedHeadRevision).toBe(44);
     expect(await screen.findByText(/Release publish-2 is published/)).toBeInTheDocument();
   });
+
+  // RV CFG-4 round 2, G1: the first keystroke after a conflict cleared the
+  // friendly notice but not `publish`'s own errored mutation state, so
+  // `PublishBar`'s `error` fell through to the raw 409 message underneath it
+  // -- reading as a *second*, unrelated failure arriving while the operator
+  // was still fixing the first.
+  it("clears the conflict notice, and the raw 409 message beneath it, on the next edit rather than the next Publish", async () => {
+    const user = userEvent.setup();
+    mocks.publish.mockRejectedValueOnce(
+      new APIError("Configuration head revision changed from 41 to 44", 409),
+    );
+    render(<DiscoverySection />, { wrapper: Wrapper });
+
+    const field = await screen.findByRole("spinbutton", { name: /Ambiguity gap/ });
+    // Queued *after* mount consumes the base (head 41), matching the 409
+    // recovery test above -- this is what the `onError` handler's own direct
+    // `configApi.runtime()` call picks up next.
+    mocks.runtime.mockResolvedValueOnce({
+      release_id: "rel-1",
+      head_revision: 44,
+      configuration: configuration(),
+    });
+    await user.clear(field);
+    await user.type(field, "300000");
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+
+    expect(await screen.findByText(/The release moved to head 44 while you were editing\. Review the diff and publish again\./)).toBeInTheDocument();
+
+    // One more keystroke -- not another Publish click.
+    await user.type(field, "1");
+
+    expect(
+      screen.queryByText(/The release moved to head 44 while you were editing/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Configuration head revision changed from 41 to 44/),
+    ).not.toBeInTheDocument();
+  });
 });

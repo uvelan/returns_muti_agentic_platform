@@ -31,8 +31,10 @@ export const DOMAIN_SCREENS: Partial<Record<string, ComponentType>> = {
   "/operations": lazy(() =>
     import("./operations/OperationsPage").then((m) => ({ default: m.OperationsPage })),
   ),
+  // CFG-5: moved into `/config/source-bindings` -- see `SyncRedirect.tsx`'s
+  // own note.
   "/sync": lazy(() =>
-    import("./sync/SyncControlPage").then((m) => ({ default: m.SyncControlPage })),
+    import("./sync/SyncRedirect").then((m) => ({ default: m.SyncRedirect })),
   ),
   "/approvals": lazy(() =>
     import("./approvals/ApprovalsPage").then((m) => ({ default: m.ApprovalsPage })),

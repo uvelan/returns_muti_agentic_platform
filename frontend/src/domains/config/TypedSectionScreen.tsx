@@ -10,7 +10,7 @@ import { PublishBar } from "../../components/forms/PublishBar";
 import { ValidationErrors } from "../../components/forms/ValidationErrors";
 import { DocumentEditor, type Json, type JsonObject } from "./DocumentEditor";
 import { errorsByPath, runtimeSliceOf, type RuntimeSlice } from "./runtimeSlice";
-import { getPath, setPath } from "./jsonPath";
+import { countPatchLeaves, getPath, setPath } from "./jsonPath";
 
 /**
  * The chrome every CFG-4 typed screen shares: a typed-form/Advanced(JSON)
@@ -88,7 +88,9 @@ export function TypedSectionScreen({
   const rawPatch = mergePatchOf(loaded, draft);
   const patch: Readonly<Record<string, unknown>> =
     typeof rawPatch === "object" && rawPatch !== null && !Array.isArray(rawPatch) ? rawPatch : {};
-  const dirtyCount = Object.keys(patch).length;
+  // RV CFG-4 round 2, F6: leaves, not top-level sections -- see
+  // `countPatchLeaves`'s own note in `jsonPath.ts`.
+  const dirtyCount = countPatchLeaves(patch);
 
   const validate = useMutation({
     mutationFn: () => configApi.validateDomain(domainKey, { patch }),
@@ -133,7 +135,18 @@ export function TypedSectionScreen({
   function set(path: readonly (string | number)[], value: Json) {
     setDraft((prev) => setPath(prev, path, value) as JsonObject);
     setValidation(null);
+    // RV CFG-4 round 2, G1: clearing `conflictNotice` alone let `publish.error`
+    // show through underneath it -- `PublishBar`'s `error` prop falls back to
+    // `publish.error.message` once `conflictNotice` is `null`, and that mutation
+    // stays in its errored state (carrying the *old* 409's raw message,
+    // "Configuration head revision changed from 41 to 44") until the next
+    // `mutate()` call, not the next keystroke. The first keystroke after a
+    // conflict read as a *second*, unrelated failure arriving while the
+    // operator was still fixing the first. `publish.reset()` clears the
+    // mutation's own error state in the same breath as the friendly notice, so
+    // an edit truly leaves no stale error on screen either way.
     setConflictNotice(null);
+    publish.reset();
   }
   function get(path: readonly (string | number)[]): Json {
     return getPath(draft, path);

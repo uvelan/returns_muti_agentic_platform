@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Redirect, useLocation } from "wouter";
 
 import {
   ALLOWED_PROMOTIONS,
@@ -9,12 +10,15 @@ import {
 } from "../../api/configuration";
 import { useCapabilities } from "../../hooks/capabilityContext";
 import { AgentsSection } from "./AgentsSection";
-import { BusinessSection } from "./BusinessSection";
+import { DataSourcesSection } from "./DataSourcesSection";
 import { DiscoverySection } from "./DiscoverySection";
 import { FulfilmentSection } from "./FulfilmentSection";
+import { IntegrationsSection } from "./IntegrationsSection";
 import { OverviewSection } from "./OverviewSection";
 import { ReturnPolicySection } from "./ReturnPolicySection";
-import { SupportTemplateSection } from "./SupportTemplateSection";
+import { SimulationSection } from "./SimulationSection";
+import { SupportSection } from "./SupportSection";
+import { WorkflowSection } from "./WorkflowSection";
 import { type CONFIG_SECTIONS, requireDomain } from "../registry";
 import { useDomainSection } from "../useDomainSection";
 import { JsonView } from "./JsonView";
@@ -34,13 +38,23 @@ import { formatTimestamp } from "../../format/datetime";
  * Console handlers rather than reimplementing them, so this screen reaches them
  * through the canonical path and nothing here breaks at cutover.
  *
- * Of the four that remain, three will never need one and say so rather than
- * claiming to be pending: business config and integrations are *already* served
- * -- `/runtime` returns the whole snapshot and they are fields on it -- and
- * modules would return `[]` forever because the kernel module registry is empty
- * by design. Security is not configuration: the role model is code, and
- * publishing the role-to-capability table would let a UI reimplement
- * authorization locally, which the capability layer exists to prevent.
+ * Of the four that remain, two will never need one and say so rather than
+ * claiming to be pending: modules would return `[]` forever because the kernel
+ * module registry is empty by design, and security is not configuration --
+ * the role model is code, and publishing the role-to-capability table would
+ * let a UI reimplement authorization locally, which the capability layer
+ * exists to prevent. Business config and integrations *were* the other two,
+ * pointed at "already served -- see the Runtime tab", which is a read.
+ * Integrations is a typed write screen of its own now (`IntegrationsSection.tsx`);
+ * **the Business tab itself is gone.** It was the honest first step for every
+ * section that had not yet earned a typed screen -- one `DocumentEditor` over
+ * whichever field an operator picked, grouped by ownership. CFG-4 and CFG-5
+ * gave every one of those fields a typed screen of its own (discovery,
+ * return-policy and fulfilment groups to CFG-4; workflow, support and
+ * platform groups, then the last one, `DEPENDENCY_SIMULATION`, to CFG-5's
+ * `/config/simulation`), so the tab's own last group emptied and it is
+ * deleted rather than kept as a shell offering nothing. `Agents` keeps its
+ * own existing tab -- unrelated to `Business`, and out of this lease's scope.
  *
  * **Promotion controls exist now, and drive one lifecycle.** The blocker was
  * real -- two release lifecycles existed and a button would have silently
@@ -64,26 +78,42 @@ type Tab = (typeof CONFIG_SECTIONS)[number];
 /**
  * Tabs with no endpoint of their own, and why -- one of these is *already
  * served* rather than missing, which is a different statement and worth making.
- * Business used to be listed here as "already served, see the Runtime tab";
- * a read is not a write surface, and it is a tab of its own now.
+ * `Business` and `Integrations` used to be listed here too, each "already
+ * served, see the Runtime tab" -- a read is not a write surface, and both are
+ * typed write screens now (`Integrations`) or gone outright (`Business` --
+ * see the module docstring above).
  */
 const UNBACKED: Partial<Record<Tab, string>> = {
-  Integrations:
-    "Already served. Integrations are fields on the runtime snapshot (configuration.integrations and configuration.runtime_integrations), visible on the Runtime tab. A second endpoint would duplicate them.",
   Modules:
     "No endpoint, deliberately. The kernel module registry is empty by design, so a /modules route would answer [] forever -- a shell that always says nothing is worse than an honest absence. A release's module list is reachable through its domain payloads.",
   Security:
     "Not configuration. The role model is code, and a caller's own grants are on /api/principal. Publishing the whole role-to-capability table would let this screen reimplement authorization locally, which is what the capability layer exists to prevent.",
 };
 
+/**
+ * CFG-5: `Support Template` became one tab of `Support`. Bookmarks and links
+ * to the old route must keep working for one release rather than landing on
+ * whatever `useDomainSection`'s unrecognised-slug fallback happens to pick
+ * (the domain's *first* section, `Overview` -- not `Support`, and not the
+ * `Template` tab a `/config/support-template` visitor actually wants). A
+ * real redirect, checked ahead of the normal tab resolution, is what keeps
+ * "the URL still works" true rather than "the URL still renders something".
+ */
+const LEGACY_SUPPORT_TEMPLATE_PATH = "/config/support-template";
+
 export function ConfigurationPage() {
   const { can } = useCapabilities();
+  const [location] = useLocation();
   // The section comes from the URL and the sidebar sets it, so the screen
   // holds no navigation state of its own.
   const tab = useDomainSection(CONFIG_DOMAIN) as Tab;
 
   if (!can("config.runtime.read")) {
     return <p className="text-sm text-slate-600">You do not have access to configuration.</p>;
+  }
+
+  if (location === LEGACY_SUPPORT_TEMPLATE_PATH || location.startsWith(`${LEGACY_SUPPORT_TEMPLATE_PATH}/`)) {
+    return <Redirect to="/config/support" replace />;
   }
 
   return (
@@ -110,18 +140,22 @@ function TabBody({ tab, canReadReleases }: { tab: Tab; canReadReleases: boolean 
       return <OverviewSection canReadReleases={canReadReleases} />;
     case "Agents":
       return <AgentsSection />;
-    case "Support Template":
-      return <SupportTemplateSection />;
+    case "Support":
+      return <SupportSection />;
     case "Discovery":
       return <DiscoverySection />;
     case "Return Policy":
       return <ReturnPolicySection />;
     case "Fulfilment":
       return <FulfilmentSection />;
-    // Was "already served, see the Runtime tab" -- a read. Every section the
-    // release carries is editable here; the runtime snapshot is what it edits.
-    case "Business":
-      return <BusinessSection />;
+    case "Workflow":
+      return <WorkflowSection />;
+    case "Integrations":
+      return <IntegrationsSection />;
+    case "Simulation":
+      return <SimulationSection />;
+    case "Source Bindings":
+      return <DataSourcesSection />;
     case "Runtime":
       return <RuntimeTab />;
     case "Releases":

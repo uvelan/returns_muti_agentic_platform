@@ -658,6 +658,194 @@ const MOCK_OMC = {
 };
 
 /**
+ * `workflow`/`return_case`/`business_calendars`/`housekeeping`, as CFG-5's
+ * `/config/workflow` reads them. `workflow` mirrors `WorkflowConfiguration`
+ * (`return_configuration.py`) -- a flat stage sequence and per-stage SLAs --
+ * not `domain/workflow.py`'s per-stage-handler `WorkflowConfig`, which is a
+ * different model `ReturnPlatformConfiguration` does not use (see
+ * `WorkflowSection.tsx`'s own note).
+ */
+const MOCK_WORKFLOW = {
+  version: "2026.1",
+  stages: ["DISCOVERY", "ITEM_SELECTION", "PHYSICAL_RETURN", "SUPPORT_HANDOFF", "CLOSURE"],
+  sla_minutes: {
+    DISCOVERY: 10,
+    ITEM_SELECTION: 15,
+    PHYSICAL_RETURN: 4_320,
+    SUPPORT_HANDOFF: 480,
+    CLOSURE: 60,
+  },
+  completion_dimensions: ["PHYSICAL_RETURN_COMPLETE", "VENDOR_RECOVERY_COMPLETE"],
+};
+
+const MOCK_RETURN_CASE = {
+  bay_wait_seconds: 120,
+  item_reservation_ttl_seconds: 1_800,
+  return_details_wait_seconds: 1_800,
+  return_details_required: false,
+  support_response_wait_seconds: 28_800,
+  reminder_interval_seconds: 7_200,
+  max_reminders: 3,
+  on_reminders_exhausted: "PARK_FOR_OPERATIONS",
+  business_calendar_id: "default",
+  timezone: "UTC",
+};
+
+const MOCK_BUSINESS_CALENDARS = [
+  {
+    calendar_id: "default",
+    timezone: "America/New_York",
+    working_periods: [
+      { weekday: 0, start_minute: 480, end_minute: 1_020 },
+      { weekday: 1, start_minute: 480, end_minute: 1_020 },
+      { weekday: 2, start_minute: 480, end_minute: 1_020 },
+      { weekday: 3, start_minute: 480, end_minute: 1_020 },
+      { weekday: 4, start_minute: 480, end_minute: 1_020 },
+    ],
+    holidays: ["2026-12-25"],
+  },
+];
+
+/** CFG-5's `/config/support` -- five of its six tabs' domain keys (Template's `support_template` already exists above). */
+const MOCK_SUPPORT_GATE = {
+  request_grouping: "one_per_case",
+  template_review: {
+    enabled: true,
+    review_wait_seconds: 28_800,
+    reminder_interval_seconds: 7_200,
+    max_reminders: 3,
+    on_timeout: "hold",
+  },
+};
+
+const MOCK_SUPPORT_INGRESS = {
+  nl_enabled: false,
+  intents: [
+    "info_request",
+    "rma_issued",
+    "label_issued",
+    "shipping_instruction",
+    "tracking_provided",
+    "partial_fulfillment",
+    "rejection",
+    "acknowledgement",
+    "other",
+  ],
+  parking: { retention_seconds: 2_592_000, per_case_quota: 50, alert_dedupe_window_seconds: 900 },
+  multi_record_framing_prompt_key: "support-multi-record-do-not-mix",
+  agent_disclosure: {
+    display_name: "Returns Assistant",
+    disclosure_line:
+      "This message was written by the Returns Assistant, an automated agent working on this return case. A branch associate reviews and can answer anything it cannot.",
+  },
+  outbound_templates: {},
+  limits: {
+    max_body_characters: 16_000,
+    max_messages_per_case_per_window: 60,
+    rate_window_seconds: 60,
+    max_identifier_characters: 256,
+  },
+};
+
+const MOCK_SUPPORT_RESOLVER = {
+  fact_confidence_millionths: 900_000,
+  graph_confidence_millionths: 900_000,
+  tool_bindings: [],
+  reply_gate: { default: "review_required", per_intent: {} },
+  clarification_resets_deadline: true,
+  per_case_llm_budget: 12,
+  trigger_intents: ["info_request"],
+};
+
+const MOCK_CONTEXT_ASSEMBLY = {
+  pinned_fact_names: [],
+  token_budget: 8_000,
+  tokenizer_version: "wordpiece-approx.v1",
+  compaction: { trigger_fraction_millionths: 800_000, summary_task_id: "support.context.summarize.v1" },
+};
+
+const MOCK_SUPPORT_QUEUES = {
+  authority_mode: "PLATFORM_MANAGED",
+  external_mirror_enabled: true,
+  default_priority: "NORMAL",
+  queues: ["SUPPORT"],
+  external_ticket_outbox_topic: "support.tickets.outbox",
+};
+
+/**
+ * `integrations`/`copilot`, as CFG-5's `/config/integrations` reads them.
+ * `integrations` is four *named* topics (`IntegrationConfiguration`), not a
+ * data-keyed map -- see `IntegrationsSection.tsx`'s own note. Replaces the
+ * stale `{ omc: { enabled: true } }` fixture, which named a topic the model
+ * has never had (the real four are `omc_return_create`,
+ * `external_support_mirror`, `carrier_booking`, `customer_notification`).
+ */
+const MOCK_INTEGRATIONS = {
+  omc_return_create: { enabled: true, topic: "omc.return.create", authority: "OMC", ai_may_fabricate_success: false },
+  external_support_mirror: { enabled: true, topic: "support.external.mirror", authority: "SUPPORT", ai_may_fabricate_success: false },
+  carrier_booking: { enabled: false, topic: "carrier.booking.request", authority: "CARRIER", ai_may_fabricate_success: false },
+  customer_notification: { enabled: true, topic: "customer.notification.send", authority: "PLATFORM", ai_may_fabricate_success: false },
+};
+
+const MOCK_COPILOT = {
+  order_discovery_agent_id: "order-discovery-agent",
+  candidate_columns: [
+    { label: "Order", fields: ["orderNumber", "salesOrderNumber"] },
+    { label: "Customer", fields: ["customerName", "accountId"] },
+  ],
+};
+
+/**
+ * `dependency_simulation_configuration` -- CFG-5's `/config/simulation`. A
+ * *sibling* of `configuration` on the runtime snapshot, not a key inside it
+ * (`DependencySimulationConfiguration` is its own domain, `DEPENDENCY_SIMULATION`,
+ * not a `RETURN_PLATFORM` section) -- `BusinessSection.tsx` already read it
+ * this way (`snapshot.dependency_simulation_configuration`) before this
+ * section had a typed screen of its own.
+ */
+const MOCK_DEPENDENCY_SIMULATION = {
+  schemaVersion: "1.0",
+  enabled: true,
+  templateVersion: "2026.1",
+  modeBanner: "Simulated dependencies -- no external system is actually called.",
+  defaultScenario: "SUCCESS",
+  ai: {
+    enabled: true,
+    taskId: "SIMULATOR_OPERATION_NARRATIVE_V1",
+    providerOrder: ["GOOGLE", "NVIDIA"],
+    timeoutSeconds: 4,
+    maxOutputTokens: 256,
+    temperature: 0,
+    fallbackAlwaysEnabled: true,
+    pricingMicrousdPerMillionTokens: {},
+  },
+  dependencies: {
+    OMC: { operations: ["cancel", "reschedule"], statusSequence: ["PENDING", "COMPLETE"] },
+    PARCEL: { operations: ["book", "cancel"], statusSequence: ["BOOKED", "IN_TRANSIT", "DELIVERED"] },
+    FREIGHT: { operations: ["book", "cancel"], statusSequence: ["BOOKED", "IN_TRANSIT", "DELIVERED"] },
+    LSI: { operations: ["notify"], statusSequence: ["SENT"] },
+  },
+};
+
+const MOCK_HOUSEKEEPING = {
+  enabled: true,
+  interval_seconds: 900,
+  temporal_executions: { enabled: true, reclaimable_task_queue_prefixes: ["test-", "reasoning-"], minimum_age_seconds: 3_600, batch_limit: 500 },
+  graph_generations: {
+    enabled: true,
+    retention_seconds: 86_400,
+    batch_limit: 5,
+    node_delete_batch_size: 1_000,
+    abandoned_build_seconds: 21_600,
+    orphaned_active_seconds: 86_400,
+  },
+  stalled_sync_runs: { enabled: true, stall_seconds: 150, batch_limit: 20 },
+  probe_databases: { enabled: true, name_suffixes: ["_probe"], minimum_age_seconds: 3_600, batch_limit: 50 },
+  order_line_reservations: { batch_limit: 200 },
+  ai_interceptions: { batch_limit: 200 },
+};
+
+/**
  * `configuration/api/sources.py::_definitions()`, as it is actually served.
  *
  * **No credential appears here, and that is not an omission to be tidied up.**
@@ -797,6 +985,75 @@ const BINDINGS = [
     overridden: true,
   },
 ];
+
+/**
+ * `AgentSummary` rows -- the live `agents:` registry, as `/api/agents` serves
+ * it (CFG-5). One enabled agent with an AI route, one disabled agent with
+ * none, so the Agents screen's `EnumSelect` and `Toggle` columns both have
+ * something to render besides the same state twice.
+ */
+const MOCK_AGENTS = [
+  {
+    manifestId: "order-discovery-agent",
+    moduleId: "order_discovery",
+    name: "Order Discovery Agent",
+    enabled: true,
+    status: "ACTIVE",
+    configurationVersion: "3",
+    source: "RELEASE",
+  },
+  {
+    manifestId: "return-status-agent",
+    moduleId: "return_status",
+    name: "Return Status Agent",
+    enabled: false,
+    status: "DISABLED",
+    configurationVersion: "1",
+    source: "RELEASE",
+  },
+];
+
+/** `AgentConfigurationView.document`, keyed by `manifestId`. */
+const MOCK_AGENT_DOCUMENTS: Record<string, Record<string, unknown>> = {
+  "order-discovery-agent": {
+    version: "3",
+    enabled: true,
+    ai_assisted: true,
+    ai_route_ref: "order-discovery/standard",
+    allowed_business_capabilities: ["order-discovery", "candidate-disambiguation"],
+  },
+  "return-status-agent": {
+    version: "1",
+    enabled: false,
+    ai_assisted: false,
+    ai_route_ref: null,
+    allowed_business_capabilities: ["return-status"],
+  },
+};
+
+/**
+ * `ReleaseRowView` rows and the active schema document -- `/api/schema-releases`
+ * and its `active/document` sibling (CFG-5 item 1). One release, active,
+ * matching `SCHEMA_ACTIVE_DOCUMENT` below so the migration-plan preview and
+ * the active document agree with each other the way the real pair does.
+ */
+const SCHEMA_RELEASES = [
+  {
+    configurationReleaseId: "rel-mock-1",
+    configurationChecksum: "9f2c1a",
+    publishedBy: "mock-operator",
+    publishedAt: "2026-08-11T09:00:00Z",
+    active: true,
+  },
+];
+
+const SCHEMA_ACTIVE_DOCUMENT = {
+  configurationReleaseId: "rel-mock-1",
+  configurationChecksum: "9f2c1a",
+  schemaVersion: "2026.08.04",
+  document: { entities: { sales_order: { label: "Sales Order" } } },
+  fromFile: false,
+};
 
 /**
  * `ProposalDetailView`, one per kind, so the inbox shows what it is for: a
@@ -1490,7 +1747,8 @@ export const canonicalHandlers = [
           source: "GRAPH",
           head_revision: 41,
           configuration: {
-            integrations: { omc: { enabled: true } },
+            integrations: MOCK_INTEGRATIONS,
+            copilot: MOCK_COPILOT,
             // A template small enough to read and real enough to preview: one
             // default variant with one bound field. `dev:mock` shows the
             // Support Template tab with something in it rather than the
@@ -1507,7 +1765,21 @@ export const canonicalHandlers = [
             shipment_tracking: MOCK_SHIPMENT_TRACKING,
             bay: MOCK_BAY,
             omc: MOCK_OMC,
+            // CFG-5's /config/workflow.
+            workflow: MOCK_WORKFLOW,
+            return_case: MOCK_RETURN_CASE,
+            business_calendars: MOCK_BUSINESS_CALENDARS,
+            housekeeping: MOCK_HOUSEKEEPING,
+            // CFG-5's /config/support (Template's support_template is above).
+            support_gate: MOCK_SUPPORT_GATE,
+            support_ingress: MOCK_SUPPORT_INGRESS,
+            support_resolver: MOCK_SUPPORT_RESOLVER,
+            context_assembly: MOCK_CONTEXT_ASSEMBLY,
+            support: MOCK_SUPPORT_QUEUES,
           },
+          // CFG-5's /config/simulation -- a sibling of `configuration`, not a
+          // key inside it. See `MOCK_DEPENDENCY_SIMULATION`'s own note.
+          dependency_simulation_configuration: MOCK_DEPENDENCY_SIMULATION,
         },
         "runtime",
       ),
@@ -1903,6 +2175,145 @@ export const canonicalHandlers = [
     return HttpResponse.json(envelope({ removed: true }, "clear-binding"));
   }),
 
+  // --- agents (CFG-5 item 1) ---------------------------------------------------
+  //
+  // The live `agents:` section, as `application/agent_configuration.py` reads
+  // it (D-CFG-1). `PUT` keeps the proposal path: it answers 202 with an
+  // `AgentConfigurationProposalView`, never the edited document, because the
+  // active configuration has not changed.
+
+  http.get("/api/agents", async () => {
+    await delay(80);
+    return HttpResponse.json(envelope(MOCK_AGENTS, "agents"));
+  }),
+  http.get("/api/agents/:manifestId", async ({ params }) => {
+    await delay(80);
+    const manifestId = String(params.manifestId);
+    const summary = MOCK_AGENTS.find((agent) => agent.manifestId === manifestId);
+    // `Record` indexing types as always-present; the runtime disagrees for an
+    // unknown id, which is the case this branch serves (same pattern as the
+    // AI trace lookup above).
+    const document = MOCK_AGENT_DOCUMENTS[manifestId] as Record<string, unknown> | undefined;
+    if (summary === undefined || document === undefined) {
+      return HttpResponse.json({ detail: "Agent not found." }, { status: 404 });
+    }
+    return HttpResponse.json(
+      envelope(
+        {
+          manifestId,
+          moduleId: summary.moduleId,
+          path: `agents/${summary.moduleId}.yaml`,
+          document,
+          source: summary.source,
+        },
+        "agent",
+      ),
+    );
+  }),
+  http.put("/api/agents/:manifestId", async ({ params, request }) => {
+    await delay(120);
+    const manifestId = String(params.manifestId);
+    const body = (await request.json().catch(() => ({}))) as { document?: Record<string, unknown> };
+    return HttpResponse.json(
+      envelope(
+        {
+          proposalId: `prop-mock-agent-${manifestId}`,
+          manifestId,
+          status: "REVIEW_PENDING",
+          risk: "MEDIUM",
+          affectedKeys: Object.keys(body.document ?? {}),
+          proposedBy: "mock-operator",
+          submittedAt: new Date().toISOString(),
+        },
+        "agent-configuration-proposal",
+      ),
+      { status: 202 },
+    );
+  }),
+
+  // --- schema releases (CFG-5 item 1) ------------------------------------------
+  //
+  // Published graph-schema releases and the active document, migration plan
+  // included -- routes the analyzer's Sync/Versions surface already calls, now
+  // mocked so `dev:mock` serves them rather than 404ing quietly.
+
+  http.get("/api/schema-releases", async () => {
+    await delay(80);
+    return HttpResponse.json(
+      envelope({ releases: SCHEMA_RELEASES, activeReleaseId: "rel-mock-1" }, "schema-releases"),
+    );
+  }),
+  http.get("/api/schema-releases/active/document", async () => {
+    await delay(80);
+    return HttpResponse.json(envelope(SCHEMA_ACTIVE_DOCUMENT, "schema-active-document"));
+  }),
+  http.put("/api/schema-releases/active/document", async ({ request }) => {
+    await delay(120);
+    const body = (await request.json().catch(() => ({}))) as {
+      document?: Record<string, unknown>;
+    };
+    return HttpResponse.json(
+      envelope(
+        {
+          ...SCHEMA_ACTIVE_DOCUMENT,
+          document: body.document ?? SCHEMA_ACTIVE_DOCUMENT.document,
+          configurationChecksum: "9f2c1b",
+        },
+        "schema-active-document",
+      ),
+    );
+  }),
+  http.get("/api/schema-releases/:releaseId/migration-plan", async ({ params }) => {
+    await delay(80);
+    return HttpResponse.json(
+      envelope(
+        {
+          from_release_id: "rel-mock-1",
+          to_release_id: String(params.releaseId),
+          strategy: "NO_CHANGE",
+          change_class: "NONE",
+          node_labels_added: [],
+          node_labels_removed: [],
+          node_labels_changed: [],
+          relationships_added: [],
+          relationships_removed: [],
+          relationships_changed: [],
+          objects_to_create: [],
+          objects_to_drop: [],
+          rebuild_reasons: [],
+          resync_reasons: [],
+          affected_source_asset_ids: [],
+        },
+        "migration-plan",
+      ),
+    );
+  }),
+  http.post("/api/schema-releases/:releaseId/activate", async ({ params }) => {
+    await delay(120);
+    return HttpResponse.json(
+      envelope(
+        {
+          from_release_id: "rel-mock-1",
+          to_release_id: String(params.releaseId),
+          strategy: "NO_CHANGE",
+          change_class: "NONE",
+          node_labels_added: [],
+          node_labels_removed: [],
+          node_labels_changed: [],
+          relationships_added: [],
+          relationships_removed: [],
+          relationships_changed: [],
+          objects_to_create: [],
+          objects_to_drop: [],
+          rebuild_reasons: [],
+          resync_reasons: [],
+          affected_source_asset_ids: [],
+        },
+        "migration-plan",
+      ),
+    );
+  }),
+
   // --- approvals (UI-01) ------------------------------------------------------
 
   http.get("/api/proposals", async ({ request }) => {
@@ -2179,6 +2590,53 @@ export const canonicalHandlers = [
       return HttpResponse.json({ detail: "AI request not found" }, { status: 404 });
     }
     return HttpResponse.json(envelope(trace, "trace"));
+  }),
+  // Re-run a recorded request (CFG-5 item 1). The reply is a *new* trace, not
+  // an edit of the original -- `id` is suffixed so the original stays exactly
+  // as recorded and the pair is distinguishable in the traces list.
+  http.post("/api/ai/requests/:traceId/replay", async ({ params, request }) => {
+    await delay(150);
+    const traceId = String(params.traceId);
+    const original = MOCK_AI_TRACES[traceId] as Record<string, unknown> | undefined;
+    if (original === undefined) {
+      return HttpResponse.json({ detail: "AI request not found" }, { status: 404 });
+    }
+    const body = (await request.json().catch(() => ({}))) as { provider?: string };
+    return HttpResponse.json(
+      envelope(
+        {
+          ...original,
+          id: `${traceId}-replay-1`,
+          provider: body.provider ?? original.provider,
+          createdAt: new Date().toISOString(),
+        },
+        "trace-replay",
+      ),
+    );
+  }),
+  // The same request against two to six providers at once (CFG-5 item 1).
+  http.post("/api/ai/requests/:traceId/compare", async ({ params, request }) => {
+    await delay(200);
+    const traceId = String(params.traceId);
+    const original = MOCK_AI_TRACES[traceId] as Record<string, unknown> | undefined;
+    if (original === undefined) {
+      return HttpResponse.json({ detail: "AI request not found" }, { status: 404 });
+    }
+    const body = (await request.json().catch(() => ({ providers: [] }))) as {
+      providers?: string[];
+    };
+    const providers = body.providers ?? [];
+    return HttpResponse.json(
+      envelope(
+        providers.map((provider, index) => ({
+          ...original,
+          id: `${traceId}-compare-${String(index)}-${provider.toLowerCase()}`,
+          provider,
+          createdAt: new Date().toISOString(),
+        })),
+        "trace-compare",
+      ),
+    );
   }),
   http.get("/api/ai/metrics/summary", () =>
     // The whole `AIUsageSummaryView`, not a convenient subset. The Breakdown

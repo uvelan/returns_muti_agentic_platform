@@ -1,10 +1,10 @@
 import {
   Activity,
   Bot,
-  Briefcase,
   ClipboardCheck,
   Cpu,
   Database,
+  FlaskConical,
   FolderOpen,
   Gavel,
   Hand,
@@ -13,6 +13,7 @@ import {
   Inbox,
   Layers,
   LayoutDashboard,
+  Link2,
   Lock,
   Mail,
   MessagesSquare,
@@ -33,6 +34,7 @@ import {
   Truck,
   Warehouse,
   Waypoints,
+  Workflow,
 } from "lucide-react";
 
 import type { Capability } from "../api/principal";
@@ -169,19 +171,42 @@ export const CONFIG_SECTIONS = [
   // Next to Agents rather than under Business: like an agent's module, the
   // support template is a document an operator edits and publishes, and the
   // Business tab is a read of the runtime snapshot.
-  "Support Template",
+  //
+  // CFG-5: was "Support Template", one tab over one key. It is now "Support",
+  // six tabs over six keys (the Channel B bridge's gate, ingress, resolver
+  // and context-assembly policies joined the template) -- see
+  // `SupportSection.tsx`. `/config/support-template` redirects here for one
+  // release (`ConfigurationPage.tsx`).
+  "Support",
   // CFG-4, wave A: the first four typed sections, each a page of its own
-  // rather than a `Business` tab entry -- see `BusinessSection.tsx`'s own
-  // note on why the four groups these come from (discovery, policy,
-  // fulfilment) were removed from that tab wholesale. Placed next to
-  // `Business`, which still carries every section without a typed screen.
+  // rather than a `Business` tab entry -- see `ConfigurationPage.tsx`'s own
+  // module docstring for why the tab that used to carry every section
+  // without a typed screen (`BusinessSection.tsx`, four groups' worth at
+  // this wave) is gone outright now that CFG-5 gave the last of them one.
   "Discovery",
   "Return Policy",
   "Fulfilment",
+  // CFG-5, wave B: the case workflow's stage sequence and SLAs, waits and
+  // timeouts, business calendars, and housekeeping -- see `WorkflowSection.tsx`.
+  "Workflow",
   "Runtime",
   "Releases",
   "Integrations",
-  "Business",
+  // CFG-5: the DEPENDENCY_SIMULATION domain -- the last section
+  // `BusinessSection.tsx`'s own groups carried (see `SimulationSection.tsx`).
+  // `"Business"` was here, immediately above `"Modules"`: with this section
+  // typed, every field that tab ever offered has a screen of its own, so it
+  // is deleted outright rather than kept as a tab offering nothing --
+  // `BusinessSection.tsx` and its test are gone in the same commit as this
+  // entry.
+  "Simulation",
+  // CFG-5: source-binding overrides plus the sync trigger and run history
+  // moved from the `/sync` domain (`SyncRedirect.tsx`). Named "Source
+  // Bindings", not "Data Sources" -- that label is the Graph Schema
+  // Analyzer's own section (`/graph-schema/data-sources`), and reusing it
+  // here is exactly the collision the audit's D1 finding named. See
+  // `DataSourcesSection.tsx`'s own note.
+  "Source Bindings",
   "Modules",
   "Security",
   "Audit",
@@ -251,14 +276,16 @@ export const DOMAINS: readonly DomainDefinition[] = [
     sections: sections(CONFIG_SECTIONS, {
       Overview: LayoutDashboard,
       Agents: Bot,
-      "Support Template": Mail,
+      Support: Mail,
       Discovery: Search,
       "Return Policy": Gavel,
       Fulfilment: Warehouse,
+      Workflow,
       Runtime: Cpu,
       Releases: Rocket,
       Integrations: Plug,
-      Business: Briefcase,
+      Simulation: FlaskConical,
+      "Source Bindings": Link2,
       Modules: Package,
       Security: Lock,
       Audit: ScrollText,
@@ -318,18 +345,19 @@ export const DOMAINS: readonly DomainDefinition[] = [
     }),
   },
   {
+    // CFG-5: the screen this domain rendered -- run history, run detail,
+    // "Sync now" -- moved to `/config/source-bindings` (`DataSourcesSection.tsx`),
+    // alongside the source-binding overrides that answer the other half of
+    // "where does the graph actually get this from". The domain entry stays
+    // registered (a bookmark still lands somewhere real; `SyncRedirect.tsx`
+    // is what actually renders here now) rather than being deleted outright.
     path: "/sync",
     name: "Source Sync",
-    description: "Sync runs, what each one read, and what it wrote to the graph.",
+    description: "Redirects to Configuration -- Source Bindings, where this screen lives now.",
     purpose: "Check the graph is current, and rebuild it from the sources when it is not.",
     icon: RefreshCw,
-    // Its own capability, and it already existed. `config.source.read` is the
-    // right question -- "may this person see how the platform reads its
-    // sources" -- so this domain does not join the two that had to borrow one.
     requires: "config.source.read",
     screenPhase: 22,
-    // One workspace: a run history and the run it opens. The mode filter
-    // narrows a list rather than switching what the screen is.
     sections: [],
   },
   {
