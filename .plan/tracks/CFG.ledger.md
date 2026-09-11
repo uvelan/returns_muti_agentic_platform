@@ -514,3 +514,29 @@ $ ruff check src/return_platform/operations/alerts.py -> All checks passed!
 $ ruff format --check src/return_platform/operations/alerts.py -> already formatted
 $ pytest tests/operations/test_operational_alerts.py -q -> 25 passed
 ```
+
+## CFG-1 — final acceptance run
+
+```
+$ PYTHONPATH=$WT/backend/src backend/.venv/Scripts/python.exe -m pytest tests -q -p no:cacheprovider --ignore=tests/configuration/test_concurrent_activation.py
+42 failed, 5276 passed, 10 skipped, 515 deselected, 2 warnings in 283.74s (0:04:43)
+```
+Same 42 pre-existing failures (identical names to the CFG-0 base measurement in step:02); the five
+`test_openapi_contract_drift.py` failures from before step:04's regeneration are gone. 5276 passed
+vs the CFG-0 base's 5326 = 50 fewer, vs 52 tests deleted in `test_canonical_application.py` net of
+the 2 new tests added in step:03 (`test_a_key_the_model_retired_is_dropped_from_the_carried_release`,
+`test_an_unknown_adopt_packaged_key_refuses_before_any_write_with_no_active_release`) and the 1 new
+test in step:02 (none -- step:02 only renamed/retargeted) and the 1 new test in step:03
+(`test_the_shipped_configuration_has_no_retired_blocks`): 52 deleted - 3 added = 49 net fewer, plus
+the pre-existing 1-skip/pass swap noted in step:02 = 50. Within the "drops by no more than the
+deleted tests" bound.
+
+`ruff check`, `ruff format --check`, `mypy` on `backend/src/return_platform/configuration`: clean
+(re-verified after step:04's alerts.py edit, unaffected since that file is outside `configuration/`).
+`backend/config/README.md` rewritten to name only the files the runtime loads plus the intentional
+non-manifest exceptions (`data_platform/`, `seed/`) and points to `DEFERRED_DESIGN.md` for what was
+removed. Frontend: `npx vitest run src/domains/config` (59 passed), `npm run typecheck` (clean),
+`npx eslint src/domains/config/BusinessSection.tsx` (clean).
+
+Head sha: `7fd2f061`. `evidence/orchestration/drops/LEASE-CFG-1/drop.json` written with
+`merge_status: PENDING`.
