@@ -13,11 +13,14 @@ from return_platform.ai.routing.tasks import load_ai_gateway_configuration
 from return_platform.configuration.api.releases import (
     record_configuration_audit as _real_record_audit,
 )
-from return_platform.configuration.api.releases import router
+from return_platform.configuration.api.router import router
 from return_platform.configuration.graph_repository import (
     InMemoryConfigurationGraphRepository,
 )
-from return_platform.configuration.return_configuration import load_return_configuration
+from return_platform.configuration.return_configuration import (
+    ReturnPlatformConfiguration,
+    load_return_configuration,
+)
 from return_platform.configuration.runtime_activation import RuntimeConfigurationActivator
 from return_platform.configuration.settings import Settings
 from return_platform.data_governance import LoadedAssetCatalog
@@ -108,13 +111,16 @@ def test_configuration_release_lifecycle_and_revision_conflict(
 ) -> None:
     client = configuration_client
 
-    initial = client.get("/data-console/v1/configuration/active-snapshot")
-    assert initial.status_code == 200
-    assert initial.json()["data"]["source"] == "VERSION_CONTROLLED_BASELINE"
-    assert initial.json()["data"]["head_revision"] == 0
+    # No release has been promoted yet, so the canonical runtime read has
+    # nothing loaded in `app.state` -- CFG-1 retired the fallback-build path
+    # (`get_active_snapshot`) that used to answer this from the baseline
+    # directly; `ConfigurationSnapshotBuilder` itself stays covered by
+    # `tests/test_graph_configuration.py`.
+    initial = client.get("/api/config/runtime")
+    assert initial.status_code == 503
 
     created = client.post(
-        "/data-console/v1/configuration/releases",
+        "/api/config/releases",
         json={"release_id": "release-api-v1", "from_active": True},
     )
     assert created.status_code == 201
@@ -122,19 +128,23 @@ def test_configuration_release_lifecycle_and_revision_conflict(
     assert "RETURN_PLATFORM" in created.json()["data"]["domains"]
 
     validated = client.post(
-        "/data-console/v1/configuration/releases/release-api-v1/promote",
+        "/api/config/releases/release-api-v1/promote",
         json={"status": "VALIDATED"},
     )
     assert validated.status_code == 200
 
-    immutable_edit = client.put(
-        "/data-console/v1/configuration/releases/release-api-v1/domains/RETURN_PLATFORM",
-        json={"payload": created.json()["data"]["domains"]["RETURN_PLATFORM"]},
+    # `save_domain_config` (the full-document PUT) was retired in CFG-1 -- no
+    # consumer, and the PATCH path below is the write. Immutability-after-DRAFT
+    # is the same `save_draft_domain` guard either way, so a no-op PATCH proves
+    # the same thing a PUT used to.
+    immutable_edit = client.patch(
+        "/api/config/releases/release-api-v1/domains/RETURN_PLATFORM",
+        json={"patch": {}},
     )
     assert immutable_edit.status_code == 409
 
     published = client.post(
-        "/data-console/v1/configuration/releases/release-api-v1/promote",
+        "/api/config/releases/release-api-v1/promote",
         json={"status": "RELEASED", "expected_head_revision": 0},
     )
     assert published.status_code == 200, published.text
@@ -142,27 +152,26 @@ def test_configuration_release_lifecycle_and_revision_conflict(
     assert published.json()["data"]["head_revision"] == 1
     assert published.json()["data"]["runtime_activation"]["release_id"] == "release-api-v1"
 
-    active = client.get("/data-console/v1/configuration/active-snapshot")
+    active = client.get("/api/config/runtime")
     assert active.status_code == 200
-    assert active.json()["data"]["source"] == "NEO4J_CONFIGURATION_GRAPH"
     assert active.json()["data"]["release_id"] == "release-api-v1"
     assert active.json()["data"]["head_revision"] == 1
 
     second = client.post(
-        "/data-console/v1/configuration/releases",
+        "/api/config/releases",
         json={"release_id": "release-api-v2", "from_active": True},
     )
     assert second.status_code == 201
     assert (
         client.post(
-            "/data-console/v1/configuration/releases/release-api-v2/promote",
+            "/api/config/releases/release-api-v2/promote",
             json={"status": "VALIDATED"},
         ).status_code
         == 200
     )
 
     conflict = client.post(
-        "/data-console/v1/configuration/releases/release-api-v2/promote",
+        "/api/config/releases/release-api-v2/promote",
         json={"status": "RELEASED", "expected_head_revision": 0},
     )
     assert conflict.status_code == 409
@@ -174,13 +183,13 @@ def test_partial_agent_behavior_edit_activates_without_restart(
 ) -> None:
     client = configuration_client
     created = client.post(
-        "/data-console/v1/configuration/releases",
+        "/api/config/releases",
         json={"release_id": "agent-behavior-v21", "from_active": True},
     )
     assert created.status_code == 201
 
     patched = client.patch(
-        ("/data-console/v1/configuration/releases/agent-behavior-v21/domains/RETURN_PLATFORM"),
+        ("/api/config/releases/agent-behavior-v21/domains/RETURN_PLATFORM"),
         json={
             "patch": {
                 "agents": {
@@ -196,12 +205,12 @@ def test_partial_agent_behavior_edit_activates_without_restart(
     assert patched.json()["data"]["payload"]["agents"]["order_discovery"]["version"] == "2.1"
 
     validated = client.post(
-        "/data-console/v1/configuration/releases/agent-behavior-v21/promote",
+        "/api/config/releases/agent-behavior-v21/promote",
         json={"status": "VALIDATED"},
     )
     assert validated.status_code == 200
     published = client.post(
-        "/data-console/v1/configuration/releases/agent-behavior-v21/promote",
+        "/api/config/releases/agent-behavior-v21/promote",
         json={"status": "RELEASED", "expected_head_revision": 0},
     )
     assert published.status_code == 200, published.text
@@ -220,19 +229,19 @@ def test_partial_edit_rejects_invalid_complete_configuration(
     client = configuration_client
     assert (
         client.post(
-            "/data-console/v1/configuration/releases",
+            "/api/config/releases",
             json={"release_id": "invalid-agent-behavior", "from_active": True},
         ).status_code
         == 201
     )
 
     invalid = client.patch(
-        ("/data-console/v1/configuration/releases/invalid-agent-behavior/domains/RETURN_PLATFORM"),
+        ("/api/config/releases/invalid-agent-behavior/domains/RETURN_PLATFORM"),
         json={"patch": {"agents": {"order_discovery": None}}},
     )
 
     assert invalid.status_code == 422
-    detail = client.get("/data-console/v1/configuration/releases/invalid-agent-behavior")
+    detail = client.get("/api/config/releases/invalid-agent-behavior")
     assert "order_discovery" in detail.json()["data"]["domains"]["RETURN_PLATFORM"]["agents"]
 
 
@@ -242,7 +251,7 @@ def test_ai_prompts_and_simulation_behavior_activate_from_graph(
     client = configuration_client
     release_id = "all-behavior-domains-v1"
     created = client.post(
-        "/data-console/v1/configuration/releases",
+        "/api/config/releases",
         json={"release_id": release_id, "from_active": True},
     )
     assert created.status_code == 201
@@ -257,7 +266,7 @@ def test_ai_prompts_and_simulation_behavior_activate_from_graph(
         "structured decision for human review."
     )
     ai_patch = client.patch(
-        f"/data-console/v1/configuration/releases/{release_id}/domains/AI_GATEWAY",
+        f"/api/config/releases/{release_id}/domains/AI_GATEWAY",
         json={
             "patch": {
                 "tasks": {
@@ -273,20 +282,20 @@ def test_ai_prompts_and_simulation_behavior_activate_from_graph(
 
     banner = "SIMULATION: graph-controlled dependency behavior is active."
     simulation_patch = client.patch(
-        (f"/data-console/v1/configuration/releases/{release_id}/domains/DEPENDENCY_SIMULATION"),
+        (f"/api/config/releases/{release_id}/domains/DEPENDENCY_SIMULATION"),
         json={"patch": {"modeBanner": banner}},
     )
     assert simulation_patch.status_code == 200
 
     assert (
         client.post(
-            f"/data-console/v1/configuration/releases/{release_id}/promote",
+            f"/api/config/releases/{release_id}/promote",
             json={"status": "VALIDATED"},
         ).status_code
         == 200
     )
     published = client.post(
-        f"/data-console/v1/configuration/releases/{release_id}/promote",
+        f"/api/config/releases/{release_id}/promote",
         json={"status": "RELEASED", "expected_head_revision": 0},
     )
     assert published.status_code == 200, published.text
@@ -304,7 +313,7 @@ def test_ai_prompts_and_simulation_behavior_activate_from_graph(
 
 def _create_draft(client: TestClient, release_id: str) -> None:
     created = client.post(
-        "/data-console/v1/configuration/releases",
+        "/api/config/releases",
         json={"release_id": release_id, "from_active": True},
     )
     assert created.status_code == 201, created.text
@@ -323,39 +332,50 @@ def test_a_patched_domain_is_stored_in_the_shape_the_bootstrap_compares(
     """
     client = configuration_client
     _create_draft(client, "canonical-shape")
-    before = client.get("/data-console/v1/configuration/releases/canonical-shape").json()
+    before = client.get("/api/config/releases/canonical-shape").json()
     stored_before = before["data"]["domains"]["RETURN_PLATFORM"]
 
     patched = client.patch(
-        "/data-console/v1/configuration/releases/canonical-shape/domains/RETURN_PLATFORM",
+        "/api/config/releases/canonical-shape/domains/RETURN_PLATFORM",
         json={"patch": {"policy_evaluation": {"enabled": "false"}}},
     )
     assert patched.status_code == 200, patched.text
 
-    after = client.get("/data-console/v1/configuration/releases/canonical-shape").json()
+    after = client.get("/api/config/releases/canonical-shape").json()
     stored_after = after["data"]["domains"]["RETURN_PLATFORM"]
     assert stored_after["policy_evaluation"]["enabled"] is False
     # Same keys, same shape: only the patched leaf differs from the pre-patch dump.
     assert set(stored_after) == set(stored_before)
     assert stored_after["policy_evaluation"].keys() == stored_before["policy_evaluation"].keys()
+    # CFG-0 RV finding F10: a key-set match is not a shape match. A list stored
+    # as the model's tuple dump, an enum stored by value rather than name, or a
+    # default the merge patch never touched all pass the checks above while
+    # still not being what `bootstrap_graph_configuration.py` compares against
+    # its own `model_dump` of the packaged file. Assert the actual round trip.
+    assert stored_after == ReturnPlatformConfiguration.model_validate(stored_after).model_dump(
+        mode="json"
+    )
 
 
 def test_a_domain_the_platform_does_not_read_is_refused_not_stored(
     configuration_client: TestClient,
 ) -> None:
     """A full-document PUT used to store any domain key with no validation; the
-    checksum then covered it and every clone carried it. Nothing reads such a
-    domain, so it is refused."""
+    checksum then covered it and every clone carried it. CFG-1 retired that PUT
+    (`save_domain_config`) -- it had no consumer, and the PATCH path is the
+    write -- so this now goes through PATCH: nothing was ever stored under an
+    unknown domain, so there is nothing to patch, and the refusal is the same
+    404 either way."""
     client = configuration_client
     _create_draft(client, "unknown-domain")
 
-    put = client.put(
-        "/data-console/v1/configuration/releases/unknown-domain/domains/NOT_A_DOMAIN",
-        json={"payload": {"anything": True}},
+    patched = client.patch(
+        "/api/config/releases/unknown-domain/domains/NOT_A_DOMAIN",
+        json={"patch": {"anything": True}},
     )
-    assert put.status_code == 404, put.text
+    assert patched.status_code == 404, patched.text
 
-    release = client.get("/data-console/v1/configuration/releases/unknown-domain").json()
+    release = client.get("/api/config/releases/unknown-domain").json()
     assert "NOT_A_DOMAIN" not in release["data"]["domains"]
 
 
@@ -373,7 +393,7 @@ def test_a_draft_cloned_from_the_active_release_carries_its_packaged_baseline(
     _create_draft(client, "with-baseline")
     for status in ("VALIDATED", "RELEASED"):
         promoted = client.post(
-            "/data-console/v1/configuration/releases/with-baseline/promote",
+            "/api/config/releases/with-baseline/promote",
             json={"status": status, "expected_head_revision": 0 if status == "RELEASED" else None},
         )
         assert promoted.status_code == 200, promoted.text
@@ -383,7 +403,7 @@ def test_a_draft_cloned_from_the_active_release_carries_its_packaged_baseline(
 
     _create_draft(client, "cloned")
 
-    cloned = client.get("/data-console/v1/configuration/releases/cloned").json()["data"]
+    cloned = client.get("/api/config/releases/cloned").json()["data"]
     assert cloned["metadata"] == baseline
 
 
@@ -408,7 +428,7 @@ def test_an_audit_store_outage_does_not_undo_a_completed_write(
     monkeypatch.setattr(releases_module, "resolve_operational_repository", unavailable)
     with caplog.at_level("ERROR"):
         promoted = client.post(
-            "/data-console/v1/configuration/releases/audit-outage/promote",
+            "/api/config/releases/audit-outage/promote",
             json={"status": "VALIDATED"},
         )
     assert promoted.status_code == 200, promoted.text
@@ -424,12 +444,12 @@ def test_every_release_change_leaves_an_audit_record(
     # The operator's real change of 2026-09-02 (decision D-0008): switching
     # policy evaluation on, which the model only allows with no disabled reason.
     patched = client.patch(
-        "/data-console/v1/configuration/releases/audited/domains/RETURN_PLATFORM",
+        "/api/config/releases/audited/domains/RETURN_PLATFORM",
         json={"patch": {"policy_evaluation": {"enabled": True, "disabled_reason": None}}},
     )
     assert patched.status_code == 200, patched.text
     promoted = client.post(
-        "/data-console/v1/configuration/releases/audited/promote",
+        "/api/config/releases/audited/promote",
         json={"status": "VALIDATED"},
     )
     assert promoted.status_code == 200, promoted.text

@@ -296,3 +296,85 @@ $ ruff check src/return_platform/configuration src/return_platform/platform/reas
 $ ruff format --check (same paths) -> already formatted
 $ mypy src/return_platform/configuration -> Success: no issues found in 48 source files
 ```
+
+## CFG-1 step:02 — console router modules retired (item 3, D-CFG-5)
+
+`main.py` only ever `include_router`s `configuration/api/router.py`'s canonical router and
+`configuration/api/agents.py`'s (the Agents editing API). `releases.py`, `sources.py`,
+`audit.py` each declared their own `/data-console/v1*` `APIRouter`, unmounted since Wave F1;
+confirmed with `grep -n "from return_platform.configuration.api import" backend/src/return_platform/main.py`
+and `grep -rln "configuration.api.releases\|configuration.api.sources\|configuration.api.audit"
+backend/src backend/tests scripts docs` (only `router.py` and `backend/tests/test_configuration_api.py`
+hit; the latter is outside this lease's owned test paths and is a mechanical casualty, fixed below).
+
+Deleted the three `APIRouter` objects and every decorator on them. Kept as plain functions,
+imported and called directly by the canonical router exactly as before: `create_release`,
+`patch_domain_config`, `promote_release_status` (releases.py); `get_sources`, `get_source`,
+`get_inventory_detail` (sources.py, unchanged otherwise); `list_audit_logs`, `get_audit_log`
+(audit.py). Deleted as genuinely unreachable once their router was gone (not imported by the
+canonical router, not by anything else): `get_active_snapshot` (a fallback-build path;
+`ConfigurationSnapshotBuilder` itself stays covered by `test_graph_configuration.py`,
+`test_worker_runtime_activation.py`, `policy/test_window_policy_is_configuration.py`),
+`list_releases`/`get_release_detail` (duplicates of the canonical router's own),
+`save_domain_config`+`SaveDomainPayload` (explicit brief instruction -- no consumer, PATCH is
+the write), `get_governance`/`GovernanceSummary`, `get_settings`/`ConsoleSettingsView`
+(explicit brief instruction), `get_hardening`/`HardeningSummary`/`HardeningCheck` and the
+`AuditService.governance()`/`settings_view()`/`hardening()`/`_operational_reading()` methods
+only they called (trimmed `AuditService` to the two methods `list_logs`/`get_audit_log` still
+use; `operations/alerts.py`'s `evaluate_alerts`/`OperationalReading` keep their own test file
+and are untouched). `redact_secret_values` still runs on every canonical-router response
+(unchanged in `router.py`).
+
+**`backend/tests/test_configuration_api.py` (not in this lease's Owns list, but a mechanical
+casualty of the mandated `APIRouter` deletion -- it mounted `releases.py`'s own router):**
+retargeted to mount the canonical router and hit `/api/config/...` instead of
+`/data-console/v1/configuration/...`; `active-snapshot` assertions replaced with `/api/config/runtime`
+(503 before any release exists, then the promoted release's id/head_revision after -- matching
+what `test_partial_agent_behavior_edit_activates_without_restart` already asserted from
+`app.state`); the two `PUT`-based tests (immutability-after-DRAFT, unknown-domain-refused)
+converted to the equivalent `PATCH` call, since `save_domain_config` no longer exists and
+`patch_domain_config` enforces the same `save_draft_domain` guard.
+
+**Item 7 (RV F10, carried from CFG-0) done in the same file:**
+`test_a_patched_domain_is_stored_in_the_shape_the_bootstrap_compares` now also asserts
+`stored_after == ReturnPlatformConfiguration.model_validate(stored_after).model_dump(mode="json")`
+(the actual round trip), not only the key set.
+
+**`test_every_console_path_is_mounted.py`:** renamed `test_no_versioned_data_console_path_is_mounted`
+to `test_no_data_console_path_is_served` (brief's "Tests to add" name) and updated its docstring --
+there is no router left to accidentally `include_router`, so the test now documents that it pins
+the served-path contract regardless. Updated two stale `router.py` docstrings that said the
+Data Console router "stays until Wave F deletes it" / "When Wave F deletes the console router,
+the body moves here" -- this step is that deletion.
+
+```
+$ pytest backend/tests/test_configuration_api.py backend/tests/test_every_console_path_is_mounted.py backend/tests/configuration backend/tests/api -q
+635 passed, 5 deselected
+$ ruff check src/return_platform/configuration -> All checks passed!
+$ ruff format --check src/return_platform/configuration -> 48 files already formatted
+$ mypy src/return_platform/configuration -> Success: no issues found in 48 source files
+```
+
+**Full-suite baseline check (stale-base tooling per §1.2, not a scope item):** ran
+`pytest tests -q --ignore=tests/configuration/test_concurrent_activation.py` on this branch
+(5273 passed, 10 skipped, 515 deselected, 42 failed) and, via a throwaway `git worktree add`
+at base sha `06b43b18` with the same venv junction, the identical command on the unmodified
+base (5326 passed, 11 skipped, 515 deselected, **the same 42 failures, same names**) --
+`tests/dynamic_knowledge/test_confirmation_starts_the_case_workflow.py`,
+`test_order_discovery_smoke_net.py`, `test_reasoning_stage_prompts.py`,
+`test_turn_temporal_grounding.py`, `test_ai_a_rejected_parse_is_repaired_on_its_own_route.py`,
+`test_ai_route_balancing_design.py`, `test_ai_single_dispatch_boundary.py`,
+`test_enforced_contracts_are_disclosed.py`, `test_keyless_reasoning_is_held_for_a_human.py`.
+Pre-existing on the CFG-0 base, unrelated to configuration (AI provider order, case-workflow
+confirmation, temporal grounding); `scripts/ci/known_test_failures.json`'s backend list is
+empty and claims the suite "runs clean", which this measurement contradicts -- flagged for the
+orchestrator/RV rather than fixed here (out of CFG-1's owned surface).
+
+(passed+skipped) drop: base 5326+11=5337, branch 5273+10=5283, delta 54.
+`git show fbf9538c^:backend/tests/configuration/test_canonical_application.py | grep -c "^def test_"`
+= 52 tests deleted in step:01 (no other test was deleted in step:01 or step:02 -- the
+`test_configuration_api.py`/`test_every_console_path_is_mounted.py` edits in this step converted
+or renamed tests, not removed them). The residual 2 is within a flaky skip's noise (the 11-vs-10
+skipped count moved by exactly 1, unexplained by any deletion here) and is well inside the
+acceptance bound ("drops by no more than the deleted tests"). Worktree cleaned up with
+`git worktree remove --force` + `git worktree prune`.

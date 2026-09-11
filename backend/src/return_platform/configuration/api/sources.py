@@ -1,4 +1,12 @@
-"""Live data-source inventory derived from the governed schema registry and probes."""
+"""Live data-source inventory derived from the governed schema registry and probes.
+
+Handler bodies only -- no `APIRouter` here. These three (`get_sources`,
+`get_source`, `get_inventory_detail`) are mounted by the canonical
+`configuration/api/router.py` under `/api/config`; the `/data-console/v1`
+`APIRouter` this module used to also declare them under was retired in CFG-1
+(D-CFG-5) because nothing ever mounted it -- Wave F1 already re-exported these
+same three handlers into the canonical router.
+"""
 
 from __future__ import annotations
 
@@ -8,7 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import cast
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict
 
 from return_platform.api.dependency_probes import (
@@ -27,8 +35,6 @@ from return_platform.shared.contracts import (
     PageMeta,
     ResponseMeta,
 )
-
-router = APIRouter(prefix="/data-console/v1", tags=["Sources", "Inventory"])
 
 
 class SourceModel(BaseModel):
@@ -248,7 +254,6 @@ async def _probed_sources(
     return resources, definitions, list(probes)
 
 
-@router.get("/sources", response_model=APIResponse[list[SourceItem]])
 async def get_sources(
     request: Request,
     _actor: str = Depends(require_read_roles),
@@ -265,7 +270,6 @@ async def get_sources(
     )
 
 
-@router.get("/sources/{source_id}", response_model=APIResponse[SourceDetail])
 async def get_source(
     source_id: str,
     request: Request,
@@ -305,7 +309,6 @@ async def get_source(
     return APIResponse(data=detail, meta=_response_meta(request))
 
 
-@router.get("/inventory/{engine}/{asset_id}", response_model=APIResponse[InventoryDetail])
 async def get_inventory_detail(
     engine: str,
     asset_id: str,

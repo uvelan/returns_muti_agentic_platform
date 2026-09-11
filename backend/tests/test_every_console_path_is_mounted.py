@@ -255,12 +255,13 @@ def test_configuration_release_writes_are_guarded(
         )
 
 
-def test_no_versioned_data_console_path_is_mounted(served_paths: frozenset[str]) -> None:
-    """Wave F1 unmounted `/data-console/v1/*` deliberately. Keep it that way.
-
-    The modules still export handler functions that `/api/config` imports
-    directly, so an accidental `include_router` would silently republish
-    eighteen routes nothing is meant to serve.
+def test_no_data_console_path_is_served(served_paths: frozenset[str]) -> None:
+    """Wave F1 unmounted `/data-console/v1/*`; CFG-1 (D-CFG-5) deleted the
+    `APIRouter` objects those paths were declared on entirely -- `releases.py`,
+    `sources.py` and `audit.py` now export plain handler functions only, which
+    `/api/config` imports and calls directly. There is no router left to
+    accidentally `include_router`, but the contract this file exists to pin is
+    the served path table, not the source tree, so it stays asserted here.
     """
     republished = sorted(p for p in served_paths if p.startswith("/data-console"))
     assert not republished, republished
