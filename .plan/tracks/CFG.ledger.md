@@ -957,3 +957,43 @@ Success: no issues found in 2 source files
 ```
 
 Head sha: see commit. `merge_status: PARTIAL`.
+
+## CFG-3a step:04 — item 1: `POST /api/config/validate/{domain_key}`
+
+New route, no console predecessor -- delegates to a new `validate_domain_config`
+in `releases.py` rather than growing a second validation path: it calls the
+same `_domain_model` lookup (extracted from `_canonical_domain_payload`, which
+now calls it too) so "would this be valid" and "is this valid" can never
+disagree about what valid means. Body is `ValidateDomainPayload`: exactly one
+of `payload` (validates standalone) or `patch` (merges against the ACTIVE
+release's stored domain -- there is no `release_id` on this route by design,
+so a patch validates against the only document a caller with no draft yet can
+name); a `model_validator` refuses neither-or-both with a 422. `_validation_errors`
+catches pydantic's `ValidationError` and maps `.errors()` to
+`{path, message, type}` via `_dotted_error_path` (list indices as `[n]`, per
+the brief). No write, no audit record; guarded by `require_read_roles`. 404 for
+an unknown domain key (via `_domain_model`), 409 when `patch` is given and no
+release is active.
+
+`tests/configuration/test_canonical_config_api.py`'s
+`test_the_release_lifecycle_is_the_only_mutation_surface_here` pins the exact
+POST/PATCH surface of the router; updated to include the new route with an
+explanation that it is POST-shaped (a body does not fit a GET) rather than a
+write, pointing at the no-write proof in the new tests.
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/test_configuration_api.py tests/configuration tests/test_every_console_path_is_mounted.py tests/api -q -p no:cacheprovider
+664 passed, 5 deselected, 2 warnings in 87.30s
+$ .venv/Scripts/python.exe -m ruff check src/return_platform/configuration/api/releases.py src/return_platform/configuration/api/router.py tests/test_configuration_api.py tests/configuration/test_canonical_config_api.py
+All checks passed!
+$ .venv/Scripts/python.exe -m ruff format --check <same 4 files>
+(after one reformat) 4 files already formatted
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy src/return_platform/configuration/api/releases.py src/return_platform/configuration/api/router.py
+Success: no issues found in 2 source files
+```
+
+OpenAPI drift now expected to FAIL (a route was added); regeneration is scope
+item 7, deferred to the final step so every route lands before regenerating
+once.
+
+Head sha: see commit. `merge_status: PARTIAL`.

@@ -131,8 +131,8 @@ def test_the_release_lifecycle_is_the_only_mutation_surface_here() -> None:
     D3 settled that in favour of the graph, so a mutation surface became
     buildable -- but only *one*, and this pins its exact shape. Configuration
     changes by a release being drafted, edited and moved along its lifecycle;
-    any mutation here that is not one of those three is a second way to change
-    what the platform is running.
+    any route here outside that set and the one deliberate exception below is
+    a second way to change what the platform is running.
 
     Promotion alone used to be the whole set, which is how the surface shipped
     able to publish a release but unable to create or edit one -- every prompt
@@ -140,6 +140,15 @@ def test_the_release_lifecycle_is_the_only_mutation_surface_here() -> None:
     `PUT .../domains/{key}` the console router also declares stays off: a merge
     patch reaches the same outcome without letting a caller overwrite fields it
     never read.
+
+    **`POST /validate/{domain_key}` is not a mutation.** It is POST-shaped
+    because a payload or a patch does not fit a GET's query string, not
+    because it writes -- `test_validate_a_patch_against_the_active_release`
+    in `test_configuration_api.py` proves no write happens by reading the
+    release back unchanged after both a valid and an invalid call. Filtering
+    routes by HTTP method alone can no longer say "no write" the way it used
+    to when every non-GET route here really was one, so it is named here by
+    exception rather than silently widening what this assertion means.
     """
     from return_platform.configuration.api.router import router
 
@@ -153,6 +162,7 @@ def test_the_release_lifecycle_is_the_only_mutation_surface_here() -> None:
         ("/api/config/releases", "POST"),
         ("/api/config/releases/{release_id}/domains/{domain_key}", "PATCH"),
         ("/api/config/releases/{release_id}/promote", "POST"),
+        ("/api/config/validate/{domain_key}", "POST"),
     }, mutations
 
 

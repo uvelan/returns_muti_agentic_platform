@@ -456,6 +456,109 @@ def test_patch_refuses_a_stale_expected_version(
     assert no_lock.status_code == 200, no_lock.text
 
 
+def test_validate_a_standalone_payload_reports_path_mapped_errors(
+    configuration_client: TestClient,
+) -> None:
+    """No draft, no write, no release_id -- `payload` validates standalone."""
+    client = configuration_client
+    result = client.post("/api/config/validate/RETURN_PLATFORM", json={"payload": {}})
+    assert result.status_code == 200, result.text
+    body = result.json()["data"]
+    assert body["valid"] is False
+    assert body["errors"]
+    assert all({"path", "message", "type"} <= set(error) for error in body["errors"])
+    # `schema_version` is a required top-level field with no default: an
+    # empty payload must name it, dotted the way the brief specifies.
+    assert any(error["path"] == "schema_version" for error in body["errors"])
+
+
+def test_validate_a_standalone_valid_payload_reports_no_errors(
+    configuration_client: TestClient,
+    test_settings: Settings,
+) -> None:
+    client = configuration_client
+    valid_payload = load_return_configuration(
+        test_settings.return_configuration_path
+    ).configuration.model_dump(mode="json")
+
+    result = client.post("/api/config/validate/RETURN_PLATFORM", json={"payload": valid_payload})
+
+    assert result.status_code == 200, result.text
+    assert result.json()["data"] == {"valid": True, "errors": []}
+
+
+def test_validate_an_unknown_domain_is_404(configuration_client: TestClient) -> None:
+    client = configuration_client
+    result = client.post("/api/config/validate/NOT_A_DOMAIN", json={"payload": {}})
+    assert result.status_code == 404, result.text
+
+
+def test_validate_refuses_a_body_with_neither_or_both_shapes(
+    configuration_client: TestClient,
+) -> None:
+    client = configuration_client
+    neither = client.post("/api/config/validate/RETURN_PLATFORM", json={})
+    assert neither.status_code == 422, neither.text
+    both = client.post(
+        "/api/config/validate/RETURN_PLATFORM",
+        json={"payload": {}, "patch": {}},
+    )
+    assert both.status_code == 422, both.text
+
+
+def test_validate_a_patch_needs_an_active_release(configuration_client: TestClient) -> None:
+    """No release_id on this route: a patch validates against the ACTIVE
+    release, and there is none yet in a fresh test app."""
+    client = configuration_client
+    result = client.post("/api/config/validate/RETURN_PLATFORM", json={"patch": {}})
+    assert result.status_code == 409, result.text
+
+
+def test_validate_a_patch_against_the_active_release(configuration_client: TestClient) -> None:
+    client = configuration_client
+    _create_draft(client, "validate-base")
+    assert (
+        client.post(
+            "/api/config/releases/validate-base/promote",
+            json={"status": "VALIDATED"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            "/api/config/releases/validate-base/promote",
+            json={"status": "RELEASED", "expected_head_revision": 0},
+        ).status_code
+        == 200
+    )
+
+    valid = client.post(
+        "/api/config/validate/RETURN_PLATFORM",
+        json={"patch": {"policy_evaluation": {"enabled": True, "disabled_reason": None}}},
+    )
+    assert valid.status_code == 200, valid.text
+    assert valid.json()["data"] == {"valid": True, "errors": []}
+
+    # The packaged baseline ships `policy_evaluation.enabled: false` with a
+    # non-null `disabled_reason` (the dev-host suspension notice). Each
+    # `validate` call patches that SAME unwritten baseline -- validate never
+    # writes -- so `enabled: true` alone, with `disabled_reason` left at the
+    # packaged non-null string, is what `PolicyEvaluationConfiguration`'s own
+    # model-level validator refuses.
+    invalid = client.post(
+        "/api/config/validate/RETURN_PLATFORM",
+        json={"patch": {"policy_evaluation": {"enabled": True}}},
+    )
+    assert invalid.status_code == 200, invalid.text
+    body = invalid.json()["data"]
+    assert body["valid"] is False
+    assert any("policy_evaluation" in error["path"] for error in body["errors"])
+    # Nothing was written by either call: the release's stored payload is
+    # still the packaged baseline.
+    release = client.get("/api/config/releases/validate-base").json()["data"]
+    assert release["domains"]["RETURN_PLATFORM"]["policy_evaluation"]["enabled"] is False
+
+
 def test_an_audit_store_outage_does_not_undo_a_completed_write(
     configuration_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

@@ -19,7 +19,7 @@ import logging
 from typing import Any, Literal, cast
 
 from fastapi import Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from return_platform.ai.routing.tasks import AIGatewayConfiguration, LoadedAIGatewayConfiguration
 from return_platform.configuration.application.release_promotion import (
@@ -42,7 +42,7 @@ from return_platform.dependency_simulation.configuration import (
 )
 from return_platform.operations.repository import resolve_operational_repository
 from return_platform.resources import RuntimeResources
-from return_platform.security.authorization import require_write_roles
+from return_platform.security.authorization import require_read_roles, require_write_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 logger = logging.getLogger(__name__)
@@ -275,6 +275,36 @@ def _all_changed_paths(before: Any, after: Any, prefix: str) -> list[str]:
     return [] if before == after else [prefix or "$"]
 
 
+#: The three domain models this platform reads, keyed the way every release's
+#: payload map is keyed. One place naming the association -- `_domain_model`,
+#: `_canonical_domain_payload` and `_validation_errors` all resolve a domain
+#: key through this rather than each repeating the same three-way `if`.
+_DOMAIN_MODELS: dict[
+    str,
+    type[ReturnPlatformConfiguration | AIGatewayConfiguration | DependencySimulationConfiguration],
+] = {
+    RETURN_PLATFORM_DOMAIN_KEY: ReturnPlatformConfiguration,
+    AI_GATEWAY_DOMAIN_KEY: AIGatewayConfiguration,
+    DEPENDENCY_SIMULATION_DOMAIN_KEY: DependencySimulationConfiguration,
+}
+
+
+def _domain_model(
+    domain_key: str,
+) -> type[ReturnPlatformConfiguration | AIGatewayConfiguration | DependencySimulationConfiguration]:
+    """The pydantic model that owns `domain_key`, or a 404 naming the three that exist."""
+    model = _DOMAIN_MODELS.get(domain_key)
+    if model is None:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Domain {domain_key} is not a configuration domain; expected one of "
+                f"{', '.join(_DOMAIN_MODELS)}"
+            ),
+        )
+    return model
+
+
 def _canonical_domain_payload(domain_key: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Validate a domain payload and return the form the platform persists.
 
@@ -292,23 +322,57 @@ def _canonical_domain_payload(domain_key: str, payload: dict[str, Any]) -> dict[
     stored unvalidated: nothing would ever read it, but it would ride along in
     every clone of the release and count in its checksum.
     """
+    model = _domain_model(domain_key)
     try:
-        if domain_key == RETURN_PLATFORM_DOMAIN_KEY:
-            return ReturnPlatformConfiguration.model_validate(payload).model_dump(mode="json")
-        if domain_key == AI_GATEWAY_DOMAIN_KEY:
-            return AIGatewayConfiguration.model_validate(payload).model_dump(mode="json")
-        if domain_key == DEPENDENCY_SIMULATION_DOMAIN_KEY:
-            return DependencySimulationConfiguration.model_validate(payload).model_dump(mode="json")
+        return model.model_validate(payload).model_dump(mode="json")
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    raise HTTPException(
-        status_code=404,
-        detail=(
-            f"Domain {domain_key} is not a configuration domain; expected one of "
-            f"{RETURN_PLATFORM_DOMAIN_KEY}, {AI_GATEWAY_DOMAIN_KEY}, "
-            f"{DEPENDENCY_SIMULATION_DOMAIN_KEY}"
-        ),
-    )
+
+
+def _dotted_error_path(loc: tuple[int | str, ...]) -> str:
+    """A pydantic error `loc` tuple, joined the way the console reads a field.
+
+    `("return_policy", "return_method_derivation", "default_method")` becomes
+    `return_policy.return_method_derivation.default_method`; a list index is
+    suffixed onto the segment before it (`agents[2].version`, not
+    `agents.2.version`) so a numeric path component never reads as a mapping
+    key named `"2"`.
+    """
+    parts: list[str] = []
+    for segment in loc:
+        if isinstance(segment, int):
+            if parts:
+                parts[-1] = f"{parts[-1]}[{segment}]"
+            else:
+                parts.append(f"[{segment}]")
+        else:
+            parts.append(str(segment))
+    return ".".join(parts)
+
+
+def _validation_errors(domain_key: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Validate `payload` against the domain it claims and report, never raise.
+
+    `POST /validate/{domain_key}` exists so a form can ask "would this be
+    valid" before committing to a draft or a patch -- the difference from
+    `_canonical_domain_payload` is exactly that: this reports pydantic's own
+    `ValidationError.errors()`, mapped to `{path, message, type}`, instead of
+    collapsing them into one string and raising. An unknown domain key still
+    404s -- there is no payload shape to report errors *about*.
+    """
+    model = _domain_model(domain_key)
+    try:
+        model.model_validate(payload)
+    except ValidationError as exc:
+        return [
+            {
+                "path": _dotted_error_path(error["loc"]),
+                "message": error["msg"],
+                "type": error["type"],
+            }
+            for error in exc.errors()
+        ]
+    return []
 
 
 class PatchDomainPayload(BaseModel):
@@ -395,6 +459,70 @@ async def patch_domain_config(
     )
     return APIResponse(
         data={"domain_key": domain_key, "payload": updated_payload},
+        meta=_response_meta(request),
+    )
+
+
+class ValidateDomainPayload(BaseModel):
+    """Body of `POST /validate/{domain_key}` -- exactly one of two shapes.
+
+    `payload` validates a whole document standalone, with nothing read from
+    any release: the shape a form uses before a draft exists at all.
+    `patch` merges against the ACTIVE release's stored domain (never a
+    draft's -- this route takes no `release_id`, because "would this be
+    valid" is a question worth asking before a draft is even open, and the
+    active release is the only document a caller with no draft yet can name).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    payload: dict[str, Any] | None = None
+    patch: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _exactly_one_shape(self) -> ValidateDomainPayload:
+        if (self.payload is None) == (self.patch is None):
+            raise ValueError("exactly one of payload or patch must be given")
+        return self
+
+
+async def validate_domain_config(
+    domain_key: str,
+    body: ValidateDomainPayload,
+    request: Request,
+    _user_id: str = Depends(require_read_roles),
+) -> APIResponse[dict[str, Any]]:
+    """Report whether a payload or patch would validate, without writing anything.
+
+    No draft is opened, no domain is stored, no audit record is written --
+    this is the check a form runs on every keystroke or on submit, and it must
+    be side-effect-free to be safe to call that often. `errors` is pydantic's
+    own `ValidationError.errors()`, mapped to `{path, message, type}` by
+    `_validation_errors` -- the same structure a caller would get by reading
+    the exception `_canonical_domain_payload` raises on a real write, so a
+    form's error-rendering code path is exercised by both.
+    """
+    if body.payload is not None:
+        candidate = body.payload
+    else:
+        repo = resolve_configuration_repository(request)
+        active = await repo.get_active_release()
+        if active is None:
+            raise HTTPException(
+                status_code=409,
+                detail="There is no active configuration release to validate a patch against",
+            )
+        current = await repo.get_domain_config(active.release_id, domain_key)
+        if current is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Domain {domain_key} was not found in the active release",
+            )
+        candidate = _apply_merge_patch(current, cast(dict[str, Any], body.patch))
+
+    errors = _validation_errors(domain_key, candidate)
+    return APIResponse(
+        data={"valid": not errors, "errors": errors},
         meta=_response_meta(request),
     )
 

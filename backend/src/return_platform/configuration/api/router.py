@@ -42,6 +42,7 @@ from return_platform.configuration.api.releases import (
     CreateReleasePayload,
     PatchDomainPayload,
     PromoteReleasePayload,
+    ValidateDomainPayload,
     resolve_configuration_repository,
 )
 from return_platform.configuration.api.releases import (
@@ -52,6 +53,9 @@ from return_platform.configuration.api.releases import (
 )
 from return_platform.configuration.api.releases import (
     promote_release_status as console_promote_release_status,
+)
+from return_platform.configuration.api.releases import (
+    validate_domain_config as console_validate_domain_config,
 )
 from return_platform.configuration.api.secrets import redact_secret_values
 from return_platform.configuration.api.sources import (
@@ -270,6 +274,33 @@ async def patch_release_domain(
     same outcome.
     """
     response = await console_patch_domain_config(release_id, domain_key, body, request, user_id)
+    return _ok(request, response.data)
+
+
+# --- validation ---------------------------------------------------------------
+#
+# CFG-3a scope item 1. No console predecessor to delegate from -- this is a new
+# capability, not a re-export -- but it still delegates rather than growing a
+# second validation path: `validate_domain_config` calls the exact model
+# (`_domain_model`) `_canonical_domain_payload` validates a real write against,
+# so "would this be valid" and "is this valid" can never disagree about what
+# valid means.
+
+
+@router.post("/validate/{domain_key}", response_model=APIResponse[dict[str, Any]])
+async def validate_domain(
+    domain_key: str,
+    body: ValidateDomainPayload,
+    request: Request,
+    _user_id: str = Depends(require_read_roles),
+) -> APIResponse[Any]:
+    """Check a payload or a patch against the active release, with no write.
+
+    Read roles, not write: nothing is stored, nothing is audited, and a form
+    validating a field as an operator types must not need the write
+    capability an eventual patch would.
+    """
+    response = await console_validate_domain_config(domain_key, body, request, _user_id)
     return _ok(request, response.data)
 
 
