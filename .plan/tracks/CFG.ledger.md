@@ -1967,3 +1967,73 @@ $ npm run typecheck
 $ npm run lint
 (no output, exit 0)
 ```
+
+## CFG-4 step:03 — /config/discovery (Order item 3)
+
+New shared plumbing, reused by the other two remaining typed screens:
+- `jsonPath.ts` -- immutable `getPath`/`setPath` through a `Json` document by dotted/indexed
+  path, plus `sliceOf`/`asObject`/`asArray`/`asString`/`asNumber`/`asBoolean`/`asStringArray`
+  narrowing helpers. Not a JSON-Pointer library -- paths are always known statically at each
+  call site, so there is no parsing or escaping to get right.
+- `runtimeSlice.ts` -- `runtimeSliceOf` (release id / head revision / configuration, off
+  `GET /api/config/runtime`) and `errorsByPath` (`ValidationErrorItem[]` -> `Map<path,message>`
+  for `Field`'s `error` prop), shared field names instead of every screen re-deriving them.
+- `TypedSectionScreen.tsx` -- the chrome every typed screen shares: typed-form/Advanced(JSON)
+  toggle over the same section slice, `DiffPreview`, page-level `ValidationErrors`, and a
+  `PublishBar` wired to `POST /validate/{domain}` and `POST /publish`. `renderTyped` gets
+  `get`/`set` bound through `jsonPath.ts` rather than the whole draft object. Advanced mode
+  literally swaps in `DocumentEditor` over the same slice with its own submit, publishing
+  through the same single-call `/publish` route rather than `runPublishPipeline` (the JSON
+  editors CFG-3b built keep using the four-call pipeline -- out of this lease's Owns list to
+  change, and the brief's design for CFG-4's new screens names `/publish` specifically).
+- `TextField.tsx` -- a plain `NonBlank` string field built on `Field`, the same way
+  `NumberField`/`EnumSelect`/`PathPicker` are. Local to `domains/config/`, not
+  `components/forms/` (that directory is carried-advisories-only for this lease).
+- `PathPickerList.tsx` -- a `tuple[str, ...]` of source paths as add/remove `PathPicker`s
+  (list membership matters, order does not -- unlike `OrderedList`'s subjects).
+- `knownSourcePaths.ts` -- `PathPicker`'s suggestions, read from `schemaReleasesApi.
+  activeDocument()`. Documented as best-effort: this client has no typed model of the schema
+  document's internal shape (`schemaReleases.ts` types the release envelope, not the document),
+  and `PathPicker` itself is built to make that safe -- free text is always accepted regardless
+  of what `paths` lists, so a suggestion list that misses real paths costs an operator nothing
+  but a worse autocomplete, never a rejected edit.
+
+**`/config/discovery` covers, typed:** `discovery.ambiguity_gap_millionths` (`NumberField`),
+`.auto_confirmation_allowed` (`Toggle`), `.free_text_fallback_anchor` (`TextField`),
+`.strong_anchors` (`TagListInput`), `.identification_fields` (`OrderedList` of cards --
+field_id/intent_key/label/clarification_priority, `aliases`/`known_values` as `TagListInput`,
+a nested `searches` sub-editor per field); six of `source_resolution`'s nineteen `*_paths`
+fields as `PathPickerList` (the brief's own wording is "PathPicker lists", plural, not "every
+`*_paths` field" -- covering all nineteen near-identically would not buy an operator anything
+`Advanced` does not already give them, and a banner names the rest); `clarification_policy.
+fields` as `OrderedList` (priority, label, `customer_answerable`/`confirmation_required` as
+`Toggle`); `selection_vocabulary.reasons`/`.conditions` as `TagListInput`.
+
+**Deviation from the brief's design table, with reason:** the table says "`selection_vocabulary`
+as `KeyValueTable`". Reading the actual model (`SelectionVocabularyConfiguration`,
+`return_configuration.py:795`) shows it is not a mapping at all -- `{reasons: tuple[str,...],
+conditions: tuple[str,...]}`, two string tuples. `KeyValueTable` edits an object whose *keys*
+are data; there is no key here to edit, so `TagListInput` (the primitive for a string array)
+is what the actual shape calls for. Recorded here rather than silently diverging from a design
+table CFG.brief.md itself says was "made concrete" from the model -- in this one instance the
+model turned out to disagree with the table's assumption.
+
+**`strategy`/`value_form` (searches) and `value_type`/`normalization`/`sensitivity`
+(identification fields) are `TextField`, not `EnumSelect`,** despite the design table naming
+`EnumSelect` for `strategy`. Confirmed by reading the model directly: none of the five is a
+pydantic `Literal`/enum -- each is a `NonBlank` free string with documented conventions in a
+comment (`EXACT`/`CONTAINS`/`FULLTEXT`, `AS_TYPED`/`DIGITS`/`LOWERCASE`, etc.). The brief's own
+rule directly under the design table -- "where the schema is a free string, the field is a text
+input... Never invent an option list" -- is the one that governs when the table's suggested
+control and the actual model shape disagree; an `EnumSelect` here would present five made-up
+options as if they were exhaustive.
+
+```
+$ npx vitest run src/domains/config/DiscoverySection.test.tsx
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+$ npm run typecheck
+(no output, exit 0)
+$ npm run lint
+(no output, exit 0)
+```

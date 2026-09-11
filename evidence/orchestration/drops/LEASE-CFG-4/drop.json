@@ -15,7 +15,15 @@
     "frontend/src/api/configuration.ts",
     "frontend/src/api/principal.ts",
     "frontend/src/mocks/handlers/canonicalHandlers.ts",
-    "frontend/src/mocks/handlers/canonicalHandlers.contract.test.ts"
+    "frontend/src/mocks/handlers/canonicalHandlers.contract.test.ts",
+    "frontend/src/domains/config/DiscoverySection.tsx",
+    "frontend/src/domains/config/DiscoverySection.test.tsx",
+    "frontend/src/domains/config/TypedSectionScreen.tsx",
+    "frontend/src/domains/config/TextField.tsx",
+    "frontend/src/domains/config/PathPickerList.tsx",
+    "frontend/src/domains/config/jsonPath.ts",
+    "frontend/src/domains/config/runtimeSlice.ts",
+    "frontend/src/domains/config/knownSourcePaths.ts"
   ],
   "tests": {
     "npx vitest run src/components/forms src/domains/config src/mocks src/api/configuration.ts": "clean",
@@ -24,7 +32,6 @@
   },
   "remaining": [
     "/config/overview undecided-keys panel",
-    "/config/discovery",
     "/config/return-policy",
     "/config/fulfilment",
     "registry/routeManifest/BusinessSection removals + registry test fix + known_test_failures.json",
