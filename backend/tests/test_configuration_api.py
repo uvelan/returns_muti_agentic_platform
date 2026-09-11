@@ -14,6 +14,7 @@ from return_platform.configuration.api.releases import (
     record_configuration_audit as _real_record_audit,
 )
 from return_platform.configuration.api.router import router
+from return_platform.configuration.cli import bootstrap_graph_configuration
 from return_platform.configuration.graph_repository import (
     InMemoryConfigurationGraphRepository,
 )
@@ -23,6 +24,11 @@ from return_platform.configuration.return_configuration import (
 )
 from return_platform.configuration.runtime_activation import RuntimeConfigurationActivator
 from return_platform.configuration.settings import Settings
+from return_platform.configuration.snapshot import (
+    AI_GATEWAY_DOMAIN_KEY,
+    DEPENDENCY_SIMULATION_DOMAIN_KEY,
+    RETURN_PLATFORM_DOMAIN_KEY,
+)
 from return_platform.data_governance import LoadedAssetCatalog
 from return_platform.dependency_simulation.configuration import (
     load_dependency_simulation_configuration,
@@ -619,3 +625,254 @@ def test_every_release_change_leaves_an_audit_record(
     assert patch_record["details"]["patchKeys"] == ["policy_evaluation"]
     assert "policy_evaluation.enabled" in patch_record["details"]["changedPaths"]
     assert records[2]["details"]["status"] == "VALIDATED"
+
+
+# --- packaged adoption --------------------------------------------------------
+
+
+def _release_with_an_edited_discovery(client: TestClient, release_id: str) -> None:
+    """A release identical to the packaged file except `discovery`, edited away
+    from it -- the same divergence `test_graph_configuration_bootstrap.py`
+    uses, so `discovery` is what `adopt-packaged` has something to adopt."""
+    _create_draft(client, release_id)
+    patched = client.patch(
+        f"/api/config/releases/{release_id}/domains/RETURN_PLATFORM",
+        json={"patch": {"discovery": {"identification_fields": []}}},
+    )
+    assert patched.status_code == 200, patched.text
+    assert (
+        client.post(
+            f"/api/config/releases/{release_id}/promote",
+            json={"status": "VALIDATED"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            f"/api/config/releases/{release_id}/promote",
+            json={"status": "RELEASED", "expected_head_revision": 0},
+        ).status_code
+        == 200
+    )
+
+
+def test_adopt_packaged_needs_an_active_release(configuration_client: TestClient) -> None:
+    client = configuration_client
+    response = client.post(
+        "/api/config/adopt-packaged",
+        json={"units": ["discovery"], "expected_head_revision": 0},
+    )
+    assert response.status_code == 409, response.text
+
+
+def test_adopt_packaged_refuses_an_unknown_unit(configuration_client: TestClient) -> None:
+    client = configuration_client
+    _release_with_an_edited_discovery(client, "adopt-base-unknown")
+    response = client.post(
+        "/api/config/adopt-packaged",
+        json={"units": ["no_such_key"], "expected_head_revision": 1},
+    )
+    assert response.status_code == 422, response.text
+
+
+def test_adopt_packaged_publishes_the_requested_unit(
+    configuration_client: TestClient, test_settings: Settings
+) -> None:
+    client = configuration_client
+    _release_with_an_edited_discovery(client, "adopt-base")
+
+    response = client.post(
+        "/api/config/adopt-packaged",
+        json={"units": ["discovery"], "expected_head_revision": 1},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["status"] == "RELEASED"
+    assert data["head_revision"] == 2
+    packaged_discovery = load_return_configuration(
+        test_settings.return_configuration_path
+    ).configuration.discovery.model_dump(mode="json")
+    assert data["domains"]["RETURN_PLATFORM"]["discovery"] == packaged_discovery
+    # Nothing else was left undecided: the only divergence from packaged was
+    # the one key requested, and every other key already matched.
+    assert data["undecided"] == {
+        "RETURN_PLATFORM": [],
+        "AI_GATEWAY": [],
+        "DEPENDENCY_SIMULATION": [],
+    }
+
+    records = client.app.state.audit_records
+    assert records[-1]["action"] == "CONFIGURATION_PACKAGED_ADOPTED"
+    assert records[-1]["details"]["units"] == ["discovery"]
+
+
+def test_adopt_packaged_refuses_a_stale_head_and_leaves_nothing_behind(
+    configuration_client: TestClient,
+) -> None:
+    client = configuration_client
+    _release_with_an_edited_discovery(client, "adopt-stale-base")
+
+    response = client.post(
+        "/api/config/adopt-packaged",
+        json={"units": ["discovery"], "expected_head_revision": 0},
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["code"] == "CONFIGURATION_REVISION_CONFLICT"
+
+    releases = client.get("/api/config/releases").json()["data"]
+    # The base release is RELEASED; anything this refused call created is
+    # archived, not left DRAFT or VALIDATED for a retry to trip over.
+    statuses = {release["status"] for release in releases}
+    assert statuses <= {"RELEASED", "ARCHIVED"}, statuses
+
+
+def test_adopt_packaged_needs_the_release_write_capability() -> None:
+    from return_platform.security import roles as r
+    from return_platform.security.capabilities import CONFIG_RELEASE_WRITE, capabilities_for_roles
+
+    app = FastAPI()
+    app.include_router(router)
+    unentitled = next(
+        role
+        for role in sorted(r.ALL_ROLES)
+        if CONFIG_RELEASE_WRITE not in capabilities_for_roles(frozenset({role}))
+    )
+
+    @app.middleware("http")
+    async def attach_principal(request: Request, call_next: Any) -> Any:
+        request.state.principal = Principal(subject="reader", roles=frozenset({unentitled}))
+        request.state.correlation_id = "test-correlation-id"
+        return await call_next(request)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/config/adopt-packaged",
+        json={"units": [], "expected_head_revision": 0},
+    )
+    assert response.status_code == 403, response.text
+
+
+def test_packaged_drift_reports_undecided_would_adopt_and_filled_leaves(
+    configuration_client: TestClient,
+) -> None:
+    client = configuration_client
+    _release_with_an_edited_discovery(client, "drift-base")
+
+    response = client.get("/api/config/packaged-drift")
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert {"RETURN_PLATFORM", "AI_GATEWAY", "DEPENDENCY_SIMULATION"} <= set(data)
+    for domain in data.values():
+        assert {"undecided", "would_adopt", "filled_leaves"} <= set(domain)
+    # No baseline was ever recorded for this release, so the one key that
+    # disagrees with the packaged file (discovery) is undecided, not silently
+    # adopted.
+    assert "discovery" in data["RETURN_PLATFORM"]["undecided"]
+    assert "discovery" not in data["RETURN_PLATFORM"]["would_adopt"]
+
+
+def test_packaged_drift_with_no_active_release_shows_everything_adoptable(
+    configuration_client: TestClient,
+) -> None:
+    """With nothing published yet there is nothing to disagree with, so every
+    packaged key is something a first publish would carry -- not undecided."""
+    client = configuration_client
+    response = client.get("/api/config/packaged-drift")
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["RETURN_PLATFORM"]["undecided"] == []
+    assert "discovery" in data["RETURN_PLATFORM"]["would_adopt"]
+
+
+@pytest.mark.asyncio
+async def test_adopt_packaged_api_matches_a_cli_run(
+    configuration_client: TestClient,
+    test_settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Acceptance: adopt-packaged producing the same release a CLI run would.
+
+    Same starting state (an active release whose `discovery` diverges from
+    the packaged file with no recorded baseline) fed to
+    `bootstrap_graph_configuration.main(adopt_packaged_keys=("discovery",))`
+    against one in-memory repository and to `POST /adopt-packaged` against a
+    second, freshly seeded copy of the same state. Both call
+    `adopt_packaged_configuration`; this proves the two callers actually
+    agree on its output, not just that both compile against it.
+    """
+    packaged = load_return_configuration(test_settings.return_configuration_path).configuration
+    packaged_payload = packaged.model_dump(mode="json")
+    older_payload = {
+        **packaged_payload,
+        "discovery": {**packaged_payload["discovery"], "identification_fields": []},
+    }
+    ai_gateway_payload = load_ai_gateway_configuration(
+        test_settings.ai_gateway_configuration_path
+    ).configuration.model_dump(mode="json")
+    dependency_simulation_payload = load_dependency_simulation_configuration(
+        test_settings.dependency_simulation_configuration_path
+    ).configuration.model_dump(mode="json")
+
+    async def _seed(repo: InMemoryConfigurationGraphRepository) -> None:
+        for domain_key, payload in (
+            (RETURN_PLATFORM_DOMAIN_KEY, older_payload),
+            (AI_GATEWAY_DOMAIN_KEY, ai_gateway_payload),
+            (DEPENDENCY_SIMULATION_DOMAIN_KEY, dependency_simulation_payload),
+        ):
+            await repo.save_draft_domain("base-release", domain_key, payload, actor_id="seed")
+        await repo.promote_release("base-release", "VALIDATED", actor_id="seed")
+        await repo.promote_release(
+            "base-release", "RELEASED", actor_id="seed", expected_head_revision=0
+        )
+
+    # --- CLI side: main() against its own fresh in-memory repository ---
+    cli_repo = InMemoryConfigurationGraphRepository()
+    await _seed(cli_repo)
+
+    class _Driver:
+        async def verify_connectivity(self) -> None:
+            return None
+
+        async def close(self) -> None:
+            return None
+
+    async def resolve_settings(*_args: object, **_kwargs: object) -> tuple[object, object]:
+        return test_settings, object()
+
+    monkeypatch.setattr(
+        bootstrap_graph_configuration, "resolve_runtime_settings_from_vault", resolve_settings
+    )
+    monkeypatch.setattr(
+        bootstrap_graph_configuration.AsyncGraphDatabase,
+        "driver",
+        lambda *_args, **_kwargs: _Driver(),
+    )
+    monkeypatch.setattr(
+        bootstrap_graph_configuration, "Neo4jConfigurationGraphRepository", lambda _driver: cli_repo
+    )
+
+    await bootstrap_graph_configuration.main(adopt_packaged_keys=("discovery",))
+
+    cli_active = await cli_repo.get_active_release()
+    assert cli_active is not None
+    cli_domains = await cli_repo.get_all_domain_configs(cli_active.release_id)
+
+    # --- API side: the identical starting state, through the route ---
+    client = configuration_client
+    api_repo = client.app.state.graph_configuration_repository
+    await _seed(api_repo)
+
+    response = client.post(
+        "/api/config/adopt-packaged",
+        json={"units": ["discovery"], "expected_head_revision": 1},
+    )
+    assert response.status_code == 200, response.text
+    api_release_id = response.json()["data"]["release_id"]
+    api_domains = await api_repo.get_all_domain_configs(api_release_id)
+
+    assert api_domains[RETURN_PLATFORM_DOMAIN_KEY] == cli_domains[RETURN_PLATFORM_DOMAIN_KEY]
+    assert api_domains[AI_GATEWAY_DOMAIN_KEY] == cli_domains[AI_GATEWAY_DOMAIN_KEY]
+    assert (
+        api_domains[DEPENDENCY_SIMULATION_DOMAIN_KEY]
+        == cli_domains[DEPENDENCY_SIMULATION_DOMAIN_KEY]
+    )

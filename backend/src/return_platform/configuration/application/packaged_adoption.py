@@ -52,8 +52,10 @@ __all__ = [
     "CARRY_FORWARD_SPLIT_KEYS",
     "PACKAGED_DOMAIN_KEY_DIGESTS",
     "PACKAGED_KEY_DIGESTS",
+    "DomainDrift",
     "PackagedAdoptionResult",
     "adopt_packaged_configuration",
+    "summarize_packaged_drift",
 ]
 
 #: Release metadata key holding a digest of each top-level value in the PACKAGED
@@ -480,3 +482,124 @@ def adopt_packaged_configuration(
         recordable_domain_baselines=recordable_domain_baselines,
         undecided=undecided,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class DomainDrift:
+    """One domain's undecided-keys panel -- `GET /api/config/packaged-drift`.
+
+    `undecided` is `adopt_packaged_configuration`'s own answer, unchanged.
+    `would_adopt` and `filled_leaves` are presentation-only: derived from the
+    same merge, for an operator deciding whether to act, and neither feeds
+    back into the merge itself.
+    """
+
+    undecided: tuple[str, ...] = ()
+    #: Keys/units the packaged file changed (or added) that this run DOES
+    #: carry into the merge -- an automatic adoption, not a conflict. Shown
+    #: so "nothing is undecided" does not read as "nothing changed".
+    would_adopt: tuple[str, ...] = ()
+    #: Dotted leaf paths `_fill_absent_leaves` added inside an UNDECIDED key
+    #: -- a mapping entry the packaged file has and the release does not,
+    #: filled in even though the key around it stays the release's value.
+    filled_leaves: tuple[str, ...] = ()
+
+
+def _added_leaf_paths(packaged_value: Any, active_value: Any, prefix: str) -> list[str]:
+    """Dotted paths `_fill_absent_leaves` would add to `active_value`.
+
+    Mirrors `_fill_absent_leaves`'s own recursion (mappings only, any depth)
+    but reports WHERE it would fill rather than the filled result -- the
+    thing an operator reading a drift panel needs and a publish does not.
+    """
+    if not isinstance(packaged_value, dict) or not isinstance(active_value, dict):
+        return []
+    paths: list[str] = []
+    for key, value in packaged_value.items():
+        child = f"{prefix}.{key}" if prefix else str(key)
+        if key not in active_value:
+            paths.append(child)
+        else:
+            paths.extend(_added_leaf_paths(value, active_value[key], child))
+    return paths
+
+
+def _would_adopt(
+    packaged: Mapping[str, Any], active: Mapping[str, Any], undecided: frozenset[str]
+) -> tuple[str, ...]:
+    """Keys/units the packaged file changed (or added) that are NOT undecided.
+
+    Every one of these is either absent from `active` (a brand new key/unit,
+    nothing to conflict with) or present with a different value and decided
+    in the file's favour -- `adopt_packaged_configuration` already excluded
+    the conflicted case from `undecided`'s complement by construction, so
+    this is a filter, not a second decision.
+    """
+    _unset = object()
+    return tuple(
+        sorted(
+            key
+            for key, value in packaged.items()
+            if key not in undecided and active.get(key, _unset) != value
+        )
+    )
+
+
+def summarize_packaged_drift(
+    *,
+    packaged_return_platform: Mapping[str, Any],
+    packaged_domains: Mapping[str, Mapping[str, Any]],
+    active_return_platform: Mapping[str, Any] | None,
+    active_domains: Mapping[str, Mapping[str, Any]],
+    active_metadata: Mapping[str, Any],
+) -> dict[str, DomainDrift]:
+    """The Overview screen's undecided-keys panel, per domain.
+
+    Runs the identical `adopt_packaged_configuration` decision -- `undecided`
+    is read straight off its result, so this can never disagree with what
+    `POST /adopt-packaged` (or the CLI) would actually do -- then derives the
+    two read-only fields neither of those callers has a use for, from the
+    same packaged/active inputs. No write, no `--adopt-packaged-key`: this is
+    always the "nothing explicitly requested" computation, because the panel
+    it serves is what tells an operator which keys exist to be requested.
+    """
+    result = adopt_packaged_configuration(
+        packaged_return_platform=packaged_return_platform,
+        packaged_domains=packaged_domains,
+        active_return_platform=active_return_platform,
+        active_domains=active_domains,
+        active_metadata=active_metadata,
+    )
+
+    drift: dict[str, DomainDrift] = {}
+
+    active_rp = dict(active_return_platform or {})
+    undecided_rp = frozenset(result.undecided.get(RETURN_PLATFORM_DOMAIN_KEY, ()))
+    filled_rp: list[str] = []
+    for key in sorted(undecided_rp):
+        filled_rp.extend(
+            _added_leaf_paths(packaged_return_platform.get(key), active_rp.get(key), key)
+        )
+    drift[RETURN_PLATFORM_DOMAIN_KEY] = DomainDrift(
+        undecided=result.undecided.get(RETURN_PLATFORM_DOMAIN_KEY, ()),
+        would_adopt=_would_adopt(packaged_return_platform, active_rp, undecided_rp),
+        filled_leaves=tuple(filled_rp),
+    )
+
+    for domain_key, packaged_domain in packaged_domains.items():
+        split_keys = CARRY_FORWARD_SPLIT_KEYS[domain_key]
+        packaged_units = _units(packaged_domain, split_keys)
+        active_units = _units(active_domains.get(domain_key, {}), split_keys)
+        undecided_units = frozenset(result.undecided.get(domain_key, ()))
+        filled_units: list[str] = []
+        for unit in sorted(undecided_units):
+            filled_units.extend(
+                _added_leaf_paths(packaged_units.get(unit), active_units.get(unit), unit)
+            )
+        drift[domain_key] = DomainDrift(
+            undecided=result.undecided.get(domain_key, ()),
+            would_adopt=_would_adopt(packaged_units, active_units, undecided_units),
+            filled_leaves=tuple(filled_units),
+        )
+
+    return drift

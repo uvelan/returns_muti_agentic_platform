@@ -1052,3 +1052,77 @@ Not yet built: the API routes (`POST /adopt-packaged`, `GET /packaged-drift`)
 that call this function -- next step.
 
 Head sha: see commit. `merge_status: PARTIAL`.
+
+## CFG-3a step:06 — item 3 (part 2): `POST /adopt-packaged`, `GET /packaged-drift`
+
+Added `DomainDrift`/`summarize_packaged_drift` to `packaged_adoption.py`: runs
+`adopt_packaged_configuration` with nothing explicitly requested and derives
+two read-only fields from the same inputs -- `would_adopt` (packaged
+keys/units that differ from the active release and are NOT undecided: a real
+adoption this run would carry, filtered rather than separately decided) and
+`filled_leaves` (dotted paths `_fill_absent_leaves` would add inside an
+undecided key, via a small mirror of its own recursion, `_added_leaf_paths`).
+`undecided` is read straight off the merge result -- the same value
+`POST /adopt-packaged` would report -- so the two can never disagree about
+what is undecided.
+
+`release_promotion.py`'s `publish_release_with_domains` gained an optional
+`expected_head_revision` parameter (default `None`, preserving the exact
+behaviour of its two existing callers, the agent-configuration and feedback
+governance adapters, which never pass it and keep reading the head fresh
+between promotions). `/adopt-packaged` and (later) `/publish` pass their own
+caller-supplied value instead, turning the compare-and-set into an actual
+optimistic lock against a stale `GET` rather than only against a race
+between the function's own two promotions.
+
+New in `releases.py`: `AdoptPackagedPayload` (`units`, `expected_head_revision`),
+`_packaged_domain_payloads`, `_archive_draft_on_refusal`,
+`adopt_packaged_release`, `get_packaged_drift`. Both mounted in `router.py`
+under `CONFIG_RELEASE_WRITE` (packaged-drift too -- "the panel that tells an
+operator what to request", not a general configuration read).
+
+**Bug found and fixed while writing the equivalence test.**
+`_packaged_domain_payloads` first read `app.state.return_configuration` /
+`ai_gateway_configuration` -- the same snapshot `create_release` reads as a
+fallback. That snapshot is NOT stable: `RuntimeConfigurationActivator.refresh`
+overwrites it with the ACTIVE RELEASE's own configuration the moment one is
+promoted (`runtime_activation.py:375`), so after this process has ever
+activated a release, `app.state.return_configuration` no longer reflects the
+packaged file at all -- it reflects whatever was last released, which
+defeated the entire comparison `adopt_packaged_configuration` exists to make.
+Caught because the equivalence test (below) failed silently -- adopted units
+came back unchanged rather than adopted -- traced with a throwaway debug
+test comparing the direct function call against the same call through the
+route. Fixed by reading `settings.return_configuration_path` /
+`ai_gateway_configuration_path` / `dependency_simulation_configuration_path`
+fresh on every call, the same source the CLI reads from disk on every
+invocation -- "packaged" now means the same thing to both callers.
+
+**Acceptance: adopt-packaged producing the same release a CLI run would.**
+`test_adopt_packaged_api_matches_a_cli_run` seeds two fresh
+`InMemoryConfigurationGraphRepository` instances with the identical starting
+state (an active release whose `discovery` diverges from the packaged file
+with no recorded baseline), runs `bootstrap_graph_configuration.main
+(adopt_packaged_keys=("discovery",))` against one and `POST /adopt-packaged`
+against the other, and asserts the three published domain payloads are
+byte-equal.
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/test_configuration_api.py -q -p no:cacheprovider
+24 passed in 14.38s
+$ .venv/Scripts/python.exe -m pytest tests/configuration tests/test_configuration_api.py tests/test_every_console_path_is_mounted.py tests/api tests/test_graph_configuration_bootstrap.py tests/security -q -p no:cacheprovider
+730 passed, 13 deselected, 2 warnings in 98.50s
+$ .venv/Scripts/python.exe -m ruff check src/return_platform/configuration/api/releases.py src/return_platform/configuration/api/router.py src/return_platform/configuration/application/release_promotion.py tests/test_configuration_api.py tests/configuration/test_canonical_config_api.py tests/security/test_guards_match_the_console.py
+All checks passed!
+$ .venv/Scripts/python.exe -m ruff format --check <same files>
+(after one reformat) all formatted
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy src/return_platform/configuration/api/releases.py src/return_platform/configuration/api/router.py src/return_platform/configuration/application/release_promotion.py
+Success: no issues found in 3 source files
+```
+
+`tests/configuration/test_canonical_config_api.py`'s mutation-surface pin
+updated for the new genuine mutation `POST /adopt-packaged` (`/validate`
+stays the one documented non-write exception).
+
+Head sha: see commit. `merge_status: PARTIAL`. Remaining: item 2 (`/publish`),
+item 6 (audit filter), item 7 (OpenAPI regen).

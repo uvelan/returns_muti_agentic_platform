@@ -17,20 +17,36 @@ import copy
 import json
 import logging
 from typing import Any, Literal, cast
+from uuid import uuid4
 
 from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-from return_platform.ai.routing.tasks import AIGatewayConfiguration, LoadedAIGatewayConfiguration
+from return_platform.ai.routing.tasks import (
+    AIGatewayConfiguration,
+    LoadedAIGatewayConfiguration,
+    load_ai_gateway_configuration,
+)
+from return_platform.configuration.application.packaged_adoption import (
+    PACKAGED_DOMAIN_KEY_DIGESTS,
+    PACKAGED_KEY_DIGESTS,
+    adopt_packaged_configuration,
+    summarize_packaged_drift,
+)
 from return_platform.configuration.application.release_promotion import (
     ReleasePromotionError,
     promote_configuration_release,
+    publish_release_with_domains,
 )
 from return_platform.configuration.graph_repository import (
     ConfigurationGraphRepository,
 )
-from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
+from return_platform.configuration.return_configuration import (
+    ReturnPlatformConfiguration,
+    load_return_configuration,
+)
 from return_platform.configuration.runtime_activation import RuntimeConfigurationActivator
+from return_platform.configuration.settings import Settings
 from return_platform.configuration.snapshot import (
     AI_GATEWAY_DOMAIN_KEY,
     DEPENDENCY_SIMULATION_DOMAIN_KEY,
@@ -39,10 +55,16 @@ from return_platform.configuration.snapshot import (
 from return_platform.dependency_simulation.configuration import (
     DependencySimulationConfiguration,
     LoadedDependencySimulationConfiguration,
+    load_dependency_simulation_configuration,
 )
 from return_platform.operations.repository import resolve_operational_repository
 from return_platform.resources import RuntimeResources
-from return_platform.security.authorization import require_read_roles, require_write_roles
+from return_platform.security import capabilities
+from return_platform.security.authorization import (
+    require_capability,
+    require_read_roles,
+    require_write_roles,
+)
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 logger = logging.getLogger(__name__)
@@ -595,4 +617,240 @@ async def promote_release_status(
             "head_revision": outcome.activated_snapshot.head_revision,
             "loaded_at": outcome.activated_snapshot.loaded_at,
         }
+    return APIResponse(data=data, meta=_response_meta(request))
+
+
+# --- packaged adoption ---------------------------------------------------------
+#
+# CFG-3a scope item 3. `adopt_packaged_configuration` is
+# `bootstrap_graph_configuration.main`'s own carry-forward decision, extracted
+# so this route and the CLI can never disagree about which key an edit
+# belongs to -- see `configuration/application/packaged_adoption.py`.
+
+
+def _packaged_domain_payloads(request: Request) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
+    """The packaged files on disk, read fresh, as dicts.
+
+    **Not `app.state.return_configuration`/`ai_gateway_configuration`.**
+    Those hold the RUNTIME snapshot: `RuntimeConfigurationActivator.refresh`
+    overwrites them with whatever the ACTIVE RELEASE contains the moment one
+    is promoted (`runtime_activation.py:375`), so after this process has ever
+    activated a release, `app.state.return_configuration` no longer reflects
+    the packaged file at all -- it reflects the release, which is exactly the
+    other side of the comparison this function exists to make possible. The
+    CLI reads `settings.return_configuration_path` fresh on every invocation
+    for the same reason; this does the same read, from the same paths, so
+    "packaged" means the same thing to both callers of
+    `adopt_packaged_configuration`.
+    """
+    settings = getattr(request.app.state, "settings", None)
+    if not isinstance(settings, Settings):
+        raise HTTPException(status_code=503, detail="Packaged configuration is unavailable")
+    try:
+        loaded = load_return_configuration(settings.return_configuration_path)
+        loaded_ai_gateway = load_ai_gateway_configuration(settings.ai_gateway_configuration_path)
+        loaded_dependency_simulation = load_dependency_simulation_configuration(
+            settings.dependency_simulation_configuration_path
+        )
+    except (OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503, detail=f"Packaged configuration is unavailable: {exc}"
+        ) from exc
+    return (
+        loaded.configuration.model_dump(mode="json"),
+        {
+            AI_GATEWAY_DOMAIN_KEY: loaded_ai_gateway.configuration.model_dump(mode="json"),
+            DEPENDENCY_SIMULATION_DOMAIN_KEY: (
+                loaded_dependency_simulation.configuration.model_dump(mode="json")
+            ),
+        },
+    )
+
+
+async def _archive_draft_on_refusal(
+    repo: ConfigurationGraphRepository, release_id: str, actor_id: str
+) -> None:
+    """Leave nothing behind: a release this request itself created and did
+    not reach RELEASED is archived rather than left an orphaned DRAFT or
+    VALIDATED node.
+
+    `ARCHIVED` is reachable from both `DRAFT` and `VALIDATED`
+    (`RELEASE_TRANSITIONS`) -- this is the existing lifecycle's own way to
+    retire a release nobody will publish, not a new transition invented for
+    the rollback. Best-effort and silent on failure: a release that never got
+    created (the refusal happened before the first `save_draft_domain`) has
+    nothing to archive, and either case must not turn a real refusal into a
+    second, more confusing error.
+    """
+    try:
+        current = await repo.get_release(release_id)
+        if current is not None and current.status in {"DRAFT", "VALIDATED"}:
+            await repo.promote_release(release_id, "ARCHIVED", actor_id=actor_id)
+    except Exception:  # noqa: BLE001 -- the original refusal is what must surface
+        logger.exception(
+            "configuration_release_rollback_failed release_id=%s",
+            release_id,
+        )
+
+
+class AdoptPackagedPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    #: `<key>` (a RETURN_PLATFORM top-level key, `discovery`) or
+    #: `<DOMAIN>/<unit>` (`AI_GATEWAY/tasks.RETURN_STATUS_SUMMARY_V1`,
+    #: `DEPENDENCY_SIMULATION/dependencies.OMC`) -- the same vocabulary
+    #: `--adopt-packaged-key` uses, checked by the same `_adopt_requests`.
+    units: list[str] = Field(default_factory=list)
+    expected_head_revision: int = Field(ge=0)
+
+
+async def adopt_packaged_release(
+    body: AdoptPackagedPayload,
+    request: Request,
+    user_id: str = Depends(require_capability(capabilities.CONFIG_RELEASE_WRITE)),
+) -> APIResponse[dict[str, Any]]:
+    """Publish a release that adopts the named packaged units.
+
+    The API's answer to a `packaged_configuration_not_adopted` warning,
+    without a CLI invocation: everything named in `units` is taken from the
+    packaged file for that key/unit; everything else keeps the active
+    release's value exactly as the CLI's carry-forward would leave it.
+    Publishes through `publish_release_with_domains` -- the same clone,
+    overlay, VALIDATED-then-RELEASED sequence `/publish` and the governance
+    kernel use -- with `expected_head_revision` as the caller's own
+    optimistic lock rather than a value read fresh at the moment of
+    publishing, since an operator resolving a drift panel is acting on a
+    `GET /packaged-drift` read that may already be stale.
+
+    On refusal the release this call created is archived, not left behind.
+    """
+    repo = resolve_configuration_repository(request)
+    active = await repo.get_active_release()
+    if active is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "There is no active configuration release to adopt packaged configuration into"
+            ),
+        )
+
+    packaged_return_platform, packaged_domains = _packaged_domain_payloads(request)
+    active_domain_payloads = await repo.get_all_domain_configs(active.release_id)
+
+    try:
+        adoption = adopt_packaged_configuration(
+            packaged_return_platform=packaged_return_platform,
+            packaged_domains=packaged_domains,
+            active_return_platform=active_domain_payloads.get(RETURN_PLATFORM_DOMAIN_KEY),
+            active_domains={
+                key: value
+                for key, value in active_domain_payloads.items()
+                if key in packaged_domains
+            },
+            active_metadata=active.metadata,
+            adopt_packaged_keys=tuple(body.units),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if RETURN_PLATFORM_DOMAIN_KEY not in adoption.merged_domains:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "The active release's RETURN_PLATFORM domain no longer validates against "
+                "the packaged configuration; nothing was published"
+            ),
+        )
+
+    resources = getattr(request.app.state, "resources", None)
+    store = resources if isinstance(resources, RuntimeResources) else None
+    activator = getattr(request.app.state, "runtime_configuration_activator", None)
+    release_id = f"adopt-packaged-{uuid4().hex[:16]}"
+
+    try:
+        outcome = await publish_release_with_domains(
+            repository=repo,
+            release_id=release_id,
+            domains=adoption.merged_domains,
+            actor_id=user_id,
+            mongo=store.mongo if store is not None else None,
+            mongo_database=store.settings.mongo_database if store is not None else None,
+            activator=(activator if isinstance(activator, RuntimeConfigurationActivator) else None),
+            expected_head_revision=body.expected_head_revision,
+        )
+    except ReleasePromotionError as exc:
+        await _archive_draft_on_refusal(repo, release_id, user_id)
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    # Metadata sits outside the checksum (frozen at VALIDATED), so it may be
+    # set after RELEASED -- the same ordering `bootstrap_graph_configuration.main`
+    # uses. `adoption.recordable_baseline`/`recordable_domain_baselines`
+    # already carry forward every previously-known digest (`_carry_forward`
+    # starts from the active release's own baseline), so this replaces the
+    # release's metadata wholesale rather than merging it -- exactly what the
+    # CLI's `set_release_metadata(release_id, release_metadata)` does.
+    await repo.set_release_metadata(
+        release_id,
+        {
+            PACKAGED_KEY_DIGESTS: adoption.recordable_baseline,
+            PACKAGED_DOMAIN_KEY_DIGESTS: adoption.recordable_domain_baselines,
+        },
+    )
+
+    undecided = {key: list(value) for key, value in adoption.undecided.items()}
+    await record_configuration_audit(
+        request,
+        action="CONFIGURATION_PACKAGED_ADOPTED",
+        actor=user_id,
+        target=release_id,
+        details={"units": sorted(body.units), "undecided": undecided},
+    )
+
+    data = outcome.release.model_dump(mode="json")
+    data["domains"] = outcome.domains
+    data["head_revision"] = outcome.head_revision
+    data["undecided"] = undecided
+    return APIResponse(data=data, meta=_response_meta(request))
+
+
+async def get_packaged_drift(
+    request: Request,
+    _user_id: str = Depends(require_capability(capabilities.CONFIG_RELEASE_WRITE)),
+) -> APIResponse[dict[str, dict[str, list[str]]]]:
+    """The Overview screen's undecided-keys panel: `{undecided, would_adopt,
+    filled_leaves}` per domain, read-only.
+
+    Runs `summarize_packaged_drift`, which itself runs
+    `adopt_packaged_configuration` with nothing explicitly requested -- the
+    same computation `POST /adopt-packaged` would run for an empty `units`
+    list -- so this can never show a key as decidable that adopting it would
+    then refuse. Gated the same way `/adopt-packaged` is: this is the panel
+    that tells an operator what there is to request, not a general
+    configuration read.
+    """
+    repo = resolve_configuration_repository(request)
+    active = await repo.get_active_release()
+    packaged_return_platform, packaged_domains = _packaged_domain_payloads(request)
+    active_domain_payloads = (
+        await repo.get_all_domain_configs(active.release_id) if active is not None else {}
+    )
+
+    drift = summarize_packaged_drift(
+        packaged_return_platform=packaged_return_platform,
+        packaged_domains=packaged_domains,
+        active_return_platform=active_domain_payloads.get(RETURN_PLATFORM_DOMAIN_KEY),
+        active_domains={
+            key: value for key, value in active_domain_payloads.items() if key in packaged_domains
+        },
+        active_metadata=active.metadata if active is not None else {},
+    )
+
+    data = {
+        domain_key: {
+            "undecided": list(domain_drift.undecided),
+            "would_adopt": list(domain_drift.would_adopt),
+            "filled_leaves": list(domain_drift.filled_leaves),
+        }
+        for domain_key, domain_drift in drift.items()
+    }
     return APIResponse(data=data, meta=_response_meta(request))

@@ -204,6 +204,7 @@ async def publish_release_with_domains(
     mongo: AsyncMongoClient[dict[str, object]] | None,
     mongo_database: str | None,
     activator: RuntimeConfigurationActivator | None,
+    expected_head_revision: int | None = None,
 ) -> PromotionOutcome:
     """Cut a release from the active one with `domains` overlaid, and publish it.
 
@@ -213,10 +214,17 @@ async def publish_release_with_domains(
     is not a release, it is a way to delete the other three), overwrite what
     changed, then VALIDATED and only then RELEASED.
 
-    `expected_head_revision` is read between the two promotions rather than at
-    the start. Publication is compare-and-set on that value; reading it earlier
+    `expected_head_revision`, when omitted (the default every existing caller
+    uses), is read between the two promotions rather than at the start --
+    publication is compare-and-set on that value, and reading it earlier
     widens the window in which another publisher slips in and this one still
-    claims the head it expected.
+    claims the head it expected. A caller that already has its OWN
+    `expected_head_revision` -- the canonical `/publish` and
+    `/adopt-packaged` routes, reading it from a request body the same way
+    `POST /releases/{id}/promote` does -- passes it explicitly instead: this
+    is what turns the compare-and-set into an optimistic lock against that
+    caller's own stale read, not just against a race between this
+    function's own two promotions.
     """
     active = await repository.get_active_release()
     if active is None:
@@ -256,7 +264,11 @@ async def publish_release_with_domains(
         release_id=release_id,
         target_status="RELEASED",
         actor_id=actor_id,
-        expected_head_revision=await repository.get_head_revision(),
+        expected_head_revision=(
+            expected_head_revision
+            if expected_head_revision is not None
+            else await repository.get_head_revision()
+        ),
         mongo=mongo,
         mongo_database=mongo_database,
         activator=activator,

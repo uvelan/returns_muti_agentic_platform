@@ -37,6 +37,7 @@ from return_platform.configuration.api.audit import AuditLog
 from return_platform.configuration.api.audit import get_audit_log as console_get_audit_log
 from return_platform.configuration.api.audit import list_audit_logs as console_list_audit_logs
 from return_platform.configuration.api.releases import (
+    AdoptPackagedPayload,
     ConfigurationReleaseDetailView,
     ConfigurationReleaseView,
     CreateReleasePayload,
@@ -46,7 +47,13 @@ from return_platform.configuration.api.releases import (
     resolve_configuration_repository,
 )
 from return_platform.configuration.api.releases import (
+    adopt_packaged_release as console_adopt_packaged_release,
+)
+from return_platform.configuration.api.releases import (
     create_release as console_create_release,
+)
+from return_platform.configuration.api.releases import (
+    get_packaged_drift as console_get_packaged_drift,
 )
 from return_platform.configuration.api.releases import (
     patch_domain_config as console_patch_domain_config,
@@ -301,6 +308,51 @@ async def validate_domain(
     capability an eventual patch would.
     """
     response = await console_validate_domain_config(domain_key, body, request, _user_id)
+    return _ok(request, response.data)
+
+
+# --- packaged adoption ---------------------------------------------------------
+#
+# CFG-3a scope item 3. `adopt_packaged_configuration` is the CLI's own
+# carry-forward decision, extracted so this route and
+# `bootstrap_graph_configuration.main` can never disagree about which key an
+# edit belongs to -- see `configuration/application/packaged_adoption.py`.
+# Gated by `config.release.write`, the same capability `/releases` and PATCH
+# use: adopting a packaged unit overwrites the release exactly as a patch
+# would, through the same publish pipeline `/publish` (below, once built)
+# uses -- not a role group either handler was ever reachable through.
+
+
+@router.post("/adopt-packaged", response_model=APIResponse[dict[str, Any]])
+async def adopt_packaged(
+    body: AdoptPackagedPayload,
+    request: Request,
+    user_id: str = Depends(require_capability(capabilities.CONFIG_RELEASE_WRITE)),
+) -> APIResponse[Any]:
+    """Publish a release adopting the named packaged units, per-key audited.
+
+    The API's answer to a `packaged_configuration_not_adopted` warning: what
+    `--adopt-packaged-key` does from a terminal, this does from the
+    Configuration screen. On refusal the release this call created is
+    archived rather than left behind -- nothing is left for a retry to trip
+    over.
+    """
+    response = await console_adopt_packaged_release(body, request, user_id)
+    return _ok(request, response.data)
+
+
+@router.get("/packaged-drift", response_model=APIResponse[dict[str, dict[str, list[str]]]])
+async def packaged_drift(
+    request: Request,
+    _user_id: str = Depends(require_capability(capabilities.CONFIG_RELEASE_WRITE)),
+) -> APIResponse[Any]:
+    """The Overview screen's undecided-keys panel: read-only, per domain.
+
+    `config.release.write`, not a read capability: this is the panel that
+    tells an operator what `POST /adopt-packaged` would let them request, not
+    a general configuration read every read-role principal needs.
+    """
+    response = await console_get_packaged_drift(request, _user_id)
     return _ok(request, response.data)
 
 
