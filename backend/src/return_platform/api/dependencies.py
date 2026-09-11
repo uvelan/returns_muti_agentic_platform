@@ -193,7 +193,10 @@ async def _cards(request: Request) -> list[dict[str, Any]]:
         "OLLAMA": bool(settings.ollama_model),
         "SIMULATOR": settings.environment in {"development", "test"},
     }
-    for provider in ai_settings.providerOrder:
+    # CFG-6: provider order reads `settings.ai_provider_order` -- the release's
+    # `deployment.ai.provider_order` -- not the retired
+    # `AIGatewaySettingsView.providerOrder`.
+    for provider in settings.ai_provider_order.split(","):
         configured = providers.get(provider, False)
         is_simulator = provider == "SIMULATOR"
         cards.append(
