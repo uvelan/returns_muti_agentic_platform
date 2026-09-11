@@ -921,3 +921,39 @@ Success: no issues found in 2 source files
 ```
 
 Head sha: see commit. `merge_status: PARTIAL`.
+
+## CFG-3a step:03 — item 4: CONFIG_RELEASE_WRITE capability
+
+New capability `config.release.write`, added to `ALL_CAPABILITIES` and to
+`WORKSPACE_EDITOR`'s bundle (`CONSOLE_ADMIN` already carries `ALL_CAPABILITIES`).
+`POST /api/config/releases` and `PATCH /api/config/releases/{release_id}/
+domains/{domain_key}` narrowed from `require_write_roles` (seven roles) to
+`require_capability(CONFIG_RELEASE_WRITE)` -- the same narrowing
+`CONFIG_RELEASE_PROMOTE` already did for `/promote`, and for the same
+reason: a role that cannot promote a release should not be able to shape
+what a promoter promotes either. `promote` itself is untouched
+(`CONFIG_RELEASE_PROMOTE`, unchanged). `/api/principal`'s capability
+advertisement needs no separate change -- it derives from
+`capabilities_for_roles` directly.
+
+`tests/test_every_console_path_is_mounted.py`'s `CONFIGURATION_CAPABILITY_ROUTES`
+gained the two new guarded routes so `test_configuration_release_writes_are_guarded`
+walks the live dependency on both. `tests/security/test_guards_match_the_console.py`
+gained a parametrize case and two routed 403 tests (`test_creating_a_release_needs_the_release_write_capability`,
+`test_patching_a_release_domain_needs_the_release_write_capability`), following that
+file's own established pattern for a role-group-to-capability narrowing.
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/security/test_guards_match_the_console.py tests/security/test_capability_model.py tests/test_every_console_path_is_mounted.py tests/test_configuration_api.py tests/api/test_canonical_config_domains.py -q -p no:cacheprovider
+58 passed, 1 warning in 12.52s
+$ .venv/Scripts/python.exe -m pytest tests/api/test_canonical_principal.py -q -p no:cacheprovider
+6 passed, 1 warning in 0.41s
+$ .venv/Scripts/python.exe -m ruff check src/return_platform/security/capabilities.py src/return_platform/configuration/api/router.py tests/test_every_console_path_is_mounted.py tests/security/test_guards_match_the_console.py
+All checks passed!
+$ .venv/Scripts/python.exe -m ruff format --check <same 4 files>
+4 files already formatted
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy src/return_platform/security/capabilities.py src/return_platform/configuration/api/router.py
+Success: no issues found in 2 source files
+```
+
+Head sha: see commit. `merge_status: PARTIAL`.

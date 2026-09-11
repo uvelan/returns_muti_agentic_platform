@@ -71,6 +71,23 @@ RETURNS_REVIEW_RECOVERY: Final = "returns.review.recovery"
 # Configuration domain -- `/api/config`.
 CONFIG_RUNTIME_READ: Final = "config.runtime.read"
 CONFIG_RELEASE_READ: Final = "config.release.read"
+#: Creating a draft, patching a domain, publishing in one call, and adopting
+#: packaged configuration into a release -- `POST /releases`,
+#: `PATCH /releases/{id}/domains/{key}`, `POST /publish`,
+#: `POST /adopt-packaged`, `GET /packaged-drift` (CFG-3a).
+#:
+#: **Separate from `CONFIG_RELEASE_PROMOTE`, and deliberately not the same
+#: role reach.** `require_write_roles` used to guard these four routes, which
+#: is the same seven-role group that made `/promote` reachable by a
+#: `warehouse_associate` before `CONFIG_RELEASE_PROMOTE` narrowed it --
+#: `test_configuration_release_writes_are_guarded`'s own history. Widening a
+#: draft/patch/publish/adopt route back onto that group while promote stays
+#: narrow would only move the same gap one step earlier in the lifecycle:
+#: anyone who could shape a release's *contents* but not release it could
+#: still hand a validated draft to whoever promotes. So this capability gets
+#: exactly the two roles that edit configuration as their job -- the console
+#: operator and the workspace editor -- not the wider write-role set.
+CONFIG_RELEASE_WRITE: Final = "config.release.write"
 CONFIG_RELEASE_PROMOTE: Final = "config.release.promote"
 CONFIG_SOURCE_READ: Final = "config.source.read"
 CONFIG_SOURCE_WRITE: Final = "config.source.write"
@@ -128,6 +145,7 @@ ALL_CAPABILITIES: Final = frozenset(
         RETURNS_REVIEW_RECOVERY,
         CONFIG_RUNTIME_READ,
         CONFIG_RELEASE_READ,
+        CONFIG_RELEASE_WRITE,
         CONFIG_RELEASE_PROMOTE,
         CONFIG_SOURCE_READ,
         CONFIG_SOURCE_WRITE,
@@ -178,7 +196,12 @@ _ROLE_CAPABILITIES: Final[dict[str, frozenset[str]]] = {
     # rebinding is not a proposal anybody approves, it repoints production reads
     # on the next request.
     r.WORKSPACE_EDITOR: _READ_ONLY_EVERYWHERE
-    | {CONFIG_SOURCE_WRITE, GRAPH_SCHEMA_DRAFT_WRITE, GOVERNANCE_PROPOSAL_WRITE},
+    | {
+        CONFIG_SOURCE_WRITE,
+        CONFIG_RELEASE_WRITE,
+        GRAPH_SCHEMA_DRAFT_WRITE,
+        GOVERNANCE_PROPOSAL_WRITE,
+    },
     r.RETURN_ASSOCIATE: frozenset({RETURNS_SESSION_READ, RETURNS_SESSION_WRITE}),
     r.RETURN_SUPPORT: frozenset(
         {

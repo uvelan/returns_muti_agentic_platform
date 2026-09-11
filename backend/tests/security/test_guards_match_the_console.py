@@ -57,6 +57,7 @@ def _client(app: FastAPI, *role_names: str) -> Iterator[TestClient]:
     ("group", "capability", "what"),
     [
         (r.WRITE_ROLES, caps.CONFIG_RELEASE_PROMOTE, "promoting a configuration release"),
+        (r.WRITE_ROLES, caps.CONFIG_RELEASE_WRITE, "drafting or patching a configuration release"),
         (r.WRITE_ROLES, caps.GOVERNANCE_PROPOSAL_WRITE, "proposing an agent configuration"),
         (r.READ_ROLES, caps.AI_INTERCEPTION_READ, "listing the interception queue"),
     ],
@@ -94,6 +95,42 @@ def test_promoting_a_release_needs_the_promote_capability() -> None:
     # 403 and not 503: the grant resolves before the collaborators, so an
     # unauthorized caller cannot read this process's composition state off the
     # status code.
+    assert response.status_code == 403, response.text
+
+
+def test_creating_a_release_needs_the_release_write_capability() -> None:
+    """CFG-3a: `warehouse_associate` is a write role and has no reason to draft
+    a configuration release -- narrowed from `require_write_roles` the same
+    way `/promote` was narrowed above, so a role that cannot promote cannot
+    shape what a promoter promotes either."""
+    from return_platform.configuration.api.router import router
+
+    unentitled = _admitted_but_unentitled(r.WRITE_ROLES, caps.CONFIG_RELEASE_WRITE)
+    app = FastAPI()
+    app.include_router(router)
+
+    for client in _client(app, unentitled[0]):
+        response = client.post(
+            "/api/config/releases",
+            json={"release_id": "release-1"},
+        )
+
+    assert response.status_code == 403, response.text
+
+
+def test_patching_a_release_domain_needs_the_release_write_capability() -> None:
+    from return_platform.configuration.api.router import router
+
+    unentitled = _admitted_but_unentitled(r.WRITE_ROLES, caps.CONFIG_RELEASE_WRITE)
+    app = FastAPI()
+    app.include_router(router)
+
+    for client in _client(app, unentitled[0]):
+        response = client.patch(
+            "/api/config/releases/release-1/domains/RETURN_PLATFORM",
+            json={"patch": {}},
+        )
+
     assert response.status_code == 403, response.text
 
 

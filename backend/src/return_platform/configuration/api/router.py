@@ -73,7 +73,6 @@ from return_platform.security import capabilities
 from return_platform.security.authorization import (
     require_capability,
     require_read_roles,
-    require_write_roles,
 )
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
@@ -222,7 +221,12 @@ async def get_release(
 async def create_release(
     payload: CreateReleasePayload,
     request: Request,
-    user_id: str = Depends(require_write_roles),
+    # `config.release.write`, not `require_write_roles` -- CFG-3a. The role
+    # group admits the same seven roles `/promote` used to be reachable
+    # through before `CONFIG_RELEASE_PROMOTE` narrowed it; leaving draft
+    # creation on that group would let anyone who cannot promote still shape
+    # what a promoter promotes.
+    user_id: str = Depends(require_capability(capabilities.CONFIG_RELEASE_WRITE)),
 ) -> APIResponse[Any]:
     """Open a draft, cloned from the active release or the validated baseline.
 
@@ -247,7 +251,8 @@ async def patch_release_domain(
     domain_key: str,
     body: PatchDomainPayload,
     request: Request,
-    user_id: str = Depends(require_write_roles),
+    # `config.release.write` -- see the note on `create_release` above.
+    user_id: str = Depends(require_capability(capabilities.CONFIG_RELEASE_WRITE)),
 ) -> APIResponse[Any]:
     """Merge-patch one behaviour domain of a draft.
 
