@@ -41,15 +41,16 @@
     },
     "frontend": {
       "$comment": [
-        "The `/shipments` pair. `returns.session.read` is now visible from the",
-        "shipment console as well as /returns and /support, and the registry",
-        "test still pins the older two-domain set. Pre-existing on trunk; owned",
-        "by whoever settles whether the third domain is deliberate."
+        "Empty, and it stays empty. The `/shipments` pair (`declares exactly the",
+        "canonical domains`, `shares a visibility capability only where that is",
+        "deliberate`) was fixed by CFG-4: the third domain sharing",
+        "`returns.session.read` was deliberate (the same reasoning `/shipments`'",
+        "own module comment already gave -- no `shipments.*` capability exists,",
+        "so the domain is visible on the session read everyone operating returns",
+        "already has), and both tests now pin the three-domain set rather than",
+        "the stale two."
       ],
-      "known_failures": [
-        "src/domains/registry.test.ts::the domain registry > declares exactly the canonical domains",
-        "src/domains/registry.test.ts::the domain registry > shares a visibility capability only where that is deliberate"
-      ]
+      "known_failures": []
     }
   }
 }

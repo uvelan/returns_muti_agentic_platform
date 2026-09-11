@@ -63,29 +63,22 @@ function section(key: string, title: string, hint: string): Subject {
   return { key, domainKey: RETURN_PLATFORM_DOMAIN_KEY, title, hint };
 }
 
-/** Derived from the release's own sections -- see the module note. */
+/**
+ * Derived from the release's own sections -- see the module note.
+ *
+ * **Three groups are gone: discovery, policy, fulfilment.** CFG-4 gave each
+ * a typed screen of its own -- `/config/discovery`, `/config/return-policy`,
+ * `/config/fulfilment` -- and this tab's job was always the honest first
+ * step for sections whose shape had not earned a typed form yet, not a
+ * second write path once one exists. The ten sections those three groups
+ * covered (`discovery`, `source_resolution`, `clarification_policy`,
+ * `selection_vocabulary`; `return_policy`, `return_eligibility_policy`,
+ * `policy_evaluation`; `shipment_tracking`, `bay`, `omc`) are unreachable
+ * from here now -- `EDITED_ELSEWHERE`-style, except there is no single field
+ * name to point at three groups' worth of sections, so they are simply
+ * absent rather than listed as "moved".
+ */
 const BUSINESS_GROUPS: readonly Group[] = [
-  {
-    id: "discovery",
-    title: "Order discovery",
-    blurb: "How an order is found and confirmed from what an associate says.",
-    subjects: [
-      section("discovery", "Discovery", "Identification fields, aliases and search behaviour."),
-      section("source_resolution", "Source resolution", "Which source paths a fact is read from."),
-      section("clarification_policy", "Clarification policy", "What the copilot asks for, and when."),
-      section("selection_vocabulary", "Selection vocabulary", "The words a selection is described with."),
-    ],
-  },
-  {
-    id: "policy",
-    title: "Return policy",
-    blurb: "What may be returned, how, and what the platform decides on its own.",
-    subjects: [
-      section("return_policy", "Return policy", "Method derivation, freight rules, requirements."),
-      section("return_eligibility_policy", "Eligibility policy", "The rules a return is judged by."),
-      section("policy_evaluation", "Policy evaluation", "Whether eligibility is evaluated at all."),
-    ],
-  },
   {
     id: "workflow",
     title: "Workflow and case timing",
@@ -107,16 +100,6 @@ const BUSINESS_GROUPS: readonly Group[] = [
       section("support_ingress", "Support ingress", "How replies from Support are read."),
       section("support_resolver", "Support resolver", "How a reply is matched to its request."),
       section("context_assembly", "Context assembly", "What a Support request carries."),
-    ],
-  },
-  {
-    id: "fulfilment",
-    title: "Fulfilment and warehouse",
-    blurb: "Shipments, bays and the order management connection.",
-    subjects: [
-      section("shipment_tracking", "Shipment tracking", "The status ladder and its transitions."),
-      section("bay", "Bay placement", "Reservation and capacity rules."),
-      section("omc", "Order management", "Cancellation and display rules."),
     ],
   },
   {
@@ -148,6 +131,19 @@ const EDITED_ELSEWHERE: Readonly<Record<string, string>> = {
   agents: "Agents tab -- an edit there is proposed and approved, not published directly.",
   support_template: "Support Template tab, which also previews the draft against a case.",
   runtime_integrations: "AI Control Center -- Providers & Models.",
+  // CFG-4: the three groups a typed screen took over, one pointer per
+  // section rather than one per group -- an operator who remembers a field
+  // name from this tab should still find where it went.
+  discovery: "Discovery tab -- identification fields, aliases and search behaviour.",
+  source_resolution: "Discovery tab -- which source paths a fact is read from.",
+  clarification_policy: "Discovery tab -- what the copilot asks for, and when.",
+  selection_vocabulary: "Discovery tab -- the words a selection is described with.",
+  return_policy: "Return Policy tab -- method derivation, freight rules, requirements.",
+  return_eligibility_policy: "Return Policy tab -- the rules a return is judged by.",
+  policy_evaluation: "Return Policy tab -- whether eligibility is evaluated at all.",
+  shipment_tracking: "Fulfilment tab -- the status ladder and its transitions.",
+  bay: "Fulfilment tab -- reservation and eligibility rules.",
+  omc: "Fulfilment tab -- cancellation and display rules.",
 };
 
 type Snapshot = {

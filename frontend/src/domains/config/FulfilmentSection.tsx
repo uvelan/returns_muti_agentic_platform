@@ -282,7 +282,7 @@ function StatusLadder({
       <button
         type="button"
         onClick={() => { onChange([...statuses, newStatus()]); }}
-        className="flex w-fit items-center gap-1 rounded-lg border border-dashed border-outline-variant bg-surface-container-low/60 px-2.5 py-1.5 text-[11px] font-medium text-on-surface-variant transition hover:border-primary hover:text-primary"
+        className="flex w-fit items-center gap-1 rounded-lg border border-dashed border-outline-control bg-surface-container-low/60 px-2.5 py-1.5 text-[11px] font-medium text-on-surface-variant transition hover:border-primary hover:text-primary"
       >
         <Plus size={12} aria-hidden="true" />
         Add status

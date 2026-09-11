@@ -2142,3 +2142,50 @@ $ npm run typecheck
 $ npm run lint
 (no output, exit 0)
 ```
+
+## CFG-4 step:07 — BusinessSection removals, registry test fix, known_test_failures.json (Order item 6)
+
+`BusinessSection.tsx`: removed the `discovery`, `policy` and `fulfilment` groups wholesale (ten
+sections across three groups: `discovery`, `source_resolution`, `clarification_policy`,
+`selection_vocabulary`; `return_policy`, `return_eligibility_policy`, `policy_evaluation`;
+`shipment_tracking`, `bay`, `omc`) -- each now has a typed screen, and a second write path to a
+field a typed screen already owns is exactly what this tab's own module docstring says it exists
+not to be. `EDITED_ELSEWHERE` gained one entry per removed section (not one per group -- there is
+no single field name for three groups) pointing at the tab that replaced it, the same pattern
+`agents`/`support_template` already used, so a field an operator remembers from this tab is still
+findable rather than silently gone. `BusinessSection.test.tsx` rewritten onto sections from the
+groups that remain (`housekeeping`, `support`) plus a new test asserting all ten removed section
+labels are absent and pointed at instead.
+
+**`registry.test.ts`'s two pre-existing failures, fixed as the brief specified:** `/shipments`
+(added after the registry tests were last updated) is a real third domain on `returns.session.read`
+-- deliberate, per its own module comment (no `shipments.*` capability exists) -- so `declares
+exactly the canonical domains` now expects nine paths including `/shipments`, and `shares a
+visibility capability only where that is deliberate` now expects the three-way group rather than
+two. Neither test's *behaviour* changed, only what a correct registry looks like now that
+`/shipments` genuinely exists; unrelated to CFG-4's own screens. `scripts/ci/known_test_failures.json`'s
+frontend list is now empty, its `$comment` updated to say why.
+
+**Also caught and fixed: `controlBoundaryContrast.test.ts`**, an existing whole-repo guard against
+sub-3:1 control borders (WCAG 1.4.11), flagged four of this lease's own "Add ..." buttons
+(`DiscoverySection.tsx` x2, `FulfilmentSection.tsx`, `PathPickerList.tsx`) for `border-outline-variant`
+on a full-bordered button -- copied from `KeyValueTable.tsx`'s dashed-border *container* rather than
+its own Add-row *button*, which already uses the higher-contrast `border-outline-control`. Fixed by
+matching that token; not a new exemption, a token mismatch this lease introduced and the existing
+guard caught before it reached review.
+
+```
+$ npx vitest run src/domains/registry.test.ts src/domains/config/BusinessSection.test.tsx src/controlBoundaryContrast.test.ts
+ Test Files  3 passed (3)
+      Tests  26 passed (26)
+$ npx vitest run   # whole frontend suite
+ Test Files  83 passed (83)
+      Tests  1002 passed (1002)
+$ npm run typecheck
+(no output, exit 0)
+$ npm run lint
+(no output, exit 0)
+```
+
+Zero known failures on the frontend suite now -- `known_test_failures.json`'s frontend
+`known_failures` is `[]`.

@@ -24,6 +24,7 @@ describe("the domain registry", () => {
       "/graph-schema",
       "/operations",
       "/returns",
+      "/shipments",
       "/support",
       "/sync",
     ]);
@@ -92,20 +93,17 @@ describe("the domain registry", () => {
   });
 
   it("shares a visibility capability only where that is deliberate", () => {
-    // Two domains resolving to the same capability is usually a copy-paste
-    // slip, which is what this catches. Two are intended, and both for the same
-    // reason: the capability they would want does not exist yet, and gating on
+    // More than one domain resolving to the same capability is usually a
+    // copy-paste slip, which is what this catches. Two groups are intended,
+    // each for its own reason. `config.runtime.read`: Operations has two
+    // backed sections but still no `operations.*` capability, since gating on
     // an invented one the backend never grants would hide the domain from
-    // everyone. Operations now has two backed sections but still no
-    // `operations.*` capability; Support is a distinct *role* that has no
-    // `support.*` capability to be granted.
-    //
-    // The third is different and is not a workaround. Data Sources and Source
-    // Sync both ask `config.source.read` because both are literally the
-    // question that capability names -- "may this person see how the platform
-    // reads its sources". Splitting it would mean inventing a capability the
-    // backend does not grant in order to express a distinction nobody has.
-    // All three are named so a fourth, accidental collision still fails.
+    // everyone. `returns.session.read`: Support is a distinct *role* with no
+    // `support.*` capability of its own, and Shipments is visible on the same
+    // read everyone operating returns already has -- its own module comment
+    // says so -- rather than on an invented `shipments.*` capability, for the
+    // identical reason. All three of that group, and both of the other, are
+    // named so a fourth, accidental collision still fails.
     const shared = new Map<string, string[]>();
     for (const domain of DOMAINS) {
       shared.set(domain.requires, [...(shared.get(domain.requires) ?? []), domain.path]);
@@ -119,7 +117,7 @@ describe("the domain registry", () => {
 
     expect(collisions).toEqual([
       "config.runtime.read: /config, /operations",
-      "returns.session.read: /returns, /support",
+      "returns.session.read: /returns, /shipments, /support",
     ]);
   });
 
