@@ -2,8 +2,8 @@
   "lease_id": "CFG-5",
   "branch": "feat/cfg-5-screens-b",
   "base_sha": "b03cbb59",
-  "head_sha": "fe936dfe",
-  "status": "PARTIAL",
+  "head_sha": "0fe57026",
+  "status": "PENDING",
   "files": [
     "frontend/src/mocks/handlers/canonicalHandlers.ts",
     "frontend/src/mocks/handlers/canonicalHandlers.contract.test.ts",
@@ -18,6 +18,12 @@
     "frontend/src/domains/config/SimulationSection.test.tsx",
     "frontend/src/domains/config/DataSourcesSection.tsx",
     "frontend/src/domains/config/DataSourcesSection.test.tsx",
+    "frontend/src/domains/config/AgentsSection.tsx",
+    "frontend/src/domains/config/TypedSectionScreen.tsx",
+    "frontend/src/domains/config/jsonPath.ts",
+    "frontend/src/domains/config/jsonPath.test.ts",
+    "frontend/src/domains/config/DiscoverySection.test.tsx",
+    "frontend/src/domains/config/OverviewSection.test.tsx",
     "frontend/src/domains/sync/SyncRedirect.tsx",
     "frontend/src/domains/config/ConfigurationPage.tsx",
     "frontend/src/domains/config/ConfigurationPage.test.tsx",
@@ -35,12 +41,14 @@
     "frontend/src/domains/config/BusinessSection.test.tsx",
     "frontend/src/domains/sync/SyncControlPage.tsx"
   ],
-  "tests": {
-    "npx vitest run (whole frontend suite)": "1047 passed, 0 failed (86 files)",
-    "npm run typecheck": "clean",
-    "npm run lint": "clean",
-    "npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts (full sweep, warm server)": "134 passed, 1 failed -- /config axe color-contrast, the already-documented F10-class cold/contended-server flake (0 violations in an isolated re-run), not a regression",
-    "E2E_REAL_BASE_URL=... npx playwright test --project=cfg4-e2e (per-screen specs)": "workflow 1 passed, support 1 passed, integrations 1 passed, simulation 1 passed, source-bindings 1 passed"
+  "acceptance": {
+    "npx vitest run": "1057 passed, 0 failed (87 files)",
+    "npm run typecheck": "clean (exit 0)",
+    "npm run lint": "clean (exit 0)",
+    "npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts --workers=1 (dev:mock full sweep)": "134 passed, 1 failed -- /config axe color-contrast, F10-class flake (CFG-4's own documented cold/contended-server timing issue); passed on both an isolated re-run and a repeat full sweep immediately after on identical code",
+    "backend pytest tests/configuration tests/api tests/test_configuration_api.py -q": "698 passed, 6 deselected, 2 warnings in 119.29s -- run to prove no backend regression; zero backend files changed anywhere in this lease (item 5 split to CFG-5b)",
+    "check_openapi_drift.py": "not run -- no backend response shape changed (backend diff empty, openapi/return-platform.openapi.json diff empty against base b03cbb59)",
+    "E2E_REAL_BASE_URL=... npx playwright test --project=cfg4-e2e --workers=1 (per-screen live specs, run once each during development)": "config-workflow 1 passed, config-support 1 passed, config-integrations 1 passed, config-simulation 1 passed, config-source-bindings 1 passed -- all published, verified via independent GET reads, and reverted; :5173/:8000 never restarted"
   },
   "done": [
     "item 1: MSW handlers + contract tests for /api/agents, /api/schema-releases/*, /api/ai/requests/{id}/replay|compare; dead /data-console/v1/ branch removed from main.tsx",
@@ -48,14 +56,13 @@
     "item 3: /config/support screen, six tabs",
     "item 4: /config/integrations screen",
     "item 6: /config/simulation screen",
-    "item 7: /config/source-bindings screen (source bindings direct-write panel + sync trigger/history moved from /sync, which now redirects); named distinctly from the Analyzer's own Data Sources section per audit finding D1; routeManifest.ts fixed properly for the redirect (REDIRECTING_DOMAINS, not a permanent HEADING_MISMATCH entry)",
+    "item 7: /config/source-bindings screen (named distinctly from the Analyzer's Data Sources per audit finding D1; source bindings + sync moved from /sync, which redirects)",
     "item 8: Business tab retired",
-    "item 10: one Playwright spec per new screen, run once and reverted -- workflow, support, integrations, simulation, source-bindings all done (agents/CFG-5b excluded, not built here)"
+    "item 9: CFG-4 advisories G1 (publish.reset() clears the raw 409 message on the next edit), G2 (no-active-release branch test), F6 (countPatchLeaves -- dirtyCount is now a real leaf count, not a section count)",
+    "item 10: one Playwright spec per new screen, run once and reverted -- workflow, support, integrations, simulation, source-bindings",
+    "item 11: full acceptance sweep -- fixed one real, deterministic /config/agents color-contrast defect found by the sweep (invisible before item 1's own mock addition); remaining sweep flakiness confirmed as CFG-4's own documented F10, not a new regression; backend suites pasted (zero backend files touched, item 5 excluded)"
   ],
-  "remaining": [
-    "item 9: CFG-4 advisories G1 (409 notice clears with first keystroke), G2 (no-active-release branch test), F6 (dirty count per field)",
-    "item 11: full acceptance sweep -- npx vitest run 0 failures (done, see tests above), typecheck (done), lint (done), dev:mock sweep (done, see tests above), backend pytest tests/configuration tests/api tests/test_configuration_api.py -q (not yet run this session -- no backend change expected, must paste to prove it), drift check (only if a backend response changed, which it has not)"
-  ],
+  "remaining": [],
   "out_of_scope_flagged": [
     {
       "task_id": "task_1349209e",
@@ -65,8 +72,8 @@
   "split_off": [
     {
       "lease": "CFG-5b",
-      "what": "item 5 (backend agents repoint at RETURN_PLATFORM.agents + /config/agents typed table) -- full architecture research and implementation plan recorded in CFG-5 step:05 of the ledger, per coordinator instruction not implemented in this lease"
+      "what": "item 5 (backend agents repoint at RETURN_PLATFORM.agents + /config/agents typed table) -- full architecture research and a concrete step-by-step implementation plan recorded in CFG-5 step:05 of the ledger, per the coordinator's explicit scope-change instruction; not implemented in this lease. Owns for CFG-5b: configuration/api/agents.py, application/agent_configuration.py, bootstrap/adapters/governance_agent_configuration.py, main.py's AgentConfigurationService wiring, backend/config/manifest.yaml + agents/*.yaml (and the confirmed-dead workflow/sync/source/mapping/graph manifest entries), backend/tests/configuration/test_agent_configuration_releases.py, backend/config/README.md, then AgentsSection.tsx (or its replacement) and agentConfig.ts."
     }
   ],
-  "merge_status": "NOT_READY"
+  "merge_status": "PENDING"
 }
