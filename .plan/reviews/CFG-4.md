@@ -1,69 +1,45 @@
-# RV — CFG-4 @ a4d623a5 — VERDICT: CHANGES_REQUIRED
+# RV — CFG-4 @ 45c14660 — VERDICT: PASS
 
-Round 1. Worktree `.claude/worktrees/cfg-4`, branch `feat/cfg-4-screens-a`, head `a4d623a5` (code at
-`08c9001d`, bookkeeping at `a4d623a5`), base `656ba175`. Read-only on code: nothing in the worktree
-was edited, no `git stash`, `git status --porcelain` shows only this file. Behavioural evidence was
-taken from two disposable servers started from this worktree (`vite --port 5183` proxying to the
-shared backend at `:8000`, and `dev:mock --port 5185`), both stopped afterwards; `:5173`/`:8000` were
-never restarted, and every live value the e2e run changed is byte-identical to its pre-run value
-(pasted below).
+Round 2. Round 1 reviewed `a4d623a5` and returned CHANGES_REQUIRED (F1, F2 blocking; F3–F10
+advisory). Fixes are `efee678e` (substantive) and `45c14660` (drop bookkeeping only); dispositions are
+in the ledger under `CFG-4 step:10`. Read-only review: nothing in the worktree was edited except this
+file, no `git stash`, `git status --porcelain` clean otherwise. Live evidence came from a disposable
+`vite --port 5187` started from this worktree and stopped afterwards; `:5173`/`:8000` were never
+restarted, and the three fields the e2e run touches are byte-identical before and after (pasted).
 
-Nine commits, 41 files, no backend change (`git diff --name-only 656ba175..HEAD | grep -v '^frontend/'`
-returns `scripts/ci/known_test_failures.json` only, which the brief's acceptance names). The three
-files outside the Owns list — `frontend/src/api/principal.ts`, `frontend/playwright.config.ts`,
-`frontend/tsconfig.e2e.json` — are each additive, necessary, and recorded with their reasoning in the
-ledger (step:02, step:08). Scope is clean.
+Round-2 scope is 16 files, +754/−43, all frontend, all inside the Owns list plus the two already-
+recorded exceptions. **Both blocking findings are fixed at the cause, six of the eight advisories are
+taken, and the two left carry reasons I accept.** PASS.
 
-Most of this lease is right, and right for stated reasons: every hand-written option list I checked
-resolves to a real model enum, the registry test was fixed rather than loosened, C1/A5/A6/A7 landed
-with tests, and the live e2e publishes and reverts for real. Two findings block.
+## Round-1 findings — dispositions
 
-## Findings
+| ID | Round 1 | Disposition | RV round-2 check |
+|---|---|---|---|
+| **F1** | **BLOCKING** — `diffSummary` inferred "no active release" from absence in `would_adopt`, so every undecided row (6 of 6 live) claimed adopting was refused next to an enabled button that would publish | **Fixed at the cause.** `UndecidedKeysPanel.tsx:106-107` takes `hasActiveRelease` from `headRevision !== null` (`:157`) — the signal that actually answers the question — and an undecided key now states what `_carry_forward` did plus the action's consequence. | **Verified live, against the same six-key drift response.** Page text below: the false sentence is gone from all six rows and each carries "The release's own value is kept for now. Taking the packaged file for this whole key replaces every value the release holds for it." Two new tests (`OverviewSection.test.tsx:159-215`), the first built on the live stack's exact shape, the second on a `filled_leaves`-populated fixture — both would fail against the old code. `filled_leaves` now has a branch that can render it, which it could not before. |
+| **F2** | **BLOCKING** — the typed branch ignored `canWrite`; a `promote`-without-`write` principal could edit every field on three screens | **Fixed the same way `DocumentEditor` does.** `TypedSectionScreen.tsx:231-238`: `renderTyped`'s output is wrapped in `<fieldset disabled={!canWrite}>` with the same read-only notice, so the gate cascades natively and no screen needed changing. | **Verified.** One test per screen with `promote` granted and `write` withheld (`DiscoverySection.test.tsx:176`, `ReturnPolicySection.test.tsx:167`, `FulfilmentSection.test.tsx:196`), each asserting a representative control is disabled *and* the notice renders — the case none of the round-1 tests covered. Inert for a writer: live DOM on `/config/discovery` shows exactly one fieldset, `disabled: false`, every sampled control enabled, no notice (paste below), and the e2e still edits and publishes. |
+| F3 | ADVISORY — indexed error paths never matched (`statuses.0.code` vs `statuses[0].code`) | **Taken, and de-duplicated.** `normalizeErrorPath` moved to `jsonPath.ts:78-92` (the `react-refresh/only-export-components` reason given is real) and `errorsByPath` normalises through it (`runtimeSlice.ts:48-50`); `DocumentEditor` imports the same function instead of a private copy. | Verified. `FulfilmentSection.test.tsx:225-243` feeds a bracketed path and asserts it lands on status card 0's Code field *and* not on card 1 — not a tautology. Both consumers of the wire convention now agree by construction. |
+| F4 | ADVISORY — CFG-3a's "F5" mislabelled | **Taken.** Both comments corrected (`UndecidedKeysPanel.tsx:11-16`, `configuration.ts:138-141`), and the ledger records that the real F5 — the backend `except` breadth on `adopt_packaged` — **stays open** and is carried onward. | Correct, and the right outcome: CFG-4's brief forbids `backend/`, so the finding could only be re-carried, not closed. |
+| F5 | ADVISORY — a 409 stranded the operator (stale head forever; the only refresh discarded the draft) | **Taken.** `TypedSectionScreen.tsx:69-82, 112-131`: on a 409 the head is re-read with a direct `configApi.runtime()` call, held in `headRevisionOverride`, and surfaced as a notice — deliberately off the shared query cache so the parent's `key={active.releaseId}` cannot remount the editor. | **Verified, including the remount question.** `DiscoverySection.test.tsx:210-249` publishes into a 409, asserts the notice names head 44, asserts the draft still reads 300000 (no remount), retries and asserts the second call carries 44. The claim also holds structurally: nothing writes the query cache on this path, and `main.tsx:39` sets `refetchOnWindowFocus: false`, so the remaining remount triggers are explicit invalidations only. |
+| F6 | ADVISORY — `dirtyCount` counts sections, not leaves | **Left, with a ledger line.** | Accepted. It is a label, it never gates wrongly (0 still means nothing staged), and the fix is a patch walk better done deliberately. |
+| F7 | ADVISORY — `bay.eligible_statuses` suggestions missed two of the three values the deployment runs | **Taken.** `FulfilmentSection.tsx:169-191`: suggestions are now the loaded value unioned with the documented codes, and the hint says there is no enum and the list is not exhaustive — the caveat `knownSourcePaths.ts` already carried. | Verified: seeding from `asStringArray(bay.eligible_statuses)` is accurate to whatever is running by construction, which is stronger than patching the literal. |
+| F8 | ADVISORY — `error` props existed but nothing passed one | **Taken at nine call sites** across the three screens (`DiscoverySection.tsx:140,189`, `ReturnPolicySection.tsx:146,175`, `FulfilmentSection.tsx:121,135,210,224,291`). | Verified; each path is one the backend's `loc` can actually produce (a list or mapping named whole, not a row). |
+| F9 | ADVISORY — no test anywhere covered a refused publish | **Taken.** One 422 test per screen (`DiscoverySection.test.tsx:188` and peers): the message shows and the draft is intact. | Verified. 422 is the right shape to pin — `releases.py:391` sends a plain string `detail`, so page-level is all publish can give, and `Validate` remains the per-field path. |
+| F10 | ADVISORY — `dev:mock` sweep flaky on a cold `--force` server | **Left, with a ledger line** naming the cause (the spec's fixed 250 ms `settle` vs a cold dev server) and the surfaces (all outside Owns). | Accepted — it is my own finding and my own measurement, and the ledger's note is accurate. |
+
+## New — round 2
 
 | ID | Sev | file:line | What | Why | Fix |
 |---|---|---|---|---|---|
-| F1 | **BLOCKING** | `frontend/src/domains/config/UndecidedKeysPanel.tsx:79-88` (the sentence at `:87`) | `diffSummary` infers "there is no active release" from `would_adopt` not containing the unit. But `_would_adopt` (`packaged_adoption.py:552-584`) reports a key only when `merged[key] == packaged[key]`, and `_carry_forward` (`:228-243`) gives an **undecided** key `merged[key] = _fill_absent_leaves(value, active[key])` — the release's own value, kept. So an undecided key with an active release is, by construction, absent from `would_adopt`, and the panel tells the operator *"No active release to compare against yet -- adopting is refused until one exists."* | It is false on exactly the rows the panel exists for, and it contradicts both the "Active release" card three inches above it and the enabled "Take packaged file" button beside it, which would publish a release immediately. On the live stack it is 6 rows out of 6 (paste below); in `dev:mock` it is 1 of 1. The brief's own required summary "from `would_adopt`/`filled_leaves`" is therefore dead code for real rows — `filled_leaves` is computed *only* for undecided keys (`packaged_adoption.py:623-629`) and can only ever render in the branch undecided keys never reach. No test asserts the summary text, and the Overview e2e is read-only, so nothing caught it. | Decide the "no active release" case from what the panel already knows (a null `headRevision`, or the runtime's `release_id`), not from `would_adopt`. For an undecided key with an active release, say what carry-forward actually did: the release's value is kept, N leaves filled, and taking the file replaces it. Assert the sentence in `OverviewSection.test.tsx` for the `undecided:["discovery"], would_adopt:[]` fixture that is already there. |
-| F2 | **BLOCKING** | `frontend/src/domains/config/TypedSectionScreen.tsx:36,49` vs `:153` and `:181` | `canWrite` is consumed in exactly one place — the `advanced` branch's `DocumentEditor` (`:153`, which does gate properly at `DocumentEditor.tsx:406`). The typed branch renders `renderTyped(...)` (`:181`) with no `fieldset disabled`, and `grep -n "disabled\|readOnly\|fieldset" DiscoverySection.tsx ReturnPolicySection.tsx FulfilmentSection.tsx` returns only `policy_evaluation.disabled_reason` — no control on any of the three screens is gated. A principal without `config.release.write` can edit every typed field. | The brief's design paragraph is explicit: "capability `config.release.write` gates editing, `config.release.promote` gates Publish". Only the second half is implemented. The `.write`-less case is untested: all three screen tests cover only the missing-`promote` case (`DiscoverySection.test.tsx:164-169` and peers). `principal.ts`'s own new comment names the role shape this matters for — a principal with `.promote` but not `.write` gets an enabled Publish on an editable form and a 403 from the backend. | Wrap the typed branch the way `DocumentEditor.tsx:406` already does (`<fieldset disabled={!canWrite}>` plus the same read-only notice), and add the read-only test per screen the acceptance implies. |
-| F3 | ADVISORY | `frontend/src/domains/config/FulfilmentSection.tsx:312`; `runtimeSlice.ts:30-32` | The one indexed error lookup in the lease builds `shipment_tracking.statuses.${index}`; the backend emits `shipment_tracking.statuses[0].code` (`releases.py:394-412`, `_dotted_error_path`, "`agents[2].version`, not `agents.2.version`"). `errorsByPath` does no normalisation, so a status-rung error never reaches its field. | Not lossy — the error still shows in the page-level `ValidationErrors` — but it is a silent no-op on the one path where the convention actually differs, and CFG-3b's A1 already solved this: `DocumentEditor.tsx:61-63` `normalizeErrorPath` is two lines away. | Normalise in `errorsByPath` (reuse/export `normalizeErrorPath`) and build the path as `statuses[${index}]`; one test with a bracketed path. |
-| F4 | ADVISORY | `CFG.ledger.md:2103-2110`, `configuration.ts:136-139`, `UndecidedKeysPanel.tsx:11-17` | CFG-3a's F5 is *"rollback narrower than 'any refusal'"* (`.plan/reviews/CFG-3a.md:19`), a backend `except` clause on `adopt_packaged`, explicitly carried to CFG-4. The lease redefines "F5" as the unit-naming vocabulary and records it as addressed. | The vocabulary note is genuinely good work; the misattribution means the real F5 now reads as closed while nothing about it changed, and CFG-4 could not have closed it anyway (brief: "Must not touch: backend"). | Re-label the note (it needs no ID), and carry the real F5 to whichever lease may touch `backend/`. |
-| F5 | ADVISORY | `frontend/src/domains/config/TypedSectionScreen.tsx:83-95`; `DiscoverySection.tsx:62` | A 409 (the implementer hit a real one, step:08) surfaces its message through `PublishBar`'s `error`, and the draft survives — both good. But `publish` has no `onError`, so `["config"]` is never invalidated and `expectedHeadRevision` stays stale: pressing Publish again reproduces the same conflict forever. The only refresh that fixes it changes `active.releaseId`, which is the editor's React `key`, so it silently discards the draft. | The lock is the feature; recovering from it is the missing half, and the failure mode is "the button no longer works and nothing says why". | On a revision conflict, refetch and tell the operator the head moved, keeping the draft (the patch is computed against `loaded`, so a re-key is what loses it). |
-| F6 | ADVISORY | `frontend/src/domains/config/TypedSectionScreen.tsx:76`, `PublishBar.tsx:46-48` | `dirtyCount = Object.keys(patch).length` counts **top-level section keys**, so twelve edited fields inside `discovery` read as "1 change staged". | Publish-gating on it is correct (0 = nothing staged); the number shown to an operator about to publish is not what it claims. | Count changed leaves, or label it "1 section changed". |
-| F7 | ADVISORY | `frontend/src/domains/config/FulfilmentSection.tsx:170` | `bay.eligible_statuses` suggestions are `AWAITING_RECEIPT, WAREHOUSE_STAGED, PLANNED, STAGED_AT_BRANCH, LICENSE_PLATE_ASSIGNED, UNKNOWN`. `BayConfiguration.eligible_statuses` is `tuple[NonBlank, ...]` — no enum — and the live release's actual values are `AWAITING_RECEIPT, WAREHOUSE_RECEIVED, INSPECTION_COMPLETE`: two of the three in use are missing, and `INSPECTION_COMPLETE` exists nowhere in `backend/src`. | Free text is accepted so nothing is refused, and the same "best effort" reasoning is *documented* for `PathPicker` (`knownSourcePaths.ts`) — it is not documented here, and a list that omits the values the deployment is running reads as authoritative when it is not. | Either drop the list, seed it from the current value plus the known codes, or carry `knownSourcePaths.ts`'s own caveat into the hint. |
-| F8 | ADVISORY | `OrderedList.tsx:21`, `KeyValueTable.tsx:46` | A6's new `error` props are correct and tested, but no screen passes one, so a validation error whose path names a whole list (`discovery.identification_fields`) still only reaches the page summary. | The advisory asked for the prop; the value is in the wiring. | Pass `errorMap.get(<list path>)` at the list call sites. |
-| F9 | ADVISORY | `DiscoverySection.test.tsx`, `ReturnPolicySection.test.tsx`, `FulfilmentSection.test.tsx`, `OverviewSection.test.tsx` | No test anywhere covers a **refused** publish. `publish` is mocked resolved in all four; a 409 and a 422 (`releases.py:391` — a plain string `detail`, so per-field mapping is impossible on publish and only `Validate` gives it) are unexercised. | Every behaviour in F5 and the "press Validate for field-level errors" contract is currently unasserted. | One rejected-publish test per screen: error shown, draft intact. |
-| F10 | ADVISORY | `frontend/playwright.config.ts` `webServer` (`dev:mock ... --force`) | The `dev:mock` sweep failed for me **2 out of 2** runs that let Playwright boot its own cold mock server (`/config has no critical or serious violation`, `color-contrast`, serious — `/config` being the route CFG-4 changed most), and passed `129 passed` against an already-warm `dev:mock` server, 3/3 in isolation, and under a standalone axe probe at the spec's own 250 ms settle. So the ledger's `129 passed` reproduces; the cause is the cold `--force` dev server still compiling CSS when `settle` gives up after 250 ms. | Pre-existing, not CFG-4's — but CFG-4 made `/config` the heaviest route in the manifest, so this gate is now flaky on a first run. | Not this lease's to fix; worth a note where the release gate runs it (warm the server, or wait for a stylesheet rather than a fixed 250 ms). |
-
-**Carried advisories — verified:** C1 fixed at `DocumentEditor.tsx:833-848` with a real test
-(`DocumentEditor.test.tsx:183-221`) and the ledger's reason for a *second* effect rather than the
-review's literal one is correct — `pending` in the first effect's deps would re-run the cleanup on
-every keystroke. A5 (`KeyValueTable.tsx:211-254`, `aria-describedby` + `role="alert"`), A6
-(`error` props, see F8), A7 (`PublishBar.tsx:37-40`, shared id) all landed with tests. A2 is
-correctly left as the documented limit CFG-3b's RV already accepted. A8 is discharged by the lease's
-own `/validate` usage. CFG-3a F11 is handled honestly — both shapes rendered side by side,
-`OverviewSection.test.tsx:97-110` asserts both from one response.
-
-**Contract items verified:** enum option lists all resolve to real model members —
-`ELIGIBILITY_DECISIONS` = `EligibilityDecision` (`stage_results.py:58-62`), the window basis =
-`ReturnWindowBasis` (`vocabulary.py:150-154`), stock classification = `StockClassificationDefault`
-(`:238-261`), `PROJECTION_STATUSES` = the five-value `Literal` (`return_configuration.py:946-948`),
-`REQUIREMENT_DIMENSIONS` = exactly the seven `AwaitingDimension` members a table row may name
-(`case_projection/vocabulary.py:140-142`), `RETURN_REASON_SUGGESTIONS` = all twelve non-`UNKNOWN`
-`ReturnReason` members with the hint naming the enum, and the return-method options come from the
-document's own `normalized_return_methods` rather than a literal. The two deviations from the design
-table (`selection_vocabulary` as tag lists, no `bay` capacity fields) are both cases where I read the
-model and the model agrees with the implementer, not the table. `registry.test.ts` was fixed, not
-loosened — both assertions still pin exact sets and a fourth collision still fails —
-`known_test_failures.json`'s frontend list is `[]`, `routeManifest.ts` needed no edit (routes derive
-from `DOMAINS`), and every one of the ten sections removed from `BusinessSection` has a typed screen
-plus an `EDITED_ELSEWHERE` pointer, tested at `BusinessSection.test.tsx:123-148`.
+| G1 | ADVISORY | `TypedSectionScreen.tsx:248` with `:136` | After a 409, `PublishBar`'s `error` shows `conflictNotice`; the first keystroke clears `conflictNotice` (`set()`), and since `publish.error` is still set until the next `mutate`, the raw `Configuration head revision changed from 41 to 44` reappears in its place. | Cosmetic and still truthful, but it reads as a *new* failure arriving as the operator starts fixing the old one. | Clear it together (`publish.reset()` in `set`, or fall back to `null` once a conflict has been acknowledged). |
+| G2 | ADVISORY | `UndecidedKeysPanel.tsx:106-108` | The `!hasActiveRelease` branch — the sentence F1 was about — now has no test; both new fixtures pass a head revision. | The branch is right, and the button is already disabled in that state, so the exposure is small; but the one sentence this lease got wrong once is the one with no assertion on it. | One test with `head_revision` absent from the runtime mock. |
 
 ## Commands
 
 ```
 $ npx vitest run                       # whole frontend suite, from frontend/
  Test Files  83 passed (83)
-      Tests  1002 passed (1002)
-   Duration  65.52s
+      Tests  1012 passed (1012)        # 1002 + the 10 new tests
+   Duration  55.00s
 
 $ npm run typecheck                    # tsc -b --pretty false
 typecheck exit: 0
@@ -71,119 +47,99 @@ $ npm run lint                         # eslint . --max-warnings=0
 lint exit: 0
 ```
 
-## The live e2e run, and the revert
-
-Disposable `vite --port 5183` from this worktree (`.env`'s `FRONTEND_BACKEND_TARGET=http://localhost:8000`),
-stopped afterwards.
+## F1 — the live page, same drift response as round 1
 
 ```
-$ E2E_REAL_BASE_URL=http://localhost:5183 npx playwright test --project=cfg4-e2e --workers=1 --reporter=list --timeout=60000
+$ curl -s http://localhost:8000/api/config/packaged-drift
+RETURN_PLATFORM undecided= ['agents','clarification_policy','policy_evaluation',
+  'return_eligibility_policy','return_policy','support_ingress'] would_adopt= [] filled= []
+AI_GATEWAY undecided= [] would_adopt= [] filled= []
+DEPENDENCY_SIMULATION undecided= [] would_adopt= [] filled= []
+
+$ curl -s http://localhost:8000/api/config/runtime   ->  release publish-e20ae19b3dd0486a, head 111
+```
+
+`/config/overview` rendered from that response (text of the live page at `:5187`):
+
+```
+ACTIVE RELEASE            publish-e20ae19b3dd0486a
+...
+RETURN_PLATFORM: agents
+The release's own value is kept for now. Taking the packaged file for this whole key
+replaces every value the release holds for it.                      [Take packaged file]
+RETURN_PLATFORM: clarification_policy          ... the same summary ...
+RETURN_PLATFORM: policy_evaluation             ... the same summary ...
+RETURN_PLATFORM: return_eligibility_policy     ... the same summary ...
+RETURN_PLATFORM: return_policy                 ... the same summary ...
+RETURN_PLATFORM: support_ingress               ... the same summary ...
+WOULD ADOPT ON THE NEXT START
+Nothing would be adopted from the packaged file right now.
+```
+
+Round 1 produced "No active release to compare against yet -- adopting is refused until one exists."
+on every one of those six rows, under a card naming the active release. It is gone, the replacement
+says what the merge actually did, and the consequence of the button is now stated on the row rather
+than only inside the confirm dialog. The operator-decision keys (`policy_evaluation`,
+`support_ingress`) still read the same as any other undecided key — that was never claimed as fixed,
+and with the consequence now stated per row it is no longer the misleading half of round 1's F1.
+
+## F2 — the gate, live, for a principal that *does* have `config.release.write`
+
+```
+$ /config/discovery, evaluated in the page
+{ "fieldsets": [ { "cls": "flex flex-col gap-4 disabled:opacity-75", "disabled": false } ],
+  "readOnlyNotice": false,
+  "sample": [ {"label":"Ambiguity gap","disabled":false}, {"label":"Allow auto-confirmation","disabled":false},
+              {"label":"Free-text fallback anchor","disabled":false}, {"label":"Strong anchors","disabled":false},
+              {"label":"Field id*required","disabled":false}, {"label":"Intent key*required","disabled":false} ] }
+```
+
+One fieldset, wrapping the typed form, inert for a writer — the gate is real and costs the normal
+path nothing. The withheld-`write` half is covered by the three new unit tests.
+
+## The live e2e run, and the revert
+
+```
+$ E2E_REAL_BASE_URL=http://localhost:5187 npx playwright test --project=cfg4-e2e --workers=1 --reporter=list --timeout=60000
 Running 4 tests using 1 worker
-  ok 1 [cfg4-e2e] › e2e\config-discovery.spec.ts:31:3 › adds an item condition, publishes, ... then reverts (7.5s)
-  ok 2 [cfg4-e2e] › e2e\config-fulfilment.spec.ts:26:3 › adds a bay-eligible status, ... then reverts (7.5s)
-  ok 3 [cfg4-e2e] › e2e\config-overview.spec.ts:28:3 › reads the active release and renders the undecided-keys panel (2.6s)
-  ok 4 [cfg4-e2e] › e2e\config-return-policy.spec.ts:26:3 › adds a freight keyword, ... then reverts (5.8s)
-  4 passed (26.6s)
+  ok 1 [cfg4-e2e] › e2e\config-discovery.spec.ts:31:3 › adds an item condition, publishes, ... then reverts (6.1s)
+  ok 2 [cfg4-e2e] › e2e\config-fulfilment.spec.ts:26:3 › adds a bay-eligible status, ... then reverts (5.3s)
+  ok 3 [cfg4-e2e] › e2e\config-overview.spec.ts:28:3 › reads the active release and renders the undecided-keys panel (1.9s)
+  ok 4 [cfg4-e2e] › e2e\config-return-policy.spec.ts:26:3 › adds a freight keyword, ... then reverts (6.3s)
+  4 passed (21.9s)
 ```
 
 `GET /api/config/runtime` read by me before and after, independently of the specs:
 
 ```
-head_revision before/after: 99 105           (six publishes: three edits, three reverts)
-release       before/after: publish-64402828d3444932 publish-79a0ff332b7d4c2a
-selection_vocabulary.conditions               identical: True | E2E residue: []
-return_policy...freight_keywords              identical: True | E2E residue: []
-bay.eligible_statuses                         identical: True | E2E residue: []
+head_revision before/after: 111 117          (six publishes: three edits, three reverts)
+release       before/after: publish-e20ae19b3dd0486a publish-a02f3efc7aa54bcb
+selection_vocabulary.conditions    identical: True | residue: []
+return_policy...freight_keywords   identical: True | residue: []
+bay.eligible_statuses              identical: True | residue: []
 ```
 
-The three target fields are legitimate: `selection_vocabulary.conditions` is documented in the model
-as deliberately *not* constrained (`return_configuration.py:832-837`), and the `strong_anchors` rule
-the implementer hit is real (`return_configuration.py:451`) — retargeting the spec rather than
-weakening the screen was the right call. The specs depend on the live `dev-operator` principal
-carrying `config.release.promote`; it does (`GET /api/principal` → `console_admin` with
-`config.release.{read,write,promote}`), so `config.release.write` is genuinely advertised and nothing
-is hardcoded — `can()` reads the principal, and no new file mentions a role name.
-
-## F1, measured on the live stack
-
-```
-$ curl -s http://localhost:8000/api/config/packaged-drift
-{"RETURN_PLATFORM":{"undecided":["agents","clarification_policy","policy_evaluation",
-  "return_eligibility_policy","return_policy","support_ingress"],"would_adopt":[],"filled_leaves":[]},
- "AI_GATEWAY":{...,"would_adopt":[]},"DEPENDENCY_SIMULATION":{...,"would_adopt":[]}}
-
-$ curl -s http://localhost:8000/api/config/runtime | head
-{"release_id":"publish-79a0ff332b7d4c2a","head_revision":105, ...}
-```
-
-`/config/overview` rendered from that response (text of the live page at `:5183`):
-
-```
-ACTIVE RELEASE            publish-79a0ff332b7d4c2a
-...
-RETURN_PLATFORM: agents
-No active release to compare against yet -- adopting is refused until one exists.     [Take packaged file]
-RETURN_PLATFORM: clarification_policy
-No active release to compare against yet -- adopting is refused until one exists.     [Take packaged file]
-RETURN_PLATFORM: policy_evaluation
-No active release to compare against yet -- adopting is refused until one exists.     [Take packaged file]
-   ... the same sentence on return_eligibility_policy, return_policy, support_ingress ...
-WOULD ADOPT ON THE NEXT START
-Nothing would be adopted from the packaged file right now.
-```
-
-Six rows, six false sentences, six enabled buttons, under a card naming the active release. This also
-answers the panel's other open question: `policy_evaluation` and `support_ingress` — operator
-decisions — are indistinguishable from a stale key, and the only consequence stated per row is the
-wrong one. (The confirm dialog does say "This publishes a new release", which is the honest part.)
-
-## The dev:mock route sweep
-
-```
-$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts --reporter=list
-  1 failed
-    [mock-chromium] › tests\canonical-routes.spec.ts:173:5 › accessibility › /config has no critical or serious violation
-      - Array []
-      + Array [ "color-contrast: Elements must meet minimum color contrast ratio thresholds" ]
-  128 passed (2.0m)
-
-$ ... same command, second full run
-  1 failed (the same test)   128 passed (2.0m)
-
-$ ... -g "/config has no critical or serious violation" --repeat-each=3
-  3 passed (11.4s)
-
-$ node <standalone axe probe, same tags, dark scheme, the spec's own 250ms settle>
-done                                            # zero critical/serious violations
-
-$ E2E_BASE_URL=http://localhost:5185 npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts --reporter=list
-                                                # against an already-warm dev:mock server
-identity pending: 0 of 40
-heading mismatch: 0
-  129 passed (1.9m)
-```
-
-The sweep the ledger claims is real (`129 passed`, all four CFG-4 routes included); the two failures
-above are the cold `--force` dev server losing a race with the spec's fixed 250 ms settle — F10.
+The `<fieldset>` F2 added does not get in the way of a writer: the same three specs still fill, add,
+publish and revert through it.
 
 ## Judgement
 
-The engineering underneath this lease is careful in the way that matters: every place the brief's
-design table and the actual pydantic model disagreed, the implementer read the model, followed it,
-and wrote down why — `selection_vocabulary` is two tuples and not a mapping, `BayConfiguration` has
-no capacity fields, five "enum" fields are free strings and stayed text inputs, and the option lists
-that *are* hardcoded turn out to be exact transcriptions of `EligibilityDecision`, `ReturnWindowBasis`,
-`StockClassificationDefault`, the `projection_status` `Literal`, `AwaitingDimension`'s seven required
-members and `ReturnReason`. C1 was fixed at the cause and the ledger's account of why the review's
-literal two-line suggestion was wrong is correct and demonstrable. The registry failures were fixed
-by deciding the question they encoded rather than by relaxing the assertion, and the frontend known-
-failure list is genuinely empty. The live e2e run publishes and reverts for real, and I verified the
-revert independently rather than taking the spec's word for it. What blocks is narrower than any of
-that and lives in the two places the lease had the least feedback. F1 is a panel that, on every row
-the live stack actually has, tells an operator the opposite of what the system is doing — the summary
-was derived from `would_adopt`'s complement, which is exactly the inference CFG-3a's F1 was blocking
-for, and it survived because the one test fixture that reproduces the state never asserts the
-sentence and the Overview e2e deliberately writes nothing. F2 is the other half of a capability
-sentence the brief spells out in full: the prop is threaded, typed and passed, and then used only on
-the JSON path, so three screens are editable by a principal the backend will refuse. Both are small
-changes with obvious tests, and the rest of the round is sound.
+Both blocking findings were fixed where the defect was, not where it showed. F1's replacement does
+not merely delete the false sentence: it takes the "is there an active release" question away from
+`would_adopt` — which cannot answer it, and whose inability to answer it was CFG-3a's own F1 — and
+gives it to `headRevision`, which can; then it says what carry-forward actually did with the key and
+what the button would do to it, which is the summary the brief asked for and the panel had never been
+able to render, because `filled_leaves` is computed only for undecided keys and the old branch that
+could show it was unreachable for them. The fixture in the new test is the live stack's own shape,
+which is the right instinct after a finding that only the live stack exposed. F2 is fixed by the
+mechanism already in the file next door rather than by threading a `disabled` prop through three
+screens' worth of controls, and the three new tests pin the exact grant combination — `promote`
+without `write` — that nothing covered before. Of the advisories, F3 is the one I would have accepted
+in a weaker form and got a stronger one: the normalisation is now shared by both consumers of the
+backend's path convention instead of duplicated, and its test asserts the error lands on card 0 and
+*not* on card 1. F5's answer is careful about the thing that made it a finding at all — it refreshes
+the head without touching the query cache, precisely because the cache is what remounts the editor —
+and it is verified by a test that retries and checks the second call's revision, not just the notice.
+The two advisories left are left with honest reasons and are both outside what this lease could fix
+well. What remains is two small advisories of my own, one cosmetic and one a missing test for a
+branch that is now correct. Nothing here is worth another round. PASS.
