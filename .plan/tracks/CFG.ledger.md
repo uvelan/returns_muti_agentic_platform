@@ -997,3 +997,58 @@ item 7, deferred to the final step so every route lands before regenerating
 once.
 
 Head sha: see commit. `merge_status: PARTIAL`.
+
+## CFG-3a step:05 — item 3 (part 1): extract the carry-forward into `packaged_adoption.py`
+
+New `configuration/application/packaged_adoption.py`: `adopt_packaged_configuration`
+is `bootstrap_graph_configuration.main`'s decision body (the RETURN_PLATFORM
+merge, the AI_GATEWAY/DEPENDENCY_SIMULATION per-unit merge, the
+`--adopt-packaged`/`--adopt-packaged-key` validation), moved verbatim in
+sequence and effect -- every helper it calls (`_units`, `_assemble`,
+`_adopt_requests`, `_key_digests`, `_fill_absent_leaves`, `_carry_forward`,
+`_drop_retired_keys`) and the two metadata keys (`PACKAGED_KEY_DIGESTS`,
+`PACKAGED_DOMAIN_KEY_DIGESTS`) moved with it, unchanged. `bootstrap_graph_configuration.py`
+imports all of them back and lists them in a new `__all__` (satisfying ruff's
+unused-import check on names it re-exports rather than calls directly) so
+`bootstrap_graph_configuration.<name>` keeps resolving for every existing
+test. `main()` now builds the packaged/active payload dicts (no file I/O
+moved -- `adopt_packaged_configuration` takes already-loaded dicts, which is
+what lets the API call it with no filesystem access to the packaged
+directory) and calls `adopt_packaged_configuration` once instead of running
+the merge inline; `existing_configuration`, `recordable_baseline`,
+`recordable_domain_baselines` and `carried_domains` are read off the
+returned `PackagedAdoptionResult` and used exactly where the inline
+variables were used, so the rest of `main()` (checksum, release id, DRAFT/
+VALIDATED/RELEASED promotion, metadata write) is untouched.
+
+Two log messages changed shape (both still contain every substring a test
+checks): the RETURN_PLATFORM `packaged_configuration_not_adopted` and
+`active_release_no_longer_validates` warnings dropped `release_id=%s` (the
+extracted function has no release id, only domain payloads) and gained
+`domain=%s` for symmetry with the AI_GATEWAY/DEPENDENCY_SIMULATION message,
+which already used that shape. Verified against every caplog assertion in
+the test file (`grep caplog`) before making the change -- none checks for
+`release_id=` text.
+
+**No behaviour change**, per the brief's own requirement -- proof is the
+unmodified test file passing outright:
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/test_graph_configuration_bootstrap.py -q -p no:cacheprovider
+24 passed in 10.87s
+$ .venv/Scripts/python.exe -m pytest tests/configuration tests/test_graph_configuration_bootstrap.py tests/test_configuration_api.py tests/test_every_console_path_is_mounted.py tests/api -q -p no:cacheprovider
+688 passed, 5 deselected, 2 warnings in 92.43s
+$ .venv/Scripts/python.exe -m pytest tests/platform -q -p no:cacheprovider
+194 passed, 29 deselected in 8.25s
+$ .venv/Scripts/python.exe -m ruff check src/return_platform/configuration/cli/bootstrap_graph_configuration.py src/return_platform/configuration/application/packaged_adoption.py
+All checks passed!
+$ .venv/Scripts/python.exe -m ruff format --check <same 2 files>
+2 files already formatted
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy <same 2 files>
+Success: no issues found in 2 source files
+```
+
+Not yet built: the API routes (`POST /adopt-packaged`, `GET /packaged-drift`)
+that call this function -- next step.
+
+Head sha: see commit. `merge_status: PARTIAL`.
