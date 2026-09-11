@@ -15,6 +15,7 @@ from return_platform.configuration.api.releases import (
 )
 from return_platform.configuration.api.router import router
 from return_platform.configuration.cli import bootstrap_graph_configuration
+from return_platform.configuration.deployment_settings import deployment_payload_from_settings
 from return_platform.configuration.graph_repository import (
     InMemoryConfigurationGraphRepository,
 )
@@ -46,6 +47,18 @@ def configuration_client(
     app = FastAPI()
     app.include_router(router)
     app.state.settings = test_settings
+    # CFG-6: mirrors `main.py`'s wiring, but deliberately `{}` here rather than
+    # `deployment_payload_from_settings(test_settings)` -- most of this
+    # fixture's tests build their "active release" by cloning
+    # `app.state.return_configuration` (the RAW packaged baseline, exactly
+    # like `_active_or_baseline_domains` does when there is no active release)
+    # and would otherwise see an incidental `deployment.ai` divergence from
+    # `test_settings`'s own env-derived model pools -- noise unrelated to
+    # whatever carry-forward behaviour each test actually exercises.
+    # `test_adopt_packaged_api_matches_a_cli_run` (the one test that needs the
+    # real overlay, to compare against a real CLI run on the same settings)
+    # sets this attribute itself before calling the route.
+    app.state.packaged_deployment_defaults = {}
     app.state.graph_configuration_repository = InMemoryConfigurationGraphRepository()
     app.state.return_configuration = load_return_configuration(
         test_settings.return_configuration_path
@@ -855,6 +868,86 @@ def test_publish_refuses_a_stale_head_and_leaves_nothing_behind(
     assert statuses <= {"ARCHIVED"}, statuses
 
 
+def test_publish_rolls_back_on_any_refusal_not_only_release_promotion_error(
+    configuration_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """RV CFG-3a F5 / CFG-6.design.md §8 (brief item 10).
+
+    A non-`ReleasePromotionError`, non-`HTTPException` failure inside the
+    guarded block -- here, a repository fault while cloning the SECOND domain
+    of the new draft, well before either promotion -- must still archive the
+    draft `/publish` already created the RETURN_PLATFORM domain for. Before
+    this lease's `except BaseException` clause, only `HTTPException` was
+    caught here and a raw exception from the repository propagated with the
+    half-created DRAFT left behind.
+    """
+    client = configuration_client
+    repo = client.app.state.graph_configuration_repository
+    original_save = repo.save_draft_domain
+
+    async def failing_save(
+        release_id: str, domain_key: str, payload: dict[str, Any], *, actor_id: str
+    ) -> None:
+        if release_id == "publish-any-refusal" and domain_key == "AI_GATEWAY":
+            raise RuntimeError("graph fault while cloning the active release")
+        return await original_save(release_id, domain_key, payload, actor_id=actor_id)
+
+    monkeypatch.setattr(repo, "save_draft_domain", failing_save)
+
+    with pytest.raises(RuntimeError, match="graph fault while cloning the active release"):
+        client.post(
+            "/api/config/publish",
+            json={
+                "release_id": "publish-any-refusal",
+                "domain_key": "RETURN_PLATFORM",
+                "patch": {},
+                "expected_head_revision": 0,
+            },
+        )
+
+    releases = client.get("/api/config/releases").json()["data"]
+    published = [r for r in releases if r["releaseId"] == "publish-any-refusal"]
+    assert published, "the release this call created must still be visible, archived"
+    assert published[0]["status"] == "ARCHIVED"
+
+
+def test_adopt_packaged_rolls_back_on_any_refusal_not_only_release_promotion_error(
+    configuration_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same widened guard, for `/adopt-packaged` (`releases.py:1032-1064`).
+
+    The fault lands inside `publish_release_with_domains`'s own clone loop --
+    before either promotion runs -- so the release this call creates is still
+    DRAFT when the raw exception propagates, and must be archived rather than
+    left behind.
+    """
+    client = configuration_client
+    _release_with_an_edited_discovery(client, "adopt-any-refusal-base")
+
+    repo = client.app.state.graph_configuration_repository
+    original_save = repo.save_draft_domain
+
+    async def failing_save(
+        release_id: str, domain_key: str, payload: dict[str, Any], *, actor_id: str
+    ) -> None:
+        if release_id.startswith("adopt-packaged-") and domain_key == "AI_GATEWAY":
+            raise RuntimeError("graph fault while cloning the active release")
+        return await original_save(release_id, domain_key, payload, actor_id=actor_id)
+
+    monkeypatch.setattr(repo, "save_draft_domain", failing_save)
+
+    with pytest.raises(RuntimeError, match="graph fault while cloning the active release"):
+        client.post(
+            "/api/config/adopt-packaged",
+            json={"units": ["discovery"], "expected_head_revision": 1},
+        )
+
+    releases = client.get("/api/config/releases").json()["data"]
+    created = [r for r in releases if r["releaseId"].startswith("adopt-packaged-")]
+    assert created, "the release adopt-packaged created must still be visible, archived"
+    assert all(r["status"] == "ARCHIVED" for r in created)
+
+
 def test_publish_needs_the_release_write_capability() -> None:
     from return_platform.security import roles as r
     from return_platform.security.capabilities import CONFIG_RELEASE_WRITE, capabilities_for_roles
@@ -1138,6 +1231,11 @@ async def test_adopt_packaged_api_matches_a_cli_run(
 
     # --- API side: the identical starting state, through the route ---
     client = configuration_client
+    # The one test in this file that needs the real env overlay -- both sides
+    # must seed `deployment` from the SAME `test_settings` for the comparison
+    # below to mean anything (`configuration_client`'s own default is `{}`;
+    # see that fixture's docstring).
+    client.app.state.packaged_deployment_defaults = deployment_payload_from_settings(test_settings)
     api_repo = client.app.state.graph_configuration_repository
     await _seed(api_repo)
 

@@ -38,11 +38,17 @@ from return_platform.configuration.application.release_promotion import (
     promote_configuration_release,
     publish_release_with_domains,
 )
+from return_platform.configuration.deployment_settings import (
+    DeploymentEnvironmentError,
+    merge_deployment_defaults,
+    validate_deployment_for_environment,
+)
 from return_platform.configuration.graph_repository import (
     ConfigurationGraphRepository,
     ConfigurationReleaseNode,
 )
 from return_platform.configuration.return_configuration import (
+    DeploymentConfiguration,
     ReturnPlatformConfiguration,
     load_return_configuration,
 )
@@ -412,7 +418,51 @@ def _dotted_error_path(loc: tuple[int | str, ...]) -> str:
     return ".".join(parts)
 
 
-def _validation_errors(domain_key: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
+def _deployment_environment_errors(
+    exc: DeploymentEnvironmentError,
+) -> list[dict[str, Any]]:
+    """`DeploymentEnvironmentError.violations`, in the same `{path, message,
+    type}` shape `_validation_errors`/`_canonical_domain_payload` report a
+    pydantic `ValidationError` in -- so a form's error-rendering code path
+    handles a production-gate refusal exactly the way it handles a structural
+    one, and an operator sees `deployment.dependencies.omc` rather than a
+    single opaque string.
+    """
+    return [
+        {"path": violation.path, "message": violation.message, "type": "value_error"}
+        for violation in exc.violations
+    ]
+
+
+def _enforce_deployment_gate(request: Request, deployment_payload: dict[str, Any]) -> None:
+    """422, naming the path, when `deployment_payload` violates the production gate.
+
+    A no-op when this process has no `Settings` yet (`app.state.settings`
+    unset, which only happens before startup completes) -- there is no
+    environment to gate against, and every other read on this path already
+    tolerates that state. CFG-6.design.md §2: called from `/publish` and
+    `/adopt-packaged`; `Settings.validate_relationships` (unmodified) remains
+    the backstop that refuses activation even if this call were ever bypassed.
+    """
+    settings = getattr(request.app.state, "settings", None)
+    if not isinstance(settings, Settings):
+        return
+    section = DeploymentConfiguration.model_validate(deployment_payload)
+    try:
+        validate_deployment_for_environment(section, settings.environment)
+    except DeploymentEnvironmentError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=_deployment_environment_errors(exc),
+        ) from exc
+
+
+def _validation_errors(
+    domain_key: str,
+    payload: dict[str, Any],
+    *,
+    environment: str | None = None,
+) -> list[dict[str, Any]]:
     """Validate `payload` against the domain it claims and report, never raise.
 
     `POST /validate/{domain_key}` exists so a form can ask "would this be
@@ -421,10 +471,15 @@ def _validation_errors(domain_key: str, payload: dict[str, Any]) -> list[dict[st
     `ValidationError.errors()`, mapped to `{path, message, type}`, instead of
     collapsing them into one string and raising. An unknown domain key still
     404s -- there is no payload shape to report errors *about*.
+
+    `environment` (CFG-6), when given and `domain_key` is RETURN_PLATFORM, also
+    runs the `deployment` production gate against the validated model -- a
+    form must be able to ask "would production refuse this" before a release
+    carrying it is ever published, not only discover it as a 422 at `/publish`.
     """
     model = _domain_model(domain_key)
     try:
-        model.model_validate(payload)
+        validated = model.model_validate(payload)
     except ValidationError as exc:
         return [
             {
@@ -434,6 +489,15 @@ def _validation_errors(domain_key: str, payload: dict[str, Any]) -> list[dict[st
             }
             for error in exc.errors()
         ]
+    if (
+        domain_key == RETURN_PLATFORM_DOMAIN_KEY
+        and environment is not None
+        and isinstance(validated, ReturnPlatformConfiguration)
+    ):
+        try:
+            validate_deployment_for_environment(validated.deployment, environment)
+        except DeploymentEnvironmentError as exc:
+            return _deployment_environment_errors(exc)
     return []
 
 
@@ -582,7 +646,12 @@ async def validate_domain_config(
             )
         candidate = _apply_merge_patch(current, cast(dict[str, Any], body.patch))
 
-    errors = _validation_errors(domain_key, candidate)
+    settings = getattr(request.app.state, "settings", None)
+    errors = _validation_errors(
+        domain_key,
+        candidate,
+        environment=settings.environment if isinstance(settings, Settings) else None,
+    )
     return APIResponse(
         data={"valid": not errors, "errors": errors},
         meta=_response_meta(request),
@@ -765,6 +834,8 @@ async def publish_configuration(
         updated_payload = _canonical_domain_payload(
             body.domain_key, _apply_merge_patch(current, body.patch)
         )
+        if body.domain_key == RETURN_PLATFORM_DOMAIN_KEY:
+            _enforce_deployment_gate(request, updated_payload.get("deployment", {}))
         try:
             await repo.save_draft_domain(
                 release_id, body.domain_key, updated_payload, actor_id=user_id
@@ -844,28 +915,47 @@ async def publish_configuration(
                 },
             )
         )
+
+        # RV CFG-3a F5 / CFG-6.design.md §8: the guarded block now runs through
+        # the summary audit write too. A failure here (an audit-store fault, a
+        # cancelled request) used to leave a RELEASED release with an
+        # incomplete trail and no rollback -- not this handler's own doc
+        # comment's promise ("the draft this call created is archived, not
+        # left behind"), since by the time a release reaches RELEASED
+        # `_archive_draft_on_refusal` no longer touches it (it archives only
+        # DRAFT/VALIDATED), so widening the guard here costs nothing on the
+        # success path and closes the gap on the failure one.
+        details: dict[str, Any] = {
+            "domainKey": body.domain_key,
+            "patchKeys": sorted(body.patch),
+            "clonedFrom": active_release.release_id if active_release is not None else None,
+            "headRevision": outcome.head_revision,
+            "checksumSha256": outcome.release.checksum_sha256,
+        }
+        if body.note:
+            details["note"] = body.note
+        audit_ids.append(
+            await record_configuration_audit(
+                request,
+                action="CONFIGURATION_RELEASE_PUBLISHED",
+                actor=user_id,
+                target=release_id,
+                details=details,
+            )
+        )
     except HTTPException:
         await _archive_draft_on_refusal(repo, release_id, user_id)
         raise
-
-    details: dict[str, Any] = {
-        "domainKey": body.domain_key,
-        "patchKeys": sorted(body.patch),
-        "clonedFrom": active_release.release_id if active_release is not None else None,
-        "headRevision": outcome.head_revision,
-        "checksumSha256": outcome.release.checksum_sha256,
-    }
-    if body.note:
-        details["note"] = body.note
-    audit_ids.append(
-        await record_configuration_audit(
-            request,
-            action="CONFIGURATION_RELEASE_PUBLISHED",
-            actor=user_id,
-            target=release_id,
-            details=details,
-        )
-    )
+    except BaseException:
+        # Any OTHER refusal -- a repository fault, a cancelled request, a
+        # non-HTTPException raised by a dependency this handler calls -- must
+        # leave no orphaned DRAFT/VALIDATED node either (RV CFG-3a F5).
+        # `_archive_draft_on_refusal` archives only a release still in
+        # DRAFT/VALIDATED, so this is safe to run unconditionally: a refusal
+        # that happened after RELEASED (inside the audit write above) finds
+        # nothing to archive and is a no-op.
+        await _archive_draft_on_refusal(repo, release_id, user_id)
+        raise
 
     data = outcome.release.model_dump(mode="json")
     data["domains"] = outcome.domains
@@ -917,8 +1007,21 @@ def _packaged_domain_payloads(request: Request) -> tuple[dict[str, Any], dict[st
         raise HTTPException(
             status_code=503, detail=f"Packaged configuration is unavailable: {exc}"
         ) from exc
+    return_platform_payload = loaded.configuration.model_dump(mode="json")
+    # CFG-6: the env-derived `deployment` defaults, snapshotted from the
+    # BOOTSTRAP settings at process start (`app.state.packaged_deployment_defaults`,
+    # set in `main.py` before `apply_graph_runtime_configuration` first runs) --
+    # never from `app.state.settings` here, which after this process has ever
+    # activated a release IS that release's own value, so seeding from it would
+    # make every `deployment` key read as already decided (design §3).
+    env_deployment_defaults = getattr(request.app.state, "packaged_deployment_defaults", None)
+    if isinstance(env_deployment_defaults, dict):
+        return_platform_payload["deployment"] = merge_deployment_defaults(
+            return_platform_payload.get("deployment", {}),
+            env_deployment_defaults,
+        )
     return (
-        loaded.configuration.model_dump(mode="json"),
+        return_platform_payload,
         {
             AI_GATEWAY_DOMAIN_KEY: loaded_ai_gateway.configuration.model_dump(mode="json"),
             DEPENDENCY_SIMULATION_DOMAIN_KEY: (
@@ -1023,12 +1126,22 @@ async def adopt_packaged_release(
                 "the packaged configuration; nothing was published"
             ),
         )
+    _enforce_deployment_gate(
+        request,
+        adoption.merged_domains[RETURN_PLATFORM_DOMAIN_KEY].get("deployment", {}),
+    )
 
     resources = getattr(request.app.state, "resources", None)
     store = resources if isinstance(resources, RuntimeResources) else None
     activator = getattr(request.app.state, "runtime_configuration_activator", None)
     release_id = f"adopt-packaged-{uuid4().hex[:16]}"
 
+    # RV CFG-3a F5 / CFG-6.design.md §8: the guarded block runs through
+    # `set_release_metadata` and `record_configuration_audit` too, and refuses
+    # on any exception, not only `ReleasePromotionError` -- a Neo4j fault or a
+    # cancelled request while writing metadata/audit used to leave an orphaned
+    # RELEASED-but-untracked release with no rollback.
+    undecided = {key: list(value) for key, value in adoption.undecided.items()}
     try:
         outcome = await publish_release_with_domains(
             repository=repo,
@@ -1040,33 +1153,35 @@ async def adopt_packaged_release(
             activator=(activator if isinstance(activator, RuntimeConfigurationActivator) else None),
             expected_head_revision=body.expected_head_revision,
         )
+
+        # Metadata sits outside the checksum (frozen at VALIDATED), so it may be
+        # set after RELEASED -- the same ordering `bootstrap_graph_configuration.main`
+        # uses. `adoption.recordable_baseline`/`recordable_domain_baselines`
+        # already carry forward every previously-known digest (`_carry_forward`
+        # starts from the active release's own baseline), so this replaces the
+        # release's metadata wholesale rather than merging it -- exactly what
+        # the CLI's `set_release_metadata(release_id, release_metadata)` does.
+        await repo.set_release_metadata(
+            release_id,
+            {
+                PACKAGED_KEY_DIGESTS: adoption.recordable_baseline,
+                PACKAGED_DOMAIN_KEY_DIGESTS: adoption.recordable_domain_baselines,
+            },
+        )
+
+        await record_configuration_audit(
+            request,
+            action="CONFIGURATION_PACKAGED_ADOPTED",
+            actor=user_id,
+            target=release_id,
+            details={"units": sorted(body.units), "undecided": undecided},
+        )
     except ReleasePromotionError as exc:
         await _archive_draft_on_refusal(repo, release_id, user_id)
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
-
-    # Metadata sits outside the checksum (frozen at VALIDATED), so it may be
-    # set after RELEASED -- the same ordering `bootstrap_graph_configuration.main`
-    # uses. `adoption.recordable_baseline`/`recordable_domain_baselines`
-    # already carry forward every previously-known digest (`_carry_forward`
-    # starts from the active release's own baseline), so this replaces the
-    # release's metadata wholesale rather than merging it -- exactly what the
-    # CLI's `set_release_metadata(release_id, release_metadata)` does.
-    await repo.set_release_metadata(
-        release_id,
-        {
-            PACKAGED_KEY_DIGESTS: adoption.recordable_baseline,
-            PACKAGED_DOMAIN_KEY_DIGESTS: adoption.recordable_domain_baselines,
-        },
-    )
-
-    undecided = {key: list(value) for key, value in adoption.undecided.items()}
-    await record_configuration_audit(
-        request,
-        action="CONFIGURATION_PACKAGED_ADOPTED",
-        actor=user_id,
-        target=release_id,
-        details={"units": sorted(body.units), "undecided": undecided},
-    )
+    except BaseException:
+        await _archive_draft_on_refusal(repo, release_id, user_id)
+        raise
 
     data = outcome.release.model_dump(mode="json")
     data["domains"] = outcome.domains

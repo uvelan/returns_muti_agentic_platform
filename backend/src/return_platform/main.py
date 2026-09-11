@@ -113,6 +113,11 @@ from return_platform.configuration.api.router import router as canonical_configu
 from return_platform.configuration.application.agent_configuration import (
     AgentConfigurationService,
 )
+from return_platform.configuration.deployment_settings import (
+    DeploymentEnvironmentError,
+    deployment_payload_from_settings,
+    validate_deployment_for_environment,
+)
 from return_platform.configuration.graph_repository import (
     ConfigurationGraphRepository,
     InMemoryConfigurationGraphRepository,
@@ -464,6 +469,13 @@ async def lifespan(
         secret_resolver = None
     app.state.settings = bootstrap_settings
     app.state.secret_resolver = secret_resolver
+    # CFG-6: the env's `deployment` values, snapshotted from the BOOTSTRAP
+    # `Settings` -- before a release has ever touched it -- so
+    # `_packaged_domain_payloads` (configuration/api/releases.py) can seed a
+    # first publish from the environment without ever reading
+    # `app.state.settings` after it becomes release-derived below, which would
+    # be circular (design §3).
+    app.state.packaged_deployment_defaults = deployment_payload_from_settings(bootstrap_settings)
 
     loaded_catalog = load_asset_catalog(bootstrap_settings.catalog_path)
     schema_registry = load_schema_registry(bootstrap_settings.schema_registry_path)
@@ -528,6 +540,22 @@ async def lifespan(
             configuration_snapshot.dependency_simulation_configuration,
             path=baseline_dependency_simulation_configuration.path,
         )
+        # CFG-6.design.md §2: a release promoted into production with a
+        # `deployment` section production cannot run (SIMULATOR/MANUAL in
+        # provider order, a SIMULATED dependency mode) is refused HERE, at
+        # startup, with a named reason -- not silently at the first
+        # `RuntimeConfigurationActivator.refresh` poll, where
+        # `Settings.validate_relationships` would catch it but the process is
+        # already serving traffic on its (stale) previous settings.
+        try:
+            validate_deployment_for_environment(
+                return_configuration.configuration.deployment,
+                bootstrap_settings.environment,
+            )
+        except DeploymentEnvironmentError as exc:
+            raise RuntimeError(
+                f"Active configuration release has a deployment section production refuses: {exc}"
+            ) from exc
         graph_settings = apply_graph_runtime_configuration(
             bootstrap_settings,
             return_configuration.configuration,

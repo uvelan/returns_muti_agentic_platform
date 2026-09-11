@@ -34,6 +34,10 @@ from return_platform.configuration.bootstrap_runtime_integrations import (
     build_configured_runtime_configuration,
     finish_ai_validation_run,
 )
+from return_platform.configuration.deployment_settings import (
+    deployment_payload_from_settings,
+    merge_deployment_defaults,
+)
 from return_platform.configuration.graph_repository import (
     Neo4jConfigurationGraphRepository,
 )
@@ -235,6 +239,17 @@ async def main(
         # file I/O of its own, so callers with no filesystem access to the
         # packaged directory (the API process) can run the identical decision.
         packaged_payload = loaded.configuration.model_dump(mode="json")
+        # CFG-6: the env stays the bootstrap default for the `deployment`
+        # section by being injected into the PACKAGED payload here, the way
+        # `runtime_integrations` already is -- never into `settings` itself,
+        # which this command never re-derives from a release (unlike the API
+        # process). `settings` at this point is exactly the bootstrap Settings
+        # `resolve_runtime_settings_from_vault` returned above, before any
+        # release has touched it.
+        packaged_payload["deployment"] = merge_deployment_defaults(
+            packaged_payload.get("deployment", {}),
+            deployment_payload_from_settings(settings),
+        )
         packaged_domains: dict[str, dict[str, Any]] = {
             AI_GATEWAY_DOMAIN_KEY: loaded_ai_gateway.configuration.model_dump(mode="json"),
             DEPENDENCY_SIMULATION_DOMAIN_KEY: (

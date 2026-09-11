@@ -12,6 +12,10 @@ from return_platform.ai.routing.tasks import (
     build_loaded_ai_gateway_configuration,
     load_ai_gateway_configuration,
 )
+from return_platform.configuration.deployment_settings import (
+    DeploymentEnvironmentError,
+    validate_deployment_for_environment,
+)
 from return_platform.configuration.graph_repository import (
     ConfigurationGraphRepository,
     InMemoryConfigurationGraphRepository,
@@ -98,6 +102,20 @@ async def resolve_process_configuration(
     finally:
         await driver.close()
 
+    # CFG-6.design.md §2: the same startup gate `main.py` runs for the API
+    # process -- a worker resolving a release production refuses must fail
+    # closed here, with a named reason, rather than adopt a `deployment`
+    # section that would only be caught later by
+    # `Settings.validate_relationships`.
+    try:
+        validate_deployment_for_environment(
+            snapshot.configuration.deployment,
+            bootstrap.environment,
+        )
+    except DeploymentEnvironmentError as exc:
+        raise RuntimeError(
+            f"Active configuration release has a deployment section production refuses: {exc}"
+        ) from exc
     graph_settings = apply_graph_runtime_configuration(bootstrap, snapshot.configuration)
     try:
         resolved, resolved_resolver = await resolve_runtime_settings_from_vault(graph_settings)
