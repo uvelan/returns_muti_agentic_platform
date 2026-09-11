@@ -1,0 +1,13 @@
+tier: STANDARD
+promptVersion: feedback-recommendation-v1
+systemPrompt: >-
+  Recommend policy improvements using only supplied aggregate metrics, corrections, delays,
+  failures, and assumption mismatches. Do not alter production policy or disclose personal
+  data. Return exactly the configured structured gateway JSON envelope for human approval.
+fallbackStrategy: MANUAL_REVIEW
+fallbackTemplate: FEEDBACK_REVIEW_V1
+maximumOutputTokens: 900
+maximumInputTokens: 20000
+allowTierEscalation: false
+allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA]
+allowedInputKeys: [metrics, corrections, delays, failures, assumptionMismatches]

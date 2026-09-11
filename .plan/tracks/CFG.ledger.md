@@ -566,6 +566,7 @@ directory -- is scope item 1 of that brief.
 
 ---
 
+<<<<<<< HEAD
 ## CFG-1 acceptance on the dev graph (orchestrator)
 
 Trunk merged at `3cb696e7` (merge record `73c276d2`). The serving worktree `cfg-verify` was moved to
@@ -584,3 +585,251 @@ frontend 200
 ```
 The six undecided keys are unchanged. Snapshot `evidence/config_audit/after_cfg1/`.
 CFG-2 implementer started on `feat/cfg-2-config-split` from `73c276d2` (worktree `cfg-2`).
+=======
+## CFG-2 step:00 — base check, worktree/PYTHONPATH pin
+
+```
+$ git rev-parse HEAD
+73c276d231cd9e609678f8d29517d67cfb5d77a9
+$ git fetch origin master --quiet; git rev-parse origin/master
+0448d32a7c8b8e590dbc1b601160c9ab17d6c36a
+$ git rev-list --left-right --count HEAD...origin/master
+1032	0
+$ export PYTHONPATH="$(pwd)/backend/src"; backend/.venv/Scripts/python.exe -c "import return_platform; print(return_platform.__file__)"
+K:\Projects\Ret\returns_muti_agentic_platform\.claude\worktrees\cfg-2\backend\src\return_platform\__init__.py
+```
+Resolves inside the cfg-2 worktree -- proceeding. `origin/master` is far behind local trunk (1032
+commits) because this repo's `origin` is not kept in sync with the local `master`/track work
+(consistent with the whole CFG track being local-only so far, per CFG.brief.md's "never push" rule);
+not a stale-base problem for this lease since the base is `73c276d2` (trunk after CFG-1's merge),
+matching the CFG-2 brief's statement that `e036310d` is contained in this head.
+
+## CFG-2 step:01 — settings.py blocker fixed (scope item 2, first half), unit tests
+
+Moved `return_configuration_path` and `ai_gateway_configuration_path` out of
+`validate_catalog_path` (absolute-only, `.yaml`/`.yml`-suffix-only) into a new
+`validate_packaged_configuration_path`, shaped like `resolve_configuration_directory`
+(`settings.py:386-404`): relative resolves against `REPOSITORY_ROOT`, no suffix rule, no existence
+check -- a strict widening (every old-accepted value still resolves the same way; only the
+absolute-only/YAML-suffix-only refusal is gone). `catalog_path`, `schema_registry_path` and
+`dependency_simulation_configuration_path` stay on the old validator, unchanged.
+
+New `backend/tests/configuration/test_settings_configuration_paths.py`, synthetic `tmp_path`
+fixtures per the brief: a no-suffix directory accepted; a relative directory resolves against
+`REPOSITORY_ROOT`; a single-file path still resolves as before (no regression); no existence check
+(a directory that does not exist on disk still resolves); the AI Gateway field accepts a directory
+too; `catalog_path` (unrelated field) still enforces the old absolute-only/YAML-suffix-only rule
+(regression guard that the change is scoped to the two fields the brief names).
+
+```
+$ PYTHONPATH=$WT/backend/src backend/.venv/Scripts/python.exe -m pytest backend/tests/configuration/test_settings_configuration_paths.py -q
+.......                                                                  [100%]
+7 passed in 1.09s
+```
+
+## CFG-2 step:02 — composer (scope item 1), directory support in both loaders (item 2), split trees written (item 3); two design deviations found and recorded
+
+**Composer.** New `backend/src/return_platform/configuration/composition.py::compose_configuration_document(directory, *, document_keys, ignore=frozenset())`. Implements every rule in `.plan/tracks/CFG-2.design.md` sect. 2 (1-9): missing `index.yaml`; a listed path missing; a part root not a mapping; a path escaping the directory; a section declared twice (inline index sections count); an `entries` stem colliding under `casefold()` or failing `^[A-Za-z0-9][A-Za-z0-9_.-]*$`; a `*.yaml`/`*.yml` file present but unlisted (no globbing); the 1 MB bound over the tree's total bytes; a framed `relpath\0len\0bytes` sha256 over `index.yaml` then every listed file in list order. Every error names every offending file/path, per the brief.
+
+**Loaders.** `return_configuration.py::load_return_configuration` and `ai/routing/tasks.py::load_ai_gateway_configuration`: `if resolved.is_dir(): compose(...)`, else today's single-file code unchanged. `LoadedReturnConfiguration.path`/`LoadedAIGatewayConfiguration.path` is the directory; `sha256` is the composer's framed digest. `tests/platform/test_layering.py`, `test_no_module_cross_imports.py`, `test_ai_lane_boundary.py` all pass with the new `ai.routing.tasks -> configuration.composition` import (design risk 6):
+```
+$ pytest tests/platform/test_layering.py tests/platform/test_no_module_cross_imports.py tests/platform/test_ai_lane_boundary.py -q
+......                                                                   [100%]
+6 passed in 3.86s
+```
+
+**Split trees written** (text surgery, cut-and-paste by line range, never `safe_load`+`safe_dump`): `backend/config/returns/{index.yaml,agents.yaml,discovery.yaml,discovery_resolution.yaml,return_policy.yaml,workflow.yaml,support.yaml,fulfilment.yaml,integrations.yaml}` (8 parts, 23 sections, exactly the design's table) and `backend/config/ai_gateway/{index.yaml,tasks/<25 files>.yaml}`. Section boundaries were computed programmatically (comment blocks attach to the *following* top-level key, stopping at the first blank line above; verified against every one of the 23+25 boundaries by inspection, not assumed) and self-checked: reconstructing the full document from the parts and comparing to `yaml.safe_load` of the original file returns equal for both domains before any pydantic model is involved.
+
+**Deviation 1 (design gap): `ai_gateway.yaml` has its own YAML anchors, undetected by the design note.** The design's anchor section (sect. 1, "Anchors") only examined `production.yaml`'s `&tpl_sec_*` (all inside `support_template`, confirmed still true: `grep -n '&[a-zA-Z_-]' backend/config/returns/production.yaml` = only lines 2265-2398, alias hits = only lines 2442-2475, all inside `support_template`'s own range). It did not check `ai_gateway.yaml`, which has 25 anchors: `&role-and-untrusted-input` etc., defined inside task `ORDER_AGENT_REASONING_V1` (lines 277-658) and aliased (`*role-and-untrusted-input`) by five sibling tasks (`..._OPENING_V1`, `..._NARROWING_V1`, `..._WIDE_V1`, `..._UNRESOLVED_V1`, `..._COMPLETING_V1`); and `&support-untrusted-input`/`&support-tone-and-disclosure`, defined inside `support.message.classify.v1` and aliased by the other four `support.*` tasks. The brief's scope item 3 is a hard requirement -- one task, one file (`entries.tasks` keys a section entry by filename stem) -- and the design's own rule 4 ("no anchor may cross a part boundary") makes splitting each of these 25 tasks into its own file break 9 of them (the alias would reference an anchor defined in a *different* file, which does not parse independently).
+
+Smallest deviation that keeps the acceptance criteria (model_dump equality, one task per file): **materialized** every alias -- replaced each alias reference with a verbatim copy of the anchor definition's own lines (indentation already identical between definition and every alias site, confirmed for all 25 anchors before substituting), dropping the anchor/alias syntax in the copies. The anchor's *defining* task keeps its own anchor tag (now unreferenced elsewhere, harmless). This changes zero resolved values -- `yaml.safe_load` already resolves an alias to the anchor's value, so a duplicated literal is indistinguishable from an aliased one once parsed -- proved directly: a script reconstructed `{schemaVersion, domain, circuitBreaker, retry, rateLimits, providerLimits, modelContexts, tasks: {25 ids: {...}}}` from `index.yaml` + all 25 task files and compared it to `yaml.safe_load` of the original `ai_gateway.yaml`: **equal**. Every one of the 25 generated task files was also confirmed to `yaml.safe_load` standalone with no unresolved alias. Cost: the shared-prompt-text mechanism (one edit point for the shared sections) is gone -- a future edit to a shared section now has to touch every task file that carries it, until CFG-6 or a later lease reintroduces sharing at a different layer if wanted. Recorded here per the lease's "if the design is wrong, record the smallest deviation" instruction; not a silent choice.
+
+**Deviation 2 (design gap): `production.yaml` and the new `returns/` directory are the same directory.** `DEFAULT_RETURN_CONFIGURATION_PATH` is `backend/config/returns/production.yaml` -- the file already lives *inside* `backend/config/returns/`, the exact directory the split's `index.yaml` and 8 parts also live in. The brief mandates both (a) "both documents still load at this commit" (scope item 3) and (b) a *separate, final* deletion commit for `production.yaml` (environment rules, non-negotiable) -- meaning the directory has to compose correctly *while `production.yaml` still sits in it*, for the whole window between the split commit and the deletion commit. The composer's own no-globbing rule (design rule 3, deliberately strict: any unlisted `*.yaml`/`*.yml` anywhere in the tree is an error) trips on exactly this file, by construction, every time, for that entire window -- verified by first writing the tests without any exception and watching the equivalence test and the durable-invariant test fail with a "not listed in index.yaml; this loader does not glob" error naming `production.yaml`. (`ai_gateway.yaml`, by contrast, lives at `backend/config/ai_gateway.yaml` -- a sibling of the new `ai_gateway/` directory, not inside it -- so it has no such collision.)
+
+Smallest deviation: added one optional parameter, `ignore: frozenset[str] = frozenset()`, to `compose_configuration_document` -- paths (relative to the directory) excluded from both composition and the no-globbing scan, documented in the function's own docstring as existing for exactly this one transitional purpose. `load_return_configuration`'s directory branch passes `ignore=frozenset({"production.yaml"})`; `load_ai_gateway_configuration` passes nothing (no collision to exempt). This stays in the loader permanently rather than being removed in the deletion commit, because the deletion commit is required to contain "no other change" -- once `production.yaml` is gone the `ignore` set is simply never matched, a no-op.
+
+**Equivalence + error tests**, `backend/tests/configuration/test_packaged_configuration_composition.py` (new) and `backend/tests/harness/configuration_tree.py::copied_configuration_tree` (new): every test named in the brief's "Tests to add" -- both one-shot split-equivalence tests (against `git show 73c276d231cd9e609678f8d29517d67cfb5d77a9:<path>`, falling back to the frozen copy), the frozen-copy-matches-git test, the packaged-key-digest/carry-forward-units test (`_key_digests` equal, `_units(..., CARRY_FORWARD_SPLIT_KEYS[AI_GATEWAY])` yields the same 25 `tasks.<ID>` names both ways), the durable directory-vs-composed-single-file invariant (both domains), the single-file-still-loads test, and five error tests (duplicate section, listed-but-missing, present-but-unlisted, missing index, case-colliding stems -- the last needed two files differing by *more* than case, since two same-suffix names differing only by case are one file on NTFS before the rule ever runs; noted in the test).
+
+Frozen pre-split copies, `backend/tests/data/pre_split/{returns_production.yaml,ai_gateway.yaml}`, from `git show 73c276d231cd9e609678f8d29517d67cfb5d77a9:<path>`, sha256 verified equal to both the live packaged file and the frozen copy for both domains (returns: f23eb2dbe806bec672ce5afded48701b3a41f50d8cf7ac6672838011a0416b4b; ai_gateway: f91a1cb61c868b31396efc08c6858e423f71848f891cce8a0869d890c0941cde).
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/configuration/test_packaged_configuration_composition.py tests/configuration/test_settings_configuration_paths.py -q
+...................                                                      [100%]
+19 passed in 3.12s
+$ .venv/Scripts/python.exe -m ruff check src/return_platform/configuration src/return_platform/ai/routing
+All checks passed!
+$ .venv/Scripts/python.exe -m ruff format --check src/return_platform/configuration src/return_platform/ai/routing tests/configuration/test_settings_configuration_paths.py tests/configuration/test_packaged_configuration_composition.py tests/harness/configuration_tree.py
+would reformat 0 files (all formatted)
+```
+
+**mypy finding, pre-existing, not introduced here.** `mypy src/return_platform/configuration src/return_platform/ai/routing` reports 47 errors in 6 files this lease does not own (`cli/apply_sql_migrations.py`, `cli/apply_neo4j_migrations.py`, `runtime_loader.py`, `api/sources.py`, `bootstrap_runtime_integrations.py`, `cli/bootstrap_graph_configuration.py`) -- mostly `Settings()` call sites mypy's pydantic plugin considers under-supplied. Isolated the cause: deleted the (gitignored) `.mypy_cache`, temporarily restored `settings.py` to its pre-CFG-2 content via a scratch copy (not committed, not staged, restored immediately after) and reran with a fresh cache -- identical 47 errors, same 6 files, same lines, proving these predate every CFG-2 change and were previously hidden by stale incremental-mode cache state, not caused by moving `return_configuration_path`/`ai_gateway_configuration_path` to a new validator. None of the four files this lease owns (`composition.py`, `return_configuration.py`, `settings.py`, `ai/routing/tasks.py`) appear anywhere in the 47. Flagged for RV/orchestrator, not fixed here (none of the six files are in CFG-2's Owns list; CFG-1 precedent is to flag rather than silently expand scope).
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/configuration tests/platform tests/api -q
+834 passed, 34 deselected, 2 warnings in 77.65s
+```
+(run with cwd=backend/, matching the brief's own acceptance command shape; a repo-root cwd trips two unrelated pre-existing tests that hard-code `config/returns/production.yaml` as a relative path -- not a regression, the same tests fail the same way against the unmodified base under the same cwd mismatch.)
+
+## CFG-2 step:03 — defaults repointed (scope item 4), seven raw-text readers + two scripts repointed (item 5)
+
+**Defaults.** `settings.py:13` `DEFAULT_RETURN_CONFIGURATION_PATH` -> `BACKEND_ROOT / "config" / "returns"` (was `.../production.yaml`); `:17` `DEFAULT_AI_GATEWAY_CONFIGURATION_PATH` -> `BACKEND_ROOT / "config" / "ai_gateway"` (was `.../ai_gateway.yaml`). `compose.yaml:14,16` -> `/app/config/returns`, `/app/config/ai_gateway`. `backend/Dockerfile:124,126` the same baked `ENV` pair (`:141`'s `COPY config ./config` already carries the split tree -- no `COPY` line change). `.env.example:204,297` -- both were comments naming `ai_gateway.yaml`; repointed at `ai_gateway/index.yaml` and `ai_gateway/` respectively. Verified end to end with the real default `Settings()`:
+```
+$ python -c "from return_platform.configuration.settings import Settings; from return_platform.configuration.return_configuration import load_return_configuration; from return_platform.ai.routing.tasks import load_ai_gateway_configuration; s = Settings(); r = load_return_configuration(s.return_configuration_path); g = load_ai_gateway_configuration(s.ai_gateway_configuration_path); print(r.sha256[:12], g.sha256[:12])"
+c7032fe6c5bf a71f73b3dcc1
+```
+
+**Seven raw-text readers, one part file per section moved:**
+- `tests/acceptance/test_item_10_the_tool_rung_is_unreachable.py`: `_released_document()` now reads `support.yaml` (`support_resolver` lives there) instead of `production.yaml`.
+- `tests/configuration/test_return_method_requirements_configuration.py`: the `shipped_payload` fixture used to `yaml.safe_load` the whole file and hand it straight to `ReturnPlatformConfiguration.model_validate` after `_payload_with_rows` overrides only `return_policy` -- so it has to stay the **full** document, not just `return_policy.yaml`; repointed at `compose_configuration_document(DEFAULT_RETURN_CONFIGURATION_PATH, ...).document`, which is exactly what `load_return_configuration` validates against. The `:160` (now :175 after the docstring grew) `OPERATOR REVIEW REQUIRED` banner-position check reads `return_policy.yaml` alone (raw text, unaffected by the model) -- comment position relative to `method:` lines is preserved because the split is text surgery, never `safe_load`+`safe_dump`.
+- `tests/configuration/test_support_ai_gateway_tasks.py`: `CONFIG_PATH` repointed at the `ai_gateway/` directory; the fixture uses `load_ai_gateway_configuration` (composing) rather than a raw `yaml.safe_load` of one file, since a single file no longer exists there. `test_the_anchors_are_one_text_shared_by_both_tasks` asserts `==` (value equality, not object identity) between `support-untrusted-input`/`support-tone-and-disclosure` on both tasks -- still true after step:02's anchor materialization, since the materialized copies are byte-identical to the original alias's resolved value; ran to confirm.
+- `tests/configuration/test_support_gate_configuration.py`: two reads at `:39` (now the `production_block` fixture) and `:71` name **two different** part files -- `support_gate` is in `support.yaml`, but the same helper also reads `return_case.support_response_wait_seconds`, which is in `workflow.yaml`. Split into `SUPPORT_YAML`/`WORKFLOW_YAML` constants.
+- `tests/operations/test_support_template_draft.py`: `_shipped_case_fact_names()` repointed at `support.yaml` (`support_template` lives there).
+- `tests/policy/test_window_policy_is_configuration.py`: the `packaged` fixture now loads the `returns/` directory. The two `:200,:239` tests (`purchase_window`/`unstated_condition_facts`, both in `return_eligibility_policy` -> `return_policy.yaml`) no longer build an edited single file in `tmp_path`; they use the new `tests/harness/configuration_tree.py::copied_configuration_tree(RETURNS_DIR, tmp_path / "returns")` to copy the whole directory (`production.yaml` copied along with it, harmlessly -- `load_return_configuration`'s directory branch always ignores that filename, copy or original) and edit `return_policy.yaml` inside the copy.
+- `scripts/validate_stage4l_production.py:59-60` and `scripts/validate_stage4n_ai_gateway.py:44`: both now pass the directory. `validate_stage4n_ai_gateway.py` run end to end: `checksPassed: 9, status: PASSED` against the split `ai_gateway/` tree, exercising the materialized-anchor task files through the real routing/dispatch path, not just `model_dump` equality. `validate_stage4l_production.py` fails at `from return_platform.agents.registry import ReturnAgentRegistry` (line 17, before the line this lease touches) -- confirmed pre-existing and unrelated: no `ReturnAgentRegistry` class exists anywhere in the tree (`grep -rn "class ReturnAgentRegistry"` empty), and `git log` on the script shows the break predates this lease (`4ac6b6eb refactor(infra): three Compose profiles, and retire the scripts F4 broke`). Not fixed here -- the script is not owned beyond its one config-path line, and it is not wired into CI (`scripts/ci/known_test_failures.json` names neither it nor `ReturnAgentRegistry`). Flagged for RV/orchestrator.
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/acceptance/test_item_10_the_tool_rung_is_unreachable.py tests/configuration/test_return_method_requirements_configuration.py tests/configuration/test_support_ai_gateway_tasks.py tests/configuration/test_support_gate_configuration.py tests/operations/test_support_template_draft.py tests/policy/test_window_policy_is_configuration.py -q
+........................................................................ [ 91%]
+.......                                                                  [100%]
+79 passed in 2.52s
+$ .venv/Scripts/python.exe -m ruff check <all nine files touched this step>
+All checks passed!
+$ .venv/Scripts/python.exe -m ruff format --check <same>
+would reformat 0 files (all formatted; one file reformatted then re-verified)
+```
+
+## CFG-2 step:04 — third design deviation: 53 more test files hardcode the old filenames, not just the seven
+
+**Finding.** The design's own count says "90 files reference the two files or the path constants; all but seven go through `load_*`" and concludes the seven raw-text readers are what need repointing -- implying the other ~83 are safe because `load_*` now accepts a directory. That reasoning holds for callers that use `Settings.return_configuration_path`/`ai_gateway_configuration_path` (the "process readers" the design lists separately), but it does not hold for test files that build their own `Path(...) / "production.yaml"` (or `"ai_gateway.yaml"`) and hand *that* to `load_*` -- directory support in the loader does not help a caller that names the file explicitly. A file argument still works right up until the deletion commit deletes the file, at which point every one of those tests starts raising `FileNotFoundError` at collection or fixture time. Counted precisely:
+```
+$ grep -rlE '"config"\s*/\s*"returns"\s*/\s*"production\.yaml"|"config/returns/production\.yaml"|"config"\s*/\s*"ai_gateway\.yaml"|"config/ai_gateway\.yaml"|"returns"\s*/\s*"production\.yaml"|\.parent\s*/\s*"ai_gateway\.yaml"' backend/tests scripts | wc -l
+53
+```
+This is well outside the brief's Owns list ("the seven raw-text test files named in Scope 5"), but leaving them unfixed makes the deletion commit break the suite wholesale -- directly contradicting the brief's own acceptance line ("passes with the known-failure registry unchanged and the pass count up by exactly the tests added"). Smallest deviation that keeps the acceptance criteria: fixed all 53, mechanically -- every one is the same shape (a `Path` join or literal string ending in the old filename, passed straight to a loader or a `Settings(...)` override), so a scripted substitution is exact and reviewable rather than an invented one-off per file:
+- `"config" / "returns" / "production.yaml"` -> `"config" / "returns"` (and the literal-string form `"config/returns/production.yaml"` -> `"config/returns"`)
+- `"config" / "ai_gateway.yaml"` -> `"config" / "ai_gateway"` (and the literal-string and `.parent /` forms)
+
+Verified no file was mis-transformed: `ruff check`/`ruff format` clean on all 53, `pytest --collect-only` collects the same 5347 tests (515 deselected) with zero collection errors, and the full suite (below) shows no new failures. A handful (13) of these already-touched files also carried a *prose* mention of the old filename in a docstring or comment (e.g. "the actual packaged `config/returns/production.yaml`") -- fixed those too, since the file was already open for the code fix and leaving stale prose beside a corrected path is worse than either state alone. Seven files this lease does not otherwise touch keep a prose-only mention (`test_items_13_19_reminder_cadence_in_business_time.py`, `harness/business_calendars.py`, `test_support_resolver_composition.py`, `test_restocking_rate_reaches_the_case.py`, `test_cumulative_support_outcomes.py`, `test_graph_configuration_bootstrap.py`) plus `scripts/prepare_runtime_configuration.sh:152` (already noted by the design as comment-only) -- flagged for RV/orchestrator rather than expanding scope further into files with no functional dependency on the split.
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests --collect-only -q
+5347/5862 tests collected (515 deselected) in 12.35s
+```
+(zero collection errors -- confirms no import broke across the 53-file mechanical edit)
+
+```
+$ .venv/Scripts/python.exe -m ruff check <all 53 files + the 13 with prose fixes>
+All checks passed!
+$ .venv/Scripts/python.exe -m ruff format --check <same>
+would reformat 0 files (4 files reformatted then re-verified)
+```
+
+## CFG-2 step:05 — full suite confirmed clean before deletion; 25-key listing; openapi drift
+
+**Key listing (brief's "Evidence to paste"):** the 25 top-level keys of `production.yaml` before the split and the composed document's key listing after, both derived programmatically (not hand-typed):
+```
+ORIGINAL keys ( 25 ): ['schema_version', 'assumption_set_version', 'agents', 'discovery',
+'source_resolution', 'clarification_policy', 'return_policy', 'selection_vocabulary', 'workflow',
+'support', 'omc', 'bay', 'return_case', 'business_calendars', 'integrations', 'policy_evaluation',
+'context_assembly', 'support_ingress', 'support_resolver', 'copilot', 'runtime_integrations',
+'return_eligibility_policy', 'shipment_tracking', 'support_gate', 'support_template']
+
+COMPOSED keys ( 25 ): ['schema_version', 'assumption_set_version', 'agents', 'discovery',
+'source_resolution', 'clarification_policy', 'selection_vocabulary', 'return_policy',
+'policy_evaluation', 'return_eligibility_policy', 'workflow', 'return_case', 'business_calendars',
+'support', 'context_assembly', 'support_ingress', 'support_resolver', 'support_gate',
+'support_template', 'omc', 'bay', 'shipment_tracking', 'integrations', 'copilot',
+'runtime_integrations']
+
+Equal key sets: True
+Equal full dict: True
+```
+(Order differs -- composed follows the part-file grouping, not the original file's line order -- which the design explicitly says is cosmetic, sect. 4 risk 7: digests and dict equality are order-invariant. Set and dict equality both hold.)
+
+**Full suite, run twice** (before and after the 53-file bulk fix, to isolate its effect):
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests -q -p no:cacheprovider --ignore=tests/configuration/test_concurrent_activation.py
+# before the 53-file fix:
+42 failed, 5295 passed, 10 skipped, 515 deselected, 2 warnings in 283.50s (0:04:43)
+# after the 53-file fix and prose cleanup:
+42 failed, 5295 passed, 10 skipped, 515 deselected, 2 warnings in 294.40s (0:04:54)
+```
+Identical counts both runs -- the bulk fix changed which path string a test builds, not which file that path resolves to (production.yaml/ai_gateway.yaml still exist on disk at this point), so no test's outcome moved. The 42 failures are the same 9 modules RV's CFG-1 review (`.plan/reviews/CFG-1.md` Q6) named as pre-existing and base-identical:
+```
+$ grep "^FAILED" <output> | sed -E 's/FAILED (tests\/[^:]+::).*/\1/' | sort -u
+tests/dynamic_knowledge/test_confirmation_starts_the_case_workflow.py::
+tests/dynamic_knowledge/test_order_discovery_smoke_net.py::
+tests/dynamic_knowledge/test_reasoning_stage_prompts.py::
+tests/dynamic_knowledge/test_turn_temporal_grounding.py::
+tests/test_ai_a_rejected_parse_is_repaired_on_its_own_route.py::
+tests/test_ai_route_balancing_design.py::
+tests/test_ai_single_dispatch_boundary.py::
+tests/test_enforced_contracts_are_disclosed.py::
+tests/test_keyless_reasoning_is_held_for_a_human.py::
+```
+Exactly nine modules -- the same nine RV's throwaway-worktree diff found identical between the CFG-0 base and the CFG-1 branch. 5295 passed vs CFG-1's final 5276 = 19 more, exactly the 19 tests this lease adds (`test_packaged_configuration_composition.py`: 12, `test_settings_configuration_paths.py`: 7) -- the acceptance bound ("pass count up by exactly the tests added") holds precisely, not just approximately.
+
+```
+$ python scripts/check_openapi_drift.py
+{"stage": "4E", "gate": "openapi_drift", "mode": "check", ..., "diffs": [], "status": "PASS", "exit_code": 0}
+```
+No route or schema touched by this lease -- green without regeneration, as the acceptance line requires.
+
+Proceeding to the deletion commit now that the suite is confirmed clean with both packaged files still present.
+
+## CFG-2 step:07 -- final acceptance: full suite after deletion, deliberate-failure check, final sweep
+
+**Deliberate-failure check** (brief's "Evidence to paste"), run on the committed step:06 state, before the suite below: appended `workflow: { duplicate_test: true }` to `backend/config/returns/fulfilment.yaml`, ran `load_return_configuration(Path("backend/config/returns"))`, reverted:
+```
+$ python -c "from return_platform.configuration.return_configuration import load_return_configuration; from pathlib import Path; load_return_configuration(Path('backend/config/returns'))"
+ValueError: section workflow is declared in both
+K:\...\cfg-2\backend\config\returns\workflow.yaml and
+K:\...\cfg-2\backend\config\returns\fulfilment.yaml
+$ git checkout -- backend/config/returns/fulfilment.yaml
+$ git status --short backend/config/returns/fulfilment.yaml   ->  (clean)
+```
+Both offending file names appear in the message, as the composer's own rule requires. (One caution for whoever re-runs this: run it with the suite idle -- an earlier attempt overlapped a background pytest collection and produced the same error as a *test failure* rather than a clean revert-and-recheck; re-run below confirms no residue.)
+
+**Full suite, with `production.yaml`/`ai_gateway.yaml` actually deleted** (the authoritative final run; the working tree was left untouched between launch and completion this time):
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests -q -p no:cacheprovider --ignore=tests/configuration/test_concurrent_activation.py
+42 failed, 5295 passed, 10 skipped, 515 deselected, 2 warnings in 301.75s (0:05:01)
+```
+Failing-id comparison against `.plan/reviews/CFG-1.md`'s Q6 (RV's own verification that the 42 pre-existing failures are identical between the CFG-0 base and CFG-1, reproduced by diffing node ids across a throwaway worktree of each): the 42 ids here collapse to the same nine modules RV named there, unchanged across every run this lease took (before repointing defaults, before the 53-file fix, before deletion, and now after deletion):
+```
+tests/dynamic_knowledge/test_confirmation_starts_the_case_workflow.py (9 ids)
+tests/dynamic_knowledge/test_order_discovery_smoke_net.py (6 ids)
+tests/dynamic_knowledge/test_reasoning_stage_prompts.py (4 ids)
+tests/dynamic_knowledge/test_turn_temporal_grounding.py (2 ids)
+tests/test_ai_a_rejected_parse_is_repaired_on_its_own_route.py (13 ids)
+tests/test_ai_route_balancing_design.py (3 ids)
+tests/test_ai_single_dispatch_boundary.py (2 ids)
+tests/test_enforced_contracts_are_disclosed.py (2 ids)
+tests/test_keyless_reasoning_is_held_for_a_human.py (1 id)
+```
+9 + 6 + 4 + 2 + 13 + 3 + 2 + 2 + 1 = 42. Every failure is an AI provider-order/model-routing or case-workflow-confirmation/temporal-grounding assertion -- none touches configuration loading, composition, or any packaged file. Zero collection errors (all 5862 tests collected minus 515 deselected). 5295 passed = CFG-1's final 5276 + 19 (this lease's new tests), the exact bound the brief's acceptance line asks for ("pass count up by exactly the tests added").
+
+**Re-verified individually, post-deletion** (already run once with both files still present in step:05; repeated now with them gone, since that is the state that matters):
+```
+$ pytest tests/platform/test_layering.py tests/platform/test_no_module_cross_imports.py tests/platform/test_ai_lane_boundary.py -q          -> 6 passed
+$ pytest tests/configuration/test_packaged_configuration_composition.py tests/configuration/test_settings_configuration_paths.py -q          -> 19 passed
+$ pytest tests/acceptance/test_item_10_the_tool_rung_is_unreachable.py tests/configuration/test_return_method_requirements_configuration.py tests/configuration/test_support_ai_gateway_tasks.py tests/configuration/test_support_gate_configuration.py tests/operations/test_support_template_draft.py tests/policy/test_window_policy_is_configuration.py -q   -> 79 passed
+$ python scripts/validate_stage4n_ai_gateway.py   -> checksPassed=9, status=PASSED
+$ python scripts/check_openapi_drift.py           -> status PASS, diffs: []
+$ ruff check src/return_platform/configuration src/return_platform/ai/routing            -> All checks passed!
+$ ruff format --check src/return_platform/configuration src/return_platform/ai/routing   -> 53 files already formatted
+$ mypy src/return_platform/configuration src/return_platform/ai/routing                  -> 47 errors, same 6 unowned files as step:02/step:05 (unchanged)
+```
+
+**Final grep sweep** (acceptance line's exact command):
+```
+$ grep -rnI "production\.yaml|ai_gateway\.yaml" backend/ frontend/src scripts/ docs/configuration compose.yaml .env.example
+```
+Returns: `docs/archive/**` -- none (never referenced these files); `backend/tests/data/pre_split/**` -- the frozen copies and their own filenames, as designed; historical/explanatory prose in `*.md` -- `docs/configuration/order-agent-prompt-changelog.md:3`; and two categories the acceptance line's literal wording does not name but this lease accepts and flags rather than silently expanding scope further:
+1. Comments/docstrings inside `backend/src/**/*.py` and `backend/src/**/*.md` files this lease does not own beyond its four named `.py` files (`agents/*.md`, `ai/providers/anthropic.py`, `configuration/application/loader.py`, `configuration/cli/bootstrap_graph_configuration.py`, `configuration/domain/ai.py`, `configuration/support_gate_configuration.py`, `dynamic_knowledge/**`, `operations/**`, `api/template_preview.py`, `configuration/sql_migrations/006_return_shipment_state.sql`) -- all descriptive prose about where a value used to live or still lives conceptually, none a live path construction (`configuration/return_configuration.py` and `settings.py` have their *own* prose mentions too, inside the two files this lease *does* own, documenting the `ignore` parameter and the default-path comment -- those are intentional).
+2. Seven test files with no functional dependency on the split (`test_items_13_19_reminder_cadence_in_business_time.py`, `harness/business_calendars.py`, `test_support_resolver_composition.py`, `test_restocking_rate_reaches_the_case.py`, `test_cumulative_support_outcomes.py`, `test_graph_configuration_bootstrap.py`) plus `scripts/prepare_runtime_configuration.sh:152` (comment-only, already named by the design). Every file with a *functional* dependency on the old filenames -- anything that would break once the files were deleted -- was fixed (step:03-04); the suite result above is the proof: zero collection errors, zero new failures, with the files actually gone.
+
+**Bootstrap CLI**: not run by this lease, per the brief and the environment rules -- left for the orchestrator after RV.
+
+Head sha at this step: see `drop.json`. `merge_status: PENDING` -- every item in `.plan/tracks/CFG-2.brief.md`'s Acceptance section this lease is responsible for is met.
+>>>>>>> feat/cfg-2-config-split

@@ -62,9 +62,9 @@ def built(test_settings: Settings) -> SupportMessageAnalyser:
         settings=test_settings,
         mongo=FakeClient(),  # type: ignore[arg-type]
         return_configuration=load_return_configuration(
-            BACKEND / "config" / "returns" / "production.yaml"
+            BACKEND / "config" / "returns"
         ).configuration,
-        ai_gateway=load_ai_gateway_configuration(BACKEND / "config" / "ai_gateway.yaml"),
+        ai_gateway=load_ai_gateway_configuration(BACKEND / "config" / "ai_gateway"),
         interception=ALLOW_ALL,
     )
 
@@ -103,7 +103,7 @@ def test_the_two_stages_are_bound_to_the_two_released_support_tasks(
     an extraction produced by a classification prompt.
     """
     assert built._classifier.release_id != built._extractor.release_id  # noqa: SLF001
-    released = load_ai_gateway_configuration(BACKEND / "config" / "ai_gateway.yaml").configuration
+    released = load_ai_gateway_configuration(BACKEND / "config" / "ai_gateway").configuration
     assert built._classifier.release_id == released.tasks[CLASSIFY_TASK_ID].promptVersion  # noqa: SLF001
     assert built._extractor.release_id == released.tasks[EXTRACT_TASK_ID].promptVersion  # noqa: SLF001
 
@@ -118,7 +118,7 @@ def test_the_stages_report_the_routing_policy_of_the_released_document(
     agree by construction and would agree just as well if the property returned
     a constant.
     """
-    released = load_ai_gateway_configuration(BACKEND / "config" / "ai_gateway.yaml").configuration
+    released = load_ai_gateway_configuration(BACKEND / "config" / "ai_gateway").configuration
     assert built._classifier.routing_policy_version == derive_routing_policy_version(  # noqa: SLF001
         released, released.tasks[CLASSIFY_TASK_ID]
     )
@@ -144,9 +144,9 @@ def test_the_dispatcher_factory_returns_the_topic_beside_the_dispatcher(
         settings=test_settings,
         mongo=FakeClient(),  # type: ignore[arg-type]
         return_configuration=load_return_configuration(
-            BACKEND / "config" / "returns" / "production.yaml"
+            BACKEND / "config" / "returns"
         ).configuration,
-        ai_gateway=load_ai_gateway_configuration(BACKEND / "config" / "ai_gateway.yaml"),
+        ai_gateway=load_ai_gateway_configuration(BACKEND / "config" / "ai_gateway"),
         interception=ALLOW_ALL,
     )
     assert topic == SUPPORT_MESSAGE_CLASSIFY_TOPIC

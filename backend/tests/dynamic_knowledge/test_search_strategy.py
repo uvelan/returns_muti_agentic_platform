@@ -1,6 +1,6 @@
 """Progressive search, driven by the configured identification catalogue.
 
-Every test here runs against the *real* `config/returns/production.yaml`
+Every test here runs against the *real* `config/returns/`
 catalogue resolved against the *real* active schema. That is deliberate: the
 defect this replaced was seven hardcoded lists agreeing with each other and with
 nothing else, so a test using a hand-written toy catalogue would prove the
@@ -73,7 +73,7 @@ def production_schema() -> ActiveSchema:
 @pytest.fixture(scope="module")
 def catalogue(production_schema: ActiveSchema) -> IdentificationCatalogue:
     discovery = load_return_configuration(
-        REPOSITORY_BACKEND / "config/returns/production.yaml"
+        REPOSITORY_BACKEND / "config/returns"
     ).configuration.discovery
     return build_identification_catalogue(
         discovery.identification_fields,
@@ -93,7 +93,7 @@ def catalogue_without_colour(production_schema: ActiveSchema) -> IdentificationC
     every deployment was in before the property was projected.
     """
     discovery = load_return_configuration(
-        REPOSITORY_BACKEND / "config/returns/production.yaml"
+        REPOSITORY_BACKEND / "config/returns"
     ).configuration.discovery
     payload = discovery.model_dump(mode="json")
     for entry in payload["identification_fields"]:
@@ -887,7 +887,7 @@ def test_the_index_name_is_configuration(
 ) -> None:
     """A rebuilt index under a new name is reachable without a release."""
     discovery = load_return_configuration(
-        REPOSITORY_BACKEND / "config/returns/production.yaml"
+        REPOSITORY_BACKEND / "config/returns"
     ).configuration.discovery
     repointed = build_identification_catalogue(
         discovery.identification_fields,

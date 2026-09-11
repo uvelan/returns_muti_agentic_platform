@@ -18,6 +18,7 @@ from pydantic import (
     model_validator,
 )
 
+from return_platform.configuration.composition import compose_configuration_document
 from return_platform.configuration.context_assembly_configuration import (
     ContextAssemblyConfiguration,
 )
@@ -2086,9 +2087,34 @@ class LoadedReturnConfiguration(StrictConfigModel):
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
+#: The keys `backend/config/returns/index.yaml` must declare inline -- the
+#: rest of `ReturnPlatformConfiguration`'s sections arrive from `parts`.
+RETURN_CONFIGURATION_DOCUMENT_KEYS = frozenset({"schema_version", "assumption_set_version"})
+
+
 def load_return_configuration(path: Path) -> LoadedReturnConfiguration:
-    """Load, size-bound, validate, and fingerprint one return configuration file."""
+    """Load, size-bound, validate, and fingerprint one return configuration.
+
+    `path` is either a single packaged YAML file (today's shape, unchanged)
+    or a directory composed by `configuration.composition` -- an
+    `index.yaml` plus the part files it lists (see
+    `.plan/tracks/CFG-2.design.md`).
+    """
     resolved = path.expanduser().resolve(strict=True)
+    if resolved.is_dir():
+        composed = compose_configuration_document(
+            resolved,
+            document_keys=RETURN_CONFIGURATION_DOCUMENT_KEYS,
+            # `production.yaml` -- the monolith this directory replaces --
+            # shares this directory until the CFG-2 deletion commit; see
+            # `compose_configuration_document`'s `ignore` docstring.
+            ignore=frozenset({"production.yaml"}),
+        )
+        return LoadedReturnConfiguration(
+            configuration=ReturnPlatformConfiguration.model_validate(composed.document),
+            path=resolved,
+            sha256=composed.sha256,
+        )
     if resolved.suffix.lower() not in {".yaml", ".yml"}:
         raise ValueError("return configuration must be YAML")
     raw = resolved.read_bytes()

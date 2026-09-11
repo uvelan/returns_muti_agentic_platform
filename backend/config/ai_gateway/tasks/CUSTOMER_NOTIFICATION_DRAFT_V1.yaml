@@ -1,0 +1,13 @@
+tier: LIGHTWEIGHT
+promptVersion: customer-notification-v1
+systemPrompt: >-
+  Draft a concise customer notification using only approved facts and the supplied next action.
+  Do not promise refunds, pickups, credits, or external-system completion. Return exactly the
+  configured structured gateway JSON envelope for human review.
+fallbackStrategy: TEMPLATE
+fallbackTemplate: CUSTOMER_NOTIFICATION_V1
+maximumOutputTokens: 256
+maximumInputTokens: 3000
+allowTierEscalation: false
+allowedProviders: [GOOGLE, NVIDIA, OPENAI, ANTHROPIC, OLLAMA]
+allowedInputKeys: [notificationType, approvedFacts, nextAction]

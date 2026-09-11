@@ -12,6 +12,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from return_platform.ai.pricing import AIPricingCatalog
+from return_platform.configuration.composition import compose_configuration_document
 
 
 class StrictModel(BaseModel):
@@ -375,8 +376,41 @@ class LoadedAIGatewayConfiguration(StrictModel):
     configuration: AIGatewayConfiguration
 
 
+#: The keys `backend/config/ai_gateway/index.yaml` must declare inline: the
+#: document identity plus the five cross-task sections. `tasks` itself comes
+#: from `entries.tasks` (one file per task id), not from `document_keys`.
+AI_GATEWAY_CONFIGURATION_DOCUMENT_KEYS = frozenset(
+    {
+        "schemaVersion",
+        "domain",
+        "circuitBreaker",
+        "retry",
+        "rateLimits",
+        "providerLimits",
+        "modelContexts",
+    }
+)
+
+
 def load_ai_gateway_configuration(path: Path) -> LoadedAIGatewayConfiguration:
+    """Load and fingerprint one AI Gateway configuration.
+
+    `path` is either a single packaged YAML file (today's shape, unchanged)
+    or a directory composed by `configuration.composition`: an `index.yaml`
+    carrying the document identity and cross-task sections inline, plus
+    `entries.tasks` listing one file per task id (see
+    `.plan/tracks/CFG-2.design.md`).
+    """
     resolved = path.expanduser().resolve(strict=True)
+    if resolved.is_dir():
+        composed = compose_configuration_document(
+            resolved, document_keys=AI_GATEWAY_CONFIGURATION_DOCUMENT_KEYS
+        )
+        return LoadedAIGatewayConfiguration(
+            path=resolved,
+            sha256=composed.sha256,
+            configuration=AIGatewayConfiguration.model_validate(composed.document),
+        )
     raw = resolved.read_bytes()
     payload = yaml.safe_load(raw)
     if not isinstance(payload, dict):

@@ -28,10 +28,11 @@ from datetime import UTC, datetime
 from typing import Any
 
 import pytest
-import yaml
 from pydantic import ValidationError
 
+from return_platform.configuration.composition import compose_configuration_document
 from return_platform.configuration.return_configuration import (
+    RETURN_CONFIGURATION_DOCUMENT_KEYS,
     ReturnPlatformConfiguration,
     build_return_method_requirement_table,
     load_return_configuration,
@@ -108,9 +109,19 @@ def shipped_configuration() -> ReturnPlatformConfiguration:
 
 @pytest.fixture(scope="module")
 def shipped_payload() -> dict[str, Any]:
-    parsed: Any = yaml.safe_load(DEFAULT_RETURN_CONFIGURATION_PATH.read_bytes())
-    assert isinstance(parsed, dict)
-    return parsed
+    """The full document `ReturnPlatformConfiguration.model_validate` needs.
+
+    `_payload_with_rows` below only overrides `return_policy`, so this has to
+    be every section, not just the part file `return_policy` lives in --
+    composed the same way `load_return_configuration` composes it since
+    CFG-2's split (`backend/config/returns/index.yaml`'s `parts` list).
+    """
+    composed = compose_configuration_document(
+        DEFAULT_RETURN_CONFIGURATION_PATH,
+        document_keys=RETURN_CONFIGURATION_DOCUMENT_KEYS,
+        ignore=frozenset({"production.yaml"}),
+    )
+    return composed.document
 
 
 # --- The table loads from the release ----------------------------------------
@@ -156,8 +167,12 @@ def test_the_inferred_rows_are_flagged_for_operator_review() -> None:
     A reading recorded as though it were a decision is how an inference becomes
     permanent. The banner is what an operator reviewing the file needs, so it is
     load-bearing and asserted rather than left to survive the next edit.
+    `return_method_requirements` lives in `return_policy.yaml` since CFG-2's
+    split -- the comment's position relative to the `method:` lines is
+    unaffected by which file holds the section, since the split is text
+    surgery that moves whole sections and carries every comment verbatim.
     """
-    text = DEFAULT_RETURN_CONFIGURATION_PATH.read_text(encoding="utf-8")
+    text = (DEFAULT_RETURN_CONFIGURATION_PATH / "return_policy.yaml").read_text(encoding="utf-8")
     _, _, after_table = text.partition("return_method_requirements:")
     section, _, _ = after_table.partition("bol_tendering_instruction_types:")
 

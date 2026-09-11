@@ -22,7 +22,7 @@ from return_platform.configuration.support_template_configuration import (
 )
 from return_platform.operations.case_projection.contract import ReturnRecordProjection
 
-_PRODUCTION_YAML = Path(__file__).resolve().parents[2] / "config" / "returns" / "production.yaml"
+_PRODUCTION_YAML = Path(__file__).resolve().parents[2] / "config" / "returns"
 
 
 def _field(field_id: str = "order_number", **overrides: object) -> TemplateFieldConfiguration:

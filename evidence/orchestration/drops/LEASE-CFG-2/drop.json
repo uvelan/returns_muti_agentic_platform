@@ -1,0 +1,45 @@
+{
+  "lease_id": "LEASE-CFG-2",
+  "branch": "feat/cfg-2-config-split",
+  "base_sha": "73c276d231cd9e609678f8d29517d67cfb5d77a9",
+  "head_sha": "ab416e494b8b831ec42766c0eb47579c6e4c6b2f",
+  "files": [
+    "backend/src/return_platform/configuration/settings.py (validator moved to validate_packaged_configuration_path; DEFAULT_RETURN_CONFIGURATION_PATH/DEFAULT_AI_GATEWAY_CONFIGURATION_PATH repointed at the directories)",
+    "backend/src/return_platform/configuration/composition.py (new; the composer, compose_configuration_document)",
+    "backend/src/return_platform/configuration/return_configuration.py (load_return_configuration: directory support + ignore parameter usage)",
+    "backend/src/return_platform/ai/routing/tasks.py (load_ai_gateway_configuration: directory support)",
+    "backend/config/returns/** (index.yaml + 8 parts, 23 sections; production.yaml deleted in step:06)",
+    "backend/config/ai_gateway/** (index.yaml + 25 task files, anchors materialized; ai_gateway.yaml deleted in step:06)",
+    "backend/tests/data/pre_split/{returns_production.yaml,ai_gateway.yaml} (new; frozen pre-split bytes)",
+    "backend/tests/configuration/test_packaged_configuration_composition.py (new; 12 tests)",
+    "backend/tests/configuration/test_settings_configuration_paths.py (new; 7 tests)",
+    "backend/tests/harness/configuration_tree.py (new; copied_configuration_tree)",
+    "compose.yaml, backend/Dockerfile, .env.example (repointed at the directories)",
+    "the seven raw-text test readers named in the brief, repointed at the part file that now holds their section",
+    "53 additional test files (found, not in the brief's Owns list -- ledger step:04) that hardcoded 'production.yaml'/'ai_gateway.yaml' in a Path passed to a loader; mechanically repointed",
+    "scripts/validate_stage4l_production.py, scripts/validate_stage4n_ai_gateway.py (take the directory)",
+    "backend/config/README.md (new 'Composed directories' subsection + 3 stale refs), backend/src/return_platform/configuration/README.md, backend/src/return_platform/ai/README.md, backend/config/workflows/return_session.yaml",
+    "docs/evidence/stage4n_ai_gateway/validation_summary.json (byproduct of re-running validate_stage4n_ai_gateway.py; PASSED, 9 checks)"
+  ],
+  "tests": {
+    "full backend suite (tests -q --ignore=test_concurrent_activation.py), production.yaml/ai_gateway.yaml actually deleted": "42 failed, 5295 passed, 10 skipped, 515 deselected, 2 warnings in 301.75s -- the 42 collapse to the same 9 modules RV's CFG-1 review named pre-existing and base-identical; 5295 = CFG-1 final 5276 + 19 tests this lease adds",
+    "tests/platform/{test_layering,test_no_module_cross_imports,test_ai_lane_boundary}.py": "6 passed (post-deletion)",
+    "tests/configuration/{test_packaged_configuration_composition,test_settings_configuration_paths}.py": "19 passed (post-deletion)",
+    "the seven raw-text readers (acceptance/configuration/operations/policy)": "79 passed (post-deletion)",
+    "python scripts/validate_stage4n_ai_gateway.py": "checksPassed=9, status=PASSED (post-deletion)",
+    "python scripts/validate_stage4l_production.py": "fails at a pre-existing unrelated broken import (ReturnAgentRegistry), confirmed to predate this lease via git log; the one owned line was still fixed",
+    "python scripts/check_openapi_drift.py": "status PASS, diffs: [] (post-deletion)",
+    "deliberate-failure check": "duplicate 'workflow' declaration refused, naming both workflow.yaml and fulfilment.yaml; reverted cleanly",
+    "ruff check/format on owned src": "clean",
+    "mypy on owned src": "47 pre-existing errors in 6 unowned files (cli/apply_sql_migrations.py, cli/apply_neo4j_migrations.py, runtime_loader.py, api/sources.py, bootstrap_runtime_integrations.py, cli/bootstrap_graph_configuration.py) -- confirmed present on the unmodified base with a fresh mypy cache, not introduced by this lease; none of the four owned files affected",
+    "final grep sweep (grep -rnI \"production\\.yaml|ai_gateway\\.yaml\" backend/ frontend/src scripts/ docs/configuration compose.yaml .env.example)": "only docs/archive (none present), backend/tests/data/pre_split, historical *.md prose, and accepted out-of-Owns-scope prose (named individually in CFG.ledger.md step:07) remain"
+  },
+  "remaining": [
+    "Not this lease's job (brief + environment rules): bootstrap against the dev graph, run by the orchestrator after RV.",
+    "Flagged for RV/orchestrator, not fixed here (pre-existing, outside CFG-2's Owns list): scripts/validate_stage4l_production.py's broken ReturnAgentRegistry import; 47 pre-existing mypy errors in 6 unowned configuration/* files; scripts/ci/known_test_failures.json's empty backend list vs the 42 actual pre-existing failures (already carried into CFG-7 by CFG-1's RV).",
+    "Flagged for RV/orchestrator: seven test files and one shell-script comment with prose-only (non-functional) mentions of the old filenames, named individually in CFG.ledger.md step:07 -- no dependency on the split, left as-is rather than expanding scope.",
+    "Two design deviations from .plan/tracks/CFG-2.design.md, recorded with evidence in CFG.ledger.md step:02, for RV to confirm: (1) AI Gateway task-shared YAML anchors materialized (duplicated) rather than left as cross-file aliases, since the design did not anticipate them and one-task-per-file forbids anchors crossing a file boundary; (2) compose_configuration_document gained an `ignore` parameter to let production.yaml coexist in its own directory during the split-to-deletion window, since the design did not anticipate that the old file already lived inside the new directory's own path.",
+    "One design gap found and closed (ledger step:04): the design's count of 'seven raw-text readers' undercounted by 53 -- test files that pass a Path naming the old file straight to a loader are just as broken by the deletion as raw-text readers; all 53 were found and fixed, verified by pytest --collect-only (zero errors) and two full-suite runs with identical pass/fail counts before and after."
+  ],
+  "merge_status": "PENDING"
+}

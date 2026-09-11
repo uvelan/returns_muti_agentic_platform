@@ -59,7 +59,7 @@ from return_platform.dynamic_knowledge.order_agent.contracts import ActionType, 
 from return_platform.dynamic_knowledge.schema import ActiveSchema
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-GATEWAY_CONFIG = BACKEND_ROOT / "config" / "ai_gateway.yaml"
+GATEWAY_CONFIG = BACKEND_ROOT / "config" / "ai_gateway"
 ACTIVE_SCHEMA = BACKEND_ROOT / "config" / "dynamic_knowledge" / "active-schema.return-order.yaml"
 AGENT_ID = "order-discovery-agent"
 REASONING_TASK = "ORDER_AGENT_REASONING_V1"
@@ -269,7 +269,7 @@ def test_every_fact_name_the_prompt_offers_is_one_the_catalogue_will_keep(
     and `captured_facts` lists only what a capture already succeeded on.
     """
     policy = load_return_configuration(
-        BACKEND_ROOT / "config" / "returns" / "production.yaml"
+        BACKEND_ROOT / "config" / "returns"
     ).configuration.clarification_policy
     configured = {item.field for item in policy.fields}
 

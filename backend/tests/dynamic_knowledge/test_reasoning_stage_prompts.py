@@ -52,7 +52,7 @@ from return_platform.dynamic_knowledge.order_agent.reasoning_stage import (
 )
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
-CONFIG = BACKEND_ROOT / "config" / "ai_gateway.yaml"
+CONFIG = BACKEND_ROOT / "config" / "ai_gateway"
 
 #: Sections no stage may drop. The role and untrusted-input framing decides how
 #: everything else is read; the payload contract and statement rules are what

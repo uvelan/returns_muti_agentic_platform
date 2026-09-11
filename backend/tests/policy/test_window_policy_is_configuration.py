@@ -2,7 +2,7 @@
 
 The operator's second requirement -- "policy should be in graph and configurable
 / no hardcoded" -- is a claim about the deployed system, so these tests exercise
-the actual packaged `config/returns/production.yaml` and the actual transport
+the actual packaged `config/returns/` and the actual transport
 the runtime uses, rather than a policy built in Python.
 
 The transport is `ConfigurationSnapshotBuilder.build_snapshot`: it reads the
@@ -41,9 +41,14 @@ from return_platform.policy import (
     evaluate_return_eligibility,
 )
 from return_platform.workflows.case_policy_facts import purchase_date_from_confirmed_order
+from tests.harness.configuration_tree import copied_configuration_tree
 
 _BACKEND = Path(__file__).resolve().parents[2]
-PRODUCTION_YAML = _BACKEND / "config" / "returns" / "production.yaml"
+#: A directory since CFG-2's split, composed by `configuration.composition`.
+#: `purchase_window` and `unstated_condition_facts` both live in
+#: `return_eligibility_policy`, which is in `return_policy.yaml`
+#: (`backend/config/returns/index.yaml`'s `parts` list).
+RETURNS_DIR = _BACKEND / "config" / "returns"
 _DATASET = _BACKEND / "fixtures" / "reference_dataset" / "salesInv1.json"
 
 NEW_YORK = ZoneInfo("America/New_York")
@@ -51,7 +56,7 @@ NEW_YORK = ZoneInfo("America/New_York")
 
 @pytest.fixture(scope="module")
 def packaged() -> ReturnPlatformConfiguration:
-    return load_return_configuration(PRODUCTION_YAML).configuration
+    return load_return_configuration(RETURNS_DIR).configuration
 
 
 def _through_the_graph(
@@ -195,15 +200,16 @@ def test_widening_the_window_is_a_yaml_edit_and_nothing_else(
     The same case is reviewed by the packaged release and approved by the edited
     one. Nothing in the evaluator, the adapter or this test knows the number.
     """
-    edited_path = tmp_path / "production.yaml"
-    edited_path.write_text(
-        PRODUCTION_YAML.read_text(encoding="utf-8").replace(
+    edited_dir = copied_configuration_tree(RETURNS_DIR, tmp_path / "returns")
+    part_path = edited_dir / "return_policy.yaml"
+    part_path.write_text(
+        part_path.read_text(encoding="utf-8").replace(
             "purchase_window: { days: 30, basis: PURCHASE_DATE }",
             "purchase_window: { days: 60, basis: PURCHASE_DATE }",
         ),
         encoding="utf-8",
     )
-    edited = load_return_configuration(edited_path).configuration
+    edited = load_return_configuration(edited_dir).configuration
 
     purchased = datetime(2025, 10, 14, 12, 0, tzinfo=UTC)
     requested = datetime(2025, 11, 25, 12, 0, tzinfo=UTC)  # day 42
@@ -234,15 +240,16 @@ def test_restoring_the_other_checks_is_a_yaml_edit_and_nothing_else(
     The rules and their tests were never removed; one released value stands them
     down and the same value brings them back.
     """
-    restored_path = tmp_path / "production.yaml"
-    restored_path.write_text(
-        PRODUCTION_YAML.read_text(encoding="utf-8").replace(
+    restored_dir = copied_configuration_tree(RETURNS_DIR, tmp_path / "returns")
+    part_path = restored_dir / "return_policy.yaml"
+    part_path.write_text(
+        part_path.read_text(encoding="utf-8").replace(
             "unstated_condition_facts: NOT_EVALUATED",
             "unstated_condition_facts: REVIEW_REQUIRED",
         ),
         encoding="utf-8",
     )
-    restored = load_return_configuration(restored_path).configuration
+    restored = load_return_configuration(restored_dir).configuration
 
     purchased = datetime(2025, 10, 14, 12, 0, tzinfo=UTC)
     requested = datetime(2025, 11, 1, 12, 0, tzinfo=UTC)  # day 18, in window

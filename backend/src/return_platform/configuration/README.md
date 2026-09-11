@@ -21,8 +21,9 @@ BOOTSTRAP_ENV  →  BASELINE  →  ACTIVE_RELEASE  →  (output) RuntimeSnapshot
 configuration through `runtime_activation.py` → `runtime_loader.py` →
 `snapshot.py::ConfigurationSnapshotBuilder`, which reads the RELEASED release
 from the Neo4j configuration graph and holds three domain payloads:
-`RETURN_PLATFORM` (`config/returns/production.yaml`), `AI_GATEWAY`
-(`config/ai_gateway.yaml`) and `DEPENDENCY_SIMULATION`
+`RETURN_PLATFORM` (`config/returns/`, a composed directory -- see
+`config/README.md`'s "Composed directories"), `AI_GATEWAY`
+(`config/ai_gateway/`, composed the same way) and `DEPENDENCY_SIMULATION`
 (`config/dependency_simulation.yaml`). The packaged files are the *baseline*
 the bootstrap publishes from (`cli/bootstrap_graph_configuration.py`) and the
 fallback when no release exists (development only); once a release exists the

@@ -1,6 +1,6 @@
 """The template's binding vocabulary has one home, and it is enforced.
 
-RV finding F2: the shipped `production.yaml` bound five `case_fact:` names that
+RV finding F2: the shipped `support.yaml` bound five `case_fact:` names that
 existed nowhere in `backend/src`, and the seam that would produce them was a
 docstring. The failure mode was silent by construction -- a phase-2 assembler
 spelling one of them differently leaves the field on its `fallback`, raises no
@@ -35,13 +35,15 @@ from return_platform.operations.support_template_draft import (
 )
 
 _BACKEND = Path(__file__).resolve().parents[2]
-_PRODUCTION_YAML = _BACKEND / "config" / "returns" / "production.yaml"
+#: `support_template` lives in `support.yaml` since CFG-2's split
+#: (`backend/config/returns/index.yaml`'s `parts` list).
+_SUPPORT_YAML = _BACKEND / "config" / "returns" / "support.yaml"
 _DRAFT_ACTIVITY = _BACKEND / "src" / "return_platform" / "workflows" / "return_case_activities.py"
 
 
 def _shipped_case_fact_names() -> set[str]:
     """Every `case_fact:` name the shipped template binds, across all variants."""
-    document = yaml.safe_load(_PRODUCTION_YAML.read_text(encoding="utf-8"))
+    document = yaml.safe_load(_SUPPORT_YAML.read_text(encoding="utf-8"))
     template = document["support_template"]
     names: set[str] = set()
     for variant in template["variants"]:
@@ -58,7 +60,7 @@ class TestTheVocabularyIsSingleSourced:
         # The direction that catches a template naming a fact nothing produces.
         undeclared = _shipped_case_fact_names() - TEMPLATE_CASE_FACT_KEYS
         assert undeclared == set(), (
-            "production.yaml binds case_fact names that support_template_draft does not "
+            "support.yaml binds case_fact names that support_template_draft does not "
             "declare; declare them (and produce them) or stop binding them"
         )
 

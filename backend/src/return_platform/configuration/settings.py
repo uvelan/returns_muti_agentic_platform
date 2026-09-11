@@ -10,11 +10,15 @@ BACKEND_ROOT = Path(__file__).resolve().parents[3]
 REPOSITORY_ROOT = BACKEND_ROOT.parent
 DEFAULT_DATA_ASSET_CATALOG_PATH = BACKEND_ROOT / "config" / "data_assets.yaml"
 DEFAULT_SCHEMA_REGISTRY_PATH = BACKEND_ROOT / "config" / "schema_registry.yaml"
-DEFAULT_RETURN_CONFIGURATION_PATH = BACKEND_ROOT / "config" / "returns" / "production.yaml"
+#: A directory, composed by `configuration.composition` -- see CFG-2.design.md.
+#: `backend/config/returns/production.yaml` (the file this replaced) is deleted
+#: once the split is proven byte-equivalent.
+DEFAULT_RETURN_CONFIGURATION_PATH = BACKEND_ROOT / "config" / "returns"
 DEFAULT_DEPENDENCY_SIMULATION_CONFIGURATION_PATH = (
     BACKEND_ROOT / "config" / "dependency_simulation.yaml"
 )
-DEFAULT_AI_GATEWAY_CONFIGURATION_PATH = BACKEND_ROOT / "config" / "ai_gateway.yaml"
+#: A directory, composed by `configuration.composition` -- see CFG-2.design.md.
+DEFAULT_AI_GATEWAY_CONFIGURATION_PATH = BACKEND_ROOT / "config" / "ai_gateway"
 DEFAULT_DYNAMIC_KNOWLEDGE_SCHEMA_PATH = (
     BACKEND_ROOT / "config" / "dynamic_knowledge" / "active-schema.return-order.yaml"
 )
@@ -406,9 +410,7 @@ class Settings(BaseSettings):
     @field_validator(
         "catalog_path",
         "schema_registry_path",
-        "return_configuration_path",
         "dependency_simulation_configuration_path",
-        "ai_gateway_configuration_path",
     )
     @classmethod
     def validate_catalog_path(cls, value: Path) -> Path:
@@ -417,6 +419,31 @@ class Settings(BaseSettings):
             raise ValueError("Configuration registry paths must be absolute.")
         if resolved_path.suffix.lower() not in {".yaml", ".yml"}:
             raise ValueError("Configuration registry paths must reference YAML files.")
+        return resolved_path.resolve(strict=False)
+
+    @field_validator("return_configuration_path", "ai_gateway_configuration_path")
+    @classmethod
+    def validate_packaged_configuration_path(cls, value: Path) -> Path:
+        """Resolve a packaged configuration path -- file or directory.
+
+        `return_configuration_path` and `ai_gateway_configuration_path` used
+        to live in `validate_catalog_path` above, which refuses anything
+        without a `.yaml`/`.yml` suffix and anything relative -- a directory
+        composed by `configuration.composition` (CFG-2) is refused before the
+        loader ever runs it. Shaped like `resolve_configuration_directory`
+        above instead: relative resolves against `REPOSITORY_ROOT`, so a
+        compose entry or a `.env` line may be written either way and mean the
+        same thing; no suffix rule, since the value may now name a directory;
+        no existence check, for the same reasons `resolve_configuration_directory`
+        has none (OpenAPI export, unit tests with no config tree on disk). This
+        is a strict widening of the old rule: every value the old validator
+        accepted still resolves the same way; only the old absolute-only,
+        YAML-suffix-only refusal is gone. The loader raises with the path it
+        looked in when it actually reads.
+        """
+        resolved_path = value.expanduser()
+        if not resolved_path.is_absolute():
+            resolved_path = REPOSITORY_ROOT / resolved_path
         return resolved_path.resolve(strict=False)
 
     @field_validator(

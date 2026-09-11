@@ -1,0 +1,395 @@
+source_resolution:
+  sales_invoice_collection: salesInv
+  customer_collection: customerOutboundCDM
+  shipment_collection: shipmentInfo
+  product_collection: lkpSearchProduct
+  order_number_paths:
+    - salesHdrEventData.orderId
+    - salesHdr.salesHdrData.orderId
+  # THE BASIS OF THE STANDARD RETURN WINDOW.
+  #
+  # Verified 2026-08-15 against the 100-order reference extract:
+  #
+  #   salesHdr.salesHdrData.orderDate   present on 100/100, always midnight UTC
+  #   salesHdrEventData.orderDate       present on   0/100  (never written)
+  #   salesHdr.salesHdrData.invoiceDate present on  99/100, differs from
+  #                                     orderDate on 67 of them
+  #   salesHdr.salesHdrData.entryDate   present on 100/100, differs on 18
+  #
+  # So `orderDate` is the only field that both exists everywhere and names the
+  # purchase itself. `invoiceDate` is when the order was billed and `entryDate`
+  # is when it was keyed into the ERP; either would answer a 30-day boundary
+  # with a date that is not the purchase, so neither is listed as a fallback.
+  # An order carrying no `orderDate` leaves the window undated, and the case
+  # reviews on PURCHASE_DATE_UNKNOWN rather than being decided from a guess.
+  order_date_paths:
+    - salesHdr.salesHdrData.orderDate
+  # WHAT PROVES THE ORDER WAS DELIVERED, as `salesInv` decides it.
+  #
+  # Not `order_status`, which carries ERP states (INVOICED, CALLCSR,
+  # READY-FOR-PICKUP) and never says delivered, and not `commitDate`, which the
+  # active schema documents as "Committed delivery date. NOT proof of
+  # delivery". Delivery is a completed carrier route plus a signature captured
+  # at the door, on an order that was driven rather than collected.
+  #
+  # The ship-via exclusion is a condition and not a refinement. All fourteen
+  # `podSigTd` values in the original reference extract sat on CPU/WCL orders,
+  # where the signature is the customer signing at the counter -- so a reader
+  # taking the signature alone called every counter pick-up delivered.
+  #
+  # `podSigTd` is both the proof and the date: its value is the delivery
+  # instant, and the standard-return and delivery-claim windows are counted
+  # from it.
+  delivery_proof:
+    order_code_paths:
+      - salesHdrEventData.orderCode
+    invoice_order_codes: [IO, ID]
+    file_paths:
+      - salesHdrEventData.trilogieFile
+    order_file_value: ORDER
+    ship_via_paths:
+      - salesHdr.salesHdrData.shipping.shipViaCode
+      - salesHdrEventData.shipViaCode
+    collected_ship_via_codes: [CPU, WCL, BO]
+    route_status_paths:
+      - salesHdr.salesHdrData.shipping.fleetwiseStatus
+    route_completed_value: Completed
+    signature_paths:
+      - salesHdr.salesHdrData.shipping.podSigTd
+  web_order_paths:
+    - salesHdrEventData.webOrderId
+    - salesHdrEventData.webOrderNumber
+    - salesHdr.salesHdrData.webOrderId
+    - salesHdr.salesHdrData.webOrderNumber
+  trilogie_order_paths:
+    - salesHdrEventData.trilOrdNum
+    - salesHdrEventData.orderId
+    - salesHdr.salesHdrData.trilOrdNum
+  customer_id_paths:
+    - salesHdr.salesHdrData.custId
+    - salesHdrEventData.customerId
+  # How the goods left, for the return-method derivation. Both places the source
+  # writes it, header first.
+  ship_via_paths:
+    - salesHdr.salesHdrData.shipping.shipViaCode
+    - salesHdrEventData.shipViaCode
+  # The account, and how to reach the customer on it. `customer.address[]` is
+  # the array `contact_point` is exploded from; the resolver searches its rows
+  # rather than indexing the first, because in this corpus the row carrying the
+  # phone is frequently not the row carrying the email.
+  customer_account_paths:
+    - salesHdrEventData.accountId
+  customer_phone_paths:
+    - customer.address.phoneNumber
+  customer_email_paths:
+    - customer.address.email
+  customer_name_paths:
+    - salesHdr.salesHdrData.custName
+    - salesHdrEventData.customerName
+  # WHERE A PRODUCT'S COLOUR COMES FROM.
+  #
+  # On `lkpSearchProduct`, keyed by master product id -- not on the order line,
+  # which carries a description and no colour. Verified against the loaded
+  # catalogue: `eco.colorFinish` is present on 253 of 1000 products and is an
+  # array ("Sandtone", "Polished Chrome", "Matte Black"), so the first entry is
+  # taken and the rest are left alone.
+  #
+  # A product the catalogue does not describe a colour for reports no colour.
+  # Nothing here reads it off the description: "16X20 STL W/ FLTR FRAME RTN AIR
+  # GRL WHIT" is a description that happens to end in a colour word, and
+  # treating that as a statement of colour would be a guess dressed as a fact.
+  product_colour_paths:
+    - eco.colorFinish
+  customer_city_paths:
+    - salesHdr.salesHdrData.billToCity
+    - salesHdrEventData.billingCity
+    - salesHdrEventData.city
+  customer_postal_code_paths:
+    - salesHdr.salesHdrData.billToZip
+    - salesHdrEventData.billingPostalCode
+    - salesHdrEventData.postalCode
+  customer_account_type_paths:
+    - salesHdr.salesHdrData.accountType
+    - salesHdrEventData.accountType
+    - salesHdrEventData.customerName
+  line_id_paths:
+    - orderLineId
+    - lineId
+    - salesLineId
+  product_id_paths:
+    - productId
+    - productUniqueId
+  sku_paths:
+    - sku
+    - modelNumber
+  product_description_paths:
+    - productDesc
+    - productDescription
+  shipped_quantity_paths:
+    - shipQty
+    - shippedQuantity
+    - quantityShipped
+  phone_field: phoneNumber
+  email_field: email
+  customer_master_id_field: customerId
+  tracking_field: shipmentInfoEventData.trkNum
+  tracking_order_field: shipmentInfoEventData.trilOrdNum
+
+clarification_policy:
+  version: v2
+  max_prompts_per_turn: 1
+  max_fields_per_turn: 1
+  max_distinct_values_for_ai: 5
+  phrasing_owner: LLM
+  field_selection_owner: LLM
+  fields:
+    - field: order_number
+      label: "Ferguson order number or web order number"
+      priority: 120
+      customer_answerable: true
+      field_group: ORDER_ANCHOR
+      anchor_type: ORDER_NUMBER
+      candidate_field: orderReference
+    - field: customer_id
+      label: "customer ID"
+      priority: 115
+      customer_answerable: true
+      field_group: CUSTOMER_ANCHOR
+      anchor_type: CUSTOMER_ID
+      candidate_field: customerReference
+    - field: tracking_number
+      label: "tracking number"
+      priority: 110
+      customer_answerable: true
+      field_group: SHIPMENT_ANCHOR
+      anchor_type: TRACKING_NUMBER
+    - field: invoice_number
+      label: "invoice number"
+      priority: 105
+      customer_answerable: true
+      field_group: ORDER_ANCHOR
+    - field: customer_po_number
+      label: "customer PO number"
+      priority: 100
+      customer_answerable: true
+      field_group: ORDER_ANCHOR
+    - field: email
+      label: "email used on the order"
+      priority: 95
+      customer_answerable: true
+      field_group: CUSTOMER_ANCHOR
+      anchor_type: EMAIL
+      candidate_field: email
+    - field: phone
+      label: "phone number used on the order"
+      priority: 90
+      customer_answerable: true
+      field_group: CUSTOMER_ANCHOR
+      anchor_type: PHONE
+      candidate_field: phone
+    - field: customer_name
+      label: "name on the order"
+      priority: 85
+      customer_answerable: true
+      field_group: CUSTOMER_NARROWING
+      anchor_type: CUSTOMER_NAME
+      candidate_field: customerName
+    - field: company_name
+      label: "company name"
+      priority: 80
+      customer_answerable: true
+      field_group: CUSTOMER_NARROWING
+    - field: zip_code
+      label: "ZIP code on the order"
+      priority: 75
+      customer_answerable: true
+      field_group: CUSTOMER_NARROWING
+      anchor_type: ZIP_CODE
+      candidate_field: postalCode
+    - field: product_sku
+      label: "SKU or item number"
+      priority: 70
+      customer_answerable: true
+      field_group: LINE_NARROWING
+      anchor_type: SKU
+      candidate_field: sku
+    - field: product_description
+      label: "product description"
+      priority: 65
+      customer_answerable: true
+      field_group: LINE_NARROWING
+      anchor_type: PRODUCT_DESCRIPTION
+      candidate_field: productDescription
+    - field: approximate_purchase_date
+      label: "approximate purchase date"
+      priority: 60
+      customer_answerable: true
+      field_group: DATE_NARROWING
+      anchor_type: DATE_RANGE
+      candidate_field: orderDate
+    - field: shipping_address
+      label: "shipping address"
+      priority: 58
+      customer_answerable: true
+      field_group: CUSTOMER_NARROWING
+      anchor_type: SHIPPING_ADDRESS
+      candidate_field: shippingAddress
+    - field: product_colour
+      label: "product colour"
+      priority: 56
+      customer_answerable: true
+      field_group: LINE_NARROWING
+      anchor_type: PRODUCT_COLOUR
+      candidate_field: productColor
+    - field: purchase_channel_hint
+      label: "where the order was placed"
+      priority: 55
+      customer_answerable: true
+      field_group: SOURCE_NARROWING
+    - field: product_presence
+      label: "current product location"
+      priority: 50
+      customer_answerable: true
+      field_group: RETURN_CONTEXT
+    - field: return_reason
+      label: "reason for return"
+      priority: 45
+      customer_answerable: true
+      field_group: RETURN_CONTEXT
+  goals:
+    IDENTIFY_ORDER:
+      preferred_field_groups:
+        - ORDER_ANCHOR
+        - SHIPMENT_ANCHOR
+        - CUSTOMER_ANCHOR
+        - DATE_NARROWING
+      preferred_fields:
+        - order_number
+        - tracking_number
+        - customer_id
+        - invoice_number
+        - customer_po_number
+        - email
+        - phone
+        - approximate_purchase_date
+    IDENTIFY_CUSTOMER:
+      preferred_field_groups:
+        - CUSTOMER_ANCHOR
+        - CUSTOMER_NARROWING
+      preferred_fields:
+        - customer_id
+        - phone
+        - email
+        - customer_name
+        - company_name
+        - zip_code
+    IDENTIFY_ORDER_LINE:
+      preferred_field_groups:
+        - LINE_NARROWING
+        - ORDER_ANCHOR
+      preferred_fields:
+        - product_sku
+        - product_description
+        - order_number
+        - invoice_number
+    DISAMBIGUATE_MULTIPLE_ORDERS:
+      preferred_field_groups:
+        - ORDER_ANCHOR
+        - DATE_NARROWING
+        - LINE_NARROWING
+      preferred_fields:
+        - order_number
+        - invoice_number
+        - customer_po_number
+        - approximate_purchase_date
+        - product_sku
+        - product_description
+    IDENTIFY_SOURCE_CHANNEL:
+      preferred_field_groups:
+        - ORDER_ANCHOR
+        - SOURCE_NARROWING
+        - CUSTOMER_ANCHOR
+      preferred_fields:
+        - order_number
+        - purchase_channel_hint
+        - email
+        - phone
+    CAPTURE_RETURN_CONTEXT:
+      preferred_field_groups:
+        - RETURN_CONTEXT
+      preferred_fields:
+        - return_reason
+        - product_presence
+
+# What an associate may say about a line they are selecting (plan sect. 12.4).
+#
+# Top-level rather than nested inside `return_policy` on purpose. The publisher
+# merges this file underneath the active release one TOP-LEVEL key at a time, so
+# a key added inside `return_policy` would be dropped by the release's own
+# `return_policy` and could never reach a deployment that has ever published
+# (defect D11, observed with `copilot.order_discovery_agent_id`). A new
+# top-level key is in no existing release, so this one arrives on the next
+# publish.
+#
+# An empty list here means "no catalogue published", which leaves the field as
+# length-bounded free text -- the behaviour before this block existed. It does
+# not mean "reject everything": that would take a branch's returns offline over
+# a key nobody had been asked for.
+selection_vocabulary:
+  # Constrained at load to `policy.vocabulary.ReturnReason`, the evaluator's own
+  # closed vocabulary. A reason outside it resolves to UNKNOWN in
+  # `case_policy_facts` and routes the return to a human with nothing in the
+  # audit trail saying why, so the release is refused instead.
+  #
+  # UNKNOWN is absent and cannot be listed: it is the absence of an answer, not
+  # something an associate chooses.
+  reasons:
+    # Delivery-related. The same four `return_eligibility_policy.delivery_claim`
+    # already routes as a claim.
+    - SHIPPING_DAMAGE
+    - SHORTAGE
+    - SHIPMENT_ERROR
+    - IMPROPER_DELIVERY
+    # Warranty-related. The same four `return_eligibility_policy.warranty_issue`
+    # already routes to warranty verification.
+    - MANUFACTURING_DEFECT
+    - PRODUCT_FAILURE_AFTER_INSTALLATION
+    - COVERED_PRIVATE_LABEL_DEFECT
+    - MANUFACTURER_WARRANTY_ISSUE
+    # Ordinary returns. These take the standard-stock path.
+    - CHANGED_MIND
+    - ORDERED_IN_ERROR
+    - NO_LONGER_NEEDED
+    - OTHER
+  # --- DERIVED FROM THE ELIGIBILITY POLICY -- OPERATOR REVIEW REQUIRED.
+  #     There is no condition vocabulary anywhere in code to copy, and inventing
+  #     one in Python is the defect this block removes. Every entry below is
+  #     instead the associate-facing name of a condition
+  #     `return_eligibility_policy.standard_stock_return.requirements` already
+  #     reads: the five `condition` facts and the eight `prohibited_states`.
+  #     They are a reading of that table, not a decision Returns operations has
+  #     taken. Confirm the wording with the counter staff who will pick from it
+  #     and delete this banner.
+  #
+  #     Deleting an entry is safe -- an associate can no longer choose it.
+  #     Adding one is safe too: nothing downstream branches on a condition, so
+  #     the value is recorded and read by a human.
+  conditions:
+    # Satisfies the resale requirements: new, suitable for resale, original
+    # packaging, packaging undamaged, all original parts.
+    - NEW_IN_ORIGINAL_PACKAGING
+    # New, but the packaging no longer proves it.
+    - NEW_PACKAGING_OPENED
+    - NEW_PACKAGING_DAMAGED
+    - MISSING_ORIGINAL_PARTS
+    # The eight prohibited states, one entry each, so an associate naming the
+    # state names the one the policy refuses on.
+    - USED
+    - INSTALLED
+    - MODIFIED
+    - REBUILT
+    - RECONDITIONED
+    - REPAIRED
+    - ALTERED
+    - DAMAGED
+

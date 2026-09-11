@@ -9,7 +9,7 @@
 # is what `workflows.return_workflow.ReturnWorkflow` and
 # `operations.orchestrator.ReturnOrchestrator` actually drive.
 #
-# This is a SEPARATE stage list from `config/returns/production.yaml`'s
+# This is a SEPARATE stage list from `config/returns/`'s
 # `workflow.stages` (which enumerates the unrelated 15-stage
 # `ProductionReturnStage` lifecycle owned by `ProductionReturnWorkflow` /
 # `ProductionWorkflowCoordinator` -- a parallel, signal-driven orchestration
@@ -32,7 +32,7 @@
 # `ReturnOrchestrator` does not yet resolve this module through a pinned
 # RuntimeConfigurationView -- it still constructs its other dependencies
 # (agents, business services) from the legacy single-file
-# ReturnPlatformConfiguration (config/returns/production.yaml). Bridging the
+# ReturnPlatformConfiguration (config/returns/). Bridging the
 # two configuration systems is a separate, larger migration. What changed
 # here: `ReturnWorkflow`'s stage sequence is no longer a hardcoded Python
 # module constant (`workflows/return_workflow.py`'s old `_STAGE_SEQUENCE`) --

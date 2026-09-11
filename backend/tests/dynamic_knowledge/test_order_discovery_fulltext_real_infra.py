@@ -254,9 +254,7 @@ class _UnusedModel:
 
 def _discovery() -> Any:
     root = Path(__file__).parents[2]
-    return load_return_configuration(
-        root / "config/returns/production.yaml"
-    ).configuration.discovery
+    return load_return_configuration(root / "config/returns").configuration.discovery
 
 
 def _dependencies(schema: ActiveSchema, driver: AsyncDriver) -> GraphDependencies:

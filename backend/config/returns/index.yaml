@@ -1,0 +1,12 @@
+schema_version: "1.0"
+assumption_set_version: "FERGUSON-RETURN-ASSUMPTIONS-1.0"
+
+parts:
+  - agents.yaml
+  - discovery.yaml
+  - discovery_resolution.yaml
+  - return_policy.yaml
+  - workflow.yaml
+  - support.yaml
+  - fulfilment.yaml
+  - integrations.yaml

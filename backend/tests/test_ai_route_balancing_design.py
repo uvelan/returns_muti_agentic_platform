@@ -34,7 +34,7 @@ from return_platform.dynamic_knowledge.integration.model_gateway import (
 )
 from return_platform.dynamic_knowledge.order_agent.contracts import AgentTurnContext
 
-CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway.yaml"
+CONFIG = Path(__file__).resolve().parents[1] / "config" / "ai_gateway"
 CHECKSUM = "a" * 64
 
 

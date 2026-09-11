@@ -19,11 +19,15 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-import yaml
 
-from return_platform.ai.routing.tasks import AIGatewayConfiguration, ModelTier
+from return_platform.ai.routing.tasks import (
+    AIGatewayConfiguration,
+    ModelTier,
+    load_ai_gateway_configuration,
+)
 
-CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "ai_gateway.yaml"
+#: A directory since CFG-2's split, composed by `configuration.composition`.
+CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "ai_gateway"
 
 CLASSIFY = "support.message.classify.v1"
 EXTRACT = "support.message.extract.v1"
@@ -37,9 +41,7 @@ EXTRACT_PAYLOAD_KEYS = {"bodyText", "intent"}
 
 @pytest.fixture(scope="module")
 def configuration() -> AIGatewayConfiguration:
-    return AIGatewayConfiguration.model_validate(
-        yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
-    )
+    return load_ai_gateway_configuration(CONFIG_PATH).configuration
 
 
 @pytest.mark.parametrize("task_id", [CLASSIFY, EXTRACT])

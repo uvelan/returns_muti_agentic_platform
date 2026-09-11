@@ -60,7 +60,7 @@ def _support_action(action: SupportAction, **overrides: object) -> SupportAction
 #: it varies with the return-method catalogue; a test carrying its own copy would
 #: pass while the shipped configuration said something else.
 _CONFIGURED_BOL_TYPES = load_return_configuration(
-    Path("config/returns/production.yaml")
+    Path("config/returns")
 ).configuration.return_policy.bol_tendering_instruction_types
 
 

@@ -73,7 +73,7 @@ def test_the_fixture_declares_a_desk_that_closes(
 ) -> None:
     """The premise, in one assertion.
 
-    `production.yaml` ships `business_calendars.default` as 24/7 -- and a
+    `workflow.yaml` ships `business_calendars.default` as 24/7 -- and a
     continuous calendar is wall clock *exactly*, by `advance_business_time`'s
     own short-circuit. Against it, every gap below is zero seconds wide and
     every scenario about weekends silently tests addition. `is_continuous`
@@ -185,7 +185,7 @@ async def test_the_fixture_maps_to_the_calendar_production_would_build() -> None
     """
     declared = nine_to_five_configuration(holidays=(MONDAY,))
     configuration = with_business_calendar(
-        load_return_configuration(Path("config/returns/production.yaml")).configuration,
+        load_return_configuration(Path("config/returns")).configuration,
         declared,
     )
     raised = _at(FRIDAY, 16, 30)
@@ -220,7 +220,7 @@ def test_installing_the_calendar_replaces_rather_than_shadows_a_same_id_entry() 
     appended second `default` would be a calendar that is installed, named, and
     never consulted -- passing tests, wall-clock behaviour.
     """
-    configuration = load_return_configuration(Path("config/returns/production.yaml")).configuration
+    configuration = load_return_configuration(Path("config/returns")).configuration
     shipped_ids = [entry.calendar_id for entry in configuration.business_calendars]
     assert "default" in shipped_ids, "the shipped configuration no longer declares `default`"
 

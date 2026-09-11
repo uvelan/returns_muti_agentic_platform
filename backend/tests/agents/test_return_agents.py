@@ -17,7 +17,7 @@ from return_platform.agents.contracts import (
 from return_platform.agents.registry import AgentRegistry
 from return_platform.configuration.return_configuration import load_return_configuration
 
-CONFIG = Path(__file__).resolve().parents[2] / "config" / "returns" / "production.yaml"
+CONFIG = Path(__file__).resolve().parents[2] / "config" / "returns"
 
 
 def registry() -> AgentRegistry:

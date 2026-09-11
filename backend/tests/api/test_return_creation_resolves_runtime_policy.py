@@ -38,7 +38,7 @@ from return_platform.operations.models import ReturnSessionView
 from return_platform.security import roles as r
 from return_platform.security.principal import Principal
 
-_LOADED = load_return_configuration(Path("config/returns/production.yaml"))
+_LOADED = load_return_configuration(Path("config/returns"))
 _CONFIGURED_METHODS = _LOADED.configuration.return_policy.normalized_return_methods
 #: A method the shipped configuration does not declare, standing in for one an
 #: operator adds tomorrow. Asserted absent so this test cannot quietly become a

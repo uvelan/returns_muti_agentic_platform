@@ -22,7 +22,7 @@ from return_platform.operations.return_support.service import (
 from return_platform.operations.support_handoff import compose_support_handoff
 from return_platform.operations.support_template_draft import SAMPLE_CASE
 
-CONFIG = Path(__file__).resolve().parents[3] / "config" / "returns" / "production.yaml"
+CONFIG = Path(__file__).resolve().parents[3] / "config" / "returns"
 
 _NOW = datetime(2026, 8, 25, tzinfo=UTC)
 
