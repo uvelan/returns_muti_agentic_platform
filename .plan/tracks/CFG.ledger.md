@@ -871,3 +871,19 @@ frontend 200
 The composed directories publish byte-for-byte what the single files did: no new release, no head
 move, the same six undecided keys named. CFG-3a worktree prepared at `5dc5a825`; its implementer
 starts after CFG-3b reports (one implementer per usage window).
+
+---
+
+## Session-window kill (orchestrator)
+
+The account's usage window closed mid-lease (HTTP 429, "session limit, resets 21:50 Asia/Kolkata").
+Killed: the RV agent for CFG-3a (had read the brief and was diffing the extracted carry-forward;
+no verdict file written). Possibly killed: the CFG-3b implementer, resumed minutes earlier with the
+RV round-1 fix list (B1 rename collision in `DocumentEditor` data-keyed tables, A1 bracket paths,
+A4 invariant tests). State on disk is safe: CFG-3a is committed at `2d4cea7a` with drop PENDING;
+CFG-3b is committed at `47340cc7` with the round-1 verdict in `.plan/reviews/CFG-3b.md`.
+
+Resume protocol (CFG.brief.md §1.3): after the window opens, `SendMessage` the same RV agent
+("resume: write the verdict from where you were") and the same CFG-3b implementer ("resume from your
+drop and the fix list"); if either cannot recall its state, spawn a fresh agent with the brief, the
+review file and the ledger tail as its only context. Do not respawn while the window is closed.
