@@ -341,7 +341,7 @@ class Settings(BaseSettings):
     ollama_standard_models: tuple[str, ...] = ()
     ollama_model: str | None = None
 
-    seed_version: str = Field(default="e2e-v1", min_length=1, max_length=64)
+    seed_version: str = Field(default="e2e-v2", min_length=1, max_length=64)
     ai_studio_max_records: int = Field(default=500, ge=1, le=10_000)
     # AI Studio write targets are deliberately separate from operational/source stores.
     # Apply remains disabled until an operator supplies all isolated validation coordinates.

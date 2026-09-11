@@ -13,9 +13,7 @@ payload:
     - POSTGRESQL
     - SQLSERVER
   auto_bootstrap_missing_structures: true
-  migration_mode: FORWARD_ONLY
   fail_closed_on_drift: true
-  migration_lock_required: true
   structures:
     conversations:
       physical_name: platform_conversations

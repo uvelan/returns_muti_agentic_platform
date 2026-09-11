@@ -46,10 +46,10 @@ release in the Neo4j configuration graph, whose three domains are published from
 `dependency_simulation.yaml` (`DEPENDENCY_SIMULATION`) by
 `return_platform/configuration/cli/bootstrap_graph_configuration.py` at every stack start, and
 edited afterwards through `/api/config` and the Configuration, Support Template and AI Control
-Center screens. `production.yaml` has no `features:`/`platform:` keys -- the live flag block is
-`feature_flags:`, which parses but is read by nothing. See
-`return_platform/configuration/README.md` (Precedence) for the carry-forward rules that decide
-whether an edited packaged file reaches a deployment that already has a release.
+Center screens. See `return_platform/configuration/README.md` (Precedence) for the carry-forward
+rules that decide whether an edited packaged file reaches a deployment that already has a release,
+and `docs/configuration/DEFERRED_DESIGN.md` for `feature_flags`/`extensions` (retired in CFG-1,
+D-CFG-2 -- neither block was ever read).
 
 Before CFG-1, `ai_gateway.yaml` and `returns/production.yaml` were also loaded a second way -- by
 explicit name, through `ConfigurationLoader.load_file`, from

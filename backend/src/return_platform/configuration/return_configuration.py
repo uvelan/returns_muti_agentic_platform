@@ -1408,34 +1408,13 @@ class IntegrationConfiguration(StrictConfigModel):
     customer_notification: IntegrationTopicConfiguration
 
 
-class ExtensionConfiguration(StrictConfigModel):
-    document_artifact_metadata: bool = True
-    ocr_processing: bool = False
-    image_processing: bool = False
-    ncr_workflow: bool = False
-    vendor_recovery_workflow: bool = True
-
-    @model_validator(mode="after")
-    def validate_processing_dependencies(self) -> ExtensionConfiguration:
-        if (self.ocr_processing or self.image_processing) and not self.document_artifact_metadata:
-            raise ValueError("OCR and image processing require document artifact metadata")
-        return self
-
-
-class FeatureFlagsConfiguration(StrictConfigModel):
-    reusable_conversation_engine: bool = False
-    order_discovery_copilot: bool = False
-    copilot_operations_console: bool = False
-    graph_first_runtime_configuration: bool = False
-
-
 class PolicyEvaluationConfiguration(StrictConfigModel):
     """Whether the deterministic eligibility gate runs at all, and why not.
 
-    Deliberately **not** a member of `FeatureFlagsConfiguration`. Everything in
-    that block enables a surface; this one suspends a governance control, and an
-    operator scanning a release should find it under its own name rather than as
-    a fourth boolean beside a console toggle.
+    Deliberately never folded into a generic flags block (`feature_flags`,
+    retired in CFG-1 -- D-CFG-2 -- for being exactly that: a block of switches
+    nothing read). A governance control belongs under its own name, not as one
+    more boolean beside a console toggle.
 
     Disabling it is not an approval and must never be read as one. The case's
     fact log records `policy_evaluation_state = SKIPPED_BY_CONFIGURATION` and
@@ -1812,11 +1791,9 @@ class ReturnPlatformConfiguration(StrictConfigModel):
     # structurally unable to reach a live return whatever this block says.
     housekeeping: HousekeepingConfiguration = Field(default_factory=HousekeepingConfiguration)
     integrations: IntegrationConfiguration
-    extensions: ExtensionConfiguration
     runtime_integrations: RuntimeIntegrationsConfiguration = Field(
         default_factory=RuntimeIntegrationsConfiguration
     )
-    feature_flags: FeatureFlagsConfiguration = Field(default_factory=FeatureFlagsConfiguration)
     # Defaulted so a release cut before the block still loads, and the default
     # runs the gate -- an older release must not become one that skips policy.
     policy_evaluation: PolicyEvaluationConfiguration = Field(

@@ -269,6 +269,59 @@ async def test_a_key_the_active_release_predates_is_adopted_from_the_packaged_fi
 
 
 @pytest.mark.asyncio
+async def test_a_key_the_model_retired_is_dropped_from_the_carried_release(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """CFG-1 (D-CFG-2) retired `feature_flags`/`extensions` from the model.
+
+    An active release published before that still carries them.
+    `_carry_forward`'s last loop (`merged.setdefault(key, value)` over the
+    active release) puts them straight back into the merged payload every
+    time, and without a drop `ReturnPlatformConfiguration.model_validate`
+    (`StrictConfigModel` forbids extra keys) would refuse the release on
+    every bootstrap from here on -- the `except ValidationError` fallback a
+    few lines below discards every operator value on the release, which is
+    the deadlock this test proves does not happen.
+    """
+    packaged = load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration
+    older_release_payload = packaged.model_dump(mode="json")
+    older_release_payload["feature_flags"] = {
+        "reusable_conversation_engine": True,
+        "order_discovery_copilot": True,
+        "copilot_operations_console": False,
+        "graph_first_runtime_configuration": True,
+    }
+    older_release_payload["extensions"] = {
+        "document_artifact_metadata": True,
+        "ocr_processing": False,
+        "image_processing": False,
+        "ncr_workflow": False,
+        "vendor_recovery_workflow": True,
+    }
+    # An unrelated operator edit, carried in the same release, so this also
+    # proves the drop touches only the retired keys.
+    older_release_payload["bay"]["require_physical_receipt"] = not older_release_payload["bay"][
+        "require_physical_receipt"
+    ]
+    repository = _CarryForwardRepository(older_release_payload)
+    _install_bootstrap_doubles(monkeypatch, repository)
+
+    with caplog.at_level("WARNING"):
+        await bootstrap_graph_configuration.main()
+
+    assert "retired_configuration_key key=extensions" in caplog.text
+    assert "retired_configuration_key key=feature_flags" in caplog.text
+    published = next(iter(repository.saved.values()))[RETURN_PLATFORM_DOMAIN_KEY]
+    assert "feature_flags" not in published
+    assert "extensions" not in published
+    assert (
+        published["bay"]["require_physical_receipt"]
+        == (older_release_payload["bay"]["require_physical_receipt"])
+    )
+
+
+@pytest.mark.asyncio
 async def test_the_active_release_still_wins_for_every_key_it_carries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -643,6 +696,34 @@ async def test_adopt_packaged_key_refuses_a_key_the_file_does_not_have(
 ) -> None:
     packaged = load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration
     repository = _CarryForwardRepository(packaged.model_dump(mode="json"))
+    _install_bootstrap_doubles(monkeypatch, repository)
+
+    with pytest.raises(ValueError, match="no_such_key"):
+        await bootstrap_graph_configuration.main(adopt_packaged_keys=("no_such_key",))
+    assert repository.saved == {}
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_adopt_packaged_key_refuses_before_any_write_with_no_active_release(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """RV F5 on CFG-0: the refusal must be symmetric.
+
+    A qualified key naming an unknown domain (`--adopt-packaged-key
+    BOGUS/x`) always failed in `_adopt_requests`, before any write,
+    regardless of whether an active release exists. A bare key naming a unit
+    of another domain (the operator forgot the `DOMAIN/` prefix) used to be
+    checked only inside the active-release carry-forward branch -- so on a
+    first boot, with no active release to check it against, it silently did
+    nothing instead of failing. Both now fail the same way, unconditionally.
+    """
+    packaged = load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration
+    repository = _CarryForwardRepository(packaged.model_dump(mode="json"))
+
+    async def no_active_release() -> None:
+        return None
+
+    monkeypatch.setattr(repository, "get_active_release", no_active_release)
     _install_bootstrap_doubles(monkeypatch, repository)
 
     with pytest.raises(ValueError, match="no_such_key"):

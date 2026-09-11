@@ -1605,19 +1605,6 @@ integrations:
     authority: NOTIFICATION_PROVIDER
     ai_may_fabricate_success: false
 
-extensions:
-  document_artifact_metadata: true
-  ocr_processing: false
-  image_processing: false
-  ncr_workflow: false
-  vendor_recovery_workflow: true
-
-feature_flags:
-  reusable_conversation_engine: true
-  order_discovery_copilot: true
-  copilot_operations_console: false
-  graph_first_runtime_configuration: true
-
 # The deterministic eligibility gate. Suspended here, in the file, rather than
 # only on a published release: an operator's disable lives in the graph
 # configuration and does not survive a reset, so the gate came back on by itself

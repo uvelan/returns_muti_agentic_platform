@@ -108,3 +108,30 @@ docs (`docs/UNIFIED_RETURN_PLATFORM_TARGET_DESIGN.md`,
 fixture (`load_active_schema(...active-schema.example.yaml)`), which is
 outside this lease's owned test paths. The brief's own condition for deleting
 it -- "only if no doc links it" -- is not met, so it stays.
+
+## `feature_flags` and `extensions` (D-CFG-2)
+
+A different case from the files above: not unimplemented design, but two
+blocks of switches that parsed, validated, and were never read by anything
+that decided behavior from them.
+
+`feature_flags` (`reusable_conversation_engine`, `order_discovery_copilot`,
+`copilot_operations_console`, `graph_first_runtime_configuration`) had no
+reader anywhere in `backend/src` -- confirmed by grep before deletion. There
+is no live equivalent; each of the four capabilities it named either shipped
+unconditionally (the reusable conversation engine, the copilot) or is gated
+by something else entirely (`copilot.order_discovery_agent_id` being set, not
+a boolean switch).
+
+`extensions` (`document_artifact_metadata`, `ocr_processing`,
+`image_processing`, `ncr_workflow`, `vendor_recovery_workflow`) had exactly
+one reader: `api/return_agents.py`'s `/configuration` introspection endpoint
+echoed `config.extensions.model_dump()` into its response JSON without ever
+branching on any of the five values -- a display of dead configuration, not a
+consumer of it. That one dict key was removed along with the block; the
+endpoint's other fields are unchanged.
+
+Both blocks are also gone from `frontend/src/domains/config/BusinessSection.tsx`'s
+group list (they are no longer editable JSON sub-documents, because there is
+no longer a model field for the document editor to patch) and from
+`docs/configuration/families.md`'s classification table.

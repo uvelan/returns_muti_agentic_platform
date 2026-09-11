@@ -378,3 +378,79 @@ or renamed tests, not removed them). The residual 2 is within a flaky skip's noi
 skipped count moved by exactly 1, unexplained by any deletion here) and is well inside the
 acceptance bound ("drops by no more than the deleted tests"). Worktree cleaned up with
 `git worktree remove --force` + `git worktree prune`.
+
+## CFG-1 step:03 — feature_flags/extensions removed (D-CFG-2, item 4), system_store dead keys
+## (item 5), seed_version drift (item 6), unknown-unit refusal symmetry (item 7 remainder)
+
+**Item 4, the mandatory-test item.** `feature_flags` grep confirmed zero backend readers before
+deletion. `extensions` had exactly one: `backend/src/return_platform/api/return_agents.py:100`
+echoed `config.extensions.model_dump(mode="json")` into a `/configuration` introspection response
+dict -- display, not a consumer (no branch anywhere reads a value out of it). That file is agent
+runtime-adjacent (frozen, deprecated, `tests/test_frozen_modules_gain_no_new_callers.py` enforces
+"no new callers" but not "no edits"); fixed the one dict key as a mechanical casualty, same as
+CFG-0/CFG-1's other out-of-scope-but-broken fixes. `scripts/validate_stage4l_production.py`
+asserted `configuration.extensions.{ocr_processing,image_processing}` -- not CI-wired (no `.github`
+hit), fixed the two assertion lines. Removed both blocks from `backend/config/returns/production.yaml`,
+the `ExtensionConfiguration`/`FeatureFlagsConfiguration` classes and their fields from
+`return_configuration.py`, both `section(...)` entries from `BusinessSection.tsx`'s group list, and
+both rows from `docs/configuration/families.md`'s table. Recorded intent in
+`docs/configuration/DEFERRED_DESIGN.md` (not required by the brief's D-CFG-2 default, added for the
+README's own pointer to stay accurate).
+
+**The bootstrap retired-key drop (mandatory, breaking-if-wrong).** Added `_drop_retired_keys()` in
+`cli/bootstrap_graph_configuration.py`, called on `merged_payload` right after the
+`packaged_configuration_not_adopted` warning block and before `ReturnPlatformConfiguration.model_validate`:
+drops any top-level key `ReturnPlatformConfiguration.model_fields` does not declare, logging
+`retired_configuration_key key=<k>` once per key (sorted, deterministic). Without it,
+`_carry_forward`'s own `merged.setdefault(key, value)` loop over the active release re-introduces
+`feature_flags`/`extensions` from any release published before this lease, `model_validate` fails
+(`StrictConfigModel` forbids extra keys), and the existing `except ValidationError` fallback
+silently discards every operator value on that release on every future bootstrap -- the deadlock
+the brief's item 4 describes. New test
+`tests/test_graph_configuration_bootstrap.py::test_a_key_the_model_retired_is_dropped_from_the_carried_release`:
+an active release carrying both blocks plus an unrelated operator edit (`bay.require_physical_receipt`
+flipped) publishes cleanly, logs both `retired_configuration_key` lines, drops both blocks, and
+keeps the operator edit. New test in `tests/configuration/test_configuration_health.py`:
+`test_the_shipped_configuration_has_no_retired_blocks` -- `load_return_configuration` of the shipped
+file has neither attribute (not just an empty dump).
+
+**Item 5.** Removed `migration_mode`/`migration_lock_required` from `backend/config/platform/system_store.yaml`
+and from the Path A domain model `configuration/domain/system_store.py::SystemStoreConfig` (both
+unread -- grep confirmed only the yaml and this one model declared them). `release_model.py` stays
+per step:01's finding, so `SystemStoreConfig` itself stays; only the two dead fields go. The live
+loader `platform/system_store/manifest_loader.py::_SystemStoreConfigPayload` never declared these
+fields to begin with (`extra="ignore"`, five fields only) -- confirmed unchanged, exactly as the
+brief specifies.
+
+**Item 6.** `settings.py::Settings.seed_version` default `"e2e-v1"` -> `"e2e-v2"`, matching
+`.env.example:300` and `compose.yaml:129` (`e2e-v2` already in both). `backend/tests/test_seed_api.py`
+and `test_seed_manifest.py` already assert `"e2e-v2"` -- no test changes needed, confirming this was
+pure settings-file drift.
+
+**Item 7 remainder (RV F5 on CFG-0; F10's round-trip half was done in step:02).** The unknown-unit
+refusal was asymmetric: a qualified `--adopt-packaged-key BOGUS_DOMAIN/x` always failed in
+`_adopt_requests`, before any write, regardless of whether an active release existed; a bare key
+naming a unit of another domain was checked only *inside* the `if active is not None: if
+active_payload is not None:` branch, so on a first boot with no active release it silently did
+nothing. Hoisted the RETURN_PLATFORM `adopted_keys`/`unknown_keys` computation and raise to run
+unconditionally, right after `_adopt_requests(...)`, matching the AI_GATEWAY/DEPENDENCY_SIMULATION
+check (already unconditional) and matching `_adopt_requests`'s own early check; unified the message
+shape to `"adopt-packaged-key names units {DOMAIN} does not have: ..."` for all three domains
+(previously RETURN_PLATFORM's said "names keys the packaged configuration does not have"). New test
+`test_an_unknown_adopt_packaged_key_refuses_before_any_write_with_no_active_release`: a
+`_CarryForwardRepository` whose `get_active_release` is monkeypatched to return `None`, given an
+unknown `--adopt-packaged-key`, raises the same `ValueError` and writes nothing -- proving the
+refusal is now symmetric across boot states, not just across domains.
+
+```
+$ pytest tests/configuration tests/test_graph_configuration_bootstrap.py tests/api tests/platform -q
+839 passed, 34 deselected
+$ pytest tests/test_graph_configuration_bootstrap.py -q
+24 passed
+$ ruff check src/return_platform/configuration src/return_platform/api/return_agents.py -> All checks passed!
+$ ruff format --check (same + touched tests) -> all formatted (one file auto-reformatted, re-verified green)
+$ mypy src/return_platform/configuration src/return_platform/api/return_agents.py -> Success: no issues found in 49 source files
+$ npx vitest run src/domains/config (frontend) -> 6 files, 59 tests passed
+$ npm run typecheck (frontend) -> clean
+$ npx eslint src/domains/config/BusinessSection.tsx -> clean
+```

@@ -97,7 +97,6 @@ async def configuration(
             "support": config.support.model_dump(mode="json"),
             "bay": config.bay.model_dump(mode="json"),
             "integrations": config.integrations.model_dump(mode="json"),
-            "extensions": config.extensions.model_dump(mode="json"),
         },
         meta=_meta(request),
     )

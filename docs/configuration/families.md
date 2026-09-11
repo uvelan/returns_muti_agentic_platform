@@ -65,9 +65,7 @@ facts.
 | `return_case` (timings) | `INTERNAL` | `RUNTIME` | Yes | Yes | **`PINNED`** | See below |
 | `business_calendars` | `INTERNAL` | `RUNTIME` | Yes | Yes | **`PINNED`** | See below |
 | `integrations` | `INTERNAL` | `RUNTIME` | Yes | Yes | `PINNED` | `ai_may_fabricate_success` is a **`SECURITY`** field per topic |
-| `extensions` | `PUBLIC` | `RUNTIME` | Yes | Yes | `PINNED` | Safe |
 | `runtime_integrations` | `INTERNAL` | `RUNTIME` | Yes | Yes | `PINNED` | Safe |
-| `feature_flags` | `INTERNAL` | `RUNTIME` | Yes | Yes | `PINNED` | Safe |
 
 ### Validation rules that fail closed
 
