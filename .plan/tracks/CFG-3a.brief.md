@@ -1,0 +1,22 @@
+# CFG-3a — Configuration API v2: validate, publish in one call, per-unit adoption, optimistic lock
+
+Base: the RV-approved head of CFG-0 (or of CFG-1 if it merged first; file-disjoint). Branch `feat/cfg-3a-config-api`. Worktree `.claude/worktrees/cfg-3a` (venv and node_modules junctioned, `.env` copied, `PYTHONPATH` pinned and printed in step:00).
+
+Owns: `backend/src/return_platform/configuration/api/**`, `configuration/application/release_promotion.py`, `configuration/graph_repository.py` (one new method), `configuration/cli/bootstrap_graph_configuration.py` (extract the per-unit adoption into a function the API can call; no behaviour change), `security/capabilities.py` (one new capability + role mapping), `backend/tests/test_configuration_api.py`, `backend/tests/configuration/**`, the three OpenAPI copies (`backend/openapi/`, `openapi/`, `frontend/openapi/`, `openapi.json`) and `frontend/src/api/generated/return-platform.d.ts` via the project's generator. Must not touch: frontend components, `releases.py` console `APIRouter` deletion (CFG-1 owns it; if CFG-1 merged first, work on the canonical router only).
+
+Budget: 300k tokens; stop rule at 240k with `drop.json` PARTIAL.
+
+## Scope
+
+1. **`POST /api/config/validate/{domain_key}`** body `{payload}` or `{patch}` (against the active release when `patch`): returns `{valid, errors: [{path: "return_policy.return_method_derivation.default_method", message, type}]}` from pydantic's `ValidationError.errors()` (`loc` joined with dots; list indices as `[n]`). No writes. Read roles.
+2. **`POST /api/config/publish`** body `{release_id?, domain_key, patch, expected_head_revision, note?}`: one handler doing create-from-active (baseline carried), canonical patch, promote VALIDATED, promote RELEASED with the head check, and the audit records — all through the existing application functions, no second copy of the rules. On any refusal nothing is left behind: delete or archive the draft it created (pick the existing lifecycle transition; document it). Response is the promote response plus `audit_ids`. Requires the new capability (item 4).
+3. **`POST /api/config/adopt-packaged`** body `{units: ["source_resolution", "AI_GATEWAY/tasks.X"], expected_head_revision}`: runs the bootstrap's carry-forward with those units adopted (extract `main()`'s decision body into `configuration/application/packaged_adoption.py` returning the merged domains, recordable baselines and unadopted keys; the CLI and the route both call it). Also **`GET /api/config/packaged-drift`**: the same computation read-only — `{undecided: [...], would_adopt: [...], filled_leaves: [...]}` per domain — for the Overview screen's "undecided keys" panel. Admin capability.
+4. **Capability `CONFIG_RELEASE_WRITE`** for create/patch/publish/adopt (mapped to `console_admin` and `workspace_editor`); promote keeps `CONFIG_RELEASE_PROMOTE`. Update `/api/principal` advertisement and `test_configuration_release_writes_are_guarded`.
+5. **Optimistic lock on PATCH**: `PatchDomainPayload.expected_version: int | None`; repository `get_domain_version(release_id, domain_key)`; mismatch → 409 with `current_version`. The frontend pipeline keeps working without it (optional field).
+6. **Audit filter**: `GET /api/config/audit?actions=CONFIGURATION_*&target=<release>` server-side filter; default unchanged.
+7. Regenerate OpenAPI (all copies) and run `scripts/check_openapi_drift.py`.
+
+## Acceptance
+- Tests for every route: happy path, 422 with path-mapped errors, 409 on stale version and stale head, 403 without the capability, the publish rollback on a refused promote, adopt-packaged producing the same release a CLI run would (assert equality against `bootstrap_graph_configuration.main` on the in-memory repository).
+- `pytest tests/test_configuration_api.py tests/configuration tests/test_graph_configuration_bootstrap.py tests/test_every_console_path_is_mounted.py` green; `ruff`, `mypy` clean; drift check green.
+- Ledger pastes: the drift-check output and the audit filter response shape.
