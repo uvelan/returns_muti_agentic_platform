@@ -525,6 +525,56 @@ async def test_a_leaf_the_release_lacks_is_filled_even_inside_an_undecidable_key
 
 
 @pytest.mark.asyncio
+async def test_a_deleted_entry_the_file_still_carries_is_named_not_stamped_decided(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """RV finding F1 on CFG-0. An operator deleted a ship-via code through the
+    Business tab; the file still carries it; the release has no baseline for
+    `return_policy`. The entry comes back (nothing can tell it from a code the
+    file gained), but the key is named as undecided and no baseline is recorded
+    for it -- before this, a pure deletion made the filled key equal to the
+    file, so nothing was named and the key was stamped decided."""
+    packaged = load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration
+    packaged_payload = packaged.model_dump(mode="json")
+    older = {**packaged_payload, "return_policy": {**packaged_payload["return_policy"]}}
+    derivation = dict(older["return_policy"]["return_method_derivation"])
+    methods = dict(derivation["ship_via_methods"])
+    deleted_code = next(iter(methods))
+    del methods[deleted_code]
+    derivation["ship_via_methods"] = methods
+    older["return_policy"]["return_method_derivation"] = derivation
+    repository = _CarryForwardRepository(older)
+    _install_bootstrap_doubles(monkeypatch, repository)
+
+    with caplog.at_level("WARNING"):
+        await bootstrap_graph_configuration.main()
+
+    release_id = next(iter(repository.saved))
+    published = repository.saved[release_id][RETURN_PLATFORM_DOMAIN_KEY]
+    assert (
+        deleted_code in published["return_policy"]["return_method_derivation"]["ship_via_methods"]
+    )
+    assert "return_policy" in caplog.text
+    assert (
+        "return_policy"
+        not in repository.written_metadata[release_id][
+            bootstrap_graph_configuration.PACKAGED_KEY_DIGESTS
+        ]
+    )
+
+
+def test_assemble_keeps_a_split_key_whose_value_is_not_a_mapping() -> None:
+    units = bootstrap_graph_configuration._units(
+        {"tasks": "not-a-mapping", "retry": {}}, ("tasks",)
+    )
+    assert bootstrap_graph_configuration._assemble(units, ("tasks",)) == {
+        "tasks": "not-a-mapping",
+        "retry": {},
+    }
+
+
+@pytest.mark.asyncio
 async def test_a_partial_baseline_decides_its_keys_and_leaves_the_rest_undecided(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,

@@ -100,9 +100,14 @@ def _assemble(units: Mapping[str, Any], split_keys: tuple[str, ...]) -> dict[str
     for unit, value in units.items():
         head, dot, entry = unit.partition(".")
         if head in split_keys:
-            container = payload.setdefault(head, {})
             if dot:
-                container[entry] = value
+                payload.setdefault(head, {})[entry] = value
+            elif isinstance(value, dict):
+                payload.setdefault(head, {}).update(value)
+            else:
+                # A split key whose value is not a mapping (the model would
+                # refuse it, but the merge must not lose it on the way there).
+                payload[head] = value
         else:
             payload[unit] = value
     return payload
@@ -149,12 +154,16 @@ def _fill_absent_leaves(packaged_value: Any, active_value: Any) -> Any:
 
     Recursive over mappings only. A leaf both sides carry keeps the active
     value -- that is the undecidable case, and the release wins it -- but a leaf
-    the release does not carry at all cannot be an operator's edit of anything:
-    it is a key the file gained after the release was cut (a new agent block, a
-    new ship-via code), and leaving it out froze every such addition out of a
-    deployment that had no baseline. The one thing this cannot tell apart is an
-    operator who deleted a mapping entry the file still carries; that entry
-    comes back on the next publish, and the warning names the key.
+    the release does not carry at all is most often a key the file gained after
+    the release was cut (a new agent block, a new ship-via code), and leaving it
+    out froze every such addition out of a deployment that had no baseline. The
+    one thing this cannot tell apart is an operator who deleted a mapping entry
+    the file still carries: that entry comes back on the next publish. So a key
+    that needed filling is NOT treated as decided by the caller -- it is named
+    in the warning and no baseline is recorded for it -- and the operator's
+    answer to a deliberate deletion is `--adopt-packaged-key` once (which
+    records the baseline) followed by the deletion, which then survives because
+    the key's digest moves away from the baseline.
     """
     if not isinstance(packaged_value, dict) or not isinstance(active_value, dict):
         return active_value
@@ -189,10 +198,11 @@ def _carry_forward(
 
     Without a baseline entry a key is decided only where no judgement is needed:
     the release does not carry it (the file's value is adopted), or the release
-    carries exactly the file's value (nothing to decide), or the two differ only
-    by leaves the release lacks (those are filled in, see `_fill_absent_leaves`).
-    A key that still differs after that keeps the release's value and is named to
-    the caller rather than dropped in silence.
+    carries exactly the file's value (nothing to decide). Any other key keeps the
+    release's values, gains the leaves the release lacks (see
+    `_fill_absent_leaves`), and is named to the caller rather than dropped in
+    silence -- including when filling was the only difference, because a leaf
+    the release lacks may be one an operator deleted.
 
     The baseline is recorded PER KEY, and only for keys this run decided. A key
     left undecided stays undecided on the next run rather than being stamped as
@@ -215,11 +225,9 @@ def _carry_forward(
         elif active_payload[key] == value:
             merged[key] = value
         else:
-            filled = _fill_absent_leaves(value, active_payload[key])
-            merged[key] = filled
-            if filled != value:
-                unadopted.append(key)
-        if key in known or merged[key] == value:
+            merged[key] = _fill_absent_leaves(value, active_payload[key])
+            unadopted.append(key)
+        if key in known or (key not in unadopted and merged[key] == value):
             recordable[key] = packaged_digests[key]
     for key, value in active_payload.items():
         merged.setdefault(key, value)
@@ -624,7 +632,7 @@ async def main(
                 # release keeps its value. Recording what the file says NOW is
                 # what keeps that key readable as an operator edit next time
                 # instead of drifting back into "changed by someone, unknown".
-                if recordable_baseline:
+                if recordable_baseline or any(recordable_domain_baselines.values()):
                     await repository.set_release_metadata(active.release_id, release_metadata)
                 print(f"graph_configuration_release={active.release_id}")
                 print("graph_configuration_status=UNCHANGED")
@@ -685,7 +693,7 @@ async def main(
         # frozen at VALIDATED. A publish that reached RELEASED and failed here
         # leaves a correct release with no baseline, which is the recoverable
         # direction: the next run decides nothing and says so.
-        if recordable_baseline:
+        if recordable_baseline or any(recordable_domain_baselines.values()):
             await repository.set_release_metadata(release_id, release_metadata)
 
         print(f"graph_configuration_release={release_id}")
@@ -722,8 +730,9 @@ def run() -> None:
         "--adopt-packaged",
         action="store_true",
         help=(
-            "Take the packaged configuration file for every key it declares, "
-            "overwriting the active release. Needed only for a release published "
+            "Take the packaged configuration files for every key and unit they "
+            "declare -- business keys, every AI task and limit, every simulated "
+            "dependency -- overwriting the active release. Needed only for a release published "
             "before releases recorded a packaged baseline: without one, a publish "
             "cannot tell an operator's edit from a change to the file and keeps the "
             "release. This and --adopt-packaged-key are the only paths that can "

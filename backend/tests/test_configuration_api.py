@@ -10,6 +10,9 @@ from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from return_platform.ai.routing.tasks import load_ai_gateway_configuration
+from return_platform.configuration.api.releases import (
+    record_configuration_audit as _real_record_audit,
+)
 from return_platform.configuration.api.releases import router
 from return_platform.configuration.graph_repository import (
     InMemoryConfigurationGraphRepository,
@@ -382,6 +385,35 @@ def test_a_draft_cloned_from_the_active_release_carries_its_packaged_baseline(
 
     cloned = client.get("/data-console/v1/configuration/releases/cloned").json()["data"]
     assert cloned["metadata"] == baseline
+
+
+def test_an_audit_store_outage_does_not_undo_a_completed_write(
+    configuration_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """RV finding F3 on CFG-0: the audit write runs after the graph write, so a
+    503 from it would have reported a promote that had already moved the head
+    as failed, and the operator's retry would cut a second release."""
+    from return_platform.configuration.api import releases as releases_module
+
+    client = configuration_client
+    _create_draft(client, "audit-outage")
+    # Put the real writer back (the fixture stubs it) with an unreachable store.
+    monkeypatch.setattr(releases_module, "record_configuration_audit", _real_record_audit)
+
+    def unavailable(_request: Request) -> Any:
+        raise RuntimeError("audit store unreachable")
+
+    monkeypatch.setattr(releases_module, "resolve_operational_repository", unavailable)
+    with caplog.at_level("ERROR"):
+        promoted = client.post(
+            "/data-console/v1/configuration/releases/audit-outage/promote",
+            json={"status": "VALIDATED"},
+        )
+    assert promoted.status_code == 200, promoted.text
+    assert "configuration_audit_not_recorded" in caplog.text
+    assert "CONFIGURATION_RELEASE_PROMOTED" in caplog.text
 
 
 def test_every_release_change_leaves_an_audit_record(

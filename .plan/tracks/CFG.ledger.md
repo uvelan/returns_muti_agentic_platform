@@ -151,3 +151,37 @@ Kept as the operator's own, and still named by the bootstrap until the operator 
 values above). Snapshot: `evidence/config_audit/after_cfg0/` (head 77).
 
 RV requested on `1d2c8bed`; verdict to `.plan/reviews/CFG-0.md`.
+
+---
+
+## CFG-0 step:02 — RV round 1: CHANGES_REQUIRED (3 blocking), fixed
+
+Verdict `.plan/reviews/CFG-0.md` on `1d2c8bed`: F1 a pure deletion inside an undecided key was
+restored and the key stamped decided (`_carry_forward` named a key only when the filled value still
+differed from the file); F2 `PLATFORM_SEED_RECORD_LIMIT` is read by name through
+`backend/config/seed/e2e_seed_manifest.json` → `operations/seed_manifest.py:65-69` (`os.getenv`), so it
+was not dead; F3 the audit write ran unguarded after the graph write, so an audit-store outage turned a
+completed promote into a 503 and an operator retry would cut a second release.
+
+Fixes: a key that needed any filling is named as undecided and never recorded as decided (the
+operator's route for a deliberate deletion is `--adopt-packaged-key` once, then the deletion, which
+then survives on its baseline); `PLATFORM_SEED_RECORD_LIMIT` restored in `.env.example` and
+`compose.yaml` with a comment naming its real reader; `record_configuration_audit` is best-effort and
+logs `configuration_audit_not_recorded` with the full record. Advisories taken: domain baselines are
+written even when the business baseline is empty; `_assemble` keeps a non-mapping split-key value;
+`_changed_paths` marks truncation; `--adopt-packaged` help names its reach. Left as is, with reason:
+the stale-baseline-after-PUT case (the PUT handler is deleted by CFG-1); `mergePatchOf` sending a
+legitimate `null` (it deletes the key, which the backend model re-defaults -- equivalent for every
+Optional field the release carries, documented in the module); the unused dirty state mirrors
+`SupportTemplateSection`.
+
+New tests: `test_a_deleted_entry_the_file_still_carries_is_named_not_stamped_decided`,
+`test_assemble_keeps_a_split_key_whose_value_is_not_a_mapping`,
+`test_an_audit_store_outage_does_not_undo_a_completed_write`.
+
+```
+$ pytest tests/test_graph_configuration_bootstrap.py tests/test_configuration_api.py tests/configuration/test_canonical_config_api.py tests/api/test_canonical_config_domains.py tests/test_every_console_path_is_mounted.py -q
+(tail pasted below the commit line)
+$ ruff check src/return_platform/configuration tests/... ; ruff format --check ... ; mypy bootstrap_graph_configuration.py releases.py
+All checks passed! / files already formatted / Success: no issues found in 2 source files
+```

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import copy
+import json
+import logging
 from typing import Any, Final, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -32,6 +34,8 @@ from return_platform.operations.repository import resolve_operational_repository
 from return_platform.resources import RuntimeResources
 from return_platform.security.authorization import require_read_roles, require_write_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/data-console/v1/configuration", tags=["Graph Configuration"])
 _SOURCE: Final = "GRAPH_CONFIGURATION"
@@ -295,13 +299,43 @@ async def record_configuration_audit(
     what it was before had no answer. This is the same `append_audit` the AI
     gateway and governance kernel already write through -- one log, not a
     second one.
+
+    Best-effort, and deliberately so: it runs after the authoritative graph
+    write. A promote that has already moved the head revision must not answer
+    503 because the audit store was unreachable -- the operator would retry and
+    cut a second release. The failure is logged with everything the record
+    would have carried, so the gap is visible rather than silent.
     """
-    repository = resolve_operational_repository(request)
-    await repository.append_audit(action=action, actor=actor, target=target, details=details)
+    try:
+        repository = resolve_operational_repository(request)
+        await repository.append_audit(action=action, actor=actor, target=target, details=details)
+    except Exception:  # noqa: BLE001 -- a failure here must not undo a completed write
+        logger.exception(
+            "configuration_audit_not_recorded action=%s actor=%s target=%s details=%s",
+            action,
+            actor,
+            target,
+            json.dumps(details, sort_keys=True, default=str),
+        )
 
 
-def _changed_paths(before: Any, after: Any, prefix: str = "") -> list[str]:
-    """Dotted paths whose value differs between two JSON documents, capped."""
+_CHANGED_PATHS_CAP = 50
+
+
+def _changed_paths(before: Any, after: Any) -> list[str]:
+    """Dotted paths whose value differs between two JSON documents.
+
+    Capped at `_CHANGED_PATHS_CAP` entries; a truncated list ends with a marker
+    naming how many more there were, so a reader never mistakes the cap for the
+    whole change.
+    """
+    paths = _all_changed_paths(before, after, "")
+    if len(paths) > _CHANGED_PATHS_CAP:
+        return [*paths[:_CHANGED_PATHS_CAP], f"... {len(paths) - _CHANGED_PATHS_CAP} more"]
+    return paths
+
+
+def _all_changed_paths(before: Any, after: Any, prefix: str) -> list[str]:
     if isinstance(before, dict) and isinstance(after, dict):
         paths: list[str] = []
         for key in sorted(set(before) | set(after)):
@@ -309,9 +343,7 @@ def _changed_paths(before: Any, after: Any, prefix: str = "") -> list[str]:
             if key not in before or key not in after:
                 paths.append(child)
             else:
-                paths.extend(_changed_paths(before[key], after[key], child))
-            if len(paths) >= 50:
-                return paths[:50]
+                paths.extend(_all_changed_paths(before[key], after[key], child))
         return paths
     return [] if before == after else [prefix or "$"]
 
