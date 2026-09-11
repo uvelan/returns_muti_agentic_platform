@@ -89,9 +89,18 @@ class FeedbackLearningService:
         self._db = client[settings.mongo_database]
         self._records = self._db["feedback_learning_records"]
         self._graph_runs = self._db["graph_sync_runs"]
-        self._enabled = settings.feedback_learning_enabled
+        # CFG-6: kept as the live object rather than copied into a cached
+        # bool, so a `deployment.feedback_learning.enabled` change hot-adopts
+        # (`RuntimeConfigurationActivator.refresh` reassigns `resources.settings`
+        # in place; a service holding the same reference sees the new value on
+        # its next read with no wiring of its own).
+        self._settings = settings
         self._configuration = configuration
         self._kernel = kernel
+
+    @property
+    def _enabled(self) -> bool:
+        return self._settings.feedback_learning_enabled
 
     async def ensure_indexes(self) -> None:
         await self._records.create_index("sessionId", unique=True)

@@ -143,6 +143,14 @@ def _provider_release(
     }
     payload = configuration.model_dump(mode="json")
     payload["runtime_integrations"]["ai_providers"] = [provider]
+    # CFG-6: `runtime_integrations` still governs AVAILABILITY (the credential
+    # and model pool above), but `deployment.ai.provider_order` is now the
+    # only source of ORDER (design §4) -- a provider enabled here and absent
+    # from the order contributes zero routes exactly like an uncredentialed
+    # one, so the release must name it there too, the same second step an
+    # administrator would take at `/config/deployment` after enabling a
+    # provider in the AI Control Centre.
+    payload["deployment"]["ai"]["provider_order"] = [provider_key]
     # Revalidated rather than `model_copy`d: `model_copy(update=...)` writes the
     # raw dicts straight onto the model, and the release would then be published
     # as something `ReturnPlatformConfiguration` never accepted.
