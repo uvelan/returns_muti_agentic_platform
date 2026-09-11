@@ -795,6 +795,38 @@ const MOCK_COPILOT = {
   ],
 };
 
+/**
+ * `dependency_simulation_configuration` -- CFG-5's `/config/simulation`. A
+ * *sibling* of `configuration` on the runtime snapshot, not a key inside it
+ * (`DependencySimulationConfiguration` is its own domain, `DEPENDENCY_SIMULATION`,
+ * not a `RETURN_PLATFORM` section) -- `BusinessSection.tsx` already read it
+ * this way (`snapshot.dependency_simulation_configuration`) before this
+ * section had a typed screen of its own.
+ */
+const MOCK_DEPENDENCY_SIMULATION = {
+  schemaVersion: "1.0",
+  enabled: true,
+  templateVersion: "2026.1",
+  modeBanner: "Simulated dependencies -- no external system is actually called.",
+  defaultScenario: "SUCCESS",
+  ai: {
+    enabled: true,
+    taskId: "SIMULATOR_OPERATION_NARRATIVE_V1",
+    providerOrder: ["GOOGLE", "NVIDIA"],
+    timeoutSeconds: 4,
+    maxOutputTokens: 256,
+    temperature: 0,
+    fallbackAlwaysEnabled: true,
+    pricingMicrousdPerMillionTokens: {},
+  },
+  dependencies: {
+    OMC: { operations: ["cancel", "reschedule"], statusSequence: ["PENDING", "COMPLETE"] },
+    PARCEL: { operations: ["book", "cancel"], statusSequence: ["BOOKED", "IN_TRANSIT", "DELIVERED"] },
+    FREIGHT: { operations: ["book", "cancel"], statusSequence: ["BOOKED", "IN_TRANSIT", "DELIVERED"] },
+    LSI: { operations: ["notify"], statusSequence: ["SENT"] },
+  },
+};
+
 const MOCK_HOUSEKEEPING = {
   enabled: true,
   interval_seconds: 900,
@@ -1745,6 +1777,9 @@ export const canonicalHandlers = [
             context_assembly: MOCK_CONTEXT_ASSEMBLY,
             support: MOCK_SUPPORT_QUEUES,
           },
+          // CFG-5's /config/simulation -- a sibling of `configuration`, not a
+          // key inside it. See `MOCK_DEPENDENCY_SIMULATION`'s own note.
+          dependency_simulation_configuration: MOCK_DEPENDENCY_SIMULATION,
         },
         "runtime",
       ),

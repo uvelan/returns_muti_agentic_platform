@@ -2925,3 +2925,77 @@ full backend suite after each of steps 1-3 rather than once at the end.
 Files read only this step; no source changed. `drop.json` PARTIAL: items 1-4 done; item 5 researched
 and planned in full above, not yet implemented; items 6-11 remain (6 and 8 depend on 5's
 `RETURN_PLATFORM_DOMAIN_KEY` import staying available; unrelated otherwise).
+
+## CFG-5 step:06 — `/config/simulation` screen, and the Business tab retired (items 6 and 8)
+
+`SimulationSection.tsx`: typed `TypedSectionScreen` form over the whole `DEPENDENCY_SIMULATION`
+domain document. **A sibling of `configuration`, not a key inside it** -- this domain has always
+lived at `snapshot.dependency_simulation_configuration` (the old `BusinessSection.tsx`'s own
+`simulation` group already read it that way), so `loaded` is the *whole* domain document (not a
+`sliceOf` a shared one) and `domainKey="DEPENDENCY_SIMULATION"` is passed through explicitly. A
+`simulationSliceOf` adapter parallels `runtimeSliceOf`, reading the sibling key with the shared
+`releaseId`/`headRevision`.
+
+**`dependencies` is four required, fixed keys, not a data-keyed map** -- the same correction as
+`IntegrationsSection.tsx`'s four topics, for the same reason: `validate_dependencies`
+(`dependency_simulation/configuration.py:59-67`) refuses any document whose `dependencies` are not
+exactly `{OMC, PARCEL, FREIGHT, LSI}`, so a `KeyValueTable` (the brief's own design table) would
+offer renaming or removing a key the model requires. Four fixed rows instead, each with an
+`operations` and a `statusSequence` `TagListInput`. `ai.fallbackAlwaysEnabled` has no control at
+all -- the model's own validator refuses `false` unconditionally, so there is no state for a toggle
+to represent. `ai.providerOrder`/`ai.pricingMicrousdPerMillionTokens` are Advanced-only (not in the
+brief's design table either).
+
+**The Business tab is retired in this same step, not deferred to a later one.** The coordinator's
+own item order lists it after item 7, but the condition it names -- "no section remains without a
+page" -- was already true the moment this step's typed screen landed: `BusinessSection.tsx`'s own
+`BUSINESS_GROUPS` held only the `simulation` group after step:04 (`platform`) and step:03
+(`workflow`/`support`) emptied the rest, and `/config/data-sources` (item 7) was never one of
+`BusinessSection.tsx`'s groups to begin with -- Data Sources left `CONFIG_SECTIONS` entirely before
+this lease started (it is the Graph Schema Analyzer's own section). Leaving the tab registered and
+empty for one more commit would have contradicted this file's own step:04 note ("not left as a
+shell with nothing to show") for no reason tied to item 7. `BusinessSection.tsx` and
+`BusinessSection.test.tsx` are deleted; `"Business"` is removed from `CONFIG_SECTIONS` and its icon
+map (`Briefcase`, now unused, removed from the import list); `ConfigurationPage.tsx`'s module
+docstring, `UNBACKED` comment, and switch statement updated to match. `Agents` is untouched, per the
+coordinator's own note -- it keeps its existing tab regardless of this item.
+
+```
+$ npx vitest run                       # whole frontend suite
+ Test Files  86 passed (86)
+      Tests  1043 passed (1043)
+
+$ npm run typecheck
+typecheck exit: 0
+$ npm run lint
+lint exit: 0
+```
+
+`dev:mock` route sweep, scoped to `/config/simulation` (warm server; `/config/business` correctly
+has no route left to sweep):
+
+```
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g "simulation|business"
+  3 passed -- /config/simulation render, keyboard, axe (no /config/business match, as intended)
+```
+
+Live e2e run, disposable `vite --port 5199`, stopped afterwards; `:5173`/`:8000` never restarted:
+
+```
+$ E2E_REAL_BASE_URL=http://localhost:5199 npx playwright test --project=cfg4-e2e e2e/config-simulation.spec.ts --workers=1 --reporter=list --timeout=60000
+  ok Simulation -- real stack › adds an LSI operation, publishes, and the runtime snapshot reflects
+     it -- then reverts (5.5s)
+  1 passed
+```
+
+```
+head_revision before/after: 123 125                (one publish, one revert)
+dependencies.LSI.operations  identical: True (test operation absent both times it matters)
+```
+
+Files: `frontend/src/domains/config/SimulationSection.tsx`, `SimulationSection.test.tsx`,
+`frontend/src/domains/registry.ts`, `frontend/src/domains/config/ConfigurationPage.tsx`,
+`frontend/src/mocks/handlers/canonicalHandlers.ts`, `frontend/e2e/config-simulation.spec.ts`;
+deleted `frontend/src/domains/config/BusinessSection.tsx`, `BusinessSection.test.tsx`.
+`drop.json` PARTIAL: items 1-4, 6, 8 done; item 5 split to CFG-5b (out of scope here); items 7, 9,
+10, 11 remain.

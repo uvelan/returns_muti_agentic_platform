@@ -10,12 +10,12 @@ import {
 } from "../../api/configuration";
 import { useCapabilities } from "../../hooks/capabilityContext";
 import { AgentsSection } from "./AgentsSection";
-import { BusinessSection } from "./BusinessSection";
 import { DiscoverySection } from "./DiscoverySection";
 import { FulfilmentSection } from "./FulfilmentSection";
 import { IntegrationsSection } from "./IntegrationsSection";
 import { OverviewSection } from "./OverviewSection";
 import { ReturnPolicySection } from "./ReturnPolicySection";
+import { SimulationSection } from "./SimulationSection";
 import { SupportSection } from "./SupportSection";
 import { WorkflowSection } from "./WorkflowSection";
 import { type CONFIG_SECTIONS, requireDomain } from "../registry";
@@ -43,9 +43,17 @@ import { formatTimestamp } from "../../format/datetime";
  * the role model is code, and publishing the role-to-capability table would
  * let a UI reimplement authorization locally, which the capability layer
  * exists to prevent. Business config and integrations *were* the other two,
- * pointed at "already served -- see the Runtime tab", which is a read: both
- * are typed write screens of their own now (`BusinessSection.tsx`,
- * `IntegrationsSection.tsx`).
+ * pointed at "already served -- see the Runtime tab", which is a read.
+ * Integrations is a typed write screen of its own now (`IntegrationsSection.tsx`);
+ * **the Business tab itself is gone.** It was the honest first step for every
+ * section that had not yet earned a typed screen -- one `DocumentEditor` over
+ * whichever field an operator picked, grouped by ownership. CFG-4 and CFG-5
+ * gave every one of those fields a typed screen of its own (discovery,
+ * return-policy and fulfilment groups to CFG-4; workflow, support and
+ * platform groups, then the last one, `DEPENDENCY_SIMULATION`, to CFG-5's
+ * `/config/simulation`), so the tab's own last group emptied and it is
+ * deleted rather than kept as a shell offering nothing. `Agents` keeps its
+ * own existing tab -- unrelated to `Business`, and out of this lease's scope.
  *
  * **Promotion controls exist now, and drive one lifecycle.** The blocker was
  * real -- two release lifecycles existed and a button would have silently
@@ -69,11 +77,10 @@ type Tab = (typeof CONFIG_SECTIONS)[number];
 /**
  * Tabs with no endpoint of their own, and why -- one of these is *already
  * served* rather than missing, which is a different statement and worth making.
- * Business used to be listed here as "already served, see the Runtime tab";
- * a read is not a write surface, and it is a tab of its own now.
- *
- * CFG-5: `Integrations` was here too, pointed at the Runtime tab's raw JSON --
- * a read, the same defect `Business` had. It is `IntegrationsSection.tsx` now.
+ * `Business` and `Integrations` used to be listed here too, each "already
+ * served, see the Runtime tab" -- a read is not a write surface, and both are
+ * typed write screens now (`Integrations`) or gone outright (`Business` --
+ * see the module docstring above).
  */
 const UNBACKED: Partial<Record<Tab, string>> = {
   Modules:
@@ -144,10 +151,8 @@ function TabBody({ tab, canReadReleases }: { tab: Tab; canReadReleases: boolean 
       return <WorkflowSection />;
     case "Integrations":
       return <IntegrationsSection />;
-    // Was "already served, see the Runtime tab" -- a read. Every section the
-    // release carries is editable here; the runtime snapshot is what it edits.
-    case "Business":
-      return <BusinessSection />;
+    case "Simulation":
+      return <SimulationSection />;
     case "Runtime":
       return <RuntimeTab />;
     case "Releases":

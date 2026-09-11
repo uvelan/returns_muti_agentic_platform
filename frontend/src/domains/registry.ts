@@ -1,10 +1,10 @@
 import {
   Activity,
   Bot,
-  Briefcase,
   ClipboardCheck,
   Cpu,
   Database,
+  FlaskConical,
   FolderOpen,
   Gavel,
   Hand,
@@ -191,7 +191,14 @@ export const CONFIG_SECTIONS = [
   "Runtime",
   "Releases",
   "Integrations",
-  "Business",
+  // CFG-5: the DEPENDENCY_SIMULATION domain -- the last section
+  // `BusinessSection.tsx`'s own groups carried (see `SimulationSection.tsx`).
+  // `"Business"` was here, immediately above `"Modules"`: with this section
+  // typed, every field that tab ever offered has a screen of its own, so it
+  // is deleted outright rather than kept as a tab offering nothing --
+  // `BusinessSection.tsx` and its test are gone in the same commit as this
+  // entry.
+  "Simulation",
   "Modules",
   "Security",
   "Audit",
@@ -269,7 +276,7 @@ export const DOMAINS: readonly DomainDefinition[] = [
       Runtime: Cpu,
       Releases: Rocket,
       Integrations: Plug,
-      Business: Briefcase,
+      Simulation: FlaskConical,
       Modules: Package,
       Security: Lock,
       Audit: ScrollText,
