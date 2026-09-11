@@ -29,7 +29,7 @@ reads do.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
@@ -474,8 +474,16 @@ async def list_configured_sources(
     implementation, which is the whole point of the exercise. CFG-1 deleted
     the console `APIRouter` this handler used to also be mounted under; the
     body stays in `sources.py`, imported and called directly, unchanged.
+
+    Routed through `_ok` (CFG-3a, carried from RV CFG-1 F4): this and the
+    other four canonical reads below used to return the console handler's
+    `APIResponse` straight through, which bypassed `redact_secret_values` --
+    every OTHER handler on this router scrubs its response, and these five
+    were the exception nothing had closed.
     """
-    return await console_get_sources(request, _user_id)
+    response = await console_get_sources(request, _user_id)
+    assert response.data is not None  # console_get_sources always sets it, or raises
+    return _ok(request, [item.model_dump(mode="json") for item in response.data])
 
 
 @router.get("/sources/{source_id}", response_model=APIResponse[SourceDetail])
@@ -484,7 +492,9 @@ async def get_configured_source(
     request: Request,
     _user_id: str = Depends(require_read_roles),
 ) -> APIResponse[Any]:
-    return await console_get_source(source_id, request, _user_id)
+    response = await console_get_source(source_id, request, _user_id)
+    assert response.data is not None  # console_get_source always sets it, or raises
+    return _ok(request, response.data.model_dump(mode="json"))
 
 
 @router.get(
@@ -537,23 +547,36 @@ async def get_configured_source_asset(
                 "message": f"Source {source_id!r} does not own asset {asset_id!r}.",
             },
         )
-    return await console_get_inventory_detail(asset.engine, asset_id, request, _user_id)
+    response = await console_get_inventory_detail(asset.engine, asset_id, request, _user_id)
+    assert response.data is not None  # console_get_inventory_detail always sets it, or raises
+    return _ok(request, response.data.model_dump(mode="json"))
 
 
 @router.get("/audit", response_model=APIResponse[list[AuditLog]])
 async def list_configuration_audit(
     request: Request,
+    # CFG-3a scope item 6. `actions` accepts repeated query params
+    # (`?actions=CONFIGURATION_RELEASE_PROMOTED&actions=CONFIGURATION_*`);
+    # each entry may end with `*` for a prefix match. `target` is exact.
+    # Both default to unset, which is the unfiltered read this route always
+    # was -- an operator's dashboard asking for one release's trail is new
+    # traffic, not a narrowing of what every existing caller already gets.
+    actions: Annotated[list[str] | None, Query()] = None,
+    target: Annotated[str | None, Query()] = None,
     _user_id: str = Depends(require_read_roles),
 ) -> APIResponse[Any]:
-    """Platform audit records.
+    """Platform audit records, optionally filtered.
 
     Mounted under `/api/config` because that is where the plan puts it, and
     because the actions it records are overwhelmingly configuration ones --
     promotions, source edits, workspace changes. It is *not* filtered to
-    configuration, and the path should not be read as promising that; the
-    records carry their own `action` and `target`.
+    configuration BY DEFAULT, and the path should not be read as promising
+    that; the records carry their own `action` and `target`, and `actions`/
+    `target` are how a caller narrows to them.
     """
-    return await console_list_audit_logs(request, _user_id)
+    response = await console_list_audit_logs(request, _user_id, actions=actions, target=target)
+    assert response.data is not None  # console_list_audit_logs always sets it
+    return _ok(request, [item.model_dump(mode="json") for item in response.data])
 
 
 @router.get("/audit/{audit_id}", response_model=APIResponse[AuditLog])
@@ -562,4 +585,6 @@ async def get_configuration_audit(
     request: Request,
     _user_id: str = Depends(require_read_roles),
 ) -> APIResponse[Any]:
-    return await console_get_audit_log(request, audit_id, _user_id)
+    response = await console_get_audit_log(request, audit_id, _user_id)
+    assert response.data is not None  # console_get_audit_log always sets it, or raises
+    return _ok(request, response.data.model_dump(mode="json"))

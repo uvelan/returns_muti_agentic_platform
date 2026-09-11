@@ -1183,3 +1183,73 @@ guard tables (`test_every_console_path_is_mounted.py`'s
 
 Head sha: see commit. `merge_status: PARTIAL`. Remaining: item 6 (audit
 filter), item 7 (OpenAPI regen), final acceptance sweep.
+
+## CFG-3a step:08 — item 6 (audit filter) + item 8 carry-over (RV CFG-1 F4)
+
+**Item 6.** `AuditService.list_logs` (`audit.py`) gains `actions`/`target`,
+server-side: `target` is an exact Mongo match, `actions` entries build one
+regex alternation each via the new `_action_pattern` (`NAME$` exact, `NAME*`
+prefix, `re.escape`d), OR'd together -- `?actions=CONFIGURATION_*` matches
+every `CONFIGURATION_...` action without a client paging through the
+platform-wide `audit` collection first. Neither parameter changes the
+default: omitted, `list_logs()` still runs the exact `find({})` it always
+did. `router.py`'s `GET /audit` gains the two query params
+(`Annotated[..., Query()]`, following `api/proposals.py`'s existing style --
+plain `= Query(default=None)` trips ruff's B008 on the second occurrence in
+one signature, a real ruff limitation confirmed by isolating it to a
+two-line repro).
+
+**Item 8 carry-over (RV CFG-1 F4), found while touching this route.** All
+five canonical read routes this brief names (`/sources`, `/sources/{id}`,
+`/sources/{id}/assets/{id}`, `/audit`, `/audit/{id}`) were `return await
+console_X(...)` -- the delegate's OWN `APIResponse`, constructed in
+`sources.py`/`audit.py`, never passed through this router's `_ok` and its
+`redact_secret_values` scrub. `test_every_canonical_response_goes_through_the_scrub`
+could not have caught this: it walks router.py for a directly-constructed
+`APIResponse(...)`, and these five constructed none there at all. Fixed by
+capturing the delegate's response and re-wrapping its (dumped-to-JSON)
+`.data` through `_ok`, matching every other handler on this router.
+
+New regression tests (`tests/configuration/test_canonical_config_api.py`):
+`test_no_handler_returns_a_delegate_response_unscrubbed` (AST walk over every
+`return` statement flagging a direct `await console_*(...)` -- the structural
+guard `test_every_canonical_response_goes_through_the_scrub` couldn't be, and
+would have caught this defect on day one) and
+`test_audit_reads_now_mask_a_secret_carried_in_details` (behavioural: a fake
+delegate answers with a resolved secret inside `AuditLog.details`, read back
+masked over real HTTP -- `/sources`/`/sources/{id}`/the asset route decline a
+synthetic secret field outright since their models are `extra="forbid"`,
+itself a second line of defence, so those three are covered by the
+structural test instead). New `tests/configuration/test_audit_filter.py`
+(`AuditService.list_logs` query-building, `_action_pattern` in isolation) and
+two more router tests (`actions`/`target` threaded through; the unfiltered
+default).
+
+**Audit filter response shape** (brief's "Evidence to paste"), from
+`test_the_audit_route_threads_actions_and_target_to_the_delegate` and
+`test_target_filters_to_an_exact_match`: `GET /api/config/audit?actions=
+CONFIGURATION_*&actions=AI_ROUTE_REFRESHED&target=release-1` reaches
+`AuditService.list_logs(actions=["CONFIGURATION_*", "AI_ROUTE_REFRESHED"],
+target="release-1")`, which returns `list[AuditLog]` filtered to records
+whose `action` matches either alternative AND whose `target == "release-1"`
+-- the same `{"data": [{"id", "action", "actor", "target", "timestamp",
+"details"}, ...], "meta": {...}}` envelope `GET /audit` already answered,
+unchanged in shape, narrower in content.
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/configuration/test_canonical_config_api.py tests/configuration/test_audit_filter.py -q -p no:cacheprovider
+24 passed in 0.94s
+$ .venv/Scripts/python.exe -m pytest tests/test_configuration_api.py tests/configuration tests/test_every_console_path_is_mounted.py tests/api tests/test_graph_configuration_bootstrap.py tests/security -q -p no:cacheprovider
+748 passed, 13 deselected, 2 warnings in 103.32s
+$ .venv/Scripts/python.exe -m ruff check src/return_platform/configuration/api/audit.py src/return_platform/configuration/api/router.py tests/configuration/test_canonical_config_api.py tests/configuration/test_audit_filter.py
+All checks passed! (after one --fix pass and one format pass)
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy src/return_platform/configuration/api/audit.py src/return_platform/configuration/api/router.py
+Success: no issues found in 2 source files
+```
+
+Scope items 1-6 and the item-8 carry-overs are now all landed. Remaining:
+item 7 (OpenAPI regen across all copies + drift check), then the full
+acceptance sweep (ruff/format/mypy on the whole owned set, the full backend
+suite against the known-failure registry).
+
+Head sha: see commit. `merge_status: PARTIAL`.
