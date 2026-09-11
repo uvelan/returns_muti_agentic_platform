@@ -1,0 +1,22 @@
+# CFG-5b — Agents: repoint the editing API at the live section, retire the manifest copies, typed Agents screen
+
+Split from CFG-5 item 5 after its implementer found the change touches app-startup wiring, the governance proposal-activation pipeline (shared with other proposal types) and `publish_release_with_domains` (replaces a domain whole, not by patch). The implementer's file-by-file plan is in `.plan/tracks/CFG.ledger.md` under `CFG-5 step:05` — read it first and follow it unless you find it wrong, in which case record the evidence and the smallest deviation.
+
+Base: the trunk after CFG-5 merges. Branch `feat/cfg-5b-agents`. Worktree `.claude/worktrees/cfg-5b` (venv + node_modules junctioned, `.env` copied, `PYTHONPATH` pinned and printed in step:00).
+
+Decision in force: D-CFG-1 (retire the manifest agent copies; the live `agents:` section of `RETURN_PLATFORM` is the one source).
+
+Owns: `backend/src/return_platform/configuration/api/agents.py`, `configuration/application/agent_configuration.py`, `configuration/application/loader.py` (only if its last consumer goes), `platform/governance/**` and `bootstrap/adapters/governance_agent_configuration.py` (the proposal activation path for CONFIGURATION proposals, change only what the plan names), `configuration/application/release_promotion.py` (a patch-based sibling of `publish_release_with_domains` if the plan requires one; never change the existing function's behaviour), `backend/config/manifest.yaml`, `backend/config/agents/**` (deleted), `backend/config/README.md`, `backend/tests/configuration/test_agent_configuration_releases.py` and the governance tests the plan names, the three OpenAPI copies + generated `.d.ts` if a response changes, `frontend/src/domains/config/AgentsSection.tsx` (rewrite as a typed table on `TypedSectionScreen`'s chrome), `frontend/src/api/agentConfig.ts`, `frontend/src/mocks/handlers/*` (agents handlers), `frontend/e2e/config-agents.spec.ts`, `frontend/src/domains/registry.ts` + test. Must not touch: other screens, the bootstrap CLI, `packaged_adoption.py`.
+
+Budget: 350k. Stop rule: `drop.json` PARTIAL at 280k.
+
+## Scope
+1. **Repoint the read/edit API.** `GET /api/agents` and `GET /api/agents/{id}` serve the live `agents:` section of the active release (`ReturnPlatformConfiguration.agents`), not `agents/*.yaml`. `PUT /api/agents/{id}` validates the submitted agent document against `AgentConfiguration` and files a CONFIGURATION proposal whose activation publishes a release that patches `agents.<id>` only (a patch-based publish that keeps every other key of the domain: reuse `record_configuration_audit` and the canonical dump; carry the baseline metadata as `create_release` does). The proposal path stays: the response is still 202 + proposal view, and `/approvals` activates it.
+2. **Retire the manifest copies.** Delete `backend/config/agents/*.yaml` and their `manifest.yaml` entries; delete `workflow.*`, `sync.*`, `source.*`, `mapping.*`, `graph.*` entries and their files too if `grep` shows the manifest loader's only remaining consumer was the agents API (record the grep); `platform.system_store` stays. Update both READMEs.
+3. **Frontend `/config/agents`**: typed table on the `TypedSectionScreen` chrome (name, version, enabled `Toggle`, ai_assisted `Toggle`, ai_route_ref `EnumSelect` from the AI gateway tasks in the runtime snapshot); Save files the proposal, shows the proposal id with a link to `/approvals`, and states that the active configuration has not changed; Advanced JSON mode over the agent document. MSW handlers for the repointed routes; e2e spec: propose, then activate through `/api/proposals` (dev principal), verify `GET /api/config/runtime` reflects the field, then propose-and-activate the revert.
+4. Bootstrap interplay: an activated proposal moves `agents` away from its baseline, so the next start keeps it — add a test in `test_graph_configuration_bootstrap.py` proving a proposal-published `agents` value survives a bootstrap with the packaged file disagreeing.
+
+## Acceptance
+- Backend: `pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/platform -q` green; nine known-failing modules unchanged; ruff/format/mypy clean; drift check PASS.
+- Frontend: `npx vitest run` 0 failures; typecheck; lint; e2e once with --workers=1, reverted.
+- `backend/config/` contains no `agents/` directory; `manifest.yaml` lists only what a runtime path loads.
