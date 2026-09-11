@@ -658,6 +658,73 @@ const MOCK_OMC = {
 };
 
 /**
+ * `workflow`/`return_case`/`business_calendars`/`housekeeping`, as CFG-5's
+ * `/config/workflow` reads them. `workflow` mirrors `WorkflowConfiguration`
+ * (`return_configuration.py`) -- a flat stage sequence and per-stage SLAs --
+ * not `domain/workflow.py`'s per-stage-handler `WorkflowConfig`, which is a
+ * different model `ReturnPlatformConfiguration` does not use (see
+ * `WorkflowSection.tsx`'s own note).
+ */
+const MOCK_WORKFLOW = {
+  version: "2026.1",
+  stages: ["DISCOVERY", "ITEM_SELECTION", "PHYSICAL_RETURN", "SUPPORT_HANDOFF", "CLOSURE"],
+  sla_minutes: {
+    DISCOVERY: 10,
+    ITEM_SELECTION: 15,
+    PHYSICAL_RETURN: 4_320,
+    SUPPORT_HANDOFF: 480,
+    CLOSURE: 60,
+  },
+  completion_dimensions: ["PHYSICAL_RETURN_COMPLETE", "VENDOR_RECOVERY_COMPLETE"],
+};
+
+const MOCK_RETURN_CASE = {
+  bay_wait_seconds: 120,
+  item_reservation_ttl_seconds: 1_800,
+  return_details_wait_seconds: 1_800,
+  return_details_required: false,
+  support_response_wait_seconds: 28_800,
+  reminder_interval_seconds: 7_200,
+  max_reminders: 3,
+  on_reminders_exhausted: "PARK_FOR_OPERATIONS",
+  business_calendar_id: "default",
+  timezone: "UTC",
+};
+
+const MOCK_BUSINESS_CALENDARS = [
+  {
+    calendar_id: "default",
+    timezone: "America/New_York",
+    working_periods: [
+      { weekday: 0, start_minute: 480, end_minute: 1_020 },
+      { weekday: 1, start_minute: 480, end_minute: 1_020 },
+      { weekday: 2, start_minute: 480, end_minute: 1_020 },
+      { weekday: 3, start_minute: 480, end_minute: 1_020 },
+      { weekday: 4, start_minute: 480, end_minute: 1_020 },
+    ],
+    holidays: ["2026-12-25"],
+  },
+];
+
+const MOCK_HOUSEKEEPING = {
+  enabled: true,
+  interval_seconds: 900,
+  temporal_executions: { enabled: true, reclaimable_task_queue_prefixes: ["test-", "reasoning-"], minimum_age_seconds: 3_600, batch_limit: 500 },
+  graph_generations: {
+    enabled: true,
+    retention_seconds: 86_400,
+    batch_limit: 5,
+    node_delete_batch_size: 1_000,
+    abandoned_build_seconds: 21_600,
+    orphaned_active_seconds: 86_400,
+  },
+  stalled_sync_runs: { enabled: true, stall_seconds: 150, batch_limit: 20 },
+  probe_databases: { enabled: true, name_suffixes: ["_probe"], minimum_age_seconds: 3_600, batch_limit: 50 },
+  order_line_reservations: { batch_limit: 200 },
+  ai_interceptions: { batch_limit: 200 },
+};
+
+/**
  * `configuration/api/sources.py::_definitions()`, as it is actually served.
  *
  * **No credential appears here, and that is not an omission to be tidied up.**
@@ -1576,6 +1643,11 @@ export const canonicalHandlers = [
             shipment_tracking: MOCK_SHIPMENT_TRACKING,
             bay: MOCK_BAY,
             omc: MOCK_OMC,
+            // CFG-5's /config/workflow.
+            workflow: MOCK_WORKFLOW,
+            return_case: MOCK_RETURN_CASE,
+            business_calendars: MOCK_BUSINESS_CALENDARS,
+            housekeeping: MOCK_HOUSEKEEPING,
           },
         },
         "runtime",

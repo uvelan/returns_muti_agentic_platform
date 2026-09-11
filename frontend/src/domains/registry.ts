@@ -33,6 +33,7 @@ import {
   Truck,
   Warehouse,
   Waypoints,
+  Workflow,
 } from "lucide-react";
 
 import type { Capability } from "../api/principal";
@@ -178,6 +179,9 @@ export const CONFIG_SECTIONS = [
   "Discovery",
   "Return Policy",
   "Fulfilment",
+  // CFG-5, wave B: the case workflow's stage sequence and SLAs, waits and
+  // timeouts, business calendars, and housekeeping -- see `WorkflowSection.tsx`.
+  "Workflow",
   "Runtime",
   "Releases",
   "Integrations",
@@ -255,6 +259,7 @@ export const DOMAINS: readonly DomainDefinition[] = [
       Discovery: Search,
       "Return Policy": Gavel,
       Fulfilment: Warehouse,
+      Workflow,
       Runtime: Cpu,
       Releases: Rocket,
       Integrations: Plug,

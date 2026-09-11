@@ -15,6 +15,7 @@ import { FulfilmentSection } from "./FulfilmentSection";
 import { OverviewSection } from "./OverviewSection";
 import { ReturnPolicySection } from "./ReturnPolicySection";
 import { SupportTemplateSection } from "./SupportTemplateSection";
+import { WorkflowSection } from "./WorkflowSection";
 import { type CONFIG_SECTIONS, requireDomain } from "../registry";
 import { useDomainSection } from "../useDomainSection";
 import { JsonView } from "./JsonView";
@@ -118,6 +119,8 @@ function TabBody({ tab, canReadReleases }: { tab: Tab; canReadReleases: boolean 
       return <ReturnPolicySection />;
     case "Fulfilment":
       return <FulfilmentSection />;
+    case "Workflow":
+      return <WorkflowSection />;
     // Was "already served, see the Runtime tab" -- a read. Every section the
     // release carries is editable here; the runtime snapshot is what it edits.
     case "Business":

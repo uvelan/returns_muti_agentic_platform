@@ -2557,3 +2557,92 @@ for every route it claims) pass as part of the 73 contract tests above.
 
 Files: `frontend/src/mocks/handlers/canonicalHandlers.ts`, `canonicalHandlers.contract.test.ts`,
 `frontend/src/main.tsx`. `drop.json` PARTIAL: item 1 done; items 2-11 remain.
+
+## CFG-5 step:02 — `/config/workflow` screen (item 2)
+
+**`workflow`'s real shape disagrees with the brief's own design table**, and the screen is built
+against the model, not the brief: `WorkflowConfiguration` (`return_configuration.py:886`) is
+`version`, a flat `stages: tuple[str, ...]` (min 2, unique), `sla_minutes: dict[str, int]` and
+`completion_dimensions`. There is no per-stage handler type and no agent reference to bind --
+`domain/workflow.py`'s `WorkflowConfig`/`WorkflowStageEntry.handler` is a different model nothing on
+`ReturnPlatformConfiguration` uses, and `WorkflowStageHandlerType` itself lost its `AGENT` member
+when AGT-02 removed agent dispatch, so the model the brief described has had nothing to point an
+agent at for a while either. `WorkflowSection.tsx`'s own module comment records this rather than
+silently building a different form than the table implies. `housekeeping` is present on
+`ReturnPlatformConfiguration` (checked per the brief's own instruction), so it is included --
+collapsed by default (`FieldGroup collapsible defaultOpen={false}`), since its seven reclaimer
+blocks are the part of the page an operator tunes least often.
+
+Typed form: stage sequence as `OrderedList` of editable strings, `sla_minutes` as `KeyValueTable`,
+`completion_dimensions` as `TagListInput`; `return_case` waits as `DurationField`s (bay wait, item
+reservation TTL, return-details wait, support-response wait, reminder interval), `max_reminders`
+`NumberField`, `on_reminders_exhausted` `EnumSelect` (the model's own two-member `Literal`), reason
+required toggle; `business_calendars` as an `OrderedList` of calendar cards, each a nested
+`OrderedList` of working periods (weekday `EnumSelect`, start/end minute `NumberField`s -- not
+`DurationField`: a working period's `start_minute`/`end_minute` are minutes-since-midnight, a time
+of day, and `DurationField` is for an elapsed duration, so a plain `NumberField` with a minutes-
+since-midnight hint is the honest control) plus holidays `TagListInput`; `housekeeping` as a
+collapsible `FieldGroup` with a `Toggle`/`DurationField` pair at the top and one compact block per
+reclaimer (`temporal_executions`, `graph_generations`, `stalled_sync_runs`, `probe_databases`,
+`order_line_reservations`, `ai_interceptions` -- the last two carry no `enabled` switch in the
+model, and the screen does not invent one).
+
+Registry: `"Workflow"` added to `CONFIG_SECTIONS` (between Fulfilment and Runtime) with the `Workflow`
+lucide icon; `registry.test.ts` needed no changes (it derives its checks from `CONFIG_SECTIONS`
+generically). `ConfigurationPage.tsx`'s `TabBody` switch gained the `"Workflow"` case.
+`canonicalHandlers.ts`'s mock runtime configuration gained `MOCK_WORKFLOW`/`MOCK_RETURN_CASE`/
+`MOCK_BUSINESS_CALENDARS`/`MOCK_HOUSEKEEPING`, matching the typed screen's own field reads.
+
+One bug caught by the screen's own tests before commit: `SlaMinutesTable`'s `KeyValueTable`
+`keyLabel="Stage"` collided with the stage-sequence `OrderedList` -- both would render an
+accessible-name "Stage 1" for row 1 (`KeyValueTable` labels each row `${keyLabel} ${index+1}`),
+which made `screen.findByRole("textbox", { name: /Stage 1/ })` ambiguous. Renamed to `"SLA stage"`.
+
+```
+$ npx vitest run src/domains/config/WorkflowSection.test.tsx
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+
+$ npx vitest run                       # whole frontend suite
+ Test Files  84 passed (84)
+      Tests  1030 passed (1030)
+
+$ npm run typecheck
+typecheck exit: 0
+$ npm run lint
+lint exit: 0
+```
+
+`dev:mock` route sweep, scoped to `/config/workflow` (warm server):
+
+```
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g "workflow"
+  ok /config/workflow mounts and answers
+  ok /config/workflow lets the keyboard past the chrome
+  ok /config/workflow has no critical or serious violation
+  3 passed
+```
+
+Live e2e run, disposable `vite --port 5199` (proxying `/api` to `http://localhost:8000` via
+`vite.config.ts`'s own `backendTarget`), stopped afterwards; `:5173`/`:8000` never restarted (both
+independently curled 200 before and after):
+
+```
+$ E2E_REAL_BASE_URL=http://localhost:5199 npx playwright test --project=cfg4-e2e e2e/config-workflow.spec.ts --workers=1 --reporter=list --timeout=60000
+  ok Workflow -- real stack › adds a completion dimension, publishes, and the runtime snapshot
+     reflects it -- then reverts (9.3s)
+  1 passed
+```
+
+`GET /api/config/runtime` read independently, before and after:
+
+```
+head_revision before/after: 117 119                (one publish, one revert)
+release       before/after: publish-a02f3efc7aa54bcb publish-574d703efc4a45a0
+workflow.completion_dimensions  identical: True (test dimension absent both times it matters)
+```
+
+Files: `frontend/src/domains/config/WorkflowSection.tsx`, `WorkflowSection.test.tsx`,
+`frontend/src/domains/registry.ts`, `frontend/src/domains/config/ConfigurationPage.tsx`,
+`frontend/src/mocks/handlers/canonicalHandlers.ts`, `frontend/e2e/config-workflow.spec.ts`.
+`drop.json` PARTIAL: items 1-2 done; items 3-11 remain.
