@@ -1,13 +1,24 @@
-"""Operations APIs for versioned graph-backed runtime configuration."""
+"""Operations handlers for versioned graph-backed runtime configuration.
+
+Handler bodies only -- no `APIRouter` here. `create_release`, `patch_domain_config`
+and `promote_release_status` are mounted by the canonical
+`configuration/api/router.py` under `/api/config`; the `/data-console/v1/configuration`
+`APIRouter` this module used to also declare them under was retired in CFG-1
+(D-CFG-5) because nothing ever mounted it. Retired along with it: `get_active_snapshot`
+(a fallback-build path `ConfigurationSnapshotBuilder`'s own tests already cover),
+`list_releases`/`get_release_detail` (duplicates of the canonical router's own),
+and `save_domain_config` -- the full-document `PUT` had no consumer; `patch_domain_config`
+is the write.
+"""
 
 from __future__ import annotations
 
 import copy
 import json
 import logging
-from typing import Any, Final, Literal, cast
+from typing import Any, Literal, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from return_platform.ai.routing.tasks import AIGatewayConfiguration, LoadedAIGatewayConfiguration
@@ -24,7 +35,6 @@ from return_platform.configuration.snapshot import (
     AI_GATEWAY_DOMAIN_KEY,
     DEPENDENCY_SIMULATION_DOMAIN_KEY,
     RETURN_PLATFORM_DOMAIN_KEY,
-    ConfigurationSnapshotBuilder,
 )
 from return_platform.dependency_simulation.configuration import (
     DependencySimulationConfiguration,
@@ -32,13 +42,10 @@ from return_platform.dependency_simulation.configuration import (
 )
 from return_platform.operations.repository import resolve_operational_repository
 from return_platform.resources import RuntimeResources
-from return_platform.security.authorization import require_read_roles, require_write_roles
+from return_platform.security.authorization import require_write_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
 
 logger = logging.getLogger(__name__)
-
-router = APIRouter(prefix="/data-console/v1/configuration", tags=["Graph Configuration"])
-_SOURCE: Final = "GRAPH_CONFIGURATION"
 
 
 def resolve_configuration_repository(request: Request) -> ConfigurationGraphRepository:
@@ -107,81 +114,6 @@ class ConfigurationReleaseDetailView(ConfigurationReleaseView):
     domains: dict[str, Any] = Field(default_factory=dict)
 
 
-@router.get("/active-snapshot", response_model=APIResponse[dict[str, Any]])
-async def get_active_snapshot(
-    request: Request,
-    _user_id: str = Depends(require_read_roles),
-) -> APIResponse[dict[str, Any]]:
-    """Return the active validated runtime configuration snapshot."""
-
-    snapshot = getattr(request.app.state, "return_configuration_snapshot", None)
-    if snapshot is not None:
-        return APIResponse(data=snapshot.model_dump(mode="json"), meta=_response_meta(request))
-
-    repo = resolve_configuration_repository(request)
-    default_config = getattr(request.app.state, "return_configuration", None)
-    if not default_config:
-        raise HTTPException(status_code=503, detail="Runtime configuration is not loaded")
-    resources = getattr(request.app.state, "resources", None)
-    environment = (
-        resources.settings.environment if isinstance(resources, RuntimeResources) else "production"
-    )
-    default_ai_gateway = getattr(request.app.state, "ai_gateway_configuration", None)
-    default_dependency_simulation = getattr(
-        request.app.state,
-        "dependency_simulation_configuration",
-        None,
-    )
-    built = await ConfigurationSnapshotBuilder(repo).build_snapshot(
-        default_config.configuration,
-        allow_baseline_fallback=(environment in {"development", "test"}),
-        default_ai_gateway_configuration=(
-            default_ai_gateway.configuration
-            if isinstance(default_ai_gateway, LoadedAIGatewayConfiguration)
-            else None
-        ),
-        default_dependency_simulation_configuration=(
-            default_dependency_simulation.configuration
-            if isinstance(
-                default_dependency_simulation,
-                LoadedDependencySimulationConfiguration,
-            )
-            else None
-        ),
-        require_all_behavior_domains=(environment not in {"development", "test"}),
-    )
-    return APIResponse(data=built.model_dump(mode="json"), meta=_response_meta(request))
-
-
-@router.get("/releases", response_model=APIResponse[list[dict[str, Any]]])
-async def list_releases(
-    request: Request,
-    limit: int = Query(default=20, ge=1, le=100),
-    _user_id: str = Depends(require_read_roles),
-) -> APIResponse[list[dict[str, Any]]]:
-    repo = resolve_configuration_repository(request)
-    releases = await repo.list_releases(limit=limit)
-    return APIResponse(
-        data=[release.model_dump(mode="json") for release in releases],
-        meta=_response_meta(request),
-    )
-
-
-@router.get("/releases/{release_id}", response_model=APIResponse[dict[str, Any]])
-async def get_release_detail(
-    release_id: str,
-    request: Request,
-    _user_id: str = Depends(require_read_roles),
-) -> APIResponse[dict[str, Any]]:
-    repo = resolve_configuration_repository(request)
-    release = await repo.get_release(release_id)
-    if release is None:
-        raise HTTPException(status_code=404, detail=f"Release {release_id} not found")
-    data = release.model_dump(mode="json")
-    data["domains"] = await repo.get_all_domain_configs(release_id)
-    return APIResponse(data=data, meta=_response_meta(request))
-
-
 class CreateReleasePayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -189,11 +121,6 @@ class CreateReleasePayload(BaseModel):
     from_active: bool = True
 
 
-@router.post(
-    "/releases",
-    response_model=APIResponse[dict[str, Any]],
-    status_code=status.HTTP_201_CREATED,
-)
 async def create_release(
     payload: CreateReleasePayload,
     request: Request,
@@ -384,12 +311,6 @@ def _canonical_domain_payload(domain_key: str, payload: dict[str, Any]) -> dict[
     )
 
 
-class SaveDomainPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    payload: dict[str, Any]
-
-
 class PatchDomainPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -414,45 +335,6 @@ def _apply_merge_patch(target: dict[str, Any], patch: dict[str, Any]) -> dict[st
     return merged
 
 
-@router.put(
-    "/releases/{release_id}/domains/{domain_key}",
-    response_model=APIResponse[dict[str, Any]],
-)
-async def save_domain_config(
-    release_id: str,
-    domain_key: str,
-    body: SaveDomainPayload,
-    request: Request,
-    user_id: str = Depends(require_write_roles),
-) -> APIResponse[dict[str, Any]]:
-    """Save a validated domain payload into a mutable draft release."""
-
-    repo = resolve_configuration_repository(request)
-    canonical = _canonical_domain_payload(domain_key, body.payload)
-    previous = await repo.get_domain_config(release_id, domain_key)
-    try:
-        await repo.save_draft_domain(release_id, domain_key, canonical, actor_id=user_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-    await record_configuration_audit(
-        request,
-        action="CONFIGURATION_DOMAIN_REPLACED",
-        actor=user_id,
-        target=f"{release_id}/{domain_key}",
-        details={"changedPaths": _changed_paths(previous or {}, canonical)},
-    )
-
-    updated = await repo.get_domain_config(release_id, domain_key)
-    return APIResponse(
-        data={"domain_key": domain_key, "payload": updated},
-        meta=_response_meta(request),
-    )
-
-
-@router.patch(
-    "/releases/{release_id}/domains/{domain_key}",
-    response_model=APIResponse[dict[str, Any]],
-)
 async def patch_domain_config(
     release_id: str,
     domain_key: str,
@@ -502,7 +384,6 @@ class PromoteReleasePayload(BaseModel):
     expected_head_revision: int | None = Field(default=None, ge=0)
 
 
-@router.post("/releases/{release_id}/promote", response_model=APIResponse[dict[str, Any]])
 async def promote_release_status(
     release_id: str,
     body: PromoteReleasePayload,

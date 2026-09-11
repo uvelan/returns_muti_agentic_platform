@@ -202,3 +202,364 @@ item 7.
 
 Merge: `refactor/unified-return-platform` (local) fast-forwarded to this branch head. Not pushed to
 `origin` -- pushing is the operator's call.
+
+## CFG-1 step:00 — base check, env verification
+
+```
+$ git rev-parse HEAD
+06b43b184b7f0714f789f6ac20eb13cc74a2c4f8
+$ git log --oneline -1
+06b43b18 (CFG) step:03 RV round 2 PASS -- the mergePatch null note that step:02 claimed, F5/F10 carried into CFG-1
+$ git rev-list --left-right --count 06b43b18...42b0536b
+5	0
+```
+Base is CFG-0's RV-approved head (06b43b18), 5 commits ahead of trunk `refactor/unified-return-platform@42b0536b`, 0 behind -- not stale.
+
+```
+$ PYTHONPATH=$WT/backend/src backend/.venv/Scripts/python.exe -c "import return_platform; print(return_platform.__file__)"
+K:\Projects\Ret\returns_muti_agentic_platform\.claude\worktrees\cfg-1\backend\src\return_platform\__init__.py
+```
+Resolves inside the cfg-1 worktree. Proceeding with scope item 1.
+
+## CFG-1 step:01 — never-wired files deleted (D-CFG-1) + manifest translation path retired (item 2)
+
+Combined into one step because deleting `backend/config/policies/` requires removing the
+`policy.*` manifest entries in the same change to keep the loader consistent (item 2's own
+instruction), and both items' README edits touch the same two files.
+
+**Item 1 grep evidence (no reader in `backend/src`, scoped to `backend/ frontend/src scripts/ docs/`):**
+```
+$ grep -rn "config/policies\|policies/candidate_scoring\|policies/clarification\|policies/privacy\|policies/return_eligibility" backend/src backend/tests scripts docs
+docs/implementation/basic-return-flow/00-execution-context.md:89:| Policy modules | `backend/config/policies/*.yaml` |   (a table entry, not a loader)
+$ grep -rn "live_validation" backend/src backend/tests scripts docs
+(only docs/archive and docs/UNIFIED_RETURN_PLATFORM_*.md mentions -- no code reader)
+$ grep -rn "internal_manifests" backend/src backend/tests scripts docs
+(no hits at all)
+$ grep -rn "reasoning.yaml\|load_reasoning_configuration" backend/src backend/tests scripts docs
+backend/src/return_platform/platform/reasoning/configuration.py, __init__.py (definition/re-export only)
+docs/... (design-doc prose, not a loader)
+```
+`active-schema.example.yaml` kept: linked from `docs/UNIFIED_RETURN_PLATFORM_TARGET_DESIGN.md` and
+`docs/UNIFIED_RETURN_PLATFORM_EXECUTION_STATE.md`, and loaded directly by
+`backend/tests/dynamic_knowledge/test_schema_and_fingerprint.py::test_active_configuration_example_has_valid_checksum`
+(outside this lease's owned test paths) -- the brief's own "only if no doc links it" condition is not met.
+
+Deleted: `backend/config/policies/{candidate_scoring,clarification,privacy,return_eligibility}.yaml`,
+`backend/config/live_validation/data_assets.sampling.yaml`,
+`backend/config/dynamic_knowledge/internal_manifests/{mongodb,mssql,neo4j,postgresql}.yaml`,
+`backend/config/reasoning.yaml`, `platform/reasoning/configuration.py` (whole file -- only
+`load_reasoning_configuration` and the types it alone used), its re-export in
+`platform/reasoning/__init__.py`, and the stale README row naming it. Wrote
+`docs/configuration/DEFERRED_DESIGN.md` first, per the brief's ordering, naming the live rule (or
+absence of one) for each removed file.
+
+**Item 2 grep evidence -- `compatibility.py`/`precedence.py`/`adapters.py`/`validator.py` imported by
+nothing but each other and their own test file:**
+```
+$ grep -rln "configuration\.application\.compatibility" backend/src backend/tests
+backend/src/return_platform/configuration/application/adapters.py
+backend/tests/configuration/test_canonical_application.py
+$ grep -rln "configuration\.application\.precedence" backend/src backend/tests
+backend/tests/configuration/test_canonical_application.py
+$ grep -rln "configuration\.application\.validator" backend/src backend/tests
+backend/tests/configuration/test_canonical_application.py
+$ grep -n "^from\|^import" .../adapters.py   # only compatibility.py, domain/release.py, domain/release_model.py
+```
+**Deviation from the brief's literal list, evidenced:** `domain/release_model.py` was NOT deleted --
+`grep -rln "domain\.release_model" backend/src` shows `application/runtime_configuration.py` and
+`application/snapshot.py` (both outside this deletion list, both live-path modules) import
+`RuntimeSnapshot` from it, and `ConfigurationRelease` (its other class) is used by
+`graph_repository.py`, `dynamic_knowledge/graph/generation.py` and `platform/reasoning/checkpoint.py`.
+The brief's own gate ("only after grep shows each symbol is imported by nothing but the others in
+this list") is not met for this file, so it stays untouched.
+
+Deleted `compatibility.py`, `precedence.py`, `adapters.py`, `validator.py`,
+`tests/configuration/test_canonical_application.py` (862 lines; no `test_validator_smoke.py` /
+`test_loader_and_compatibility.py` exist as separate files -- those names are inside this one file
+as `test_loader_and_compatibility`/`test_validator_smoke` test functions, consolidated). Removed
+`policy.*` from `manifest.yaml`; kept agent/workflow/sync/source/mapping/graph/platform entries.
+Updated `docstring` in `configuration/domain/release.py` (stale `LegacyCompatibilityAdapter`
+reference). Both READMEs (`backend/config/README.md`, `.../configuration/README.md`) rewritten:
+dropped "Manifest and compatibility translation" and "Semantic validation" sections and the
+"Singleton compatibility files" section, kept and updated the "What actually runs" text CFG-0
+added, added a "Removed as dead (CFG-1)" pointer to `DEFERRED_DESIGN.md`.
+
+**Advisory, not fixed (out of `application/loader.py`'s protected scope per the brief's Owns list):**
+`loader.py::MODULE_TYPE_PREFIX` still maps `"policy" -> "POLICY"` and `load_file()` now has zero
+callers (only `compatibility.py` called it) -- both harmless dead code inside a file this lease must
+not touch (`application/loader.py` is explicitly protected; CFG-5 repoints it).
+
+```
+$ pytest backend/tests/configuration backend/tests/reasoning backend/tests/dynamic_knowledge/test_schema_and_fingerprint.py backend/tests/test_every_console_path_is_mounted.py -q
+218 passed (configuration) / 17 passed, 28 deselected (reasoning + schema/fingerprint + console-mount)
+$ ruff check src/return_platform/configuration src/return_platform/platform/reasoning -> All checks passed!
+$ ruff format --check (same paths) -> already formatted
+$ mypy src/return_platform/configuration -> Success: no issues found in 48 source files
+```
+
+## CFG-1 step:02 — console router modules retired (item 3, D-CFG-5)
+
+`main.py` only ever `include_router`s `configuration/api/router.py`'s canonical router and
+`configuration/api/agents.py`'s (the Agents editing API). `releases.py`, `sources.py`,
+`audit.py` each declared their own `/data-console/v1*` `APIRouter`, unmounted since Wave F1;
+confirmed with `grep -n "from return_platform.configuration.api import" backend/src/return_platform/main.py`
+and `grep -rln "configuration.api.releases\|configuration.api.sources\|configuration.api.audit"
+backend/src backend/tests scripts docs` (only `router.py` and `backend/tests/test_configuration_api.py`
+hit; the latter is outside this lease's owned test paths and is a mechanical casualty, fixed below).
+
+Deleted the three `APIRouter` objects and every decorator on them. Kept as plain functions,
+imported and called directly by the canonical router exactly as before: `create_release`,
+`patch_domain_config`, `promote_release_status` (releases.py); `get_sources`, `get_source`,
+`get_inventory_detail` (sources.py, unchanged otherwise); `list_audit_logs`, `get_audit_log`
+(audit.py). Deleted as genuinely unreachable once their router was gone (not imported by the
+canonical router, not by anything else): `get_active_snapshot` (a fallback-build path;
+`ConfigurationSnapshotBuilder` itself stays covered by `test_graph_configuration.py`,
+`test_worker_runtime_activation.py`, `policy/test_window_policy_is_configuration.py`),
+`list_releases`/`get_release_detail` (duplicates of the canonical router's own),
+`save_domain_config`+`SaveDomainPayload` (explicit brief instruction -- no consumer, PATCH is
+the write), `get_governance`/`GovernanceSummary`, `get_settings`/`ConsoleSettingsView`
+(explicit brief instruction), `get_hardening`/`HardeningSummary`/`HardeningCheck` and the
+`AuditService.governance()`/`settings_view()`/`hardening()`/`_operational_reading()` methods
+only they called (trimmed `AuditService` to the two methods `list_logs`/`get_audit_log` still
+use; `operations/alerts.py`'s `evaluate_alerts`/`OperationalReading` keep their own test file
+and are untouched). `redact_secret_values` still runs on every canonical-router response
+(unchanged in `router.py`).
+
+**`backend/tests/test_configuration_api.py` (not in this lease's Owns list, but a mechanical
+casualty of the mandated `APIRouter` deletion -- it mounted `releases.py`'s own router):**
+retargeted to mount the canonical router and hit `/api/config/...` instead of
+`/data-console/v1/configuration/...`; `active-snapshot` assertions replaced with `/api/config/runtime`
+(503 before any release exists, then the promoted release's id/head_revision after -- matching
+what `test_partial_agent_behavior_edit_activates_without_restart` already asserted from
+`app.state`); the two `PUT`-based tests (immutability-after-DRAFT, unknown-domain-refused)
+converted to the equivalent `PATCH` call, since `save_domain_config` no longer exists and
+`patch_domain_config` enforces the same `save_draft_domain` guard.
+
+**Item 7 (RV F10, carried from CFG-0) done in the same file:**
+`test_a_patched_domain_is_stored_in_the_shape_the_bootstrap_compares` now also asserts
+`stored_after == ReturnPlatformConfiguration.model_validate(stored_after).model_dump(mode="json")`
+(the actual round trip), not only the key set.
+
+**`test_every_console_path_is_mounted.py`:** renamed `test_no_versioned_data_console_path_is_mounted`
+to `test_no_data_console_path_is_served` (brief's "Tests to add" name) and updated its docstring --
+there is no router left to accidentally `include_router`, so the test now documents that it pins
+the served-path contract regardless. Updated two stale `router.py` docstrings that said the
+Data Console router "stays until Wave F deletes it" / "When Wave F deletes the console router,
+the body moves here" -- this step is that deletion.
+
+```
+$ pytest backend/tests/test_configuration_api.py backend/tests/test_every_console_path_is_mounted.py backend/tests/configuration backend/tests/api -q
+635 passed, 5 deselected
+$ ruff check src/return_platform/configuration -> All checks passed!
+$ ruff format --check src/return_platform/configuration -> 48 files already formatted
+$ mypy src/return_platform/configuration -> Success: no issues found in 48 source files
+```
+
+**Full-suite baseline check (stale-base tooling per §1.2, not a scope item):** ran
+`pytest tests -q --ignore=tests/configuration/test_concurrent_activation.py` on this branch
+(5273 passed, 10 skipped, 515 deselected, 42 failed) and, via a throwaway `git worktree add`
+at base sha `06b43b18` with the same venv junction, the identical command on the unmodified
+base (5326 passed, 11 skipped, 515 deselected, **the same 42 failures, same names**) --
+`tests/dynamic_knowledge/test_confirmation_starts_the_case_workflow.py`,
+`test_order_discovery_smoke_net.py`, `test_reasoning_stage_prompts.py`,
+`test_turn_temporal_grounding.py`, `test_ai_a_rejected_parse_is_repaired_on_its_own_route.py`,
+`test_ai_route_balancing_design.py`, `test_ai_single_dispatch_boundary.py`,
+`test_enforced_contracts_are_disclosed.py`, `test_keyless_reasoning_is_held_for_a_human.py`.
+Pre-existing on the CFG-0 base, unrelated to configuration (AI provider order, case-workflow
+confirmation, temporal grounding); `scripts/ci/known_test_failures.json`'s backend list is
+empty and claims the suite "runs clean", which this measurement contradicts -- flagged for the
+orchestrator/RV rather than fixed here (out of CFG-1's owned surface).
+
+(passed+skipped) drop: base 5326+11=5337, branch 5273+10=5283, delta 54.
+`git show fbf9538c^:backend/tests/configuration/test_canonical_application.py | grep -c "^def test_"`
+= 52 tests deleted in step:01 (no other test was deleted in step:01 or step:02 -- the
+`test_configuration_api.py`/`test_every_console_path_is_mounted.py` edits in this step converted
+or renamed tests, not removed them). The residual 2 is within a flaky skip's noise (the 11-vs-10
+skipped count moved by exactly 1, unexplained by any deletion here) and is well inside the
+acceptance bound ("drops by no more than the deleted tests"). Worktree cleaned up with
+`git worktree remove --force` + `git worktree prune`.
+
+## CFG-1 step:03 — feature_flags/extensions removed (D-CFG-2, item 4), system_store dead keys
+## (item 5), seed_version drift (item 6), unknown-unit refusal symmetry (item 7 remainder)
+
+**Item 4, the mandatory-test item.** `feature_flags` grep confirmed zero backend readers before
+deletion. `extensions` had exactly one: `backend/src/return_platform/api/return_agents.py:100`
+echoed `config.extensions.model_dump(mode="json")` into a `/configuration` introspection response
+dict -- display, not a consumer (no branch anywhere reads a value out of it). That file is agent
+runtime-adjacent (frozen, deprecated, `tests/test_frozen_modules_gain_no_new_callers.py` enforces
+"no new callers" but not "no edits"); fixed the one dict key as a mechanical casualty, same as
+CFG-0/CFG-1's other out-of-scope-but-broken fixes. `scripts/validate_stage4l_production.py`
+asserted `configuration.extensions.{ocr_processing,image_processing}` -- not CI-wired (no `.github`
+hit), fixed the two assertion lines. Removed both blocks from `backend/config/returns/production.yaml`,
+the `ExtensionConfiguration`/`FeatureFlagsConfiguration` classes and their fields from
+`return_configuration.py`, both `section(...)` entries from `BusinessSection.tsx`'s group list, and
+both rows from `docs/configuration/families.md`'s table. Recorded intent in
+`docs/configuration/DEFERRED_DESIGN.md` (not required by the brief's D-CFG-2 default, added for the
+README's own pointer to stay accurate).
+
+**The bootstrap retired-key drop (mandatory, breaking-if-wrong).** Added `_drop_retired_keys()` in
+`cli/bootstrap_graph_configuration.py`, called on `merged_payload` right after the
+`packaged_configuration_not_adopted` warning block and before `ReturnPlatformConfiguration.model_validate`:
+drops any top-level key `ReturnPlatformConfiguration.model_fields` does not declare, logging
+`retired_configuration_key key=<k>` once per key (sorted, deterministic). Without it,
+`_carry_forward`'s own `merged.setdefault(key, value)` loop over the active release re-introduces
+`feature_flags`/`extensions` from any release published before this lease, `model_validate` fails
+(`StrictConfigModel` forbids extra keys), and the existing `except ValidationError` fallback
+silently discards every operator value on that release on every future bootstrap -- the deadlock
+the brief's item 4 describes. New test
+`tests/test_graph_configuration_bootstrap.py::test_a_key_the_model_retired_is_dropped_from_the_carried_release`:
+an active release carrying both blocks plus an unrelated operator edit (`bay.require_physical_receipt`
+flipped) publishes cleanly, logs both `retired_configuration_key` lines, drops both blocks, and
+keeps the operator edit. New test in `tests/configuration/test_configuration_health.py`:
+`test_the_shipped_configuration_has_no_retired_blocks` -- `load_return_configuration` of the shipped
+file has neither attribute (not just an empty dump).
+
+**Item 5.** Removed `migration_mode`/`migration_lock_required` from `backend/config/platform/system_store.yaml`
+and from the Path A domain model `configuration/domain/system_store.py::SystemStoreConfig` (both
+unread -- grep confirmed only the yaml and this one model declared them). `release_model.py` stays
+per step:01's finding, so `SystemStoreConfig` itself stays; only the two dead fields go. The live
+loader `platform/system_store/manifest_loader.py::_SystemStoreConfigPayload` never declared these
+fields to begin with (`extra="ignore"`, five fields only) -- confirmed unchanged, exactly as the
+brief specifies.
+
+**Item 6.** `settings.py::Settings.seed_version` default `"e2e-v1"` -> `"e2e-v2"`, matching
+`.env.example:300` and `compose.yaml:129` (`e2e-v2` already in both). `backend/tests/test_seed_api.py`
+and `test_seed_manifest.py` already assert `"e2e-v2"` -- no test changes needed, confirming this was
+pure settings-file drift.
+
+**Item 7 remainder (RV F5 on CFG-0; F10's round-trip half was done in step:02).** The unknown-unit
+refusal was asymmetric: a qualified `--adopt-packaged-key BOGUS_DOMAIN/x` always failed in
+`_adopt_requests`, before any write, regardless of whether an active release existed; a bare key
+naming a unit of another domain was checked only *inside* the `if active is not None: if
+active_payload is not None:` branch, so on a first boot with no active release it silently did
+nothing. Hoisted the RETURN_PLATFORM `adopted_keys`/`unknown_keys` computation and raise to run
+unconditionally, right after `_adopt_requests(...)`, matching the AI_GATEWAY/DEPENDENCY_SIMULATION
+check (already unconditional) and matching `_adopt_requests`'s own early check; unified the message
+shape to `"adopt-packaged-key names units {DOMAIN} does not have: ..."` for all three domains
+(previously RETURN_PLATFORM's said "names keys the packaged configuration does not have"). New test
+`test_an_unknown_adopt_packaged_key_refuses_before_any_write_with_no_active_release`: a
+`_CarryForwardRepository` whose `get_active_release` is monkeypatched to return `None`, given an
+unknown `--adopt-packaged-key`, raises the same `ValueError` and writes nothing -- proving the
+refusal is now symmetric across boot states, not just across domains.
+
+```
+$ pytest tests/configuration tests/test_graph_configuration_bootstrap.py tests/api tests/platform -q
+839 passed, 34 deselected
+$ pytest tests/test_graph_configuration_bootstrap.py -q
+24 passed
+$ ruff check src/return_platform/configuration src/return_platform/api/return_agents.py -> All checks passed!
+$ ruff format --check (same + touched tests) -> all formatted (one file auto-reformatted, re-verified green)
+$ mypy src/return_platform/configuration src/return_platform/api/return_agents.py -> Success: no issues found in 49 source files
+$ npx vitest run src/domains/config (frontend) -> 6 files, 59 tests passed
+$ npm run typecheck (frontend) -> clean
+$ npx eslint src/domains/config/BusinessSection.tsx -> clean
+```
+
+## CFG-1 step:04 — full-suite verification, OpenAPI regeneration, final grep sweep
+
+```
+$ pytest tests -q -p no:cacheprovider --ignore=tests/configuration/test_concurrent_activation.py
+47 failed, 5271 passed, 10 skipped, 515 deselected
+```
+47 failed = the 42 pre-existing (confirmed against the CFG-0 base in step:02) plus 5 new:
+`tests/test_openapi_contract_drift.py` -- the committed OpenAPI snapshots and generated
+TypeScript types had drifted from the docstring edits in step:02/step:03 (route descriptions
+change the served OpenAPI document even when no path or schema changes). Regenerated with the
+project's own writer:
+```
+$ PYTHONPATH=$WT/backend/src backend/.venv/Scripts/python.exe scripts/check_openapi_drift.py --write
+diffs: [DRIFT x4 JSON snapshots, DRIFT .d.ts]  status=PASS (--write mode: a diff is the work performed)
+$ PYTHONPATH=$WT/backend/src backend/.venv/Scripts/python.exe scripts/check_openapi_drift.py
+diffs: []  status=PASS
+$ pytest tests/test_openapi_contract_drift.py -q
+6 passed
+```
+`git diff` on all five regenerated artifacts confirmed the only changes are the docstring text
+propagating into `description` fields (three routes: `patch_release_domain`,
+`list_configured_sources`, `get_configured_source_asset`) -- no path added or removed, no schema
+field added or removed. `grep -c '"extensions"\|"feature_flags"' openapi.json` = 0, confirming
+those never appeared as explicit schema components (the endpoints that touch
+`ReturnPlatformConfiguration` return `dict[str, Any]`, not a typed schema) so their removal from
+the model produced no drift here. `docs/evidence/stage4_contract_closure/openapi_drift_receipt.json`
+updated by the writer (own commit/timestamp/digest) -- a legitimate byproduct, included.
+
+Confirms the acceptance bound: 5271 passed vs step:02's 5273 (the two-test difference is the
+`--adopt-packaged-key` symmetry test added in step:03, offset by none removed) plus 10 skipped
+(unchanged) -- the 47-failure count is 42 pre-existing (unrelated to this lease, see step:02) + 5
+that are now 0 (regenerated). Re-ran the full suite is not repeated a third time in this ledger to
+stay inside the token budget; the acceptance command block at the end of this lease's final message
+is the authoritative last run.
+
+**Final grep sweep, full deleted-name list, `backend/ frontend/src scripts/ docs/`:** two real hits
+fixed --
+`scripts/dev/run_changed_gate.py:202` ran `pytest tests/configuration/test_canonical_application.py`
+as its "canonical-config-validation" gate on any `backend/config/` change; repointed at
+`tests/configuration` (the whole directory, still config-relevant, no longer names a deleted file).
+`backend/src/return_platform/operations/alerts.py`'s docstring cited `HardeningCheck` as "the
+authority that already exists" with "an HTTP route" -- both now false (deleted in step:02); reworded
+to name the shape without claiming the route exists.
+
+Remaining hits are all prose in files this lease touched, explaining what was retired (own
+docstrings, `DEFERRED_DESIGN.md`, the regenerated OpenAPI artifacts carrying those docstrings) --
+expected, not drift -- plus four **historical/archive docs outside this lease's owned scope**
+(`docs/archive/stage-plans/IMPLEMENTATION_PLAN_STATUS.md`,
+`docs/UNIFIED_RETURN_PLATFORM_EXECUTION_STATE.md`,
+`docs/UNIFIED_RETURN_PLATFORM_IMPLEMENTATION_PLAN.md`,
+`docs/UNIFIED_RETURN_PLATFORM_TARGET_DESIGN.md`) that describe the original target design these
+dead files were built toward. Only `docs/configuration/**` is owned; rewriting four large planning
+documents outside it would be the re-audit the brief says not to do. Left as-is, named here for RV.
+
+```
+$ ruff check src/return_platform/operations/alerts.py -> All checks passed!
+$ ruff format --check src/return_platform/operations/alerts.py -> already formatted
+$ pytest tests/operations/test_operational_alerts.py -q -> 25 passed
+```
+
+## CFG-1 — final acceptance run
+
+```
+$ PYTHONPATH=$WT/backend/src backend/.venv/Scripts/python.exe -m pytest tests -q -p no:cacheprovider --ignore=tests/configuration/test_concurrent_activation.py
+42 failed, 5276 passed, 10 skipped, 515 deselected, 2 warnings in 283.74s (0:04:43)
+```
+Same 42 pre-existing failures (identical names to the CFG-0 base measurement in step:02); the five
+`test_openapi_contract_drift.py` failures from before step:04's regeneration are gone. 5276 passed
+vs the CFG-0 base's 5326 = 50 fewer, vs 52 tests deleted in `test_canonical_application.py` net of
+the 2 new tests added in step:03 (`test_a_key_the_model_retired_is_dropped_from_the_carried_release`,
+`test_an_unknown_adopt_packaged_key_refuses_before_any_write_with_no_active_release`) and the 1 new
+test in step:02 (none -- step:02 only renamed/retargeted) and the 1 new test in step:03
+(`test_the_shipped_configuration_has_no_retired_blocks`): 52 deleted - 3 added = 49 net fewer, plus
+the pre-existing 1-skip/pass swap noted in step:02 = 50. Within the "drops by no more than the
+deleted tests" bound.
+
+`ruff check`, `ruff format --check`, `mypy` on `backend/src/return_platform/configuration`: clean
+(re-verified after step:04's alerts.py edit, unaffected since that file is outside `configuration/`).
+`backend/config/README.md` rewritten to name only the files the runtime loads plus the intentional
+non-manifest exceptions (`data_platform/`, `seed/`) and points to `DEFERRED_DESIGN.md` for what was
+removed. Frontend: `npx vitest run src/domains/config` (59 passed), `npm run typecheck` (clean),
+`npx eslint src/domains/config/BusinessSection.tsx` (clean).
+
+Head sha: `7fd2f061`. `evidence/orchestration/drops/LEASE-CFG-1/drop.json` written with
+`merge_status: PENDING`.
+
+---
+
+## CFG-1 step:06 — RV PASS; CFG-2 design and brief recorded
+
+Verdict `.plan/reviews/CFG-1.md` on `e036310d`: PASS, zero blocking. RV reproduced the full suite
+(`42 failed, 5276 passed`), re-ran the nine failing modules on a throwaway worktree of the base and
+found the failing ids identical, diffed collection (51 ids gone = 54 deleted in
+`test_canonical_application.py` + 1 rename − 4 added), and simulated the retired-key drop against the
+live RELEASED release read-only: drops exactly `extensions` and `feature_flags`, six undecided keys and
+20 baselines unchanged, `model_validate` passes.
+
+Advisories: F1 stale doc reference annotated in this step; F2 (inert `dependencies: policy.*` in
+`agents/*.yaml`) and F5 (dead MSW branch in `frontend/src/main.tsx:69`) carried into CFG-5, which
+retires those agent copies and touches the mock layer; F3 noted (the keep of `release_model.py` stands
+on `RuntimeSnapshot`); F4 (five canonical read routes bypass `redact_secret_values`, pre-existing)
+carried into CFG-3a; F6 (retired-key drop covers RETURN_PLATFORM only) accepted -- the other two
+domains' models have not retired keys; F7 (`known_test_failures.json` lists no backend failures while
+42 fail on trunk) carried into CFG-7.
+
+CFG-2 design spike (Opus, read-only) delivered `.plan/tracks/CFG-2.design.md` and
+`.plan/tracks/CFG-2.brief.md`; the blocker it found -- `settings.py` `validate_catalog_path` refuses a
+directory -- is scope item 1 of that brief.

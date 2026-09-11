@@ -26,61 +26,49 @@ Every file referenced from `manifest.yaml` is a module document with these top-l
 | `configuration_version` | no | Version of this module's configuration content. |
 | `owner` | no | Team or system responsible for this module. |
 | `status` | no | Free-text lifecycle status for the module document itself. |
-| `dependencies` | no | List of `{module_id, version_constraint}`. Every `module_id` must be another manifest entry, must not equal this module's own ID (no self-dependency), and the resulting dependency graph must be acyclic — all three are enforced by `ConfigurationValidator`, not just at load time. |
-| `payload` | module-type-dependent | Routed into the matching canonical domain — see below. |
+| `dependencies` | no | List of `{module_id, version_constraint}`, for documentation purposes only — `ConfigurationLoader` (the only loader left; see below) does not resolve or validate this field. |
+| `payload` | module-type-dependent | Module-specific content. |
 
-## Where each module type ends up
+Which directory holds which `module_type` (`AGENT` → `agents/`, `WORKFLOW` → `workflows/`,
+`SOURCE` → `sources/`, `GRAPH` → `graph/`/`dynamic_knowledge/`, `MAPPING` → `mappings/`,
+`SYNC` → `sync/`, `PLATFORM` → `platform/`) is enforced structurally by `ConfigurationLoader`
+(manifest ID prefix must match the document's `module_type`). Routing a loaded module's `payload`
+into a canonical per-domain model (`AgentsConfig`, `SourcesConfig`, `GraphConfig`, …) was
+`application/compatibility.py::LegacyCompatibilityAdapter`'s job; that translation path was
+retired in CFG-1 (see below) because no process ever constructed it.
 
-| `module_type` | Directory | Routed into (`configuration/domain/`) |
-|---|---|---|
-| `AGENT` | `agents/` | `ModulesConfig` + `AgentsConfig` |
-| `WORKFLOW` | `workflows/` | `ModulesConfig` + `WorkflowConfig` |
-| `SOURCE` | `sources/` | `ModulesConfig` + `SourcesConfig` (payload must include `connector_type`; `access_mode` must be read-only if set) |
-| `GRAPH` | `graph/`, `dynamic_knowledge/` | `ModulesConfig` + `GraphConfig.graphs` |
-| `MAPPING` | `mappings/` | `ModulesConfig` + `GraphConfig.mappings` — never treated as a graph schema |
-| `SYNC` | `sync/` | `ModulesConfig` + `GraphConfig.sync` — never treated as a graph schema |
-| `POLICY` | `policies/` | `ModulesConfig` only — a policy is never mapped into `IntegrationsConfig` |
-| `PLATFORM` | `platform/` | `ModulesConfig` + `SystemStoreConfig` (for `platform.system_store`) or `PlatformConfig` |
-| `INTEGRATION` | (none declared yet) | `ModulesConfig` + `IntegrationsConfig` |
+## What actually runs (audited 2026-09-11)
 
-A malformed payload for any of these raises `ConfigurationValidationError` immediately — translation
-is fail-closed, never a logged warning that silently drops the module from its canonical domain.
-
-## Singleton compatibility files
-
-Two files are loaded by explicit name rather than through the manifest, because they predate the
-manifest mechanism and are being migrated incrementally:
-
-- `ai_gateway.yaml` → `AiConfig` (routes, tasks, providers).
-- `returns/production.yaml` → its `features` block feeds `FeaturesConfig`; its `platform` block
-  feeds `PlatformConfig`.
-
-**Read this first (audited 2026-09-11).** The two translations above are test-only. What every
-process actually runs is the RELEASED release in the Neo4j configuration graph, whose three
-domains are published from `returns/production.yaml` (`RETURN_PLATFORM`), `ai_gateway.yaml`
-(`AI_GATEWAY`) and `dependency_simulation.yaml` (`DEPENDENCY_SIMULATION`) by
+`ai_gateway.yaml` and `returns/production.yaml` are not loaded through the manifest, and as of
+CFG-1 there is no other loader for them either: what every process actually runs is the RELEASED
+release in the Neo4j configuration graph, whose three domains are published from
+`returns/production.yaml` (`RETURN_PLATFORM`), `ai_gateway.yaml` (`AI_GATEWAY`) and
+`dependency_simulation.yaml` (`DEPENDENCY_SIMULATION`) by
 `return_platform/configuration/cli/bootstrap_graph_configuration.py` at every stack start, and
 edited afterwards through `/api/config` and the Configuration, Support Template and AI Control
-Center screens. `production.yaml` has no `features:`/`platform:` keys -- the live flag block is
-`feature_flags:`, which parses but is read by nothing. See
-`return_platform/configuration/README.md` (Precedence) for the carry-forward rules that decide
-whether an edited packaged file reaches a deployment that already has a release.
+Center screens. See `return_platform/configuration/README.md` (Precedence) for the carry-forward
+rules that decide whether an edited packaged file reaches a deployment that already has a release,
+and `docs/configuration/DEFERRED_DESIGN.md` for `feature_flags`/`extensions` (retired in CFG-1,
+D-CFG-2 -- neither block was ever read).
 
-No other file is loaded this way. Adding a new singleton requires an explicit new call in
-`compatibility.py`, not a naming convention.
+Before CFG-1, `ai_gateway.yaml` and `returns/production.yaml` were also loaded a second way -- by
+explicit name, through `ConfigurationLoader.load_file`, from
+`application/compatibility.py::LegacyCompatibilityAdapter` -- to build a synthetic
+`RuntimeSnapshot` for `tests/configuration/` only; no process constructed that path. CFG-1 retired
+`compatibility.py` along with `precedence.py`, `adapters.py` and `validator.py`, so that second
+loading path no longer exists.
 
 ## Directories
 
-- `agents/`, `policies/`, `workflows/`, `sync/`, `sources/`, `mappings/`, `graph/`, `platform/` —
+- `agents/`, `workflows/`, `sync/`, `sources/`, `mappings/`, `graph/`, `platform/` —
   one file per manifest entry, named after the module.
-- `dynamic_knowledge/` — Dynamic Knowledge schemas and internal-store manifests. A schema here is
-  only authoritative if a `GRAPH` module in `manifest.yaml` points at it; an unreferenced file in
-  this directory is never loaded, even though the directory also holds files like
-  `active-schema.example.yaml` that exist purely as authoring references.
+- `dynamic_knowledge/` — Dynamic Knowledge schemas. A schema here is only authoritative if a
+  `GRAPH` module in `manifest.yaml` points at it; an unreferenced file in this directory is never
+  loaded, even though the directory also holds files like `active-schema.example.yaml` that exist
+  purely as authoring references.
 - `data_platform/` — canonical mappings, graph projection, sources, and sync-pipeline
   configuration for the data platform surfaces that have not yet migrated onto the manifest model.
-- `seed/`, `live_validation/` — fixtures and validation configuration for local/dev seeding, not
-  production runtime configuration.
+- `seed/` — fixtures for local/dev seeding, not production runtime configuration.
 - `schema_registry.yaml`, `data_assets.yaml`, `dependency_simulation.yaml` — governance and
   dependency-simulation inputs consumed directly by `Settings`, independent of the manifest.
 
@@ -90,25 +78,15 @@ No other file is loaded this way. Adding a new singleton requires an explicit ne
    manifest key you intend to use and `module_type` matching that key's prefix.
 2. Add the manifest entry in `manifest.yaml` pointing at the file's path (relative to this
    directory).
-3. If the module depends on another, list it under `dependencies` — the referenced `module_id` must
-   already be a manifest entry.
-4. Run the configuration test suite (`backend/tests/configuration/`) — `test_loader_and_compatibility`
-   and `test_validator_smoke` exercise the real files in this directory end to end.
+3. If the module depends on another, list it under `dependencies` for documentation purposes --
+   nothing validates it at load time (see `return_platform/configuration/README.md`).
+4. Run the configuration test suite (`backend/tests/configuration/`) against the real files in
+   this directory.
 
-## Declared but not yet loaded
+## Removed as dead (CFG-1)
 
-Wave G2 asked for legacy compatibility configuration to be removed once no
-production consumer remained. Scanned, there is none: every entry here is either
-read at runtime or named by the target design as intended-but-unwired. Those two
-states look identical from the filesystem, so the second is listed:
-
-- `policies/` -- `candidate_scoring.yaml`, `clarification.yaml`, `privacy.yaml`,
-  `return_eligibility.yaml`. Named in the target design's configuration tree.
-  No code loads them.
-- `live_validation/data_assets.sampling.yaml` -- named in the target design.
-  No code loads it. (The `live_validation` string elsewhere in the repository is
-  a coincidence: two validation scripts use it in *database* names.)
-
-These are unimplemented design, not dead compatibility shims, so G2 deleted
-nothing. Anyone treating an unreferenced file here as dead should check this
-list first.
+`policies/` (four files), `live_validation/data_assets.sampling.yaml`,
+`dynamic_knowledge/internal_manifests/` (four files) and `reasoning.yaml` were named by the target
+design but had zero readers in `backend/src`. They were deleted in CFG-1 (decision D-CFG-1); the
+rule each one described, and where the equivalent live rule is (or that none exists), is recorded
+in `docs/configuration/DEFERRED_DESIGN.md`.

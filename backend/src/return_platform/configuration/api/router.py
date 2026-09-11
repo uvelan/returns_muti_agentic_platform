@@ -4,10 +4,13 @@ Phase 15. Versionless, like `/api/graph-schema` -- the canonical surface is not
 versioned in its path because a release, not a URL, is what pins configuration.
 
 **This is a surface, not a second implementation.** Every handler reads through
-the same `ConfigurationGraphRepository` the Data Console router uses. Two routers
-serving one domain through different code would be two things to keep correct,
-and the platform already has one duplicate too many here -- see the note at the
-foot of this file. The Data Console router stays until Wave F deletes it.
+the same `ConfigurationGraphRepository` the retired Data Console modules used.
+Two routers serving one domain through different code would be two things to
+keep correct, and the platform already had one duplicate too many here -- see
+the note at the foot of this file. CFG-1 (D-CFG-5) deleted the Data Console
+`APIRouter` objects in `releases.py`/`sources.py`/`audit.py` outright; those
+modules now export plain handler functions this router imports and calls
+directly, the same way it already did before the deletion.
 
 **Every response is scrubbed.** Configuration documents carry secret
 *references*, which an operator needs to see, and must never carry resolved
@@ -255,9 +258,11 @@ async def patch_release_domain(
     operator changing one prompt should not have to round-trip a whole domain
     document and risk clobbering a field they never looked at.
 
-    The full-document `PUT` the console router also declares is deliberately not
-    republished here: it has no consumer, and a whole-document overwrite is a
-    strictly larger blast radius than a merge patch for the same outcome.
+    The console router used to also declare a full-document `PUT`
+    (`save_domain_config`) for this path; CFG-1 deleted it outright rather than
+    leaving it unrepublished -- it had no consumer, and a whole-document
+    overwrite is a strictly larger blast radius than a merge patch for the
+    same outcome.
     """
     response = await console_patch_domain_config(release_id, domain_key, body, request, user_id)
     return _ok(request, response.data)
@@ -345,10 +350,11 @@ async def list_configured_sources(
 ) -> APIResponse[Any]:
     """Configured data sources and their probed health.
 
-    Delegates to the Data Console handler rather than reimplementing the probe
-    fan-out: this is a canonical *surface* over one implementation, which is the
-    whole point of the exercise. When Wave F deletes the console router, the
-    body moves here unchanged.
+    Delegates to the retired console module's handler rather than
+    reimplementing the probe fan-out: this is a canonical *surface* over one
+    implementation, which is the whole point of the exercise. CFG-1 deleted
+    the console `APIRouter` this handler used to also be mounted under; the
+    body stays in `sources.py`, imported and called directly, unchanged.
     """
     return await console_get_sources(request, _user_id)
 
@@ -384,9 +390,10 @@ async def get_configured_source_asset(
     `metadata.fields` is the point -- it is the only place the platform publishes
     what columns or keys an asset actually carries, and until this route existed
     it was reachable only through `/data-console/v1/inventory/{engine}/{asset_id}`,
-    which Wave F1 unmounted deliberately and
-    `test_no_versioned_data_console_path_is_mounted` keeps unmounted. Delegated
-    rather than reimplemented, exactly like the two reads above.
+    which Wave F1 unmounted deliberately and `test_no_data_console_path_is_served`
+    keeps unmounted -- CFG-1 went further and deleted the `APIRouter` that path
+    was declared on. Delegated rather than reimplemented, exactly like the two
+    reads above.
 
     **Keyed by source, not by engine.** The console navigates from a source to
     its assets, and a source owns a definite set of them; the console handler

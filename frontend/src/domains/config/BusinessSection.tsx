@@ -122,11 +122,9 @@ const BUSINESS_GROUPS: readonly Group[] = [
   {
     id: "platform",
     title: "Integrations and features",
-    blurb: "Topic bindings, feature flags, extensions and the copilot's own settings.",
+    blurb: "Topic bindings and the copilot's own settings.",
     subjects: [
       section("integrations", "Integrations", "Outbox topics and what AI may not fabricate."),
-      section("feature_flags", "Feature flags", "Flags the release declares."),
-      section("extensions", "Extensions", "Optional capabilities."),
       section("copilot", "Copilot", "Which agent the copilot runs and what it shows."),
     ],
   },

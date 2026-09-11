@@ -17,7 +17,5 @@ class SystemStoreConfig(BaseModel):
     provider: str = "MONGODB"
     allowed_providers: list[str] | None = None
     auto_bootstrap_missing_structures: bool = False
-    migration_mode: str | None = None
     fail_closed_on_drift: bool = False
-    migration_lock_required: bool = False
     structures: Mapping[str, SystemStoreStructure] = {}

@@ -12,11 +12,6 @@ from return_platform.platform.reasoning.abandonment import (
     RunRecord,
 )
 from return_platform.platform.reasoning.checkpoint import SystemStoreCheckpointSaver
-from return_platform.platform.reasoning.configuration import (
-    LoadedReasoningConfiguration,
-    ReasoningConfiguration,
-    load_reasoning_configuration,
-)
 from return_platform.platform.reasoning.errors import (
     AbandonmentBlocked,
     CheckpointRedactionViolation,
@@ -58,9 +53,7 @@ __all__ = [
     "CheckpointRedactor",
     "CheckpointRetentionPolicy",
     "ForcedAbandonment",
-    "LoadedReasoningConfiguration",
     "ReasoningActionReceipts",
-    "ReasoningConfiguration",
     "ReasoningError",
     "ReasoningObservability",
     "ReasoningResumeWorker",
@@ -76,5 +69,4 @@ __all__ = [
     "RunRecord",
     "SystemStoreCheckpointSaver",
     "TerminalAtRequired",
-    "load_reasoning_configuration",
 ]

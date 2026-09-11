@@ -234,6 +234,37 @@ def _carry_forward(
     return merged, tuple(sorted(unadopted)), recordable
 
 
+def _drop_retired_keys(merged_payload: dict[str, Any]) -> dict[str, Any]:
+    """Drop top-level keys the model no longer declares, before validation.
+
+    `_carry_forward`'s last loop (`merged.setdefault(key, value)` over the
+    ACTIVE release) is exactly how a key the packaged file dropped -- because
+    the model retired it, not because an operator deleted it -- survives into
+    `merged_payload` from an old release that still carries it. Every process
+    that has ever published a release since (`feature_flags`/`extensions`,
+    retired in CFG-1) would carry it forward forever, and
+    `ReturnPlatformConfiguration.model_validate` (`StrictConfigModel` forbids
+    extra keys) would then refuse the very release the bootstrap is trying to
+    republish -- on every deployment that had ever adopted one, not just this
+    one. Without this drop the failure path in `main()` below falls back to
+    the packaged baseline, silently discarding every operator value the
+    active release carried, which is the deadlock this function exists to
+    prevent: a release can never again pass `model_validate` while it still
+    carries a key the model does not declare, because nothing sitting between
+    the graph and this function removes one.
+
+    Not the same case as an operator's key. An operator's edit is inside a
+    key the model still declares (`_carry_forward`/`_fill_absent_leaves`
+    handle that); this is a whole top-level key the model no longer has an
+    opinion about at all.
+    """
+    declared = set(ReturnPlatformConfiguration.model_fields)
+    for key in sorted(set(merged_payload) - declared):
+        logger.warning("retired_configuration_key key=%s", key)
+        del merged_payload[key]
+    return merged_payload
+
+
 def _require_secret_resolver(resolver: SecretResolver | None) -> SecretResolver:
     """Return the resolver, or refuse the AI paths that cannot run without one.
 
@@ -395,6 +426,23 @@ async def main(
         packaged_payload = loaded.configuration.model_dump(mode="json")
         recordable_baseline: dict[str, str] = _key_digests(packaged_payload)
         adopt_requests = _adopt_requests(adopt_packaged_keys)
+        # Unconditional, like the AI_GATEWAY/DEPENDENCY_SIMULATION check below and
+        # `_adopt_requests`'s own -- a bare key that does not name a top-level
+        # RETURN_PLATFORM key (the operator meant a unit of another domain and
+        # forgot the `DOMAIN/` prefix) used to be checked only inside the
+        # active-release branch below, so on a first boot with no active release
+        # yet it silently did nothing instead of failing. RV F5 on CFG-0: the
+        # refusal must fail the same way regardless of boot state, before any
+        # write, exactly as a qualified key naming an unknown domain already does.
+        adopted_keys = set(adopt_requests.get(RETURN_PLATFORM_DOMAIN_KEY, ()))
+        if adopt_packaged:
+            adopted_keys.update(packaged_payload)
+        unknown_keys = sorted(adopted_keys - set(packaged_payload))
+        if unknown_keys:
+            raise ValueError(
+                f"adopt-packaged-key names units {RETURN_PLATFORM_DOMAIN_KEY} does not have: "
+                + ", ".join(unknown_keys)
+            )
         existing_configuration: ReturnPlatformConfiguration | None = None
         if active is not None:
             active_payload = await repository.get_domain_config(
@@ -459,20 +507,12 @@ async def main(
                     active_payload,
                     baseline,
                 )
-                # The operator's answer to an undecidable key, and the only
-                # thing here that can overwrite an operator's own edits -- which
-                # is why it is a flag and not a default. Per key so that taking
-                # the file for `discovery` does not also take it for the
-                # `policy_evaluation` an operator switched on.
-                adopted_keys = set(adopt_requests.get(RETURN_PLATFORM_DOMAIN_KEY, ()))
-                if adopt_packaged:
-                    adopted_keys.update(packaged_payload)
-                unknown_keys = sorted(adopted_keys - set(packaged_payload))
-                if unknown_keys:
-                    raise ValueError(
-                        "adopt-packaged-key names keys the packaged configuration "
-                        f"does not have: {', '.join(unknown_keys)}"
-                    )
+                # `adopted_keys` was already validated above, unconditionally --
+                # the operator's answer to an undecidable key, and the only thing
+                # here that can overwrite an operator's own edits, which is why it
+                # is a flag and not a default. Per key so that taking the file for
+                # `discovery` does not also take it for the `policy_evaluation` an
+                # operator switched on.
                 packaged_digests = _key_digests(packaged_payload)
                 for key in adopted_keys:
                     merged_payload[key] = packaged_payload[key]
@@ -492,6 +532,7 @@ async def main(
                         active.release_id,
                         ",".join(unadopted),
                     )
+                merged_payload = _drop_retired_keys(merged_payload)
                 try:
                     existing_configuration = ReturnPlatformConfiguration.model_validate(
                         merged_payload

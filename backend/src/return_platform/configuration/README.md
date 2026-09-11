@@ -17,13 +17,11 @@ resolution. Nothing downstream ever reads a domain model directly; everything re
 BOOTSTRAP_ENV  →  BASELINE  →  ACTIVE_RELEASE  →  (output) RuntimeSnapshot
 ```
 
-**What actually runs (audited 2026-09-11).** The manifest-driven path below
-(`loader.py` → `compatibility.py` → `RuntimeSnapshot` → `precedence.py`) is
-exercised only by `tests/configuration/`; no process constructs it. Every
-process resolves its configuration through `runtime_activation.py` →
-`runtime_loader.py` → `snapshot.py::ConfigurationSnapshotBuilder`, which reads
-the RELEASED release from the Neo4j configuration graph and holds three domain
-payloads: `RETURN_PLATFORM` (`config/returns/production.yaml`), `AI_GATEWAY`
+**What actually runs (audited 2026-09-11).** Every process resolves its
+configuration through `runtime_activation.py` → `runtime_loader.py` →
+`snapshot.py::ConfigurationSnapshotBuilder`, which reads the RELEASED release
+from the Neo4j configuration graph and holds three domain payloads:
+`RETURN_PLATFORM` (`config/returns/production.yaml`), `AI_GATEWAY`
 (`config/ai_gateway.yaml`) and `DEPENDENCY_SIMULATION`
 (`config/dependency_simulation.yaml`). The packaged files are the *baseline*
 the bootstrap publishes from (`cli/bootstrap_graph_configuration.py`) and the
@@ -32,10 +30,17 @@ graph wins and editing a packaged file changes nothing running until the
 bootstrap carries the change forward. `Settings` (environment) supplies only
 deployment values -- hosts, credentials, provider order and model pools, feature
 switches read at process start -- and never overrides a release domain. The
-manifest modules under `config/agents/`, `policies/`, `workflows/`, `sync/`,
+manifest modules under `config/agents/`, `workflows/`, `sync/`,
 `sources/`, `mappings/`, `graph/` are read structurally by the Agents editing
 API and by nothing at runtime; `platform/system_store.yaml` is read by its own
-loader in `platform/system_store/manifest_loader.py`.
+loader in `platform/system_store/manifest_loader.py`. (The
+`loader.py` → `compatibility.py` → `RuntimeSnapshot` → `precedence.py`
+manifest-translation path this paragraph used to describe as "test-only,
+exercised only by `tests/configuration/`" was retired in CFG-1 --
+`compatibility.py`, `precedence.py`, `adapters.py` and `validator.py` are
+gone, since nothing outside their own tests constructed them.
+`loader.py`/`ConfigurationLoader` stays because the Agents editing API still
+uses it directly.)
 
 **Carry-forward.** The bootstrap decides, per top-level key of `RETURN_PLATFORM`
 and per unit of the other two domains (one AI task, one simulated dependency),
@@ -49,58 +54,24 @@ release lacks); otherwise the release wins, the key is named in a
 operator's per-unit answer. Releases published through `/api/config` carry the
 baseline forward when they clone the active release.
 
-`application/precedence.py::ConfigurationPrecedenceEvaluator` enforces this. `BOOTSTRAP_ENV` may
-only supply an explicit allowlisted set of deployment/bootstrap fields (region, host, port,
-log_level, credentials, …) — business configuration must never come from environment
-variables, and `ACTIVE_RELEASE` may never override a bootstrap-only key. Secret values never enter
-a snapshot; only non-secret references are permitted through.
-
-## Manifest and compatibility translation
+`BOOTSTRAP_ENV` may only supply an explicit allowlisted set of deployment/bootstrap fields
+(region, host, port, log_level, credentials, …) — business configuration must never come from
+environment variables, and `ACTIVE_RELEASE` may never override a bootstrap-only key. Secret values
+never enter a snapshot; only non-secret references are permitted through. This is enforced in the
+live carry-forward path above, not by a separate evaluator — `application/precedence.py`, which
+implemented this rule only for the retired manifest-translation path below, was retired in CFG-1
+along with it.
 
 `backend/config/manifest.yaml` is authoritative for which YAML files under `backend/config/` are
 active configuration — `application/loader.py::ConfigurationLoader` never globs a directory to
-discover files. Every manifest entry is validated: no absolute or traversal paths, the file must
-exist, and the loaded document's `module_id`/`module_type` must match the manifest key and its
-prefix (`agent.*` → `AGENT`, `source.*` → `SOURCE`, …). `schema_version` must be one of
-`loader.py::SUPPORTED_MANIFEST_SCHEMA_VERSIONS` — anything else is rejected outright rather than
-silently treated as the current version.
-
-`application/compatibility.py::LegacyCompatibilityAdapter` translates the loaded manifest modules
-into a `RuntimeSnapshot`. **Translation is fail-closed**: a malformed AGENT/SOURCE/GRAPH/MAPPING/
-SYNC/PLATFORM payload raises `ConfigurationValidationError` immediately — it is never logged as a
-warning and skipped, because a warning-and-skip would let a module declared in `ModulesConfig`
-silently disappear from its actual canonical domain (an agent nobody notices stopped being
-routable). `POLICY` entries are preserved only in `ModulesConfig` by design and are never mapped to
-`IntegrationsConfig`; `MAPPING`/`SYNC` entries are never treated as `GraphSchemaNode`s. Dynamic
-Knowledge schemas are loaded only when declared as `GRAPH` modules in the manifest — directory
-globbing under `dynamic_knowledge/` is forbidden, so an unreferenced YAML file there can never
-become runtime configuration.
-
-## Semantic validation
-
-`application/validator.py::ConfigurationValidator.validate_snapshot()` runs before a release may
-move `DRAFT → VALIDATED`, and raises `ConfigurationValidationError` naming every failure (source
-domain, source identifier, referenced identifier, target domain) rather than stopping at the
-first. It checks:
-
-- Every declared module dependency's `module_id` exists, is not self-referential, and the
-  dependency graph is acyclic (DFS-based cycle detection).
-- **Reverse completeness**: every enabled `AGENT`/`SOURCE`/`WORKFLOW`/`GRAPH`/`MAPPING`/`SYNC`
-  module has a corresponding entry in its specialized domain config — a module that exists in
-  `ModulesConfig` but nowhere else is caught here, not discovered at runtime. `POLICY` is exempt by
-  design.
-- Agent → manifest module normalization, and agent AI route refs against `ai.routes` →
-  `ai.tasks`/`ai.providers`. These checks are fail-closed even when `ai.tasks`/`ai.providers` are
-  empty maps — gating on `ai_tasks and task_id not in ai_tasks` would let an unknown `task_id` pass
-  whenever the map happened to be empty, which is the opposite of what an empty map should mean.
-- Workflow stage IDs are business state names, not agent IDs — only a structured `{"handler":
-  {"type": "AGENT", "agent": ...}}` stage triggers agent-ID resolution.
-- Graph → source references, but only for a plain string/`None` value (a logical reference into
-  `SourcesConfig`); a `dict` value is a Dynamic Knowledge embedded source definition and is not
-  cross-referenced.
-- Source `connector_type` is non-empty and `access_mode` is read-only if set — the platform never
-  configures a writable external source.
-- `SystemStore` structures have non-empty, non-duplicate physical names.
+discover files; see `backend/config/README.md` for the full manifest and module-document rules.
+`ConfigurationLoader` stays because the Agents editing API (`application/agent_configuration.py`)
+uses it directly to load agent module documents. Its former consumer for a full canonical
+`RuntimeSnapshot` -- `application/compatibility.py::LegacyCompatibilityAdapter`, plus the semantic
+checks in `application/validator.py::ConfigurationValidator` (dependency-graph acyclicity, reverse
+completeness, AI route/task/provider refs, etc.) -- was exercised only by
+`tests/configuration/test_canonical_application.py`, which no process ever constructed; both were
+retired in CFG-1.
 
 ## Release lifecycle
 

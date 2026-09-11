@@ -92,6 +92,20 @@ def test_the_shipped_configuration_is_healthy(
     assert evaluate_configuration_health(shipped_configuration, shipped_agent_policy_ids) == ()
 
 
+def test_the_shipped_configuration_has_no_retired_blocks(
+    shipped_configuration: ReturnPlatformConfiguration,
+) -> None:
+    """D-CFG-2 (CFG-1): `feature_flags` and `extensions` are gone from the model,
+    not merely unread. `StrictConfigModel` forbids extra keys, so a shipped file
+    that still declared either block would already have failed
+    `load_return_configuration` above -- this asserts the attribute itself is
+    gone, which is the stronger claim `model_dump()` alone does not make (a
+    model can still declare a field that happens to serialize empty).
+    """
+    assert not hasattr(shipped_configuration, "feature_flags")
+    assert not hasattr(shipped_configuration, "extensions")
+
+
 def test_a_healthy_configuration_starts_in_production(
     shipped_configuration: ReturnPlatformConfiguration,
     shipped_agent_policy_ids: tuple[str, ...],

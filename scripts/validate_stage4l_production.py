@@ -82,8 +82,6 @@ def validate() -> dict[str, object]:
     assert configuration.discovery.auto_confirmation_allowed is False
     assert configuration.omc.rga_is_customer_return is False
     assert configuration.omc.tendered_is_pickup is False
-    assert configuration.extensions.ocr_processing is False
-    assert configuration.extensions.image_processing is False
     assert all(
         not topic.ai_may_fabricate_success
         for topic in (

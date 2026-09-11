@@ -22,14 +22,6 @@ modules:
     path: agents/learning.yaml
   agent.graph_schema_design:
     path: agents/graph_schema_design.yaml
-  policy.privacy:
-    path: policies/privacy.yaml
-  policy.clarification:
-    path: policies/clarification.yaml
-  policy.candidate_scoring:
-    path: policies/candidate_scoring.yaml
-  policy.return_eligibility:
-    path: policies/return_eligibility.yaml
   workflow.return_session:
     path: workflows/return_session.yaml
   sync.order_partial:

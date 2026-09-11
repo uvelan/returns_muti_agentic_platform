@@ -21,7 +21,6 @@ in `ReturnSession`/`Conversation`/`AnalysisSession`/`GraphSchemaDraft`/
 | `redaction.py` | `CheckpointRedactor` — rejects (never silently strips) disallowed checkpoint state keys |
 | `observability.py` | Typed reasoning-run trace emission over `platform.audit.AuditSink` |
 | `errors.py` | Typed exceptions this package raises |
-| `configuration.py` | Loader for `config/reasoning.yaml` |
 
 ## Why LangGraph doesn't just use `InMemorySaver`
 
