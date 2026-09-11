@@ -210,3 +210,40 @@ import { ValidationErrors } from "./ValidationErrors";
   onJump={(path) => scrollToField(path)}
 />
 ```
+
+## Notes
+
+### Error path convention
+
+`DocumentEditor`'s `errors` prop, and any future `POST /api/config/validate/{domain}`
+producer (CFG-3a/4/5), should use dot-plus-index paths: `fields.3.priority`, not
+`fields[3].priority`. Internally every generated field's location is built that way
+(`childPath` only ever joins with `.`, including through arrays -- an array item's
+segment is its index as a plain string), so a dotted path is matched directly.
+
+A bracket-index path is still accepted: `DocumentEditor` normalises `foo[3]` to
+`foo.3` (`normalizeErrorPath`) before matching, since a validator built from pydantic
+`loc` tuples is at least as likely to emit that shape. Both spellings reach the same
+field; only the dotted form is guaranteed to match a `.`-free key exactly (a
+data-keyed key that itself contains a `.`, e.g. `ship_via_methods["UPS.Ground"]`, is
+not addressable by either convention -- a documented limit, not a bug, since it would
+require escaping rules on operator-entered keys).
+
+### Data-keyed key ordering is not preserved through a plain JS object
+
+`KeyValueTable`'s own `entries` array preserves insertion order (or `sortable`
+order) faithfully. But `DocumentEditor`'s `dataKeyedPaths` rendering has to turn
+that array back into a plain `JsonObject` to write it into the document, and
+JavaScript's own property-enumeration rules reorder **integer-like** string keys
+(`"0"`, `"2"`, `"10"`, ...) to the front, in ascending numeric order, ahead of every
+other key, regardless of insertion order -- `Object.entries`, `JSON.stringify`, and
+every other object consumer see it that way, not just this editor. A `tasks` or
+`dependencies` map keyed by small integers will round-trip with those keys moved to
+the front: `{b: "x", a: "y"}` plus `10` then `2` submits as
+`{"2": ..., "10": ..., "b": "x", "a": "y"}`.
+
+This is cosmetic, not a correctness problem: a merge patch (`mergePatchOf`, what
+every publish path actually sends) is a JSON object, and object key order is not
+semantically significant to the backend or to JSON equality. Do not build a UI or a
+test that depends on the *submitted* key order of a data-keyed object; `KeyValueTable`
+row order is the only order that is meaningful, and it is preserved.

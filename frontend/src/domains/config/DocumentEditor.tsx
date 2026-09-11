@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useId, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Braces, Columns3, ListTree, Minus, Plus, RotateCcw } from "lucide-react";
 
@@ -50,6 +50,18 @@ function isObject(value: Json): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * `"fields[3].priority"` -> `"fields.3.priority"` -- the only path convention
+ * this editor understands internally (see `childPath`) is dot-plus-index, but
+ * a backend validator is equally likely to report a pydantic-`loc`-shaped
+ * bracket path. Normalising the incoming `errors` path once, before matching,
+ * means both spellings reach the same field. Documented in
+ * `components/forms/README.md`.
+ */
+function normalizeErrorPath(path: string): string {
+  return path.replace(/\[(\d+)\]/g, ".$1");
+}
+
 /** Whether `dotted` (split on `.`) resolves to something inside `document` -- array indices count as segments too. */
 function hasPath(document: Json, segments: readonly string[]): boolean {
   if (segments.length === 0) return true;
@@ -68,15 +80,17 @@ function hasPath(document: Json, segments: readonly string[]): boolean {
 
 /**
  * What `Node` needs at every depth but does not vary per node: the errors
- * matched to a path, and which object paths render as `KeyValueTable`.
- * Threaded via context rather than props so adding it did not mean changing
- * every recursive call's signature -- `path` still is a prop, because it
- * genuinely changes at every level.
+ * matched to a path, which object paths render as `KeyValueTable`, and a way
+ * for a data-keyed node to tell the editor "publishing is blocked while I
+ * hold an unresolved duplicate key". Threaded via context rather than props
+ * so adding it did not mean changing every recursive call's signature --
+ * `path` still is a prop, because it genuinely changes at every level.
  */
 const FormMetaContext = createContext<{
   errorsByPath: ReadonlyMap<string, string>;
   dataKeyedPaths: ReadonlySet<string>;
-}>({ errorsByPath: new Map(), dataKeyedPaths: new Set() });
+  reportBlocked: (path: string, reason: string | null) => void;
+}>({ errorsByPath: new Map(), dataKeyedPaths: new Set(), reportBlocked: () => { /* no-op default */ } });
 
 function childPath(parent: string, key: string): string {
   return parent === "" ? key : `${parent}.${key}`;
@@ -205,6 +219,33 @@ export function DocumentEditor<TResult>({
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [result, setResult] = useState<TResult | null>(null);
   const [dirty, setDirty] = useState(false);
+  // Paths (from a `dataKeyedPaths` node) currently holding an unresolved
+  // duplicate/empty key -- publishing is refused while this is non-empty, and
+  // becoming blocked counts as a change even though nothing has actually
+  // reached `draft` yet (see `reportBlocked`).
+  const [blocked, setBlocked] = useState<Record<string, string>>({});
+
+  const reportBlocked = useCallback(
+    (path: string, reason: string | null) => {
+      setBlocked((prev) => {
+        if (reason === null) {
+          if (!(path in prev)) return prev;
+          const next: Record<string, string> = {};
+          for (const [key, value] of Object.entries(prev)) {
+            if (key !== path) next[key] = value;
+          }
+          return next;
+        }
+        if (prev[path] === reason) return prev;
+        return { ...prev, [path]: reason };
+      });
+      if (reason !== null) {
+        setDirty(true);
+        onDirtyChange(true);
+      }
+    },
+    [onDirtyChange],
+  );
 
   const save = useMutation({
     mutationFn: (document: JsonObject) => onSubmit(document),
@@ -294,6 +335,11 @@ export function DocumentEditor<TResult>({
   }
 
   function onSave() {
+    // Belt-and-braces alongside the disabled Save button: a data-keyed table
+    // holding an unresolved duplicate never reached `draft`, so submitting
+    // anyway would silently publish whatever the document looked like before
+    // the collision -- the same loss B1 was about, one layer up.
+    if (Object.keys(blocked).length > 0) return;
     setResult(null);
     let document: Json = draft;
     if (mode !== "form") {
@@ -342,18 +388,23 @@ export function DocumentEditor<TResult>({
   // as unknown rather than pinned to a field that no longer means the same
   // thing.
   const errorList = errors ?? [];
-  const matchedErrors = errorList.filter((error) => hasPath(draft, error.path === "" ? [] : error.path.split(".")));
-  const unknownErrors = errorList.filter((error) => !hasPath(draft, error.path === "" ? [] : error.path.split(".")));
+  // `foo[3].bar` and `foo.3.bar` both mean the same field internally --
+  // normalise before matching so either spelling a backend validator uses
+  // reaches its field (documented in components/forms/README.md).
+  const normalizedErrors = errorList.map((error) => ({ ...error, path: normalizeErrorPath(error.path) }));
+  const matchedErrors = normalizedErrors.filter((error) => hasPath(draft, error.path === "" ? [] : error.path.split(".")));
+  const unknownErrors = normalizedErrors.filter((error) => !hasPath(draft, error.path === "" ? [] : error.path.split(".")));
   const errorsByPath = new Map<string, string>();
   for (const error of matchedErrors) {
     const existing = errorsByPath.get(error.path);
     errorsByPath.set(error.path, existing === undefined ? error.message : `${existing}; ${error.message}`);
   }
   const dataKeyedPathSet = new Set(dataKeyedPaths ?? []);
+  const blockedReasons = Object.values(blocked);
 
   const formEditor = (
     <fieldset disabled={!canWrite} className="max-h-[34rem] min-h-[28rem] overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-inner disabled:cursor-not-allowed disabled:opacity-75">
-      <FormMetaContext.Provider value={{ errorsByPath, dataKeyedPaths: dataKeyedPathSet }}>
+      <FormMetaContext.Provider value={{ errorsByPath, dataKeyedPaths: dataKeyedPathSet, reportBlocked }}>
         <Node value={draft} onChange={updateDraft} path="" />
       </FormMetaContext.Provider>
     </fieldset>
@@ -436,6 +487,7 @@ export function DocumentEditor<TResult>({
             setJsonError(null);
             setResult(null);
             setDirty(false);
+            setBlocked({});
             onDirtyChange(false);
           }}
           disabled={!canWrite || !dirty}
@@ -447,8 +499,8 @@ export function DocumentEditor<TResult>({
         <button
           type="button"
           onClick={onSave}
-          disabled={save.isPending || !canWrite || !dirty}
-          title={canWrite ? undefined : submitTitle}
+          disabled={save.isPending || !canWrite || !dirty || blockedReasons.length > 0}
+          title={!canWrite ? submitTitle : blockedReasons.length > 0 ? blockedReasons[0] : undefined}
           className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-on-primary shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {save.isPending ? submittingLabel : submitLabel}
@@ -665,40 +717,10 @@ type JsonKind = "string" | "number" | "boolean" | "object" | "array";
  */
 function ObjectNode({ value, onChange, path }: { value: JsonObject; onChange: (next: Json) => void; path: string }) {
   const base = useId();
-  const { errorsByPath, dataKeyedPaths } = useContext(FormMetaContext);
+  const { dataKeyedPaths } = useContext(FormMetaContext);
 
   if (dataKeyedPaths.has(path)) {
-    const entries: KeyValueEntry[] = Object.entries(value).map(([key, child]) => ({ key, value: child }));
-    const nestedErrors = Array.from(errorsByPath.entries()).filter(
-      ([errorPath]) => errorPath === path || errorPath.startsWith(`${path}.`),
-    );
-    return (
-      <div className="flex flex-col gap-2">
-        <KeyValueTable
-          label={label(path.split(".").pop() ?? path)}
-          entries={entries}
-          valueKind={inferValueKind(value)}
-          onChange={(next) => {
-            const nextValue: JsonObject = {};
-            for (const entry of next) nextValue[entry.key] = entry.value;
-            onChange(nextValue);
-          }}
-        />
-        {nestedErrors.length > 0 ? (
-          <ul className="flex flex-col gap-1">
-            {nestedErrors.map(([errorPath, message]) => (
-              <li
-                key={errorPath}
-                role="alert"
-                className="rounded-lg border border-error/20 bg-error-container px-2 py-1 text-xs text-on-error-container"
-              >
-                <code className="font-mono">{errorPath}</code> — {message}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
-    );
+    return <DataKeyedObjectNode value={value} onChange={onChange} path={path} />;
   }
 
   return (
@@ -736,6 +758,117 @@ function ObjectNode({ value, onChange, path }: { value: JsonObject; onChange: (n
         existing={Object.keys(value)}
         onAdd={(key, child) => { onChange({ ...value, [key]: child }); }}
       />
+    </div>
+  );
+}
+
+/** Why `entries` cannot become the document yet -- `null` once every key is unique and filled in. */
+function keyValueBlockReason(entries: readonly KeyValueEntry[]): string | null {
+  const keys = entries.map((entry) => entry.key);
+  if (keys.some((key) => key.trim() === "")) {
+    return "Every key must be filled in before publishing.";
+  }
+  const duplicate = keys.find((key, index) => keys.indexOf(key) !== index);
+  if (duplicate !== undefined) {
+    return `"${duplicate}" is used by more than one row here -- rename one before publishing.`;
+  }
+  return null;
+}
+
+/**
+ * The `KeyValueTable` rendering of a data-keyed object -- split out of
+ * `ObjectNode` because it needs its own state.
+ *
+ * `entries` is a *list*, and a list can hold two rows with the same key for
+ * as long as the operator is mid-rename; `value`, the actual document, is a
+ * plain JS object, which cannot. Flattening on every keystroke (the B1
+ * defect) forced every intermediate state through that object regardless,
+ * so a rename that passed through another row's key -- deliberately, or as a
+ * prefix while typing -- silently collapsed the two rows into one before
+ * `KeyValueTable` ever got to show the collision. Holding `entries` as this
+ * component's own state instead means a duplicate stays visible, in both
+ * rows, for as long as it exists, and `onChange` only ever receives a
+ * document that could not have lost anything.
+ *
+ * What makes that safe rather than sticky is the render-phase reset below --
+ * React's documented pattern for "adjust state when a prop changes"
+ * (https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes),
+ * a conditional `setState` call during render rather than inside an effect.
+ * Any *external* change to the document -- Reset, a sibling edit made
+ * through JSON/split mode, simply mounting -- abandons whatever local,
+ * unresolved edit was in progress and resyncs from the document that is now
+ * current, the same way discarding a JSON-mode edit on a parse error does
+ * elsewhere in this file. It does not fire on the render that follows this
+ * component's *own* successful resolution, because `pending` is already
+ * cleared, synchronously, before that `onChange` is called -- `value` and
+ * `trackedValue` arrive at the new document together.
+ *
+ * Telling the *ancestor* that publishing is unblocked again, in contrast,
+ * genuinely belongs in an effect: it is a different component's state
+ * (`DocumentEditor`'s `blocked`), and React does not support setting one
+ * component's state from inside another's render.
+ */
+function DataKeyedObjectNode({
+  value,
+  onChange,
+  path,
+}: {
+  value: JsonObject;
+  onChange: (next: Json) => void;
+  path: string;
+}) {
+  const { errorsByPath, reportBlocked } = useContext(FormMetaContext);
+  const [pending, setPending] = useState<KeyValueEntry[] | null>(null);
+  const [trackedValue, setTrackedValue] = useState(value);
+
+  if (value !== trackedValue) {
+    setTrackedValue(value);
+    setPending(null);
+  }
+
+  useEffect(() => {
+    if (pending === null) reportBlocked(path, null);
+  }, [pending, path, reportBlocked]);
+
+  const entries: KeyValueEntry[] =
+    pending ?? Object.entries(value).map(([key, child]) => ({ key, value: child }));
+  const nestedErrors = Array.from(errorsByPath.entries()).filter(
+    ([errorPath]) => errorPath === path || errorPath.startsWith(`${path}.`),
+  );
+
+  return (
+    <div className="flex flex-col gap-2">
+      <KeyValueTable
+        label={label(path.split(".").pop() ?? path)}
+        entries={entries}
+        valueKind={inferValueKind(value)}
+        onChange={(next) => {
+          const blockReason = keyValueBlockReason(next);
+          if (blockReason !== null) {
+            setPending(next);
+            reportBlocked(path, blockReason);
+            return;
+          }
+          setPending(null);
+          reportBlocked(path, null);
+          const nextValue: JsonObject = {};
+          for (const entry of next) nextValue[entry.key] = entry.value;
+          onChange(nextValue);
+        }}
+      />
+      {nestedErrors.length > 0 ? (
+        <ul className="flex flex-col gap-1">
+          {nestedErrors.map(([errorPath, message]) => (
+            <li
+              key={errorPath}
+              role="alert"
+              className="rounded-lg border border-error/20 bg-error-container px-2 py-1 text-xs text-on-error-container"
+            >
+              <code className="font-mono">{errorPath}</code> — {message}
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }

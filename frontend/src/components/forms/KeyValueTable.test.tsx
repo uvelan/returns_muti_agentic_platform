@@ -121,4 +121,63 @@ describe("KeyValueTable", () => {
     await user.type(screen.getByRole("textbox", { name: "New key" }), "Not Valid");
     expect(screen.getByRole("button", { name: "Add key" })).toBeDisabled();
   });
+
+  it("keeps each remaining row's own value and JSON draft after deleting the middle row", async () => {
+    const user = userEvent.setup();
+    render(
+      <ControlledTable
+        initial={[
+          { key: "a", value: { n: 1 } },
+          { key: "b", value: { n: 2 } },
+          { key: "c", value: { n: 99 } },
+        ]}
+        valueKind="json"
+      />,
+    );
+
+    // Rows "a" and "c" (the ones that survive) get their own in-progress,
+    // still-invalid drafts -- distinct from each other and from their
+    // committed values -- so a mix-up after the delete would be visible.
+    const aTextarea = screen.getByRole("textbox", { name: "Value for a" });
+    await user.clear(aTextarea);
+    await user.type(aTextarea, '{{"n": 1, "still typing a');
+    const cTextarea = screen.getByRole("textbox", { name: "Value for c" });
+    await user.clear(cTextarea);
+    await user.type(cTextarea, '{{"n": 99, "still typing c');
+    expect(aTextarea).toHaveAttribute("aria-invalid", "true");
+    expect(cTextarea).toHaveAttribute("aria-invalid", "true");
+
+    await user.click(screen.getByRole("button", { name: "Remove b" }));
+
+    // Reindexed, not reset: row "a" is still row 1 with its own draft, row
+    // "c" is now row 2, still with its own (different) draft -- neither
+    // dropped, neither handed to the other row, neither snapped back to its
+    // last committed value.
+    expect(screen.getByRole("textbox", { name: "Key 1" })).toHaveValue("a");
+    expect(screen.getByRole("textbox", { name: "Key 2" })).toHaveValue("c");
+    expect(screen.getByRole("textbox", { name: "Value for a" })).toHaveValue('{"n": 1, "still typing a');
+    expect(screen.getByRole("textbox", { name: "Value for c" })).toHaveValue('{"n": 99, "still typing c');
+  });
+
+  it("flags both rows in place when a rename collides with another row's key, without dropping either", async () => {
+    const user = userEvent.setup();
+    render(<ControlledTable initial={[{ key: "A", value: "1" }, { key: "B", value: "2" }]} />);
+    const key1 = screen.getByRole("textbox", { name: "Key 1" });
+    await user.clear(key1);
+    await user.type(key1, "B");
+
+    // Both rows survive, both still show their own value, and both are
+    // flagged -- a duplicate key does not silently collapse two rows into
+    // one the way it did before ObjectNode kept `entries` as its own state.
+    expect(screen.getByRole("textbox", { name: "Key 1" })).toHaveValue("B");
+    expect(screen.getByRole("textbox", { name: "Key 2" })).toHaveValue("B");
+    const values = screen.getAllByRole("textbox", { name: "Value for B" });
+    expect(values.map((node) => (node as HTMLInputElement).value).sort()).toEqual(["1", "2"]);
+
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts).toHaveLength(2);
+    for (const alert of alerts) expect(alert).toHaveTextContent("This key is used more than once.");
+    expect(screen.getByRole("textbox", { name: "Key 1" })).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("textbox", { name: "Key 2" })).toHaveAttribute("aria-invalid", "true");
+  });
 });
