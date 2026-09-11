@@ -33,6 +33,7 @@
       },
       "AIGatewaySettingsUpdate": {
         "additionalProperties": false,
+        "description": "`PUT /api/ai/settings` -- `interceptMode` only (CFG-6).\n\n`providerOrder` was retired: `deployment.ai.provider_order`\n(`configuration/return_configuration.py`) is now the only source of AI\nprovider order, published and hot-adopted through the release like every\nother `deployment` field, at `/config/deployment`. This document's own\nproduction SIMULATOR check moved with it to\n`deployment_settings.validate_deployment_for_environment`, run at the\npublish/adopt-packaged boundary.",
         "properties": {
           "expectedVersion": {
             "minimum": 0.0,
@@ -42,20 +43,10 @@
           "interceptMode": {
             "title": "Interceptmode",
             "type": "boolean"
-          },
-          "providerOrder": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 6,
-            "minItems": 1,
-            "title": "Providerorder",
-            "type": "array"
           }
         },
         "required": [
           "interceptMode",
-          "providerOrder",
           "expectedVersion"
         ],
         "title": "AIGatewaySettingsUpdate",
@@ -67,13 +58,6 @@
           "interceptMode": {
             "title": "Interceptmode",
             "type": "boolean"
-          },
-          "providerOrder": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Providerorder",
-            "type": "array"
           },
           "updatedAt": {
             "format": "date-time",
@@ -92,7 +76,6 @@
         },
         "required": [
           "interceptMode",
-          "providerOrder",
           "version",
           "updatedAt",
           "updatedBy"
