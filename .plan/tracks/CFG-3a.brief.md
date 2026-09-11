@@ -15,6 +15,7 @@ Budget: 300k tokens; stop rule at 240k with `drop.json` PARTIAL.
 5. **Optimistic lock on PATCH**: `PatchDomainPayload.expected_version: int | None`; repository `get_domain_version(release_id, domain_key)`; mismatch → 409 with `current_version`. The frontend pipeline keeps working without it (optional field).
 6. **Audit filter**: `GET /api/config/audit?actions=CONFIGURATION_*&target=<release>` server-side filter; default unchanged.
 7. Regenerate OpenAPI (all copies) and run `scripts/check_openapi_drift.py`.
+8. **Carried from RV CFG-2:** delete the transitional `ignore` parameter of `configuration/composition.py` and its use in `return_configuration.py` (a re-added `production.yaml` must be refused as an unlisted file, with a test); add a test asserting the prompt blocks that were shared anchors in the old `ai_gateway.yaml` are still identical across the tasks that carried them (anchor names from `git show 73c276d2:backend/config/ai_gateway.yaml`). **Carried from RV CFG-1 F4:** the five canonical read routes (`/sources`, `/sources/{id}`, `/sources/{id}/assets/{id}`, `/audit`, `/audit/{id}`) bypass `redact_secret_values`; route them through `_ok` with a test.
 
 ## Acceptance
 - Tests for every route: happy path, 422 with path-mapped errors, 409 on stale version and stale head, 403 without the capability, the publish rollback on a refused promote, adopt-packaged producing the same release a CLI run would (assert equality against `bootstrap_graph_configuration.main` on the in-memory repository).

@@ -20,9 +20,9 @@ transcribed from memory. Brief: `.plan/tracks/CFG.brief.md`. Audit: `evidence/co
 |---|---|---|---|---|---|---|---|
 | CFG-0 | feat/cfg-0-audit-fixes | 42b0536b | orchestrator | **MERGED** | LEASE-CFG-0 MERGED | 2 · CR → PASS (0e7a2e60) | 06b43b18 (local trunk) |
 | CFG-1 | feat/cfg-1-dead-code | 06b43b18 | Sonnet | **MERGED** | LEASE-CFG-1 MERGED | 1 · PASS (e036310d) | 3cb696e7 |
-| CFG-2 | feat/cfg-2-config-split | 3cb696e7 | Opus spike DONE → Sonnet | READY | — | — | — |
+| CFG-2 | feat/cfg-2-config-split | 73c276d2 | Opus spike → Sonnet | **MERGED** | LEASE-CFG-2 MERGED | 1 · PASS (e42d92e6) | ff7aed3e |
 | CFG-3a | feat/cfg-3a-config-api | after CFG-0 | Sonnet | NOT_STARTED | — | — | — |
-| CFG-3b | feat/cfg-3b-form-primitives | after CFG-0 | Opus note → Sonnet | NOT_STARTED | — | — | — |
+| CFG-3b | feat/cfg-3b-form-primitives | 734a16dc | Sonnet | IN_PROGRESS | — | — | — |
 | CFG-4 | feat/cfg-4-screens-a | after CFG-3a + CFG-3b | Sonnet | NOT_STARTED | — | — | — |
 | CFG-5 | feat/cfg-5-screens-b | after CFG-4 | Sonnet | NOT_STARTED | — | — | — |
 | CFG-6 | feat/cfg-6-deployment-section | after CFG-2 + CFG-3a | Opus spike → Sonnet | NOT_STARTED | — | — | — |
@@ -566,7 +566,6 @@ directory -- is scope item 1 of that brief.
 
 ---
 
-<<<<<<< HEAD
 ## CFG-1 acceptance on the dev graph (orchestrator)
 
 Trunk merged at `3cb696e7` (merge record `73c276d2`). The serving worktree `cfg-verify` was moved to
@@ -585,7 +584,9 @@ frontend 200
 ```
 The six undecided keys are unchanged. Snapshot `evidence/config_audit/after_cfg1/`.
 CFG-2 implementer started on `feat/cfg-2-config-split` from `73c276d2` (worktree `cfg-2`).
-=======
+
+---
+
 ## CFG-2 step:00 — base check, worktree/PYTHONPATH pin
 
 ```
@@ -832,4 +833,23 @@ Returns: `docs/archive/**` -- none (never referenced these files); `backend/test
 **Bootstrap CLI**: not run by this lease, per the brief and the environment rules -- left for the orchestrator after RV.
 
 Head sha at this step: see `drop.json`. `merge_status: PENDING` -- every item in `.plan/tracks/CFG-2.brief.md`'s Acceptance section this lease is responsible for is met.
->>>>>>> feat/cfg-2-config-split
+
+
+---
+
+## CFG-2 merged at ff7aed3e (orchestrator)
+
+RV `.plan/reviews/CFG-2.md` on `e42d92e6`: PASS, zero blocking. Independent proofs: composed
+directories equal the old single files at the raw `safe_load` level and at `model_dump`; 86 of 86
+anchor materialisations byte-identical; live read-only simulation against head 78 computes a
+byte-identical release id (UNCHANGED, the six known undecided keys named). Advisories carried:
+F1 the transitional `ignore={"production.yaml"}` in `composition.py` / `return_configuration.py`
+outlived the deletion and silently skips a re-added file -- carried into CFG-3a; F2 the 25
+duplicated prompt blocks in `ai_gateway/tasks/*.yaml` have no sync guard -- carried into CFG-3a as a
+test; F5 `docs/evidence/stage4o_complete_audit/generate_audit_artifacts.py:264,266` names the deleted
+files -- carried into CFG-7. RV's mypy with PYTHONPATH set: clean; the implementer's "47 pre-existing
+errors" came from an unset PYTHONPATH.
+
+Merge note: the merge commit `ff7aed3e` was created with the ledger's conflict markers still inside
+(the orchestrator's command chain committed before the resolution ran); this entry is the
+resolution. Both sides were kept in order.

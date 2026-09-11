@@ -41,5 +41,7 @@
     "Two design deviations from .plan/tracks/CFG-2.design.md, recorded with evidence in CFG.ledger.md step:02, for RV to confirm: (1) AI Gateway task-shared YAML anchors materialized (duplicated) rather than left as cross-file aliases, since the design did not anticipate them and one-task-per-file forbids anchors crossing a file boundary; (2) compose_configuration_document gained an `ignore` parameter to let production.yaml coexist in its own directory during the split-to-deletion window, since the design did not anticipate that the old file already lived inside the new directory's own path.",
     "One design gap found and closed (ledger step:04): the design's count of 'seven raw-text readers' undercounted by 53 -- test files that pass a Path naming the old file straight to a loader are just as broken by the deletion as raw-text readers; all 53 were found and fixed, verified by pytest --collect-only (zero errors) and two full-suite runs with identical pass/fail counts before and after."
   ],
-  "merge_status": "PENDING"
+  "merge_status": "MERGED",
+  "merged_at": "2026-09-11T14:20:00Z",
+  "merged_to": "refactor/unified-return-platform (local, ff7aed3e, not pushed)"
 }
