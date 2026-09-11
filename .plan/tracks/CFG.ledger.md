@@ -2468,3 +2468,18 @@ bay.eligible_statuses             identical: True
 ```
 
 Head sha: see commit. `drop.json`'s `merge_status: PENDING` -- ready for RV round 2.
+
+---
+
+## CFG-4 merged at b03cbb59; served on the dev host (orchestrator)
+
+RV round 2 PASS on `45c14660` (round 1: two blocking -- the undecided-keys panel's false "no active
+release" sentence, and typed forms not gated on `config.release.write`; both fixed at the cause with
+tests). Whole frontend suite 1012 passed, 0 failed; the frontend list in
+`scripts/ci/known_test_failures.json` is empty. New advisories G1 (a keystroke after a 409 resurfaces
+the raw message) and G2 (the no-active-release branch untested) carried into CFG-5.
+
+The serving worktree `cfg-verify` was moved to `b03cbb59` without a backend restart (frontend-only
+change; Vite hot-reloads): `/config/discovery` answers 200, backend head 117 (the e2e runs of the two
+review rounds published and reverted through `POST /api/config/publish`; every touched value verified
+byte-identical by RV). CFG-5 implementer started on `feat/cfg-5-screens-b` from `b03cbb59`.
