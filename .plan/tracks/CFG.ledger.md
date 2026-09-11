@@ -18,8 +18,8 @@ transcribed from memory. Brief: `.plan/tracks/CFG.brief.md`. Audit: `evidence/co
 
 | Lease | Branch | Base sha | Model | Status | Drop | RV | Merged at |
 |---|---|---|---|---|---|---|---|
-| CFG-0 | feat/cfg-0-audit-fixes | 42b0536b + applied fixes (worktree cfg-verify) | orchestrator | NOT_STARTED | — | — | — |
-| CFG-1 | feat/cfg-1-dead-code | after CFG-0 | Sonnet | NOT_STARTED | — | — | — |
+| CFG-0 | feat/cfg-0-audit-fixes | 42b0536b | orchestrator | **MERGED** | LEASE-CFG-0 MERGED | 2 · CR → PASS (0e7a2e60) | 06b43b18 (local trunk) |
+| CFG-1 | feat/cfg-1-dead-code | 06b43b18 | Sonnet | IN_PROGRESS | — | — | — |
 | CFG-2 | feat/cfg-2-config-split | after CFG-1 | Opus spike → Sonnet | NOT_STARTED | — | — | — |
 | CFG-3a | feat/cfg-3a-config-api | after CFG-0 | Sonnet | NOT_STARTED | — | — | — |
 | CFG-3b | feat/cfg-3b-form-primitives | after CFG-0 | Opus note → Sonnet | NOT_STARTED | — | — | — |
