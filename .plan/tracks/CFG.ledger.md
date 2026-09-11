@@ -756,3 +756,59 @@ $ python scripts/check_openapi_drift.py
 No route or schema touched by this lease -- green without regeneration, as the acceptance line requires.
 
 Proceeding to the deletion commit now that the suite is confirmed clean with both packaged files still present.
+
+## CFG-2 step:07 -- final acceptance: full suite after deletion, deliberate-failure check, final sweep
+
+**Deliberate-failure check** (brief's "Evidence to paste"), run on the committed step:06 state, before the suite below: appended `workflow: { duplicate_test: true }` to `backend/config/returns/fulfilment.yaml`, ran `load_return_configuration(Path("backend/config/returns"))`, reverted:
+```
+$ python -c "from return_platform.configuration.return_configuration import load_return_configuration; from pathlib import Path; load_return_configuration(Path('backend/config/returns'))"
+ValueError: section workflow is declared in both
+K:\...\cfg-2\backend\config\returns\workflow.yaml and
+K:\...\cfg-2\backend\config\returns\fulfilment.yaml
+$ git checkout -- backend/config/returns/fulfilment.yaml
+$ git status --short backend/config/returns/fulfilment.yaml   ->  (clean)
+```
+Both offending file names appear in the message, as the composer's own rule requires. (One caution for whoever re-runs this: run it with the suite idle -- an earlier attempt overlapped a background pytest collection and produced the same error as a *test failure* rather than a clean revert-and-recheck; re-run below confirms no residue.)
+
+**Full suite, with `production.yaml`/`ai_gateway.yaml` actually deleted** (the authoritative final run; the working tree was left untouched between launch and completion this time):
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests -q -p no:cacheprovider --ignore=tests/configuration/test_concurrent_activation.py
+42 failed, 5295 passed, 10 skipped, 515 deselected, 2 warnings in 301.75s (0:05:01)
+```
+Failing-id comparison against `.plan/reviews/CFG-1.md`'s Q6 (RV's own verification that the 42 pre-existing failures are identical between the CFG-0 base and CFG-1, reproduced by diffing node ids across a throwaway worktree of each): the 42 ids here collapse to the same nine modules RV named there, unchanged across every run this lease took (before repointing defaults, before the 53-file fix, before deletion, and now after deletion):
+```
+tests/dynamic_knowledge/test_confirmation_starts_the_case_workflow.py (9 ids)
+tests/dynamic_knowledge/test_order_discovery_smoke_net.py (6 ids)
+tests/dynamic_knowledge/test_reasoning_stage_prompts.py (4 ids)
+tests/dynamic_knowledge/test_turn_temporal_grounding.py (2 ids)
+tests/test_ai_a_rejected_parse_is_repaired_on_its_own_route.py (13 ids)
+tests/test_ai_route_balancing_design.py (3 ids)
+tests/test_ai_single_dispatch_boundary.py (2 ids)
+tests/test_enforced_contracts_are_disclosed.py (2 ids)
+tests/test_keyless_reasoning_is_held_for_a_human.py (1 id)
+```
+9 + 6 + 4 + 2 + 13 + 3 + 2 + 2 + 1 = 42. Every failure is an AI provider-order/model-routing or case-workflow-confirmation/temporal-grounding assertion -- none touches configuration loading, composition, or any packaged file. Zero collection errors (all 5862 tests collected minus 515 deselected). 5295 passed = CFG-1's final 5276 + 19 (this lease's new tests), the exact bound the brief's acceptance line asks for ("pass count up by exactly the tests added").
+
+**Re-verified individually, post-deletion** (already run once with both files still present in step:05; repeated now with them gone, since that is the state that matters):
+```
+$ pytest tests/platform/test_layering.py tests/platform/test_no_module_cross_imports.py tests/platform/test_ai_lane_boundary.py -q          -> 6 passed
+$ pytest tests/configuration/test_packaged_configuration_composition.py tests/configuration/test_settings_configuration_paths.py -q          -> 19 passed
+$ pytest tests/acceptance/test_item_10_the_tool_rung_is_unreachable.py tests/configuration/test_return_method_requirements_configuration.py tests/configuration/test_support_ai_gateway_tasks.py tests/configuration/test_support_gate_configuration.py tests/operations/test_support_template_draft.py tests/policy/test_window_policy_is_configuration.py -q   -> 79 passed
+$ python scripts/validate_stage4n_ai_gateway.py   -> checksPassed=9, status=PASSED
+$ python scripts/check_openapi_drift.py           -> status PASS, diffs: []
+$ ruff check src/return_platform/configuration src/return_platform/ai/routing            -> All checks passed!
+$ ruff format --check src/return_platform/configuration src/return_platform/ai/routing   -> 53 files already formatted
+$ mypy src/return_platform/configuration src/return_platform/ai/routing                  -> 47 errors, same 6 unowned files as step:02/step:05 (unchanged)
+```
+
+**Final grep sweep** (acceptance line's exact command):
+```
+$ grep -rnI "production\.yaml|ai_gateway\.yaml" backend/ frontend/src scripts/ docs/configuration compose.yaml .env.example
+```
+Returns: `docs/archive/**` -- none (never referenced these files); `backend/tests/data/pre_split/**` -- the frozen copies and their own filenames, as designed; historical/explanatory prose in `*.md` -- `docs/configuration/order-agent-prompt-changelog.md:3`; and two categories the acceptance line's literal wording does not name but this lease accepts and flags rather than silently expanding scope further:
+1. Comments/docstrings inside `backend/src/**/*.py` and `backend/src/**/*.md` files this lease does not own beyond its four named `.py` files (`agents/*.md`, `ai/providers/anthropic.py`, `configuration/application/loader.py`, `configuration/cli/bootstrap_graph_configuration.py`, `configuration/domain/ai.py`, `configuration/support_gate_configuration.py`, `dynamic_knowledge/**`, `operations/**`, `api/template_preview.py`, `configuration/sql_migrations/006_return_shipment_state.sql`) -- all descriptive prose about where a value used to live or still lives conceptually, none a live path construction (`configuration/return_configuration.py` and `settings.py` have their *own* prose mentions too, inside the two files this lease *does* own, documenting the `ignore` parameter and the default-path comment -- those are intentional).
+2. Seven test files with no functional dependency on the split (`test_items_13_19_reminder_cadence_in_business_time.py`, `harness/business_calendars.py`, `test_support_resolver_composition.py`, `test_restocking_rate_reaches_the_case.py`, `test_cumulative_support_outcomes.py`, `test_graph_configuration_bootstrap.py`) plus `scripts/prepare_runtime_configuration.sh:152` (comment-only, already named by the design). Every file with a *functional* dependency on the old filenames -- anything that would break once the files were deleted -- was fixed (step:03-04); the suite result above is the proof: zero collection errors, zero new failures, with the files actually gone.
+
+**Bootstrap CLI**: not run by this lease, per the brief and the environment rules -- left for the orchestrator after RV.
+
+Head sha at this step: see `drop.json`. `merge_status: PENDING` -- every item in `.plan/tracks/CFG-2.brief.md`'s Acceptance section this lease is responsible for is met.
