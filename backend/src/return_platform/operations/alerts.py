@@ -7,10 +7,11 @@ is the shape of the problem: nothing was wrong with any *surface*, and nothing
 said so.
 
 **These are checks, not a metrics stack.** Choosing an exporter and a backend is
-an operator's decision and not one to make on their behalf, so this reuses the
-authority that already exists: `HardeningCheck` has a fixed id, a PASS/WARN/FAIL
-vocabulary, a rolled-up status and an HTTP route. A second observability surface
-beside it would be exactly the duplicate authority this programme has spent its
+an operator's decision and not one to make on their behalf, so this reuses a
+fixed id, a PASS/WARN/FAIL vocabulary and a rolled-up status -- the same shape
+`configuration/api/audit.py`'s now-retired `HardeningCheck` used before CFG-1
+deleted it (no consumer once its `APIRouter` was gone). A second observability
+surface would be exactly the duplicate authority this programme has spent its
 effort removing.
 
 **Bounded cardinality is structural here, not a convention.** There are six

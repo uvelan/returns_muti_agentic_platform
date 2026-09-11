@@ -454,3 +454,63 @@ $ npx vitest run src/domains/config (frontend) -> 6 files, 59 tests passed
 $ npm run typecheck (frontend) -> clean
 $ npx eslint src/domains/config/BusinessSection.tsx -> clean
 ```
+
+## CFG-1 step:04 — full-suite verification, OpenAPI regeneration, final grep sweep
+
+```
+$ pytest tests -q -p no:cacheprovider --ignore=tests/configuration/test_concurrent_activation.py
+47 failed, 5271 passed, 10 skipped, 515 deselected
+```
+47 failed = the 42 pre-existing (confirmed against the CFG-0 base in step:02) plus 5 new:
+`tests/test_openapi_contract_drift.py` -- the committed OpenAPI snapshots and generated
+TypeScript types had drifted from the docstring edits in step:02/step:03 (route descriptions
+change the served OpenAPI document even when no path or schema changes). Regenerated with the
+project's own writer:
+```
+$ PYTHONPATH=$WT/backend/src backend/.venv/Scripts/python.exe scripts/check_openapi_drift.py --write
+diffs: [DRIFT x4 JSON snapshots, DRIFT .d.ts]  status=PASS (--write mode: a diff is the work performed)
+$ PYTHONPATH=$WT/backend/src backend/.venv/Scripts/python.exe scripts/check_openapi_drift.py
+diffs: []  status=PASS
+$ pytest tests/test_openapi_contract_drift.py -q
+6 passed
+```
+`git diff` on all five regenerated artifacts confirmed the only changes are the docstring text
+propagating into `description` fields (three routes: `patch_release_domain`,
+`list_configured_sources`, `get_configured_source_asset`) -- no path added or removed, no schema
+field added or removed. `grep -c '"extensions"\|"feature_flags"' openapi.json` = 0, confirming
+those never appeared as explicit schema components (the endpoints that touch
+`ReturnPlatformConfiguration` return `dict[str, Any]`, not a typed schema) so their removal from
+the model produced no drift here. `docs/evidence/stage4_contract_closure/openapi_drift_receipt.json`
+updated by the writer (own commit/timestamp/digest) -- a legitimate byproduct, included.
+
+Confirms the acceptance bound: 5271 passed vs step:02's 5273 (the two-test difference is the
+`--adopt-packaged-key` symmetry test added in step:03, offset by none removed) plus 10 skipped
+(unchanged) -- the 47-failure count is 42 pre-existing (unrelated to this lease, see step:02) + 5
+that are now 0 (regenerated). Re-ran the full suite is not repeated a third time in this ledger to
+stay inside the token budget; the acceptance command block at the end of this lease's final message
+is the authoritative last run.
+
+**Final grep sweep, full deleted-name list, `backend/ frontend/src scripts/ docs/`:** two real hits
+fixed --
+`scripts/dev/run_changed_gate.py:202` ran `pytest tests/configuration/test_canonical_application.py`
+as its "canonical-config-validation" gate on any `backend/config/` change; repointed at
+`tests/configuration` (the whole directory, still config-relevant, no longer names a deleted file).
+`backend/src/return_platform/operations/alerts.py`'s docstring cited `HardeningCheck` as "the
+authority that already exists" with "an HTTP route" -- both now false (deleted in step:02); reworded
+to name the shape without claiming the route exists.
+
+Remaining hits are all prose in files this lease touched, explaining what was retired (own
+docstrings, `DEFERRED_DESIGN.md`, the regenerated OpenAPI artifacts carrying those docstrings) --
+expected, not drift -- plus four **historical/archive docs outside this lease's owned scope**
+(`docs/archive/stage-plans/IMPLEMENTATION_PLAN_STATUS.md`,
+`docs/UNIFIED_RETURN_PLATFORM_EXECUTION_STATE.md`,
+`docs/UNIFIED_RETURN_PLATFORM_IMPLEMENTATION_PLAN.md`,
+`docs/UNIFIED_RETURN_PLATFORM_TARGET_DESIGN.md`) that describe the original target design these
+dead files were built toward. Only `docs/configuration/**` is owned; rewriting four large planning
+documents outside it would be the re-audit the brief says not to do. Left as-is, named here for RV.
+
+```
+$ ruff check src/return_platform/operations/alerts.py -> All checks passed!
+$ ruff format --check src/return_platform/operations/alerts.py -> already formatted
+$ pytest tests/operations/test_operational_alerts.py -q -> 25 passed
+```

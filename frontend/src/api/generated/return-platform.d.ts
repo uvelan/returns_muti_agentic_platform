@@ -974,9 +974,11 @@ export interface paths {
          *     operator changing one prompt should not have to round-trip a whole domain
          *     document and risk clobbering a field they never looked at.
          *
-         *     The full-document `PUT` the console router also declares is deliberately not
-         *     republished here: it has no consumer, and a whole-document overwrite is a
-         *     strictly larger blast radius than a merge patch for the same outcome.
+         *     The console router used to also declare a full-document `PUT`
+         *     (`save_domain_config`) for this path; CFG-1 deleted it outright rather than
+         *     leaving it unrepublished -- it had no consumer, and a whole-document
+         *     overwrite is a strictly larger blast radius than a merge patch for the
+         *     same outcome.
          */
         patch: operations["patch_release_domain_api_config_releases__release_id__domains__domain_key__patch"];
         trace?: never;
@@ -1049,10 +1051,11 @@ export interface paths {
          * List Configured Sources
          * @description Configured data sources and their probed health.
          *
-         *     Delegates to the Data Console handler rather than reimplementing the probe
-         *     fan-out: this is a canonical *surface* over one implementation, which is the
-         *     whole point of the exercise. When Wave F deletes the console router, the
-         *     body moves here unchanged.
+         *     Delegates to the retired console module's handler rather than
+         *     reimplementing the probe fan-out: this is a canonical *surface* over one
+         *     implementation, which is the whole point of the exercise. CFG-1 deleted
+         *     the console `APIRouter` this handler used to also be mounted under; the
+         *     body stays in `sources.py`, imported and called directly, unchanged.
          */
         get: operations["list_configured_sources_api_config_sources_get"];
         put?: never;
@@ -1094,9 +1097,10 @@ export interface paths {
          *     `metadata.fields` is the point -- it is the only place the platform publishes
          *     what columns or keys an asset actually carries, and until this route existed
          *     it was reachable only through `/data-console/v1/inventory/{engine}/{asset_id}`,
-         *     which Wave F1 unmounted deliberately and
-         *     `test_no_versioned_data_console_path_is_mounted` keeps unmounted. Delegated
-         *     rather than reimplemented, exactly like the two reads above.
+         *     which Wave F1 unmounted deliberately and `test_no_data_console_path_is_served`
+         *     keeps unmounted -- CFG-1 went further and deleted the `APIRouter` that path
+         *     was declared on. Delegated rather than reimplemented, exactly like the two
+         *     reads above.
          *
          *     **Keyed by source, not by engine.** The console navigates from a source to
          *     its assets, and a source owns a definite set of them; the console handler

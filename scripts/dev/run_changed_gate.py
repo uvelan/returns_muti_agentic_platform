@@ -199,7 +199,7 @@ def gates_for(files: set[str]) -> list[GateCommand]:
                     "poetry",
                     "run",
                     "pytest",
-                    "tests/configuration/test_canonical_application.py",
+                    "tests/configuration",
                     "-q",
                 ],
                 backend,

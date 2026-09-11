@@ -22176,7 +22176,7 @@
     },
     "/api/config/releases/{release_id}/domains/{domain_key}": {
       "patch": {
-        "description": "Merge-patch one behaviour domain of a draft.\n\nRFC 7396 semantics against the stored document, then full validation of the\n*result* against `ReturnPlatformConfiguration`, `AIGatewayConfiguration` or\n`DependencySimulationConfiguration` -- a patch that would leave the domain\ninvalid is a 422 and nothing is stored. Patch rather than replace because an\noperator changing one prompt should not have to round-trip a whole domain\ndocument and risk clobbering a field they never looked at.\n\nThe full-document `PUT` the console router also declares is deliberately not\nrepublished here: it has no consumer, and a whole-document overwrite is a\nstrictly larger blast radius than a merge patch for the same outcome.",
+        "description": "Merge-patch one behaviour domain of a draft.\n\nRFC 7396 semantics against the stored document, then full validation of the\n*result* against `ReturnPlatformConfiguration`, `AIGatewayConfiguration` or\n`DependencySimulationConfiguration` -- a patch that would leave the domain\ninvalid is a 422 and nothing is stored. Patch rather than replace because an\noperator changing one prompt should not have to round-trip a whole domain\ndocument and risk clobbering a field they never looked at.\n\nThe console router used to also declare a full-document `PUT`\n(`save_domain_config`) for this path; CFG-1 deleted it outright rather than\nleaving it unrepublished -- it had no consumer, and a whole-document\noverwrite is a strictly larger blast radius than a merge patch for the\nsame outcome.",
         "operationId": "patch_release_domain_api_config_releases__release_id__domains__domain_key__patch",
         "parameters": [
           {
@@ -22313,7 +22313,7 @@
     },
     "/api/config/sources": {
       "get": {
-        "description": "Configured data sources and their probed health.\n\nDelegates to the Data Console handler rather than reimplementing the probe\nfan-out: this is a canonical *surface* over one implementation, which is the\nwhole point of the exercise. When Wave F deletes the console router, the\nbody moves here unchanged.",
+        "description": "Configured data sources and their probed health.\n\nDelegates to the retired console module's handler rather than\nreimplementing the probe fan-out: this is a canonical *surface* over one\nimplementation, which is the whole point of the exercise. CFG-1 deleted\nthe console `APIRouter` this handler used to also be mounted under; the\nbody stays in `sources.py`, imported and called directly, unchanged.",
         "operationId": "list_configured_sources_api_config_sources_get",
         "responses": {
           "200": {
@@ -22377,7 +22377,7 @@
     },
     "/api/config/sources/{source_id}/assets/{asset_id}": {
       "get": {
-        "description": "One asset's schema: its fields, ownership, and what may be done to it.\n\n`metadata.fields` is the point -- it is the only place the platform publishes\nwhat columns or keys an asset actually carries, and until this route existed\nit was reachable only through `/data-console/v1/inventory/{engine}/{asset_id}`,\nwhich Wave F1 unmounted deliberately and\n`test_no_versioned_data_console_path_is_mounted` keeps unmounted. Delegated\nrather than reimplemented, exactly like the two reads above.\n\n**Keyed by source, not by engine.** The console navigates from a source to\nits assets, and a source owns a definite set of them; the console handler\ntakes an engine because it predates the nesting. Resolving containment here\nmeans an asset that exists in the registry but does not belong to the named\nsource is a 404 rather than a successful read through a path that claims a\nrelationship it does not have -- and it makes the engine argument derivable\nfrom the asset instead of something a caller could get wrong.",
+        "description": "One asset's schema: its fields, ownership, and what may be done to it.\n\n`metadata.fields` is the point -- it is the only place the platform publishes\nwhat columns or keys an asset actually carries, and until this route existed\nit was reachable only through `/data-console/v1/inventory/{engine}/{asset_id}`,\nwhich Wave F1 unmounted deliberately and `test_no_data_console_path_is_served`\nkeeps unmounted -- CFG-1 went further and deleted the `APIRouter` that path\nwas declared on. Delegated rather than reimplemented, exactly like the two\nreads above.\n\n**Keyed by source, not by engine.** The console navigates from a source to\nits assets, and a source owns a definite set of them; the console handler\ntakes an engine because it predates the nesting. Resolving containment here\nmeans an asset that exists in the registry but does not belong to the named\nsource is a 404 rather than a successful read through a path that claims a\nrelationship it does not have -- and it makes the engine argument derivable\nfrom the asset instead of something a caller could get wrong.",
         "operationId": "get_configured_source_asset_api_config_sources__source_id__assets__asset_id__get",
         "parameters": [
           {
