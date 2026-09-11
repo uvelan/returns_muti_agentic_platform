@@ -2,7 +2,7 @@
   "lease_id": "LEASE-CFG-3a",
   "branch": "feat/cfg-3a-config-api",
   "base_sha": "5dc5a8250cab846e4b7bc95c09f08b2b2fa825ea",
-  "head_sha": "933b39c3bf88eda9091664794a478f488516b88f",
+  "head_sha": "29936af9b1a2f9f3a73ada88a981e0f8eae9193e",
   "files": [
     "backend/src/return_platform/configuration/composition.py (removed the transitional `ignore` parameter -- RV CFG-2 F1)",
     "backend/src/return_platform/configuration/return_configuration.py (call site updated)",
@@ -22,18 +22,30 @@
     "backend/tests/configuration/test_canonical_config_api.py (mutation-surface pin updated for validate/publish/adopt-packaged; +3 tests for the RV CFG-1 F4 fix; +2 tests for the audit query-param threading)",
     "backend/tests/configuration/test_audit_filter.py (new; AuditService.list_logs query-building, _action_pattern)",
     "backend/openapi/return-platform.openapi.json, openapi/return-platform.openapi.json, frontend/openapi/return-platform.openapi.json, openapi.json, frontend/src/api/generated/return-platform.d.ts (regenerated)",
-    "docs/evidence/stage4_contract_closure/openapi_drift_receipt.json (byproduct of --write)"
+    "docs/evidence/stage4_contract_closure/openapi_drift_receipt.json (byproduct of --write)",
+    "-- RV round 1 fixes (step:11) --",
+    "backend/src/return_platform/configuration/application/packaged_adoption.py (F1: _would_adopt now derives from the merge result, not `not undecided`; F3: release_id restored to the four moved log lines via a new parameter; F4: new log: bool=True param, False from summarize_packaged_drift)",
+    "backend/src/return_platform/configuration/cli/bootstrap_graph_configuration.py (F3: main() passes release_id=active.release_id to adopt_packaged_configuration)",
+    "backend/src/return_platform/configuration/api/releases.py (F1: get_packaged_drift docstring corrected + release_id threaded to summarize_packaged_drift; F2: publish_configuration writes all five per-step audit records, not one summary)",
+    "backend/src/return_platform/configuration/api/audit.py (F9: MAX_ACTIONS cap, $in for all-exact action lists, $regex only when a prefix entry is present)",
+    "backend/src/return_platform/configuration/api/router.py (F9: actions Query gained max_length=MAX_ACTIONS)",
+    "backend/tests/configuration/test_packaged_adoption.py (new; F1 regression + two more would_adopt cases)",
+    "backend/tests/configuration/test_get_domain_version_live_infra.py (new; F6, live_infra-marked, not run by this lease)",
+    "backend/tests/configuration/test_audit_filter.py (F9: five new tests)",
+    "backend/tests/test_configuration_api.py (F1: one pre-existing test corrected; F2/F4/F7/F10: new/strengthened tests)"
   ],
   "tests": {
-    "brief's exact acceptance command (tests/test_configuration_api.py tests/configuration tests/test_graph_configuration_bootstrap.py tests/test_every_console_path_is_mounted.py tests/api)": "714 passed, 5 deselected, 2 warnings in 101.15s",
-    "full backend suite (tests -q --ignore=tests/configuration/test_concurrent_activation.py; that file no longer exists, --ignore is a no-op)": "42 failed, 5333 passed, 10 skipped, 515 deselected, 2 warnings in 311.26s -- the 42 failing ids collapse to the exact same 9 modules CFG-2's RV-verified pre-existing set names (test_confirmation_starts_the_case_workflow.py:9, test_order_discovery_smoke_net.py:6, test_reasoning_stage_prompts.py:4, test_turn_temporal_grounding.py:2, test_ai_a_rejected_parse_is_repaired_on_its_own_route.py:13, test_ai_route_balancing_design.py:3, test_ai_single_dispatch_boundary.py:2, test_enforced_contracts_are_disclosed.py:2, test_keyless_reasoning_is_held_for_a_human.py:1 = 42); none touches configuration. 5333 passed = CFG-2's final 5295 + 38 tests this lease adds",
-    "ruff check + format --check on every file this lease changed (10 src + 7 test files)": "clean",
-    "mypy on the 10 changed src files (PYTHONPATH set)": "Success: no issues found in 10 source files",
-    "python scripts/check_openapi_drift.py (post --write)": "status PASS, diffs: []",
-    "bootstrap CLI test suite (test_graph_configuration_bootstrap.py, unmodified, the extraction's own contract)": "24 passed -- proves adopt_packaged_configuration's extraction changed no CLI behaviour"
+    "brief's exact acceptance command, after round 1 fixes": "728 passed, 6 deselected, 2 warnings in 110.66s",
+    "full backend suite (round 1) has not been re-run in full -- the nine known-failing modules plus tests/configuration and tests/api were run instead, per the coordinator's round-1 instruction": "42 failed, 774 passed, 6 deselected, 2 warnings in 103.35s -- the same 42 ids as every prior run (the nine pre-existing modules), none touching configuration",
+    "ruff check + format --check on every file round 1 changed (5 src + 4 test files, new files included)": "clean",
+    "mypy on the 5 round-1-changed src files (PYTHONPATH set)": "Success: no issues found in 5 source files",
+    "python scripts/check_openapi_drift.py --write then check (actions max_length changed the schema)": "write: PASS; check: status PASS, diffs: []",
+    "tests/configuration/test_packaged_adoption.py tests/test_configuration_api.py tests/configuration/test_audit_filter.py": "52 passed in 19.60s"
   },
   "remaining": [
     "Not this lease's job (brief + environment rules): bootstrap CLI against the live dev graph, launchers, reset scripts -- left for the orchestrator after RV.",
+    "F6's new live_infra test has not been run against a real Neo4j instance by this lease (environment rules forbid it); RV's own direct verification during round 1 review is what its assertions are based on -- worth a real run before or shortly after merge.",
+    "F5 and F8 deliberately left open per the coordinator's round-1 instruction, with reasoning recorded in CFG.ledger.md step:11 -- candidates for CFG-4 if the platform wants the archive-on-refusal guarantee widened to any exception.",
     "The coordinator message received mid-lease about 'RV round 1 for CFG-3b' concerns a different lease (frontend form primitives) and worktree; not acted on here since CFG-3a's brief excludes frontend components and this worktree has no access to CFG-3b's files. Flagged to the orchestrator in the final report as likely misrouted."
   ],
   "merge_status": "PENDING"
