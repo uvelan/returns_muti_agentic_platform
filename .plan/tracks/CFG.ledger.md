@@ -853,3 +853,21 @@ errors" came from an unset PYTHONPATH.
 Merge note: the merge commit `ff7aed3e` was created with the ledger's conflict markers still inside
 (the orchestrator's command chain committed before the resolution ran); this entry is the
 resolution. Both sides were kept in order.
+
+---
+
+## CFG-2 acceptance on the dev graph (orchestrator)
+
+Serving worktree `cfg-verify` moved to the merge commit `ff7aed3e` (returns directory: 9 part files;
+`ai_gateway/index.yaml` + 25 task files) and the stack relaunched:
+```
+graph_configuration_release=return-platform-d2f7787021d4622d
+graph_configuration_status=UNCHANGED
+runtime: return-platform-d2f7787021d4622d head 78
+adoption: LIVE 78 pending [] api [78]
+sections: 26 | tasks: 25
+frontend 200
+```
+The composed directories publish byte-for-byte what the single files did: no new release, no head
+move, the same six undecided keys named. CFG-3a worktree prepared at `5dc5a825`; its implementer
+starts after CFG-3b reports (one implementer per usage window).
