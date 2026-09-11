@@ -2494,8 +2494,9 @@ Inside cfg-5, as required.
   `MOCK_AI_TRACES` so the replay/compare pair stays comparable to the original the way the real
   `AIGatewayService.evaluate` path does.
 - `frontend/src/mocks/handlers/canonicalHandlers.contract.test.ts`: one `ROUTES` entry per new
-  handler (13 total), checked against the committed OpenAPI document the same way every other
-  canonical route is.
+  handler (**10** total -- agents 3, schema-releases 5, replay/compare 2; corrected by RV round 1,
+  F7, which was right that this said 13), checked against the committed OpenAPI document the same
+  way every other canonical route is.
 
 **Dead branch (RV CFG-1 F5).** `main.tsx`'s `onUnhandledRequest` callback printed only for
 `/data-console/v1/` requests -- the legacy surface Wave F4 deleted along with the frontend that
@@ -3081,6 +3082,20 @@ source_products.incrementalCursorField  before: source_updated_at
                                          after clear: source_updated_at, overridden: false  (identical to before)
 ```
 
+**RV round 1, F5 -- four of the paths above are outside CFG-5's declared Owns
+(`frontend/src/domains/config/**`, `registry.ts` + test, `routeManifest.ts`, `api/**` named files,
+`mocks/**`, `main.tsx`'s dead branch only, `e2e/**`; Owns names nothing under `domains/sync/**` and no
+`domainScreens.ts`), recorded here as item 7's own consequences rather than left implicit:**
+`frontend/src/domains/sync/SyncRedirect.tsx` (new -- the `<Redirect>` component `/sync` now renders),
+`frontend/src/domains/sync/SyncControlPage.tsx` and `SyncControlPage.test.tsx` (deleted -- their logic
+moved into the owned `DataSourcesSection.tsx`, so the originals are dead weight, not a parallel copy),
+and `frontend/src/domains/domainScreens.ts` (one line changed: `/sync`'s entry now points at
+`SyncRedirect` instead of `SyncControlPage`). All four are unavoidable consequences of item 7's own
+requirement -- "source bindings + sync moved from `/sync` with redirect" -- rather than scope creep: a
+redirect has to render something, the file it used to render cannot both move and stay, and the route
+table has to name whichever of the two is current. None of the four carry any change beyond what
+retiring `/sync` as a standalone page requires.
+
 Files: `frontend/src/domains/config/DataSourcesSection.tsx`, `DataSourcesSection.test.tsx`,
 `frontend/src/domains/sync/SyncRedirect.tsx`, `frontend/src/domains/domainScreens.ts`,
 `frontend/src/domains/registry.ts`, `frontend/src/domains/routeManifest.ts`,
@@ -3224,3 +3239,142 @@ nothing for a drift check to find.
 Files: `frontend/src/domains/config/AgentsSection.tsx` (one class name). `drop.json` **PENDING**: all
 eleven brief items resolved -- items 1-4, 6-11 implemented in this lease; item 5 split to CFG-5b per
 the coordinator's explicit scope change, with its full architecture plan recorded in step:05.
+
+## CFG-5 step:12 — RV round 1 fixes
+
+RV round 1 returned CHANGES_REQUIRED (`.plan/reviews/CFG-5.md`): one blocker (F1) and seven advisories
+(F2-F8). All eight taken.
+
+**Correction to step:09's own dispositions -- the sweep's one deterministic failure was misdiagnosed
+as CFG-4's F10 flake. It was not.** Step:09 recorded the `/config`/`/config/overview` axe
+color-contrast failure as F10-class, on the strength of an inconsistent pass/fail record across a
+handful of runs. RV reproduced the real cause 3/3 on a warm server and 0/1 only with a 2500ms settle
+added: `UndecidedKeysPanel.tsx`'s "Take packaged file" button used `disabled:opacity-40` on
+`text-on-surface-variant`, which composites to 2.04:1 against the white panel background while the
+button is disabled -- under WCAG's 4.5:1 floor, and deterministic once a row renders before
+`headRevision` resolves (`packaged-drift` and `config/runtime` do not always settle in the same tick,
+which is why step:09's own handful of runs saw it pass sometimes: the race, not the rendering, was
+what varied). This was a real, fixable defect wearing a flake's coloring -- not a timing artifact of
+the dev server compiling CSS, which is what F10 actually is. The claim in step:09's prose and in
+`drop.json`'s `acceptance`/`done` fields calling this F10 is wrong and is superseded by this entry;
+`drop.json` is corrected below.
+
+**F1 (BLOCKING) -- fixed the contrast defect, not by re-adding opacity elsewhere.**
+`text-on-surface-variant` at full opacity is 7:1+ against a background this light (confirmed against
+the same token over `bg-secondary-container` in `AgentsSection.tsx`), so the button's resting colour
+already clears the floor -- the only thing wrong was fading it while disabled. Dropped the opacity
+utility entirely; the disabled state stays visibly inert via `cursor-not-allowed` and new
+`disabled:hover:border-outline-control disabled:hover:text-on-surface-variant` classes that re-assert
+the resting colours, so a disabled button never picks up the hover treatment (a disabled button that
+*looked* interactive on hover would be its own defect). Added a regression test in
+`OverviewSection.test.tsx` asserting the disabled button's `className` carries no `opacity-\d` utility
+-- there is no contrast-computation helper in this repo (the review's own probe used an external axe
+run), so a className assertion is what fails loudly the moment this exact defect returns.
+
+**F2 (advisory) -- `onUnhandledRequest` switched from `"bypass"` to `"warn"`.** `"warn"` is MSW v2's
+own default (`node_modules/msw/lib/core/utils/request/onUnhandledRequest.js`): it still bypasses the
+request (nothing the app does differently) but also reports it via `console.warn`, which
+`canonical-routes.spec.ts` never fails on (only `console.error` and 4xx/5xx fail a route). This
+answers the original F2 objection -- unhandled requests like `/support`'s missing `/api/rma-tickets`
+and `/api/v1/return-support/work-items` handlers are now visible in the sweep's own console output --
+without failing any route over a gap this lease does not own. Confirmed with
+`npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g "support" --workers=1`:
+both warnings appear, all 12 tests still pass.
+
+**F3 (advisory) -- `ai_may_fabricate_success` is read-only now, not an interactive toggle that can
+never be flipped on.** `validate_required_agents` (`return_configuration.py:1878-1879`) refuses `true`
+on any of the four topics unconditionally, in every environment, so a `Toggle` here had exactly one
+reachable transition and it always 422s -- the same shape `IntegrationsSection.tsx`'s own module
+docstring already rejects `KeyValueTable` for on this section. Replaced with a local, non-interactive
+`AiMayFabricateSuccessStatus` component: states the release's actual current value (not assumed
+`false` -- a release predating the validator could in principle still carry `true`) plus the refusal
+reason, rather than a hint attached to a control nothing can change. Kept inside the owned
+`IntegrationsSection.tsx` rather than touching `Toggle` itself (`components/forms/**` is outside
+CFG-5's Owns).
+
+**F4 (advisory) -- restored the sync section's dropped rationale comments.** Diffed the current
+`DataSourcesSection.tsx` against the original `SyncControlPage.tsx` (`git show
+b03cbb59:frontend/src/domains/sync/SyncControlPage.tsx`) and put back seventeen comment blocks the
+move had silently dropped: the module-level "two mechanisms, one history" and "nodeWrites is on the
+card" paragraphs; JSDoc on `READS`, the `start` mutation, and `StartSyncForm`; the STALLED-vs-FAILED
+and "fifteen hours" rationale in `StatusPill`; the three-state (not two) comment in `RunListPane`; why
+only incremental runs get a badge; why `nodeWrites` is the number that matters; the `incremental`
+default's rationale; why the error paragraph stays visible after the form collapses; why
+`maxRecordsPerAsset` is omitted rather than sent as `NaN`; the scopes-match rationale; the
+zero-`nodeWrites`-on-success warning's own two-part rationale; the no-cursor-field skip note; and what
+a targeted run is for. Logic untouched throughout -- comments only.
+
+**F5 (advisory) -- the four out-of-Owns paths from item 7 recorded as consequences, not left
+implicit.** Added a paragraph to step:07's own entry naming `SyncRedirect.tsx` (new),
+`SyncControlPage.tsx`/`SyncControlPage.test.tsx` (deleted), and `domainScreens.ts` (one line) as
+unavoidable consequences of "source bindings + sync moved from `/sync` with redirect" -- none of the
+four carry any change beyond what retiring `/sync` as a standalone page requires.
+
+**F6 (advisory) -- fixed the stale "see `BusinessSection.tsx`" pointer.** `registry.ts`'s comment
+above the CFG-4 wave-A entries pointed at `BusinessSection.tsx`'s own note for why those four groups
+were removed from the Business tab -- but `BusinessSection.tsx` itself is deleted as of this lease's
+item 8. Repointed to `ConfigurationPage.tsx`'s module docstring instead, which now carries that
+history. The half-dozen other historical `BusinessSection` mentions RV named
+(`SimulationSection.tsx:23`, `registry.ts:196/200`, `canonicalHandlers.ts:802`,
+`IntegrationsSection.tsx:42`) were confirmed by the review itself as "fine as history" and left as is.
+
+**F7 (advisory) -- `drop.json`'s `head_sha` and the routes-count claim corrected.** The step:01 ledger
+entry said "one `ROUTES` entry per new handler (13 total)"; corrected to the real count, 10 (agents 3,
+schema-releases 5, replay/compare 2). `drop.json`'s `head_sha` is corrected below to this step's own
+commit.
+
+**F8 (advisory) -- `config-integrations.spec.ts` no longer selects a field by position.**
+`.getByRole("checkbox", { name: "Enabled" }).nth(1)` picked `external_support_mirror`'s toggle by its
+place in `TOPICS`' declared order; reordering or renaming a topic would have silently retargeted a
+spec that publishes to the live stack, with no failure to say so. Scoped to the topic's own card
+instead -- `page.locator("div.rounded-lg", { hasText: "External support mirror" })` (`.rounded-lg` is
+the topic card `<div>`'s own class in `IntegrationsSection.tsx`; the enclosing `FieldGroup` renders a
+`<section>`, not a `<div>`, so nothing else on the page collides) -- then queried the checkbox and
+label within that scope. Updated the file's module docstring, which had explained and justified the
+positional approach, to describe the card-scoping instead.
+
+```
+$ npx vitest run
+ Test Files  87 passed (87)
+      Tests  1058 passed (1058)
+
+$ npm run typecheck
+typecheck exit: 0
+
+$ npm run lint
+lint exit: 0
+
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts --workers=1
+135 passed (0 failed) -- the F1 fix resolves the color-contrast failure step:09 had misattributed to
+F10. A first run of this sweep after the fix still showed one failure, `/config/return-policy (+214px)`
+reflow at 390px -- a route this lease does not touch -- which then passed both in isolation
+(`-g "no route scrolls sideways at 390"`, 1 passed) and on an immediate full re-sweep (135 passed): the
+same fails-only-in-the-cold-full-sweep, passes-in-isolation-and-on-repeat signature step:09 already
+characterized as F10, now on a different route now that the deterministic failure that used to mask it
+is gone.
+
+$ E2E_REAL_BASE_URL=http://localhost:5199 npx playwright test --project=cfg4-e2e e2e/config-overview.spec.ts --workers=1 --reporter=list --timeout=60000
+  ok Overview -- real stack › reads the active release and renders the undecided-keys panel from the live packaged-drift (2.1s)
+  1 passed
+```
+Disposable `vite --port 5199`, stopped afterward; `:5173`/`:8000` confirmed still up and untouched
+before and after.
+
+Backend, run to prove no regression rather than assume it (zero backend files changed anywhere in this
+lease -- `git diff --stat b03cbb59..HEAD -- backend/` is empty):
+
+```
+$ cd backend && PYTHONPATH=<worktree>/backend/src backend/.venv/Scripts/python.exe -c "import return_platform; print(return_platform.__file__)"
+K:\Projects\Ret\...\worktrees\cfg-5\backend\src\return_platform\__init__.py
+
+$ PYTHONPATH=<worktree>/backend/src backend/.venv/Scripts/python.exe -m pytest tests/configuration tests/api tests/test_configuration_api.py -q
+698 passed, 6 deselected, 2 warnings in 97.87s
+```
+
+Files: `frontend/src/domains/config/UndecidedKeysPanel.tsx`, `OverviewSection.test.tsx`,
+`frontend/src/main.tsx`, `frontend/src/domains/config/IntegrationsSection.tsx`,
+`frontend/src/domains/config/DataSourcesSection.tsx`, `frontend/src/domains/registry.ts`,
+`frontend/e2e/config-integrations.spec.ts`, `.plan/tracks/CFG.ledger.md` (this entry, the F5 addendum
+to step:07, and the F7 correction to step:01). `drop.json`: `head_sha` corrected to this step's commit,
+`status` moved from PENDING to RV-ready, and the F10 misattribution in `acceptance`/`done` corrected to
+name the real cause.

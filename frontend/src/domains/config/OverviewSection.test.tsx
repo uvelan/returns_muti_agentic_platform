@@ -241,5 +241,35 @@ describe("Overview screen -- undecided keys panel", () => {
       expect(button).toBeDisabled();
       expect(button).toHaveAttribute("title", "No head revision to lock against");
     });
+
+    // RV round 1, F1 (BLOCKING): `disabled:opacity-40` on `text-on-surface-variant`
+    // composited to 2.04:1 on the white panel background -- reproduced 4/4 by
+    // the review, including on a warm server, and was the sweep's one real
+    // failure the whole time (not CFG-4's F10 flake, which this drop had
+    // wrongly blamed it on). An opacity utility applied to a *disabled*
+    // element's own text is exactly the shape of that defect: it fades the
+    // foreground colour the sighted-contrast floor was computed against,
+    // silently, well below what the token was chosen to clear. Asserted
+    // directly on the className rather than by computing contrast in the
+    // test, since there is no contrast-checking utility in this repo (the
+    // review's own probe used an external axe run) and a className check
+    // fails loudly the moment the exact class that caused this returns.
+    it("does not fade the disabled button's text with an opacity utility", async () => {
+      mocks.runtime.mockResolvedValue({
+        release_id: "unknown",
+        head_revision: null,
+        configuration: {},
+      });
+      mocks.packagedDrift.mockResolvedValue({
+        RETURN_PLATFORM: { undecided: ["discovery"], would_adopt: [], filled_leaves: [] },
+        AI_GATEWAY: { undecided: [], would_adopt: [], filled_leaves: [] },
+        DEPENDENCY_SIMULATION: { undecided: [], would_adopt: [], filled_leaves: [] },
+      });
+      render(<OverviewSection canReadReleases />, { wrapper: Wrapper });
+
+      const button = await screen.findByRole("button", { name: "Take packaged file" });
+      expect(button).toBeDisabled();
+      expect(button.className).not.toMatch(/(?:^|[\s:])opacity-\d/);
+    });
   });
 });

@@ -290,7 +290,30 @@ function RebindForm({
 //
 // Moved from `SyncControlPage.tsx` (`/sync`), which now redirects here. The
 // list/detail/trigger logic is unchanged; only the summary panel (previously
-// a `DomainRail` portal) is inlined to fit a Configuration tab.
+// a `DomainRail` portal) is inlined to fit a Configuration tab. RV round 1,
+// F4: the design-rationale comments below are the original file's own,
+// restored with the code they explain rather than left dropped by the move
+// -- they are the record of the defects this screen was built to answer,
+// which is the part of a file a move is most likely to lose.
+//
+// S6's own opening note: the graph the copilot answers from is a projection
+// of source systems, and until this screen existed nothing in the console
+// said when it was last built, from what, or by whom -- `GraphSyncService`
+// recorded every run it ever performed and served that record to nobody
+// after Wave F1 unmounted the Data Console.
+//
+// **Two mechanisms, one history.** A scheduled run covers every
+// participating source. A targeted run covers a single record an agent
+// pulled in mid-conversation because the graph did not have it yet.
+// Splitting them into two lists would mean an operator investigating an
+// unexpected node has to know which mechanism to suspect before they can
+// look -- so they share the list, and a targeted run says which
+// conversation caused it.
+//
+// **`nodeWrites` is on the card, not buried in the detail.** A sync that
+// reported COMPLETED having written nothing is the exact shape of the
+// defect this screen shipped alongside: the source answered and the
+// projection discarded the answer. That number is what makes it visible.
 
 const FILTERS = [
   { label: "All runs", value: "" },
@@ -305,6 +328,15 @@ const SCOPES = [
   { label: "SQL Server sources", value: "SQLSERVER" },
 ] as const;
 
+/**
+ * Which records to read, asked separately from which sources to cover.
+ *
+ * Two questions, not one list of four combinations: the scope above chooses
+ * the sources, this chooses how much of each. Phrased as what it does
+ * rather than as "full/incremental" -- the operator's question is "does
+ * this reread everything", and the answer to that is the whole reason the
+ * choice exists.
+ */
 const READS = [
   { label: "Only what changed since the last run", value: true },
   { label: "Everything, ignoring the last run", value: false },
@@ -327,6 +359,13 @@ function SyncPanel() {
     queryFn: selected === null ? skipToken : () => graphSyncApi.readRun(selected),
   });
 
+  /**
+   * A sync is awaited server-side, so this mutation is pending for as long
+   * as the run takes. That is deliberate: an operator who pressed "Sync
+   * now" wants to know the outcome, and a fire-and-forget button that
+   * reported success immediately would say "done" about a run that had not
+   * started.
+   */
   const start = useMutation({
     mutationFn: (input: StartSyncInput) => graphSyncApi.startRun(input),
     onSuccess: async (run) => {
@@ -343,6 +382,10 @@ function SyncPanel() {
     );
   }
 
+  // The newest run in whatever the list currently holds. `listRuns` returns
+  // newest first, so this is the head rather than a scan -- and it is the
+  // answer to the only question this domain exists to answer, which is
+  // whether the graph is current.
   const newest = (runs.data ?? []).at(0) ?? null;
 
   return (
@@ -399,6 +442,15 @@ function Pane({ title, children }: { title: string; children: React.ReactNode })
 }
 
 function StatusPill({ status }: { status: SyncRun["status"] }) {
+  // STALLED reads as a failure, because operationally it is one: the run
+  // stopped reporting and the graph may hold a partial rebuild. It is a
+  // separate status rather than FAILED because the responses differ --
+  // FAILED points at the source data, STALLED points at the worker -- but
+  // neither is a run an operator should read as still in progress.
+  //
+  // Before this, a run whose process died stayed RUNNING forever and the
+  // pill said so. One had been RUNNING for fifteen hours with zero node
+  // writes.
   const tone =
     status === "FAILED" || status === "STALLED"
       ? "border-error text-error"
@@ -459,6 +511,11 @@ function RunListPane({
       {canStart ? <StartSyncForm onSubmit={onStart} starting={starting} error={startError} /> : null}
 
       <div className="max-h-96 flex-1 overflow-y-auto">
+        {/*
+          Three states, not two. `data ?? []` would tell an operator the
+          graph has never been synchronized when the truth is that we could
+          not ask -- and "never synchronized" is something they would act on.
+        */}
         {error !== null ? (
           <p role="alert" className="px-4 py-3 text-sm text-error">{error.message}</p>
         ) : loading ? (
@@ -485,6 +542,11 @@ function RunListPane({
                     </span>
                     <span className="truncate text-sm text-on-surface">{run.mode}</span>
                     <StatusPill status={run.status} />
+                    {/*
+                      Only the incremental case is badged. A full scan is the
+                      default and marking every row "FULL" would make the one
+                      distinction that matters harder to spot, not easier.
+                    */}
                     {run.recordScope === "INCREMENTAL" ? (
                       <span className="rounded-full border border-outline-variant px-1.5 py-0.5 text-[10px] uppercase text-on-surface-variant">
                         Incremental
@@ -494,6 +556,10 @@ function RunListPane({
                   <span className="flex flex-wrap items-center gap-x-3 text-[11px] text-outline">
                     <span>{formatTimestamp(run.startedAt)}</span>
                     <span>{run.startedBy}</span>
+                    {/*
+                      The number that distinguishes a sync that worked from
+                      one that reported success and wrote nothing.
+                    */}
                     <span>{run.nodeWrites} nodes</span>
                     {run.errorCode !== null ? <span className="text-error">{run.errorCode}</span> : null}
                   </span>
@@ -507,6 +573,13 @@ function RunListPane({
   );
 }
 
+/**
+ * Start a sync.
+ *
+ * Collapsed until asked for. Re-reading production sources and rewriting
+ * the graph the copilot answers from is not a button that should sit
+ * permanently armed next to a list an operator is scrolling.
+ */
 function StartSyncForm({
   onSubmit,
   starting,
@@ -518,6 +591,9 @@ function StartSyncForm({
 }) {
   const [open, setOpen] = useState(false);
   const [scope, setScope] = useState<StartSyncInput["mode"]>("FULL");
+  // Defaults to the full scan, matching the backend. A manual "Sync now" is
+  // usually pressed *because* something looks wrong with the graph, and
+  // resuming from a cursor is the wrong default for that.
   const [incremental, setIncremental] = useState(false);
   const [maxRecords, setMaxRecords] = useState("1000");
 
@@ -533,6 +609,8 @@ function StartSyncForm({
           Sync now
         </button>
         {error !== null ? (
+          // Kept visible after the form closes: a refused sync that
+          // vanished with the form would read as one that ran.
           <p role="alert" className="mt-1 text-[11px] text-error">{error.message}</p>
         ) : null}
       </div>
@@ -548,6 +626,8 @@ function StartSyncForm({
         onSubmit({
           mode: scope,
           incremental,
+          // Omitted rather than sent as NaN if the field was cleared; the
+          // backend has its own default and its own ceiling.
           ...(Number.isFinite(parsed) && parsed > 0 ? { maxRecordsPerAsset: parsed } : {}),
         });
       }}
@@ -558,6 +638,9 @@ function StartSyncForm({
         <select
           value={scope}
           onChange={(event) => {
+            // Matched against the declared scopes rather than asserted: the
+            // element hands back a `string`, and an assertion here would
+            // let a renamed option through as a mode the backend rejects.
             const chosen = SCOPES.find((option) => option.value === event.target.value);
             if (chosen !== undefined) setScope(chosen.value);
           }}
@@ -679,7 +762,16 @@ function RunDetailPane({ run, loading }: { run: SyncRun | null; loading: boolean
               ["Relationships", String(run.relationshipWrites)],
             ]}
           />
+          {/*
+            Deliberately not shown for an incremental run. Writing nothing
+            is the *expected* outcome there -- it means no source changed
+            since the last run -- and an error-toned warning on every quiet
+            run is how a real one stops being read.
+          */}
           {run.status === "COMPLETED" && run.nodeWrites === 0 && run.recordScope !== "INCREMENTAL" ? (
+            // The specific failure that hid behind a green status: the
+            // source answered and nothing reached the graph. Said plainly
+            // rather than left for someone to notice a zero.
             <p role="status" className="text-xs text-error">
               This run completed without writing anything. Either the sources had nothing new, or
               what came back did not project.
@@ -690,6 +782,12 @@ function RunDetailPane({ run, loading }: { run: SyncRun | null; loading: boolean
         {run.skippedSources === undefined || run.skippedSources.length === 0 ? null : (
           <section className="flex flex-col gap-2">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-outline">Skipped</h3>
+            {/*
+              A source with no cursor field cannot be resumed, so an
+              incremental run passes over it entirely and still reports
+              COMPLETED. Left unsaid, that source silently stops syncing
+              until someone runs a full scan.
+            */}
             <p className="text-xs text-error">
               These sources have no cursor and were not read. They stay as the last full sync left
               them.
@@ -715,6 +813,12 @@ function RunDetailPane({ run, loading }: { run: SyncRun | null; loading: boolean
               <UserRound size={13} aria-hidden="true" />
               Requested by an agent turn
             </h3>
+            {/*
+              What a targeted run is for. An operator seeing a sync nobody
+              started needs the conversation, not just a timestamp -- and the
+              anchor's *fields*, because the anchor's values are a customer's
+              order number and this list is exported and kept.
+            */}
             <Facts
               rows={[
                 ["Agent", run.requestedBy.agentId],

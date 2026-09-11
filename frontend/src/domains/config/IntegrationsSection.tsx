@@ -132,12 +132,7 @@ function IntegrationsEditor({
                         value={asBoolean(value.enabled)}
                         onChange={(next) => { set(["integrations", topic.key, "enabled"], next); }}
                       />
-                      <Toggle
-                        label="AI may fabricate success"
-                        hint="Whether an AI-authored message may claim this integration succeeded before it is confirmed. The release-level validator refuses true on any of the four topics unconditionally -- this is not a production-only guard."
-                        value={asBoolean(value.ai_may_fabricate_success)}
-                        onChange={(next) => { set(["integrations", topic.key, "ai_may_fabricate_success"], next); }}
-                      />
+                      <AiMayFabricateSuccessStatus value={asBoolean(value.ai_may_fabricate_success)} />
                       <TextField
                         label="Topic"
                         value={asString(value.topic)}
@@ -177,6 +172,38 @@ function IntegrationsEditor({
         );
       }}
     />
+  );
+}
+
+/**
+ * `ai_may_fabricate_success`, read-only.
+ *
+ * RV round 1, F3: a `Toggle` here can never be switched *on* --
+ * `validate_required_agents` (`return_configuration.py:1878-1879`) refuses
+ * `true` on any of the four topics unconditionally, not only in production
+ * -- so an interactive control whose only reachable transition always 422s
+ * is exactly what this file's own module docstring already rejects
+ * `KeyValueTable` for on this same section ("offering add/rename/delete
+ * over a fixed four-field model would build controls that always 422").
+ * Rendered as a status line instead: the release's actual current value
+ * (never assumed to be `false` -- a release predating the validator could
+ * in principle still carry `true`), stated as fact, with the refusal
+ * reason next to it rather than as a hint on a control nothing can change.
+ * Not a `Toggle` prop addition (`components/forms/**` is outside CFG-5's
+ * Owns) -- a local, non-interactive readout instead.
+ */
+function AiMayFabricateSuccessStatus({ value }: { value: boolean }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="premium-kicker">AI may fabricate success</p>
+      <p className="text-sm text-on-surface">{value ? "On" : "Off"} -- read-only</p>
+      <p className="text-xs text-on-surface-variant">
+        Whether an AI-authored message may claim this integration succeeded before it is
+        confirmed. The release validator refuses <code>true</code> on any of the four topics
+        unconditionally (not only in production), so there is no reachable state for a control
+        here to switch to.
+      </p>
+    </div>
   );
 }
 

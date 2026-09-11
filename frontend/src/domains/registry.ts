@@ -179,10 +179,10 @@ export const CONFIG_SECTIONS = [
   // release (`ConfigurationPage.tsx`).
   "Support",
   // CFG-4, wave A: the first four typed sections, each a page of its own
-  // rather than a `Business` tab entry -- see `BusinessSection.tsx`'s own
-  // note on why the four groups these come from (discovery, policy,
-  // fulfilment) were removed from that tab wholesale. Placed next to
-  // `Business`, which still carries every section without a typed screen.
+  // rather than a `Business` tab entry -- see `ConfigurationPage.tsx`'s own
+  // module docstring for why the tab that used to carry every section
+  // without a typed screen (`BusinessSection.tsx`, four groups' worth at
+  // this wave) is gone outright now that CFG-5 gave the last of them one.
   "Discovery",
   "Return Policy",
   "Fulfilment",

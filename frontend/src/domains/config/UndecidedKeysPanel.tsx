@@ -172,7 +172,20 @@ export function UndecidedKeysPanel({ headRevision }: { headRevision: number | nu
                     setPendingUnit(id);
                     adopt.mutate([id]);
                   }}
-                  className="shrink-0 rounded-lg border border-outline-control bg-surface-container-lowest px-3 py-1.5 text-xs font-medium text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                  // RV round 1, F1 (BLOCKING): `disabled:opacity-40` composited
+                  // `text-on-surface-variant` (#3e4947) to #b2b6b5 on the white
+                  // panel background -- 2.04:1, reached whenever this row
+                  // renders before `headRevision` resolves (`packaged-drift`
+                  // and `config/runtime` do not settle in the same tick).
+                  // `text-on-surface-variant` at full opacity is 7:1+ on
+                  // anything this light (confirmed against `bg-secondary-container`
+                  // for the same token in `AgentsSection.tsx`), so the fix is to
+                  // stop fading the text at all: the disabled state is still
+                  // visibly inert via `cursor-not-allowed` and by *not* taking
+                  // the hover colour (`disabled:hover:*` re-asserts the resting
+                  // colours so a disabled button never reads as interactive),
+                  // not via a contrast-breaking opacity trick.
+                  className="shrink-0 rounded-lg border border-outline-control bg-surface-container-lowest px-3 py-1.5 text-xs font-medium text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:hover:border-outline-control disabled:hover:text-on-surface-variant"
                 >
                   {adopt.isPending && pendingUnit === id ? "Adopting..." : "Take packaged file"}
                 </button>

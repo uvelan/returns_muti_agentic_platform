@@ -2,7 +2,7 @@
   "lease_id": "CFG-5",
   "branch": "feat/cfg-5-screens-b",
   "base_sha": "b03cbb59",
-  "head_sha": "0fe57026",
+  "head_sha": "PENDING",
   "status": "PENDING",
   "files": [
     "frontend/src/mocks/handlers/canonicalHandlers.ts",
@@ -34,7 +34,8 @@
     "frontend/e2e/config-support.spec.ts",
     "frontend/e2e/config-integrations.spec.ts",
     "frontend/e2e/config-simulation.spec.ts",
-    "frontend/e2e/config-source-bindings.spec.ts"
+    "frontend/e2e/config-source-bindings.spec.ts",
+    ".plan/tracks/CFG.ledger.md"
   ],
   "deleted_files": [
     "frontend/src/domains/config/BusinessSection.tsx",
@@ -42,13 +43,13 @@
     "frontend/src/domains/sync/SyncControlPage.tsx"
   ],
   "acceptance": {
-    "npx vitest run": "1057 passed, 0 failed (87 files)",
+    "npx vitest run": "1058 passed, 0 failed (87 files)",
     "npm run typecheck": "clean (exit 0)",
     "npm run lint": "clean (exit 0)",
-    "npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts --workers=1 (dev:mock full sweep)": "134 passed, 1 failed -- /config axe color-contrast, F10-class flake (CFG-4's own documented cold/contended-server timing issue); passed on both an isolated re-run and a repeat full sweep immediately after on identical code",
-    "backend pytest tests/configuration tests/api tests/test_configuration_api.py -q": "698 passed, 6 deselected, 2 warnings in 119.29s -- run to prove no backend regression; zero backend files changed anywhere in this lease (item 5 split to CFG-5b)",
+    "npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts --workers=1 (dev:mock full sweep, post-F1-fix)": "135 passed, 0 failed. CORRECTION to this lease's own earlier claim: the failure previously recorded here as an 'F10-class flake' was not F10 -- it was a real, deterministic contrast defect in UndecidedKeysPanel.tsx's disabled 'Take packaged file' button (disabled:opacity-40 on text-on-surface-variant, 2.04:1 on white), found by RV round 1 (F1, BLOCKING) and fixed in step:12. A first post-fix run of this sweep showed one different, genuinely-flaky failure (/config/return-policy reflow at 390px, a route this lease does not touch), which then passed both in isolation and on an immediate full re-sweep -- the real F10 signature, now visible on a different route once the deterministic failure that used to mask it was gone.",
+    "backend pytest tests/configuration tests/api tests/test_configuration_api.py -q": "698 passed, 6 deselected, 2 warnings in 97.87s -- rerun after RV round 1 fixes to reconfirm no backend regression; zero backend files changed anywhere in this lease (item 5 split to CFG-5b)",
     "check_openapi_drift.py": "not run -- no backend response shape changed (backend diff empty, openapi/return-platform.openapi.json diff empty against base b03cbb59)",
-    "E2E_REAL_BASE_URL=... npx playwright test --project=cfg4-e2e --workers=1 (per-screen live specs, run once each during development)": "config-workflow 1 passed, config-support 1 passed, config-integrations 1 passed, config-simulation 1 passed, config-source-bindings 1 passed -- all published, verified via independent GET reads, and reverted; :5173/:8000 never restarted"
+    "E2E_REAL_BASE_URL=... npx playwright test --project=cfg4-e2e --workers=1 (per-screen live specs, run once each during development)": "config-workflow 1 passed, config-support 1 passed, config-integrations 1 passed, config-simulation 1 passed, config-source-bindings 1 passed, config-overview 1 passed (rerun in step:12 after F1) -- all published/verified/reverted where the screen mutates state; :5173/:8000 never restarted"
   },
   "done": [
     "item 1: MSW handlers + contract tests for /api/agents, /api/schema-releases/*, /api/ai/requests/{id}/replay|compare; dead /data-console/v1/ branch removed from main.tsx",
@@ -60,7 +61,8 @@
     "item 8: Business tab retired",
     "item 9: CFG-4 advisories G1 (publish.reset() clears the raw 409 message on the next edit), G2 (no-active-release branch test), F6 (countPatchLeaves -- dirtyCount is now a real leaf count, not a section count)",
     "item 10: one Playwright spec per new screen, run once and reverted -- workflow, support, integrations, simulation, source-bindings",
-    "item 11: full acceptance sweep -- fixed one real, deterministic /config/agents color-contrast defect found by the sweep (invisible before item 1's own mock addition); remaining sweep flakiness confirmed as CFG-4's own documented F10, not a new regression; backend suites pasted (zero backend files touched, item 5 excluded)"
+    "item 11: full acceptance sweep -- fixed one real, deterministic /config/agents color-contrast defect found by the sweep (invisible before item 1's own mock addition); backend suites pasted (zero backend files touched, item 5 excluded). NOTE: this item's own sweep at the time misdiagnosed a second real, deterministic defect (UndecidedKeysPanel.tsx's disabled-button contrast) as CFG-4's F10 flake -- corrected by RV round 1 F1, see step:12.",
+    "RV round 1 fixes (step:12): F1 (BLOCKING) UndecidedKeysPanel.tsx disabled-button contrast fixed + regression test, and the F10 misattribution corrected here and in the ledger; F2 onUnhandledRequest -> 'warn'; F3 ai_may_fabricate_success rendered read-only; F4 restored 17 dropped rationale comments in DataSourcesSection.tsx; F5 out-of-Owns paths recorded as item-7 consequences in the ledger; F6 stale BusinessSection.tsx pointer fixed; F7 routes-count and head_sha corrected; F8 config-integrations.spec.ts scoped by card instead of position"
   ],
   "remaining": [],
   "out_of_scope_flagged": [

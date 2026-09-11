@@ -79,15 +79,22 @@ async function enableMocking() {
   // `/support/work-queue` and `/support/rma-tickets` -- `GET /api/rma-tickets`
   // and `GET /api/v1/return-support/work-items` have no handler in
   // `supportHandlers.ts`, a real gap, but one outside `frontend/src/domains/
-  // config/**` and this lease's mandate. No option at all -- MSW's own
-  // default -- leaves every unhandled request to fall through to Vite's
-  // dev server unremarked, which is what let the printed-string branch above
-  // go dead in the first place without anything noticing. `"bypass"` is the
-  // explicit spelling of that same behaviour: no callback, no dead literal,
-  // and the route sweep for every domain stays exactly as green or red as it
-  // already was. The `/support` gap is real and is flagged separately rather
-  // than fixed here.
-  return worker.start({ onUnhandledRequest: "bypass" });
+  // config/**` and this lease's mandate.
+  //
+  // RV round 1, F2: settled on `"bypass"` next, on the mistaken belief that
+  // omitting the option entirely -- MSW's own default -- "leaves every
+  // unhandled request to fall through to Vite's dev server unremarked".
+  // MSW v2's actual default is `"warn"`
+  // (`node_modules/msw/lib/core/utils/request/onUnhandledRequest.js`), and
+  // `"warn"` both bypasses the request *and* reports it, through
+  // `console.warn` rather than `console.error`. That is the option that
+  // answers the original objection with nothing given up:
+  // `tests/canonical-routes.spec.ts` only fails a route on `console.error`
+  // or a 4xx/5xx response, so `"warn"` fails no route (`"error"`'s own
+  // problem) while still surfacing exactly the kind of gap the `/support`
+  // routes above turned out to have -- which `"bypass"`, by construction,
+  // can never report at all.
+  return worker.start({ onUnhandledRequest: "warn" });
 }
 
 /**

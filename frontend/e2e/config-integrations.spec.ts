@@ -21,11 +21,14 @@ import { requireRealStack } from "../tests/realStack";
  * with other work.
  *
  * Four topic rows share the same two toggle labels ("Enabled", "AI may
- * fabricate success"), so the row is picked by index rather than by a
- * unique accessible name -- `TOPICS` in `IntegrationsSection.tsx` is
- * declared in the fixed order `omc_return_create, external_support_mirror,
- * carrier_booking, customer_notification`, so the second "Enabled" checkbox
- * on the page is always `external_support_mirror`'s.
+ * fabricate success"), so the row is picked by scoping to the card that
+ * carries the topic's own label text ("External support mirror") rather
+ * than by position. RV round 1, F8: an earlier version of this spec used
+ * `.nth(1)`, positional in `TOPICS`' declared order
+ * (`omc_return_create, external_support_mirror, carrier_booking,
+ * customer_notification`) -- reordering or renaming a topic would have
+ * silently retargeted a spec that publishes to the live stack, with no
+ * failure to say so.
  *
  * Run this file (and the rest of the `cfg4-e2e` project) with `--workers=1`
  * -- see `playwright.config.ts`'s own note on why two of these specs racing
@@ -39,14 +42,22 @@ test.describe("Integrations -- real stack", () => {
     requireRealStack();
 
     await page.goto("/config/integrations");
-    const toggle = page.getByRole("checkbox", { name: "Enabled" }).nth(1);
+    // RV round 1, F8: scope to the topic's own card (identified by its
+    // unique label text, "External support mirror") before the role query,
+    // rather than picking the second "Enabled" checkbox on the page by
+    // position -- `.rounded-lg` is the topic-card `<div>`'s own class in
+    // `IntegrationsSection.tsx` (the enclosing `FieldGroup` does not share
+    // it), so this stays pinned to *this* topic even if `TOPICS` is
+    // reordered or another topic is added.
+    const card = page.locator("div.rounded-lg", { hasText: "External support mirror" });
+    const toggle = card.getByRole("checkbox", { name: "Enabled" });
     // `Toggle`'s real `<input type=checkbox>` is visually `sr-only` (1x1px,
     // clipped) inside a `<span>` the CSS switch draws *over* it -- correct
     // for a mouse/keyboard user via the `<label htmlFor>` delegating the
     // click, but it means the checkbox's own coordinates are covered by
     // that span. Click the visible label -- a real sibling, not covered --
     // and assert on the input.
-    const toggleLabel = page.locator("label", { hasText: "Enabled" }).nth(1);
+    const toggleLabel = card.locator("label", { hasText: "Enabled" });
     const before = await toggle.isChecked();
 
     await toggleLabel.click();
@@ -76,8 +87,9 @@ test.describe("Integrations -- real stack", () => {
 
     // The screen remounts from the new release once the runtime query
     // refetches; wait for the field to reappear with the value it now carries.
-    const toggleAfterPublish = page.getByRole("checkbox", { name: "Enabled" }).nth(1);
-    const toggleLabelAfterPublish = page.locator("label", { hasText: "Enabled" }).nth(1);
+    const cardAfterPublish = page.locator("div.rounded-lg", { hasText: "External support mirror" });
+    const toggleAfterPublish = cardAfterPublish.getByRole("checkbox", { name: "Enabled" });
+    const toggleLabelAfterPublish = cardAfterPublish.locator("label", { hasText: "Enabled" });
     await expect(toggleAfterPublish).toBeChecked({ checked: !before });
 
     // Revert.
