@@ -3089,3 +3089,61 @@ deleted `frontend/src/domains/sync/SyncControlPage.tsx`, `SyncControlPage.test.t
 `drop.json` PARTIAL: items 1-4, 6, 7, 8 done; item 5 split to CFG-5b; item 10 (a Playwright spec per
 new screen) is complete too -- workflow, support, integrations, simulation and source-bindings each
 have one, run once and reverted; items 9, 11 remain.
+
+## CFG-5 step:08 — CFG-4 advisories G1, G2, F6 (item 9)
+
+**G1 (`TypedSectionScreen.tsx`'s `set()`).** After a 409, the first keystroke cleared
+`conflictNotice` but not `publish`'s own errored mutation state -- `PublishBar`'s `error` prop falls
+back to `publish.error.message` once `conflictNotice` is `null`, and a `useMutation` stays in its
+errored state until the *next* `mutate()` call, not the next keystroke. The friendly notice
+disappeared and the raw 409 message ("Configuration head revision changed from 41 to 44") reappeared
+underneath it, reading as a second, unrelated failure arriving while the operator was still fixing
+the first. Fixed by calling `publish.reset()` alongside `setConflictNotice(null)` in `set()`, so both
+clear together. New test in `DiscoverySection.test.tsx`: publishes into a 409, asserts the friendly
+notice shows, types one more character (not another Publish click), asserts *both* the friendly
+notice and the raw 409 text are gone. Caught one ordering bug of my own while writing it -- queuing
+the post-conflict `runtime()` mock *before* `render()` fed it to the initial mount instead of the
+`onError` refetch, which is the same "queued after mount consumes the base" discipline the existing
+409-recovery test already documents; fixed to match.
+
+**G2 (`UndecidedKeysPanel.tsx`'s `!hasActiveRelease` branch).** F1's own fix moved "is there an
+active release" from `would_adopt` (which cannot answer it) to `headRevision` (which can) -- but
+every existing fixture, F1's own two included, passes a `head_revision`, so the branch the original
+false sentence lived in had no test asserting it post-fix. New test in `OverviewSection.test.tsx`:
+`head_revision: null`, asserts the panel still says "No active release to compare against yet" (now
+correctly, for a state where it is true) and the "Take packaged file" button is disabled with
+`title="No head revision to lock against"`.
+
+**F6 (`TypedSectionScreen.tsx`'s `dirtyCount`).** Was `Object.keys(patch).length` -- top-level merge-
+patch keys, i.e. sections, not edits. Two edits nested under one section (`discovery.ambiguity_gap_millionths`
+and `discovery.strong_anchors`, say) both read "1 change staged". New `countPatchLeaves` in
+`jsonPath.ts` walks a merge patch recursively: a nested plain-object value is a partial update and its
+own keys are counted instead of the parent key; a scalar, `null` (RFC 7396's deletion marker) or an
+array is one leaf each, because a merge patch replaces an array wholesale and there is nothing inside
+it to attribute a change to. `PublishBar`'s own "N changes staged" label needed no wording change --
+it already read as change-count, not section-count. Eight focused unit tests in the new
+`jsonPath.test.ts` (flat, nested, deep, sibling sections, null-as-one-leaf, array-as-one-leaf, mixed,
+empty); the whole frontend suite's other 1047 tests all still pass unchanged, confirming no screen's
+test had been asserting the old section-counting number.
+
+```
+$ npx vitest run                       # whole frontend suite
+ Test Files  87 passed (87)
+      Tests  1057 passed (1057)
+
+$ npm run typecheck
+typecheck exit: 0
+$ npm run lint
+lint exit: 0
+```
+
+`dev:mock` spot check (discovery/overview, the two screens the new tests exercise directly):
+
+```
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g "config/discovery|config/overview"
+  6 passed -- render, keyboard, axe for both
+```
+
+Files: `frontend/src/domains/config/TypedSectionScreen.tsx`, `jsonPath.ts`, `jsonPath.test.ts`,
+`DiscoverySection.test.tsx`, `OverviewSection.test.tsx`. `drop.json` PARTIAL: items 1-4, 6, 7, 8, 9,
+10 done; item 5 split to CFG-5b; item 11 (backend pytest, final full sweep) is what remains.

@@ -213,4 +213,33 @@ describe("Overview screen -- undecided keys panel", () => {
       ).toBeInTheDocument();
     });
   });
+
+  // RV CFG-4 round 2, G2: F1's fix moved "is there an active release" from
+  // `would_adopt` (which cannot answer it) to `headRevision` (which can) --
+  // but every fixture up to this point, including F1's own two above, passes
+  // a `head_revision`. The one branch the sentence F1 was originally about
+  // (`!hasActiveRelease`) had gone untested by the fix that replaced it.
+  describe("G2 -- no active release at all (head_revision absent)", () => {
+    it("says there is no active release to compare against, and disables the button", async () => {
+      mocks.runtime.mockResolvedValue({
+        release_id: "unknown",
+        head_revision: null,
+        configuration: {},
+      });
+      mocks.packagedDrift.mockResolvedValue({
+        RETURN_PLATFORM: { undecided: ["discovery"], would_adopt: [], filled_leaves: [] },
+        AI_GATEWAY: { undecided: [], would_adopt: [], filled_leaves: [] },
+        DEPENDENCY_SIMULATION: { undecided: [], would_adopt: [], filled_leaves: [] },
+      });
+      render(<OverviewSection canReadReleases />, { wrapper: Wrapper });
+
+      await screen.findByText("RETURN_PLATFORM: discovery");
+      expect(
+        screen.getByText(/No active release to compare against yet -- adopting is refused until one exists\./),
+      ).toBeInTheDocument();
+      const button = screen.getByRole("button", { name: "Take packaged file" });
+      expect(button).toBeDisabled();
+      expect(button).toHaveAttribute("title", "No head revision to lock against");
+    });
+  });
 });
