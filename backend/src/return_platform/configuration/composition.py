@@ -59,7 +59,6 @@ def compose_configuration_document(
     directory: Path,
     *,
     document_keys: frozenset[str],
-    ignore: frozenset[str] = frozenset(),
 ) -> ComposedDocument:
     """Compose the packaged configuration tree rooted at `directory`.
 
@@ -70,17 +69,15 @@ def compose_configuration_document(
     `parts`/`entries` is accepted as a document key, so `document_keys` only
     has to name the keys that are *required*, not every inline section).
 
-    `ignore` names paths (relative to `directory`, POSIX-separated) the
-    no-globbing scan below must not flag as unlisted. It exists for exactly
-    one purpose: `backend/config/returns/production.yaml` -- the packaged
-    monolith the CFG-2 split replaced -- shares a directory with the part
-    files that replaced it for one deliberate window, between the commit
-    that writes the split and the later commit that deletes it (`.plan/tracks/
-    CFG-2.design.md`'s split is proven correct *before* the monolith goes, not
-    after, so the directory has to compose while both still exist). Nothing
-    in `ignore` is read into `document`; it is excluded from composition
-    exactly as if it were not on disk, so the same directory continues to
-    compose the identical document once the ignored file is gone.
+    **No `ignore` parameter.** CFG-2 carried one here for exactly one window --
+    `backend/config/returns/production.yaml`, the packaged monolith the split
+    replaced, sharing this directory with the part files that replaced it
+    between the split commit and the later commit that deleted it. That
+    deletion landed (CFG-2 step:06); the window it existed for is over, and a
+    directory that scans clean without it is the point -- a `production.yaml`
+    re-added by mistake, a bad merge, or a stray editor save is exactly the
+    unlisted-file case the no-globbing scan below exists to catch, and a
+    permanent `ignore` would have made it invisible again.
     """
     directory = directory.resolve(strict=True)
     if not directory.is_dir():
@@ -170,12 +167,11 @@ def compose_configuration_document(
     # 4. Every *.yaml/*.yml under the directory must be named by parts or an
     #    entries list (or be index.yaml itself) -- no globbing.
     listed = {p.resolve() for p in files}
-    ignored = {(directory / rel).resolve() for rel in ignore}
     unlisted: list[Path] = []
     for candidate in sorted(directory.rglob("*")):
         if candidate.is_file() and candidate.suffix.lower() in (".yaml", ".yml"):
             resolved_candidate = candidate.resolve()
-            if resolved_candidate not in listed and resolved_candidate not in ignored:
+            if resolved_candidate not in listed:
                 unlisted.append(candidate)
     if unlisted:
         names = ", ".join(str(p) for p in unlisted)

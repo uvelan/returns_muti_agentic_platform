@@ -853,3 +853,43 @@ errors" came from an unset PYTHONPATH.
 Merge note: the merge commit `ff7aed3e` was created with the ledger's conflict markers still inside
 (the orchestrator's command chain committed before the resolution ran); this entry is the
 resolution. Both sides were kept in order.
+
+## CFG-3a step:00 — base check, worktree/PYTHONPATH pin
+
+```
+$ pwd
+/k/Projects/Ret/returns_muti_agentic_platform/.claude/worktrees/cfg-3a
+$ git branch --show-current
+feat/cfg-3a-config-api
+$ git log -1 --oneline
+5dc5a825 (CFG) merge record fix: ledger conflict resolved, CFG-2 MERGED, carry-overs into CFG-3a
+$ PYTHONPATH="$(pwd)/backend/src" backend/.venv/Scripts/python.exe -c "import return_platform; print(return_platform.__file__)"
+K:\Projects\Ret\returns_muti_agentic_platform\.claude\worktrees\cfg-3a\backend\src\return_platform\__init__.py
+```
+Resolves inside cfg-3a. Base sha `5dc5a8250cab846e4b7bc95c09f08b2b2fa825ea`, the trunk head named in the task (post CFG-2 merge). `git rev-parse origin/master` = `0448d32a7c8b8e590dbc1b601160c9ab17d6c36a` -- unrelated to this lease's base line (local trunk is not tracked against `origin/master` in this checkout); proceeding from the named base sha per the task.
+
+## CFG-3a step:01 — item 8 carry-overs: `ignore` parameter removed, anchor-drift test added
+
+**RV CFG-2 F1** -- the transitional `ignore={"production.yaml"}` parameter of `compose_configuration_document` outlived the CFG-2 deletion commit and would silently skip a re-added `production.yaml` forever. Removed the parameter entirely from `configuration/composition.py` (signature, docstring, the `ignored` set in the no-globbing scan) and its one call site in `configuration/return_configuration.py`. Two more call sites the CFG-2 drop did not name were found by grep and fixed: `tests/configuration/test_packaged_configuration_composition.py` (the durable-invariant test) and `tests/configuration/test_return_method_requirements_configuration.py` (a fixture composing the full document).
+
+```
+$ grep -rn "ignore=frozenset\|ignore:" backend/src backend/tests backend/scripts 2>/dev/null
+(no output)
+```
+
+Added `test_a_re_added_production_yaml_is_refused_as_an_unlisted_file`: copies `backend/config/returns/` to a tmp dir, re-adds `production.yaml`, asserts `compose_configuration_document` raises `ValueError` naming the file and "does not glob".
+
+**RV CFG-2 F2** -- the 25 prompt-section names that were YAML anchors in the single-file `ai_gateway.yaml` (enumerated from `git show 73c276d2:backend/config/ai_gateway.yaml`: every `&name` with at least one `*name` alias elsewhere in that file) are now independently typed into every task file that carries them, with no sync guard. Added `test_the_former_shared_anchor_prompt_blocks_have_not_drifted_apart`: loads the composed AI Gateway configuration, collects each of the 25 names' text per carrying task, asserts every name is carried by at least one task and that all carriers of a given name agree byte-for-byte.
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/configuration -q -p no:cacheprovider
+240 passed, 1 warning in 14.72s
+$ .venv/Scripts/python.exe -m ruff check src/return_platform/configuration/composition.py src/return_platform/configuration/return_configuration.py tests/configuration/test_packaged_configuration_composition.py tests/configuration/test_return_method_requirements_configuration.py
+All checks passed!
+$ .venv/Scripts/python.exe -m ruff format --check <same 4 files>
+(after one reformat) 4 files already formatted
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy src/return_platform/configuration/composition.py src/return_platform/configuration/return_configuration.py
+Success: no issues found in 2 source files
+```
+
+Head sha: see commit. `merge_status: PARTIAL` -- scope items 1-7 not yet started.

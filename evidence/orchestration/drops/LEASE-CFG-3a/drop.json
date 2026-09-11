@@ -1,0 +1,22 @@
+{
+  "lease_id": "LEASE-CFG-3a",
+  "branch": "feat/cfg-3a-config-api",
+  "base_sha": "5dc5a8250cab846e4b7bc95c09f08b2b2fa825ea",
+  "head_sha": "PENDING",
+  "files": [
+    "backend/src/return_platform/configuration/composition.py (removed the transitional ignore parameter -- RV CFG-2 F1)",
+    "backend/src/return_platform/configuration/return_configuration.py (call site updated)",
+    "backend/tests/configuration/test_packaged_configuration_composition.py (ignore kwarg removed from an existing call; two new tests: re-added production.yaml refused, former shared anchor blocks have not drifted -- RV CFG-2 F1/F2)",
+    "backend/tests/configuration/test_return_method_requirements_configuration.py (ignore kwarg removed from a second call site found by grep, not named in the CFG-2 drop)"
+  ],
+  "tests": {
+    "tests/configuration -q -p no:cacheprovider": "240 passed",
+    "ruff check + format --check (4 changed files)": "clean after one format fix",
+    "mypy composition.py return_configuration.py": "no issues found"
+  },
+  "remaining": [
+    "Scope items 1-7 (validate, publish, adopt-packaged/packaged-drift, CONFIG_RELEASE_WRITE, optimistic lock, audit filter, OpenAPI regen) not yet started.",
+    "Full acceptance suite not yet run."
+  ],
+  "merge_status": "PARTIAL"
+}
