@@ -315,6 +315,14 @@ class PatchDomainPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     patch: dict[str, Any]
+    #: Optimistic lock. Absent (the default) applies the patch unconditionally,
+    #: exactly as before this field existed -- the frontend pipeline that reads
+    #: a domain, patches it and never round-trips a version keeps working with
+    #: no change. Present, it must equal `get_domain_version`'s answer for this
+    #: release/domain or the write is refused with 409 rather than silently
+    #: applied over an edit the caller never saw -- two operators editing the
+    #: same draft from two open tabs is the ordinary way this happens.
+    expected_version: int | None = Field(default=None, ge=0)
 
 
 def _apply_merge_patch(target: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
@@ -351,6 +359,20 @@ async def patch_domain_config(
             status_code=404,
             detail=f"Domain {domain_key} was not found in release {release_id}",
         )
+    if body.expected_version is not None:
+        current_version = await repo.get_domain_version(release_id, domain_key)
+        if current_version != body.expected_version:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "CONFIGURATION_DOMAIN_VERSION_CONFLICT",
+                    "message": (
+                        f"Domain {domain_key} of release {release_id} is at version "
+                        f"{current_version}, not the expected {body.expected_version}"
+                    ),
+                    "current_version": current_version,
+                },
+            )
     updated_payload = _canonical_domain_payload(domain_key, _apply_merge_patch(current, body.patch))
     try:
         await repo.save_draft_domain(

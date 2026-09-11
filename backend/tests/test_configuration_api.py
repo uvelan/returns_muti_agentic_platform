@@ -407,6 +407,55 @@ def test_a_draft_cloned_from_the_active_release_carries_its_packaged_baseline(
     assert cloned["metadata"] == baseline
 
 
+def test_patch_refuses_a_stale_expected_version(
+    configuration_client: TestClient,
+) -> None:
+    """The optimistic lock: two open tabs editing the same draft, or a PATCH
+    built from a read the release has already moved past. `expected_version`
+    is optional, so a caller that never reads it back keeps working exactly
+    as before this field existed."""
+    client = configuration_client
+    _create_draft(client, "versioned")
+
+    stale = client.patch(
+        "/api/config/releases/versioned/domains/RETURN_PLATFORM",
+        json={
+            "patch": {"policy_evaluation": {"enabled": True, "disabled_reason": None}},
+            "expected_version": 999,
+        },
+    )
+    assert stale.status_code == 409, stale.text
+    assert stale.json()["detail"]["code"] == "CONFIGURATION_DOMAIN_VERSION_CONFLICT"
+    assert stale.json()["detail"]["current_version"] == 1
+
+    current = client.patch(
+        "/api/config/releases/versioned/domains/RETURN_PLATFORM",
+        json={
+            "patch": {"policy_evaluation": {"enabled": True, "disabled_reason": None}},
+            "expected_version": 1,
+        },
+    )
+    assert current.status_code == 200, current.text
+
+    # The version this domain is now at, so a second stale write against the
+    # version BEFORE the one above is also refused -- the lock advances.
+    now_stale = client.patch(
+        "/api/config/releases/versioned/domains/RETURN_PLATFORM",
+        json={
+            "patch": {"policy_evaluation": {"enabled": False, "disabled_reason": "paused"}},
+            "expected_version": 1,
+        },
+    )
+    assert now_stale.status_code == 409, now_stale.text
+    assert now_stale.json()["detail"]["current_version"] == 2
+
+    no_lock = client.patch(
+        "/api/config/releases/versioned/domains/RETURN_PLATFORM",
+        json={"patch": {"policy_evaluation": {"enabled": False, "disabled_reason": "paused"}}},
+    )
+    assert no_lock.status_code == 200, no_lock.text
+
+
 def test_an_audit_store_outage_does_not_undo_a_completed_write(
     configuration_client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

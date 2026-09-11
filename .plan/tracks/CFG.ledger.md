@@ -893,3 +893,31 @@ Success: no issues found in 2 source files
 ```
 
 Head sha: see commit. `merge_status: PARTIAL` -- scope items 1-7 not yet started.
+
+## CFG-3a step:02 — item 5: optimistic lock on PATCH
+
+`PatchDomainPayload.expected_version: int | None = None` (default absent, so
+the frontend pipeline that never round-trips a version keeps working
+unchanged). New repository method `get_domain_version(release_id,
+domain_key) -> int | None`, added to the `ConfigurationGraphRepository`
+protocol and implemented in both `InMemoryConfigurationGraphRepository`
+(reads the domain node's own `.version`, already maintained by
+`save_draft_domain`) and `Neo4jConfigurationGraphRepository` (new Cypher
+query against `ConfigurationDomain.version`). `patch_domain_config` compares
+`expected_version` against it when present and refuses with 409
+`CONFIGURATION_DOMAIN_VERSION_CONFLICT` carrying `current_version` on a
+mismatch -- the same shape `promote_release`'s existing revision-conflict 409
+uses.
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/configuration tests/test_configuration_api.py -q -p no:cacheprovider
+250 passed, 1 warning in 18.92s
+$ .venv/Scripts/python.exe -m ruff check src/return_platform/configuration/graph_repository.py src/return_platform/configuration/api/releases.py tests/test_configuration_api.py
+All checks passed!
+$ .venv/Scripts/python.exe -m ruff format --check <same 3 files>
+3 files already formatted
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy src/return_platform/configuration/graph_repository.py src/return_platform/configuration/api/releases.py
+Success: no issues found in 2 source files
+```
+
+Head sha: see commit. `merge_status: PARTIAL`.
