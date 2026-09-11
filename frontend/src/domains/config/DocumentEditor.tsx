@@ -1,6 +1,9 @@
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Braces, Columns3, ListTree, Minus, Plus, RotateCcw } from "lucide-react";
+
+import { KeyValueTable, type KeyValueEntry, type KeyValueKind } from "../../components/forms/KeyValueTable";
+import { ValidationErrors, type ValidationError } from "../../components/forms/ValidationErrors";
 
 /**
  * One JSON document, editable as nested key/value, split view, or raw JSON.
@@ -45,6 +48,65 @@ export interface JsonObject {
 
 function isObject(value: Json): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * `"fields[3].priority"` -> `"fields.3.priority"` -- the only path convention
+ * this editor understands internally (see `childPath`) is dot-plus-index, but
+ * a backend validator is equally likely to report a pydantic-`loc`-shaped
+ * bracket path. Normalising the incoming `errors` path once, before matching,
+ * means both spellings reach the same field. Documented in
+ * `components/forms/README.md`.
+ */
+function normalizeErrorPath(path: string): string {
+  return path.replace(/\[(\d+)\]/g, ".$1");
+}
+
+/** Whether `dotted` (split on `.`) resolves to something inside `document` -- array indices count as segments too. */
+function hasPath(document: Json, segments: readonly string[]): boolean {
+  if (segments.length === 0) return true;
+  const [head, ...rest] = segments;
+  if (Array.isArray(document)) {
+    const index = Number(head);
+    if (!Number.isInteger(index) || index < 0 || index >= document.length) return false;
+    return hasPath(document[index], rest);
+  }
+  if (isObject(document)) {
+    if (!(head in document)) return false;
+    return hasPath(document[head], rest);
+  }
+  return false;
+}
+
+/**
+ * What `Node` needs at every depth but does not vary per node: the errors
+ * matched to a path, which object paths render as `KeyValueTable`, and a way
+ * for a data-keyed node to tell the editor "publishing is blocked while I
+ * hold an unresolved duplicate key". Threaded via context rather than props
+ * so adding it did not mean changing every recursive call's signature --
+ * `path` still is a prop, because it genuinely changes at every level.
+ */
+const FormMetaContext = createContext<{
+  errorsByPath: ReadonlyMap<string, string>;
+  dataKeyedPaths: ReadonlySet<string>;
+  reportBlocked: (path: string, reason: string | null) => void;
+}>({ errorsByPath: new Map(), dataKeyedPaths: new Set(), reportBlocked: () => { /* no-op default */ } });
+
+function childPath(parent: string, key: string): string {
+  return parent === "" ? key : `${parent}.${key}`;
+}
+
+/** A stable, path-derived id for the error paragraph under a leaf -- unique even when several array items share one `labelledBy`. */
+function errorIdFor(path: string): string {
+  return `field-error-${path.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+}
+
+function inferValueKind(value: JsonObject): KeyValueKind {
+  const sample = Object.values(value)[0];
+  if (typeof sample === "number") return "number";
+  if (typeof sample === "boolean") return "boolean";
+  if (typeof sample === "string") return "string";
+  return "json";
 }
 
 function sameJson(left: Json, right: Json): boolean {
@@ -93,6 +155,8 @@ export function DocumentEditor<TResult>({
   notice,
   onDirtyChange,
   footer,
+  errors,
+  dataKeyedPaths,
 }: {
   /** The small uppercase line above the subject. */
   kicker: string;
@@ -130,6 +194,23 @@ export function DocumentEditor<TResult>({
    * needs the draft the operator is looking at, not the last saved one.
    */
   footer?: (document: JsonObject | null) => ReactNode;
+  /**
+   * Backend-reported errors, path-mapped onto the generated form: a path
+   * that resolves inside the current document renders as an inline error
+   * under that field (form mode only -- JSON/split are raw text with no
+   * per-field slot to put it in); a path that does not resolve -- the
+   * document changed shape since the error was computed, or the backend
+   * named a path this editor cannot reach -- goes to a page-level list
+   * instead of being silently dropped.
+   */
+  errors?: readonly ValidationError[];
+  /**
+   * Dotted paths (matching the same key convention as `errors`) of objects
+   * whose keys are data rather than schema -- `ship_via_methods`,
+   * `dependencies`, `tasks` -- so they render as `KeyValueTable` instead of
+   * one box per key named from the key.
+   */
+  dataKeyedPaths?: readonly string[];
 }) {
   const [mode, setMode] = useState<Mode>("form");
   const [draft, setDraft] = useState<Json>(loaded);
@@ -138,6 +219,33 @@ export function DocumentEditor<TResult>({
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [result, setResult] = useState<TResult | null>(null);
   const [dirty, setDirty] = useState(false);
+  // Paths (from a `dataKeyedPaths` node) currently holding an unresolved
+  // duplicate/empty key -- publishing is refused while this is non-empty, and
+  // becoming blocked counts as a change even though nothing has actually
+  // reached `draft` yet (see `reportBlocked`).
+  const [blocked, setBlocked] = useState<Record<string, string>>({});
+
+  const reportBlocked = useCallback(
+    (path: string, reason: string | null) => {
+      setBlocked((prev) => {
+        if (reason === null) {
+          if (!(path in prev)) return prev;
+          const next: Record<string, string> = {};
+          for (const [key, value] of Object.entries(prev)) {
+            if (key !== path) next[key] = value;
+          }
+          return next;
+        }
+        if (prev[path] === reason) return prev;
+        return { ...prev, [path]: reason };
+      });
+      if (reason !== null) {
+        setDirty(true);
+        onDirtyChange(true);
+      }
+    },
+    [onDirtyChange],
+  );
 
   const save = useMutation({
     mutationFn: (document: JsonObject) => onSubmit(document),
@@ -227,6 +335,11 @@ export function DocumentEditor<TResult>({
   }
 
   function onSave() {
+    // Belt-and-braces alongside the disabled Save button: a data-keyed table
+    // holding an unresolved duplicate never reached `draft`, so submitting
+    // anyway would silently publish whatever the document looked like before
+    // the collision -- the same loss B1 was about, one layer up.
+    if (Object.keys(blocked).length > 0) return;
     setResult(null);
     let document: Json = draft;
     if (mode !== "form") {
@@ -269,9 +382,31 @@ export function DocumentEditor<TResult>({
     }
   }
 
+  // A path "matches" when it resolves inside the *current* draft -- computed
+  // fresh each render rather than once at mount, so an error computed against
+  // last publish's shape that the operator has since edited away is treated
+  // as unknown rather than pinned to a field that no longer means the same
+  // thing.
+  const errorList = errors ?? [];
+  // `foo[3].bar` and `foo.3.bar` both mean the same field internally --
+  // normalise before matching so either spelling a backend validator uses
+  // reaches its field (documented in components/forms/README.md).
+  const normalizedErrors = errorList.map((error) => ({ ...error, path: normalizeErrorPath(error.path) }));
+  const matchedErrors = normalizedErrors.filter((error) => hasPath(draft, error.path === "" ? [] : error.path.split(".")));
+  const unknownErrors = normalizedErrors.filter((error) => !hasPath(draft, error.path === "" ? [] : error.path.split(".")));
+  const errorsByPath = new Map<string, string>();
+  for (const error of matchedErrors) {
+    const existing = errorsByPath.get(error.path);
+    errorsByPath.set(error.path, existing === undefined ? error.message : `${existing}; ${error.message}`);
+  }
+  const dataKeyedPathSet = new Set(dataKeyedPaths ?? []);
+  const blockedReasons = Object.values(blocked);
+
   const formEditor = (
     <fieldset disabled={!canWrite} className="max-h-[34rem] min-h-[28rem] overflow-y-auto rounded-xl border border-outline-variant bg-surface-container-lowest p-4 shadow-inner disabled:cursor-not-allowed disabled:opacity-75">
-      <Node value={draft} onChange={updateDraft} />
+      <FormMetaContext.Provider value={{ errorsByPath, dataKeyedPaths: dataKeyedPathSet, reportBlocked }}>
+        <Node value={draft} onChange={updateDraft} path="" />
+      </FormMetaContext.Provider>
     </fieldset>
   );
 
@@ -352,6 +487,7 @@ export function DocumentEditor<TResult>({
             setJsonError(null);
             setResult(null);
             setDirty(false);
+            setBlocked({});
             onDirtyChange(false);
           }}
           disabled={!canWrite || !dirty}
@@ -363,8 +499,8 @@ export function DocumentEditor<TResult>({
         <button
           type="button"
           onClick={onSave}
-          disabled={save.isPending || !canWrite || !dirty}
-          title={canWrite ? undefined : submitTitle}
+          disabled={save.isPending || !canWrite || !dirty || blockedReasons.length > 0}
+          title={!canWrite ? submitTitle : blockedReasons.length > 0 ? blockedReasons[0] : undefined}
           className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-on-primary shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {save.isPending ? submittingLabel : submitLabel}
@@ -387,6 +523,7 @@ export function DocumentEditor<TResult>({
             {save.error.message}
           </p>
         ) : null}
+        <ValidationErrors errors={unknownErrors} title="Errors on paths this editor could not place" />
         {result !== null && save.error === null && renderResult !== undefined
           ? renderResult(result)
           : null}
@@ -425,16 +562,25 @@ export function DocumentEditor<TResult>({
  * looked labelled and was not: `bay_allocation` alone renders fourteen
  * non-boolean scalar leaves, which is the audit's "14 agent labels" exactly.
  * Passing the id down is what turns the visible name into a programmatic one.
+ *
+ * `path` is this node's dotted location in the *document* (`""` at the root,
+ * `limits.max_queries` three levels down, `variants.0.subject_template`
+ * through an array) -- independent of `labelledBy`, and what the `errors`
+ * prop and `dataKeyedPaths` are matched against via `FormMetaContext`.
  */
 function Node({
   value,
   onChange,
   labelledBy,
+  path,
 }: {
   value: Json;
   onChange: (next: Json) => void;
   labelledBy?: string;
+  path: string;
 }) {
+  const { errorsByPath } = useContext(FormMetaContext);
+
   if (Array.isArray(value)) {
     return (
       <div className="flex flex-col gap-2">
@@ -445,6 +591,7 @@ function Node({
               <Node
                 value={item}
                 labelledBy={labelledBy}
+                path={childPath(path, String(index))}
                 onChange={(next) => {
                   onChange(value.map((existing, at) => (at === index ? next : existing)));
                 }}
@@ -479,53 +626,77 @@ function Node({
   }
 
   if (isObject(value)) {
-    return <ObjectNode value={value} onChange={onChange} />;
+    return <ObjectNode value={value} onChange={onChange} path={path} />;
   }
+
+  const message = errorsByPath.get(path);
+  const errorId = message !== undefined ? errorIdFor(path) : undefined;
 
   if (typeof value === "boolean") {
     return (
-      <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-on-surface">
-        <input
-          type="checkbox"
-          checked={value}
-          // The field's name, not "Yes"/"No". A checkbox already announces its
-          // own state, so the visible word is redundant to a screen reader and
-          // was the only accessible name it had -- fourteen inputs on one
-          // screen all called "Yes".
-          aria-labelledby={labelledBy}
-          onChange={(event) => { onChange(event.target.checked); }}
-          className="size-4 accent-primary"
-        />
-        {value ? "Yes" : "No"}
-      </label>
+      <div className="flex flex-col gap-1">
+        <label className="flex w-fit cursor-pointer items-center gap-2 text-sm text-on-surface">
+          <input
+            type="checkbox"
+            checked={value}
+            // The field's name, not "Yes"/"No". A checkbox already announces its
+            // own state, so the visible word is redundant to a screen reader and
+            // was the only accessible name it had -- fourteen inputs on one
+            // screen all called "Yes".
+            aria-labelledby={labelledBy}
+            aria-invalid={message !== undefined ? true : undefined}
+            aria-describedby={errorId}
+            onChange={(event) => { onChange(event.target.checked); }}
+            className="size-4 accent-primary"
+          />
+          {value ? "Yes" : "No"}
+        </label>
+        {message !== undefined ? (
+          <p id={errorId} role="alert" className="text-[11px] text-error">{message}</p>
+        ) : null}
+      </div>
     );
   }
 
   if (typeof value === "number") {
     return (
-      <input
-        type="number"
-        value={value}
-        aria-labelledby={labelledBy}
-        onChange={(event) => {
-          // An empty or half-typed number must not become NaN in the document:
-          // it would serialize as null and silently blank the setting.
-          const parsed = Number(event.target.value);
-          onChange(event.target.value === "" || Number.isNaN(parsed) ? 0 : parsed);
-        }}
-        className="w-40 rounded border border-outline-control bg-surface px-2 py-1 text-sm text-on-surface outline-none focus:border-primary"
-      />
+      <div className="flex flex-col gap-1">
+        <input
+          type="number"
+          value={value}
+          aria-labelledby={labelledBy}
+          aria-invalid={message !== undefined ? true : undefined}
+          aria-describedby={errorId}
+          onChange={(event) => {
+            // An empty or half-typed number must not become NaN in the document:
+            // it would serialize as null and silently blank the setting.
+            const parsed = Number(event.target.value);
+            onChange(event.target.value === "" || Number.isNaN(parsed) ? 0 : parsed);
+          }}
+          className="w-40 rounded border border-outline-control bg-surface px-2 py-1 text-sm text-on-surface outline-none focus:border-primary"
+        />
+        {message !== undefined ? (
+          <p id={errorId} role="alert" className="text-[11px] text-error">{message}</p>
+        ) : null}
+      </div>
     );
   }
 
   return (
-    <input
-      type="text"
-      value={value ?? ""}
-      aria-labelledby={labelledBy}
-      onChange={(event) => { onChange(event.target.value); }}
-      className="w-full rounded border border-outline-control bg-surface px-2 py-1 text-sm text-on-surface outline-none focus:border-primary"
-    />
+    <div className="flex flex-col gap-1">
+      <input
+        type="text"
+        value={value ?? ""}
+        aria-labelledby={labelledBy}
+        aria-invalid={message !== undefined ? true : undefined}
+        aria-describedby={errorId}
+        onChange={(event) => { onChange(event.target.value); }}
+        className="w-full rounded border border-outline-control bg-surface px-2 py-1 text-sm text-on-surface outline-none focus:border-primary"
+      />
+      {message !== undefined ? (
+        <p id={errorId} role="alert" className="text-[11px] text-error">{message}</p>
+      ) : null}
+    </div>
   );
 }
 
@@ -537,9 +708,21 @@ type JsonKind = "string" | "number" | "boolean" | "object" | "array";
  * Split out of `Node` because it needs `useId`, and `Node` returns early for
  * arrays and scalars -- a hook above those branches would run for every leaf
  * and a hook below them would be conditional.
+ *
+ * When `path` is one of the caller's `dataKeyedPaths`, the object's keys are
+ * data rather than schema -- `ship_via_methods`, `dependencies`, `tasks` --
+ * and this renders as `KeyValueTable` instead: one box per key named from
+ * the key reads as a form with an unbounded number of unrelated fields,
+ * where what the operator actually has is a mapping to edit as one.
  */
-function ObjectNode({ value, onChange }: { value: JsonObject; onChange: (next: Json) => void }) {
+function ObjectNode({ value, onChange, path }: { value: JsonObject; onChange: (next: Json) => void; path: string }) {
   const base = useId();
+  const { dataKeyedPaths } = useContext(FormMetaContext);
+
+  if (dataKeyedPaths.has(path)) {
+    return <DataKeyedObjectNode value={value} onChange={onChange} path={path} />;
+  }
+
   return (
     <div className="flex flex-col gap-2.5 border-l border-outline-variant pl-3">
       {Object.entries(value).map(([key, child]) => {
@@ -565,6 +748,7 @@ function ObjectNode({ value, onChange }: { value: JsonObject; onChange: (next: J
             <Node
               value={child}
               labelledBy={labelId}
+              path={childPath(path, key)}
               onChange={(next) => { onChange({ ...value, [key]: next }); }}
             />
           </div>
@@ -574,6 +758,117 @@ function ObjectNode({ value, onChange }: { value: JsonObject; onChange: (next: J
         existing={Object.keys(value)}
         onAdd={(key, child) => { onChange({ ...value, [key]: child }); }}
       />
+    </div>
+  );
+}
+
+/** Why `entries` cannot become the document yet -- `null` once every key is unique and filled in. */
+function keyValueBlockReason(entries: readonly KeyValueEntry[]): string | null {
+  const keys = entries.map((entry) => entry.key);
+  if (keys.some((key) => key.trim() === "")) {
+    return "Every key must be filled in before publishing.";
+  }
+  const duplicate = keys.find((key, index) => keys.indexOf(key) !== index);
+  if (duplicate !== undefined) {
+    return `"${duplicate}" is used by more than one row here -- rename one before publishing.`;
+  }
+  return null;
+}
+
+/**
+ * The `KeyValueTable` rendering of a data-keyed object -- split out of
+ * `ObjectNode` because it needs its own state.
+ *
+ * `entries` is a *list*, and a list can hold two rows with the same key for
+ * as long as the operator is mid-rename; `value`, the actual document, is a
+ * plain JS object, which cannot. Flattening on every keystroke (the B1
+ * defect) forced every intermediate state through that object regardless,
+ * so a rename that passed through another row's key -- deliberately, or as a
+ * prefix while typing -- silently collapsed the two rows into one before
+ * `KeyValueTable` ever got to show the collision. Holding `entries` as this
+ * component's own state instead means a duplicate stays visible, in both
+ * rows, for as long as it exists, and `onChange` only ever receives a
+ * document that could not have lost anything.
+ *
+ * What makes that safe rather than sticky is the render-phase reset below --
+ * React's documented pattern for "adjust state when a prop changes"
+ * (https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes),
+ * a conditional `setState` call during render rather than inside an effect.
+ * Any *external* change to the document -- Reset, a sibling edit made
+ * through JSON/split mode, simply mounting -- abandons whatever local,
+ * unresolved edit was in progress and resyncs from the document that is now
+ * current, the same way discarding a JSON-mode edit on a parse error does
+ * elsewhere in this file. It does not fire on the render that follows this
+ * component's *own* successful resolution, because `pending` is already
+ * cleared, synchronously, before that `onChange` is called -- `value` and
+ * `trackedValue` arrive at the new document together.
+ *
+ * Telling the *ancestor* that publishing is unblocked again, in contrast,
+ * genuinely belongs in an effect: it is a different component's state
+ * (`DocumentEditor`'s `blocked`), and React does not support setting one
+ * component's state from inside another's render.
+ */
+function DataKeyedObjectNode({
+  value,
+  onChange,
+  path,
+}: {
+  value: JsonObject;
+  onChange: (next: Json) => void;
+  path: string;
+}) {
+  const { errorsByPath, reportBlocked } = useContext(FormMetaContext);
+  const [pending, setPending] = useState<KeyValueEntry[] | null>(null);
+  const [trackedValue, setTrackedValue] = useState(value);
+
+  if (value !== trackedValue) {
+    setTrackedValue(value);
+    setPending(null);
+  }
+
+  useEffect(() => {
+    if (pending === null) reportBlocked(path, null);
+  }, [pending, path, reportBlocked]);
+
+  const entries: KeyValueEntry[] =
+    pending ?? Object.entries(value).map(([key, child]) => ({ key, value: child }));
+  const nestedErrors = Array.from(errorsByPath.entries()).filter(
+    ([errorPath]) => errorPath === path || errorPath.startsWith(`${path}.`),
+  );
+
+  return (
+    <div className="flex flex-col gap-2">
+      <KeyValueTable
+        label={label(path.split(".").pop() ?? path)}
+        entries={entries}
+        valueKind={inferValueKind(value)}
+        onChange={(next) => {
+          const blockReason = keyValueBlockReason(next);
+          if (blockReason !== null) {
+            setPending(next);
+            reportBlocked(path, blockReason);
+            return;
+          }
+          setPending(null);
+          reportBlocked(path, null);
+          const nextValue: JsonObject = {};
+          for (const entry of next) nextValue[entry.key] = entry.value;
+          onChange(nextValue);
+        }}
+      />
+      {nestedErrors.length > 0 ? (
+        <ul className="flex flex-col gap-1">
+          {nestedErrors.map(([errorPath, message]) => (
+            <li
+              key={errorPath}
+              role="alert"
+              className="rounded-lg border border-error/20 bg-error-container px-2 py-1 text-xs text-on-error-container"
+            >
+              <code className="font-mono">{errorPath}</code> — {message}
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }

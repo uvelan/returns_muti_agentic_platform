@@ -22,7 +22,7 @@ transcribed from memory. Brief: `.plan/tracks/CFG.brief.md`. Audit: `evidence/co
 | CFG-1 | feat/cfg-1-dead-code | 06b43b18 | Sonnet | **MERGED** | LEASE-CFG-1 MERGED | 1 · PASS (e036310d) | 3cb696e7 |
 | CFG-2 | feat/cfg-2-config-split | 73c276d2 | Opus spike → Sonnet | **MERGED** | LEASE-CFG-2 MERGED | 1 · PASS (e42d92e6) | ff7aed3e |
 | CFG-3a | feat/cfg-3a-config-api | after CFG-0 | Sonnet | NOT_STARTED | — | — | — |
-| CFG-3b | feat/cfg-3b-form-primitives | 734a16dc | Sonnet | IN_PROGRESS | — | — | — |
+| CFG-3b | feat/cfg-3b-form-primitives | 734a16dc | Sonnet | **MERGED** | LEASE-CFG-3b MERGED | PASS (f3a7340d) | merge commit on trunk |
 | CFG-4 | feat/cfg-4-screens-a | after CFG-3a + CFG-3b | Sonnet | NOT_STARTED | — | — | — |
 | CFG-5 | feat/cfg-5-screens-b | after CFG-4 | Sonnet | NOT_STARTED | — | — | — |
 | CFG-6 | feat/cfg-6-deployment-section | after CFG-2 + CFG-3a | Opus spike → Sonnet | NOT_STARTED | — | — | — |
@@ -887,3 +887,282 @@ Resume protocol (CFG.brief.md §1.3): after the window opens, `SendMessage` the 
 ("resume: write the verdict from where you were") and the same CFG-3b implementer ("resume from your
 drop and the fix list"); if either cannot recall its state, spawn a fresh agent with the brief, the
 review file and the ledger tail as its only context. Do not respawn while the window is closed.
+
+---
+
+## CFG-3b step:00 — worktree confirmed, base verified by ref
+
+Worktree `.claude/worktrees/cfg-3b`, branch `feat/cfg-3b-form-primitives`, base `734a16dc` (the
+local `refactor/unified-return-platform` head after CFG-1, per the lease). Frontend-only lease --
+no `PYTHONPATH`/Python step applies (memory `worktree-venv-pth-trap` is a backend concern; there is
+no `backend/` write in this lease).
+
+```
+$ git fetch -q origin
+$ git rev-parse refactor/unified-return-platform
+734a16dcf6c8a081ab810f51c6d405694d52c934
+$ git rev-parse origin/refactor/unified-return-platform
+42b0536b1334d858a4ca33f0d415208b68203bbd
+$ git rev-list --left-right --count refactor/unified-return-platform...origin/refactor/unified-return-platform
+16	0
+$ git merge-base --is-ancestor 734a16dc HEAD && echo yes
+yes
+```
+
+The local trunk is 16 commits ahead of `origin/refactor/unified-return-platform` -- CFG-0 and CFG-1
+merged locally and were never pushed (track rule: never push). This is the expected, intentional
+state the brief describes, not a stale base: `734a16dc` is exactly the sha CFG-3b.brief.md names.
+
+Read, in the order the brief specifies: `CFG-3b.brief.md`, `CFG.brief.md` §1.2-1.3 and §3.4, the
+existing `DocumentEditor.tsx` and its three callers (`AgentsSection.tsx`, `SupportTemplateSection.tsx`,
+`BusinessSection.tsx`) plus `AgentsSection.a11y.test.tsx` / `SupportTemplateSection.a11y.test.tsx` /
+`BusinessSection.test.tsx`, `frontend/src/index.css`, `frontend/tailwind.config.js`,
+`frontend/src/components/PublishProgress.tsx`, and `AiControlCenterPage.tsx`'s `ProviderDialog` /
+`Switch` (~line 1677, ~line 2188) for house style. Did not read the audit PART files, per the brief.
+
+**a11y integration check** (`package.json`): no `jest-axe` or `vitest-axe` dependency; only
+`@axe-core/playwright` (the separate Playwright e2e suite, not usable from vitest/jsdom). Per
+CFG.brief.md's instruction, no axe integration is added; every primitive's test instead asserts
+role/name, `aria-describedby`/`aria-invalid` wiring, and keyboard operability directly (the same
+style `AgentsSection.a11y.test.tsx` already uses for `DocumentEditor`).
+
+## CFG-3b step:01 — form primitives group 1: Field, FieldGroup, Toggle, NumberField, DurationField, EnumSelect
+
+Six primitives with a render/interaction test each (`frontend/src/components/forms/`): `Field.tsx`
+(shared label/hint/error/id wiring -- a render-function `children` slot hands the control its `id`,
+`aria-describedby` and `aria-invalid`), `FieldGroup.tsx` (premium-panel section frame, optionally
+collapsible with `aria-expanded`/`aria-controls`), `Toggle.tsx` (labelled switch with an inline
+reason field that appears and is marked invalid only while `requiredWhen` holds), `NumberField.tsx`
+(range hint, clamps on blur not mid-keystroke), `DurationField.tsx` (s/min/h/day selector storing
+seconds, human-readable hint), `EnumSelect.tsx` (keeps the release's current value selectable even
+once the schema drops it; `allowUnknown={false}` flags it as an error instead).
+
+```
+$ npx vitest run src/components/forms
+ Test Files  6 passed (6)
+      Tests  29 passed (29)
+$ npm run typecheck
+> tsc -b --pretty false
+(clean, no output)
+$ npx eslint src/components/forms --max-warnings=0
+(clean, no output)
+```
+
+One fix during lint: `Toggle.tsx`'s `reasonMissing` used `reasonField?.value` after a
+`reasonRequired` guard that already aliased `reasonField !== undefined` (TS's control-flow analysis
+of aliased conditions), so the optional chain was flagged unnecessary; dropped it.
+
+Commit `edb5cf90` -- `(CFG) step:01 form primitives group 1 -- Field, FieldGroup, Toggle, NumberField, DurationField, EnumSelect`.
+
+## CFG-3b step:02 — form primitives group 2: TagListInput, OrderedList, KeyValueTable, PathPicker
+
+`KeyValueTable.tsx` reuses `api/mergePatch.ts`'s `JsonValue`/`JsonRecord` rather than declaring a
+third copy of the recursive JSON type `DocumentEditor.Json` and `mergePatch.JsonValue` already are
+independently (each carries the same `eslint-disable @typescript-eslint/consistent-type-definitions`
+comment for the same reason: a self-referential type alias resolves to `error` under the typed
+lint rules while an interface does not). `BusinessSection.tsx` already crosses this exact boundary
+(`mergePatchOf(loaded, document)` with `DocumentEditor.JsonObject` values), which is why passing
+`DocumentEditor.Json` values into `KeyValueTable`'s `JsonValue`-typed props type-checks with no cast.
+
+```
+$ npx vitest run src/components/forms
+ Test Files  10 passed (10)
+      Tests  55 passed (55)
+$ npm run typecheck
+(clean)
+$ npx eslint src/components/forms --max-warnings=0
+(clean, after two fixes below)
+```
+
+Two lint/correctness fixes, both in `KeyValueTable.tsx`'s row-removal and reorder handlers for the
+`jsonDrafts` side-state (keyed by row index): a computed-key destructure-and-discard
+(`const { [index]: _removed, ...rest } = prev`) trips `@typescript-eslint/no-unused-vars` (no
+`varsIgnorePattern` is configured for `_`-prefixed locals in this repo's eslint config, only
+`args`/`caughtErrors`), and also had a real bug -- it dropped the removed row's own draft but never
+shifted the later rows' drafts down an index, so a JSON draft two rows below a deletion would
+silently point at the wrong row after the delete. `moveAt`'s swap had the same shift bug plus a
+`delete` on a dynamic key (`@typescript-eslint/no-dynamic-delete`). Both replaced with explicit
+reindexing loops.
+
+Test fixes: an `<input list="...">` computes an accessible role of `combobox`, not `textbox`
+(PathPicker always sets `list`; TagListInput only when `suggestions` is passed) -- two tests assumed
+`textbox` and were corrected. `OrderedList`'s reorder buttons are named from `keyOf(item)`, which in
+the test fixture is the lowercase stage id (`"intake"`), not the capitalised display name
+(`"Intake"`) `renderItem` shows -- corrected the button-name assertions to match, since the
+component has no other string to name a generic `T`'s row from.
+
+Commit `fdd7d062` -- `(CFG) step:02 form primitives group 2 -- TagListInput, OrderedList, KeyValueTable, PathPicker`.
+
+## CFG-3b step:03 — form primitives group 3: DiffPreview, PublishBar, ValidationErrors
+
+`DiffPreview.tsx` calls `mergePatchOf` from `api/mergePatch.ts` directly (per the brief: "DiffPreview
+(over api/mergePatch.ts)") and flattens the resulting patch into one row per changed leaf path,
+walking into any key whose value is an object on both sides rather than showing the whole subtree
+as one opaque row. `PublishBar.tsx` rides the existing `PublishProgress` component. `ValidationErrors`
+exports the `{path, message}` type `DocumentEditor`'s new `errors` prop (next step) will use.
+
+```
+$ npx vitest run src/components/forms
+ Test Files  13 passed (13)
+      Tests  69 passed (69)
+$ npm run typecheck
+(clean, after one fix below)
+$ npx eslint src/components/forms --max-warnings=0
+(clean, after one fix below)
+```
+
+One typecheck + one lint fix in `DiffPreview.tsx`: the "no prior value" fallback used `undefined`
+(`isRecord(before) ? before[key] : undefined`), which does not satisfy `isRecord`'s `JsonValue`
+parameter type -- `JsonValue` has no `undefined` member, only `null` -- so `tsc` refused the
+recursive call. Switched the fallback to `null` throughout, consistent with how a `DiffRow` already
+represents "nothing here before". That also left `format()`'s `value === undefined` branch
+genuinely unreachable, which `@typescript-eslint/no-unnecessary-condition` correctly flagged; removed it.
+
+Commit `d983a6d9` -- `(CFG) step:03 form primitives group 3 -- ValidationErrors, DiffPreview, PublishBar`.
+
+All twelve primitives from the brief's table are now done. Remaining: `DocumentEditor` (`errors` +
+`dataKeyedPaths`), `frontend/src/components/forms/README.md`, and the full acceptance run.
+
+## CFG-3b step:04 — DocumentEditor: path-mapped errors, dataKeyedPaths as KeyValueTable
+
+Both additions are optional props; `AgentsSection`, `SupportTemplateSection` and `BusinessSection`
+(and their tests) are untouched. `hasPath()` matches an error's dotted path against the *current
+draft*, recomputed every render, so an edit that changes the document's shape un-matches a stale
+error instead of leaving it pinned to the wrong field. `path` is threaded through `Node`/`ObjectNode`
+as an explicit prop; `errorsByPath` and `dataKeyedPaths` ride a new `FormMetaContext` instead, since
+they do not change per recursion level the way `path` does. A `dataKeyedPaths` object renders via
+`KeyValueTable` (value kind inferred from the first entry); errors inside it still match (the
+entries are still part of the document) and surface as a compact alert list beside the table, since
+`KeyValueTable` has no per-cell error prop yet.
+
+`DocumentEditor.test.tsx` (new, 7 tests) exercises both directly against the component: a matched
+top-level and nested error, an unmatched path landing on the page-level `ValidationErrors` list, no
+error UI when `errors` is omitted, `dataKeyedPaths` rendering side by side with the default per-key
+boxes in the same document, and an error under a data-keyed entry.
+
+```
+$ npx vitest run src/domains/config
+ Test Files  6 passed (6)
+      Tests  59 passed (59)
+$ npm run typecheck
+(clean)
+$ npx eslint src/domains/config src/components/forms --max-warnings=0
+(clean)
+```
+
+Commit `1ff9b348` -- `(CFG) step:04 DocumentEditor -- path-mapped errors and dataKeyedPaths as KeyValueTable`.
+
+## CFG-3b step:05 — forms README
+
+`frontend/src/components/forms/README.md`: house-style intro (the no-axe-in-vitest note; `DocumentEditor`
+stays the Advanced/JSON escape hatch, not replaced) followed by one minimal, accurate usage example
+per primitive, matching its actual prop signature. Commit `33511f60`.
+
+## CFG-3b acceptance
+
+```
+$ npx vitest run src/components/forms src/domains/config src/api/mergePatch.test.ts
+ Test Files  21 passed (21)
+      Tests  141 passed (141)
+$ npm run typecheck
+> tsc -b --pretty false
+(clean, no output)
+$ npm run lint
+> eslint . --max-warnings=0
+(clean, no output -- whole project, as the brief requires)
+$ git status --short
+(empty -- everything committed)
+```
+
+Every item in the brief's Acceptance section is met: all twelve primitives with a render/interaction
+test each (no axe integration exists in this repo -- role/name/keyboard assertions used instead, per
+the brief's fallback instruction, and recorded at step:00); `DocumentEditor` path-mapped errors and
+`KeyValueTable` rendering with their own tests; the three existing callers' tests unchanged in file
+and green; typecheck and whole-project lint clean; the README. Head `33511f60`. `merge_status` set to
+`PENDING` in `drop.json`.
+
+## CFG-3b step:06 — RV round 1 fixes
+
+RV round 1 (`.plan/reviews/CFG-3b.md`, reviewed head `47340cc7`) returned **CHANGES_REQUIRED** on B1
+(BLOCKING) and asked for A4/A1/A3 alongside it; A2/A5/A6/A7/A8 stay advisory, carried to CFG-4 per the
+review's own Judgement.
+
+**B1 (fixed).** `ObjectNode`'s data-keyed branch flattened `KeyValueEntry[]` into a plain `JsonObject`
+on every keystroke (`for (const entry of next) nextValue[entry.key] = entry.value;`), so a rename that
+collided with another row's key -- reachable by ordinary typing, not only a deliberate collision --
+silently overwrote that row and its value *before* `KeyValueTable` could render the duplicate state.
+RV's reproduction: renaming `CPU` to `XPW` with `XPW` already present left one row, no alert, and
+`onSubmit` received `{"ship_via_methods":{"XPW":"PARCEL"}}` -- data loss on the publish path.
+
+Fix: split the data-keyed branch into its own component, `DataKeyedObjectNode`, which holds `entries`
+as local state (a *list* can hold two rows with the same key for as long as a rename is in progress; a
+plain JS object cannot) and only flattens to the document once every key is unique and non-empty
+(`keyValueBlockReason`). While a collision or a blank key exists, a new `FormMetaContext.reportBlocked`
+callback tells `DocumentEditor` to disable Save with the reason as its `title`, and to force the editor
+dirty -- an unresolved in-progress edit is not "nothing to publish" even though nothing has reached
+`draft` yet. `onSave` also refuses to submit while blocked, belt-and-braces alongside the disabled
+button. An external change to the document (Reset, a sibling JSON/split-mode edit) abandons the local,
+unresolved edit via React's documented "adjust state when a prop changes" render-phase pattern
+(`https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes`) --
+**not** a `useEffect` calling the local `setPending`, because `eslint-plugin-react-hooks@7`'s
+`set-state-in-effect` rule correctly refuses that (first attempt hit it; ledger'd here since it is a
+real constraint the repo's tooling enforces, not a style nit -- effects are for synchronizing with
+something *outside* the component, and this component's own `pending` state is not outside it). Telling
+the *ancestor* (`DocumentEditor`'s `blocked` state) genuinely is outside this component, so that part
+stays in an effect, keyed off `pending` (not `value`) so it does not re-fire on every unrelated parent
+re-render.
+
+New test, `DocumentEditor.test.tsx`, reproduces P5 exactly: both rows survive with their own values,
+both duplicate alerts show, Save is disabled with the collision named as the reason, a forced click
+while blocked does not call `onSubmit`, and renaming on to `XPW2` both clears the block and delivers
+`onSubmit({ ship_via_methods: { XPW2: "COUNTER", XPW: "PARCEL" } })`.
+
+**A4 (fixed).** Two new `KeyValueTable.test.tsx` tests: the row-reindexing invariant -- three rows,
+give the two that will survive their own distinct in-progress (invalid) JSON drafts, delete the middle
+row, assert each survivor kept its own value *and* its own draft, neither dropped nor handed to the
+other -- and the in-place duplicate alert at the `KeyValueTable` level alone (no `DocumentEditor`
+involved): rename row 1 onto row 2's key, assert both rows survive with their own values, both flip
+`aria-invalid`, and both alerts read "This key is used more than once."
+
+**A1 (fixed + documented).** `errors` path matching now normalises `foo[3].bar` to `foo.3.bar`
+(`normalizeErrorPath`) before matching, so a bracket-index path -- the shape a pydantic-`loc`-based
+validator is likely to emit -- reaches its field the same as the dotted form `childPath` already
+produces internally. New `DocumentEditor.test.tsx` test covers it directly (`fields[3].priority`
+matches the fourth item's field, not the page-level list). Documented in
+`components/forms/README.md`'s new "Notes" section, alongside the still-open A2 limit (a data-keyed key
+containing `.` is not addressable by either convention -- accepted as a documented limit, not fixed
+here).
+
+**A3 (documented, no code change).** `components/forms/README.md`'s Notes section explains that a
+data-keyed object's round-trip through a plain JS object hoists integer-like keys (`"0"`, `"2"`,
+`"10"`) to the front in numeric order regardless of insertion order -- a JavaScript
+property-enumeration rule, not something this editor does -- and that payload key order carries no
+meaning to the backend (a merge patch is a JSON object; only `KeyValueTable`'s own row order, which is
+preserved, is meaningful).
+
+`drop.json`'s `head_sha` corrected to this step's commit (it had been left one commit behind at
+`33511f60`, RV's finding under Scope/Q7 -- harmless, but worth fixing here too).
+
+```
+$ npx vitest run src/components/forms src/domains/config src/api/mergePatch.test.ts
+ Test Files  21 passed (21)
+      Tests  145 passed (145)
+
+$ npm run typecheck
+> tsc -b --pretty false
+(clean, no output)
+
+$ npm run lint
+> eslint . --max-warnings=0
+(clean, no output -- whole project)
+
+$ npx vitest run
+ FAIL  src/domains/registry.test.ts > declares exactly the canonical domains   (expected 8, received 9: "/shipments")
+ FAIL  src/domains/registry.test.ts > shares a visibility capability only where that is deliberate
+ Test Files  1 failed | 78 passed (79)
+      Tests  2 failed | 966 passed (968)
+```
+
+Exactly the two pre-existing `registry.test.ts` failures RV's own Q6 baseline already carried at 962
+passing; 966 now is +4 (the new tests above, all passing) with nothing else broken. Commit `48ccbb79` --
+`(CFG) step:06 RV round 1 fixes`. Head `48ccbb79e474f6aac83ac5e19baae4b373a73d6f`.
