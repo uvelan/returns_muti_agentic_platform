@@ -1,0 +1,27 @@
+{
+  "lease_id": "LEASE-CFG-2",
+  "branch": "feat/cfg-2-config-split",
+  "base_sha": "73c276d231cd9e609678f8d29517d67cfb5d77a9",
+  "head_sha": "PENDING",
+  "files": [
+    "backend/src/return_platform/configuration/settings.py (return_configuration_path/ai_gateway_configuration_path moved to a new validate_packaged_configuration_path validator; directory-accepting, strict widening)",
+    "backend/tests/configuration/test_settings_configuration_paths.py (new; synthetic tmp_path fixtures for the widened validator)"
+  ],
+  "tests": {
+    "backend/tests/configuration/test_settings_configuration_paths.py": "7 passed"
+  },
+  "remaining": [
+    "composition.py composer module + its own unit tests",
+    "directory support wired into load_return_configuration and load_ai_gateway_configuration",
+    "write the split trees (backend/config/returns/**, backend/config/ai_gateway/**) beside the originals",
+    "freeze pre-split bytes at backend/tests/data/pre_split/**",
+    "backend/tests/configuration/test_packaged_configuration_composition.py (equivalence + error tests)",
+    "backend/tests/harness/configuration_tree.py",
+    "repoint defaults: settings.py:13,17; compose.yaml:14,16; backend/Dockerfile:124,126; .env.example:204,297",
+    "repoint the seven raw-text test readers",
+    "deletion commit (git rm production.yaml, ai_gateway.yaml) -- last, once everything runs against the directories",
+    "docs updates",
+    "full acceptance run (pytest, ruff, mypy, check_openapi_drift.py) and deliberate-failure check pasted in the ledger"
+  ],
+  "merge_status": "PARTIAL"
+}

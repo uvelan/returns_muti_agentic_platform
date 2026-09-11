@@ -563,3 +563,46 @@ domains' models have not retired keys; F7 (`known_test_failures.json` lists no b
 CFG-2 design spike (Opus, read-only) delivered `.plan/tracks/CFG-2.design.md` and
 `.plan/tracks/CFG-2.brief.md`; the blocker it found -- `settings.py` `validate_catalog_path` refuses a
 directory -- is scope item 1 of that brief.
+
+---
+
+## CFG-2 step:00 — base check, worktree/PYTHONPATH pin
+
+```
+$ git rev-parse HEAD
+73c276d231cd9e609678f8d29517d67cfb5d77a9
+$ git fetch origin master --quiet; git rev-parse origin/master
+0448d32a7c8b8e590dbc1b601160c9ab17d6c36a
+$ git rev-list --left-right --count HEAD...origin/master
+1032	0
+$ export PYTHONPATH="$(pwd)/backend/src"; backend/.venv/Scripts/python.exe -c "import return_platform; print(return_platform.__file__)"
+K:\Projects\Ret\returns_muti_agentic_platform\.claude\worktrees\cfg-2\backend\src\return_platform\__init__.py
+```
+Resolves inside the cfg-2 worktree -- proceeding. `origin/master` is far behind local trunk (1032
+commits) because this repo's `origin` is not kept in sync with the local `master`/track work
+(consistent with the whole CFG track being local-only so far, per CFG.brief.md's "never push" rule);
+not a stale-base problem for this lease since the base is `73c276d2` (trunk after CFG-1's merge),
+matching the CFG-2 brief's statement that `e036310d` is contained in this head.
+
+## CFG-2 step:01 — settings.py blocker fixed (scope item 2, first half), unit tests
+
+Moved `return_configuration_path` and `ai_gateway_configuration_path` out of
+`validate_catalog_path` (absolute-only, `.yaml`/`.yml`-suffix-only) into a new
+`validate_packaged_configuration_path`, shaped like `resolve_configuration_directory`
+(`settings.py:386-404`): relative resolves against `REPOSITORY_ROOT`, no suffix rule, no existence
+check -- a strict widening (every old-accepted value still resolves the same way; only the
+absolute-only/YAML-suffix-only refusal is gone). `catalog_path`, `schema_registry_path` and
+`dependency_simulation_configuration_path` stay on the old validator, unchanged.
+
+New `backend/tests/configuration/test_settings_configuration_paths.py`, synthetic `tmp_path`
+fixtures per the brief: a no-suffix directory accepted; a relative directory resolves against
+`REPOSITORY_ROOT`; a single-file path still resolves as before (no regression); no existence check
+(a directory that does not exist on disk still resolves); the AI Gateway field accepts a directory
+too; `catalog_path` (unrelated field) still enforces the old absolute-only/YAML-suffix-only rule
+(regression guard that the change is scoped to the two fields the brief names).
+
+```
+$ PYTHONPATH=$WT/backend/src backend/.venv/Scripts/python.exe -m pytest backend/tests/configuration/test_settings_configuration_paths.py -q
+.......                                                                  [100%]
+7 passed in 1.09s
+```
