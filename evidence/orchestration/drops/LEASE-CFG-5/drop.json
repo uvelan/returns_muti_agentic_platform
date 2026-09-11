@@ -2,7 +2,7 @@
   "lease_id": "CFG-5",
   "branch": "feat/cfg-5-screens-b",
   "base_sha": "b03cbb59",
-  "head_sha": "036b32d1",
+  "head_sha": "eed9d5e2",
   "status": "PARTIAL",
   "files": [
     "frontend/src/mocks/handlers/canonicalHandlers.ts",
@@ -12,42 +12,46 @@
     "frontend/src/domains/config/WorkflowSection.test.tsx",
     "frontend/src/domains/config/SupportSection.tsx",
     "frontend/src/domains/config/SupportSection.test.tsx",
+    "frontend/src/domains/config/IntegrationsSection.tsx",
+    "frontend/src/domains/config/IntegrationsSection.test.tsx",
     "frontend/src/domains/config/BusinessSection.tsx",
     "frontend/src/domains/config/BusinessSection.test.tsx",
     "frontend/src/domains/config/ConfigurationPage.tsx",
     "frontend/src/domains/config/ConfigurationPage.test.tsx",
     "frontend/src/domains/registry.ts",
     "frontend/e2e/config-workflow.spec.ts",
-    "frontend/e2e/config-support.spec.ts"
+    "frontend/e2e/config-support.spec.ts",
+    "frontend/e2e/config-integrations.spec.ts"
   ],
   "tests": {
-    "npx vitest run (whole frontend suite)": "1036 passed, 0 failed (85 files)",
+    "npx vitest run (whole frontend suite)": "1042 passed, 0 failed (86 files)",
     "npm run typecheck": "clean",
     "npm run lint": "clean",
     "npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts (warm dev:mock server, full run)": "129 passed, 0 failed",
-    "npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g support": "12 passed, 0 failed",
+    "npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g support|workflow|integrations (scoped re-checks)": "all passed, 0 failed",
     "E2E_REAL_BASE_URL=... npx playwright test --project=cfg4-e2e e2e/config-workflow.spec.ts --workers=1": "1 passed",
-    "E2E_REAL_BASE_URL=... npx playwright test --project=cfg4-e2e e2e/config-support.spec.ts --workers=1": "1 passed"
+    "E2E_REAL_BASE_URL=... npx playwright test --project=cfg4-e2e e2e/config-support.spec.ts --workers=1": "1 passed",
+    "E2E_REAL_BASE_URL=... npx playwright test --project=cfg4-e2e e2e/config-integrations.spec.ts --workers=1": "1 passed"
   },
   "done": [
-    "item 1: MSW handlers + contract tests for /api/agents, /api/schema-releases/*, /api/ai/requests/{id}/replay|compare; /api/source-bindings already covered by CFG-4; dead /data-console/v1/ branch removed from main.tsx (settled on onUnhandledRequest: \"bypass\" after \"error\" broke /support routes outside Owns -- see out_of_scope_flagged/task_1349209e)",
-    "item 2: /config/workflow screen -- WorkflowConfiguration, ReturnCaseTimingConfiguration, business_calendars, housekeeping; built against the live model rather than the brief's design table, which described a handler/agent-ref shape belonging to a different, unused model (documented in WorkflowSection.tsx and the ledger)",
-    "item 3: /config/support screen, six tabs -- Template (SupportTemplateSection, moved unchanged) plus typed Gate/Ingress/Resolver/Context assembly/Queues forms; /config/support-template redirects for one release; corrected step:02's own oversight by removing the now-superseded workflow group from BusinessSection.tsx alongside the new support group"
+    "item 1: MSW handlers + contract tests for /api/agents, /api/schema-releases/*, /api/ai/requests/{id}/replay|compare; /api/source-bindings already covered by CFG-4; dead /data-console/v1/ branch removed from main.tsx (settled on onUnhandledRequest: \"bypass\" -- see out_of_scope_flagged/task_1349209e)",
+    "item 2: /config/workflow screen -- built against the live WorkflowConfiguration model rather than the brief's design table, which described a handler/agent-ref shape belonging to a different, unused model",
+    "item 3: /config/support screen, six tabs -- Template (SupportTemplateSection, moved unchanged) plus typed Gate/Ingress/Resolver/Context assembly/Queues forms; /config/support-template redirects for one release; removed BusinessSection.tsx's now-superseded workflow group",
+    "item 4: /config/integrations screen -- integrations as four fixed named topics (not KeyValueTable, extra=\"forbid\" refuses a fifth), copilot.candidate_columns as an OrderedList of {label,fields} cards (not TagListInput); live e2e run caught ai_may_fabricate_success is unconditionally refused, corrected the screen's hint text and used external_support_mirror.enabled instead; removed BusinessSection.tsx's now-superseded platform group -- only simulation remains"
   ],
   "remaining": [
-    "item 4: /config/integrations screen (replaces the UNBACKED read-only Integrations tab; also removes integrations/copilot from BusinessSection's platform group once typed)",
     "item 5: backend -- repoint PUT /api/agents/{id} and application/agent_configuration.py at the live agents: section, delete backend/config/agents/*.yaml and manifest.yaml entries (verify with grep which loader consumers remain), update test_agent_configuration_releases.py and backend/config/README.md, paste backend suites; then /config/agents typed table on the proposal path",
-    "item 6: /config/simulation screen (also removes DEPENDENCY_SIMULATION from BusinessSection's simulation group once typed)",
+    "item 6: /config/simulation screen (empties BusinessSection's last group -- simulation -- once typed)",
     "item 7: /config/data-sources screen (source bindings + sync moved from /sync with redirect)",
-    "item 8: retire Business tab once items 4 and 6 leave it empty",
-    "item 9: CFG-4 advisories G1 (409 notice clears with first keystroke), G2 (no-active-release branch test), F6 (dirty count per field, listed in the coordinator's item 9 though CFG-4's review left it advisory)",
-    "item 10: remaining Playwright specs, one per new screen (workflow and support are done)",
+    "item 8: retire Business tab once item 6 leaves BUSINESS_GROUPS empty",
+    "item 9: CFG-4 advisories G1 (409 notice clears with first keystroke), G2 (no-active-release branch test), F6 (dirty count per field)",
+    "item 10: remaining Playwright specs, one per new screen (workflow, support, integrations are done)",
     "item 11: full acceptance sweep (vitest 0 failures, typecheck, lint, backend pytest tests/configuration tests/api tests/test_configuration_api.py -q, drift check, dev:mock sweep)"
   ],
   "out_of_scope_flagged": [
     {
       "task_id": "task_1349209e",
-      "what": "supportHandlers.ts has no MSW handler for GET /api/rma-tickets or GET /api/v1/return-support/work-items; discovered while testing onUnhandledRequest: \"error\", outside CFG-5's Owns; still open, unaffected by step:03"
+      "what": "supportHandlers.ts has no MSW handler for GET /api/rma-tickets or GET /api/v1/return-support/work-items; discovered while testing onUnhandledRequest: \"error\", outside CFG-5's Owns; still open, unaffected by later steps"
     }
   ],
   "merge_status": "NOT_READY"
