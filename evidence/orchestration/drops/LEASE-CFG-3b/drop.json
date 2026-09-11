@@ -2,7 +2,7 @@
   "lease_id": "CFG-3b",
   "branch": "feat/cfg-3b-form-primitives",
   "base_sha": "734a16dc",
-  "head_sha": "d983a6d9c46a3d4d0befeca8baad1101cb547100",
+  "head_sha": "33511f608a70c8c5c2ac4d9fd8b26f16ee1de4c7",
   "files": [
     "frontend/src/components/forms/Field.tsx",
     "frontend/src/components/forms/Field.test.tsx",
@@ -29,17 +29,16 @@
     "frontend/src/components/forms/PublishBar.tsx",
     "frontend/src/components/forms/PublishBar.test.tsx",
     "frontend/src/components/forms/ValidationErrors.tsx",
-    "frontend/src/components/forms/ValidationErrors.test.tsx"
+    "frontend/src/components/forms/ValidationErrors.test.tsx",
+    "frontend/src/components/forms/README.md",
+    "frontend/src/domains/config/DocumentEditor.tsx",
+    "frontend/src/domains/config/DocumentEditor.test.tsx"
   ],
   "tests": {
-    "vitest src/components/forms": "69 passed (13 files)",
-    "typecheck": "clean",
-    "lint (src/components/forms only)": "clean"
+    "npx vitest run src/components/forms src/domains/config src/api/mergePatch.test.ts": "141 passed (21 files)",
+    "npm run typecheck": "clean",
+    "npm run lint (whole project)": "clean"
   },
-  "remaining": [
-    "DocumentEditor: errors prop with path-mapped rendering, dataKeyedPaths rendering as KeyValueTable",
-    "frontend/src/components/forms/README.md",
-    "full acceptance run: npx vitest run src/components/forms src/domains/config src/api/mergePatch.test.ts, npm run typecheck, npm run lint (whole project)"
-  ],
-  "merge_status": "PARTIAL"
+  "remaining": [],
+  "merge_status": "PENDING"
 }

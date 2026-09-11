@@ -719,3 +719,61 @@ Commit `d983a6d9` -- `(CFG) step:03 form primitives group 3 -- ValidationErrors,
 
 All twelve primitives from the brief's table are now done. Remaining: `DocumentEditor` (`errors` +
 `dataKeyedPaths`), `frontend/src/components/forms/README.md`, and the full acceptance run.
+
+## CFG-3b step:04 — DocumentEditor: path-mapped errors, dataKeyedPaths as KeyValueTable
+
+Both additions are optional props; `AgentsSection`, `SupportTemplateSection` and `BusinessSection`
+(and their tests) are untouched. `hasPath()` matches an error's dotted path against the *current
+draft*, recomputed every render, so an edit that changes the document's shape un-matches a stale
+error instead of leaving it pinned to the wrong field. `path` is threaded through `Node`/`ObjectNode`
+as an explicit prop; `errorsByPath` and `dataKeyedPaths` ride a new `FormMetaContext` instead, since
+they do not change per recursion level the way `path` does. A `dataKeyedPaths` object renders via
+`KeyValueTable` (value kind inferred from the first entry); errors inside it still match (the
+entries are still part of the document) and surface as a compact alert list beside the table, since
+`KeyValueTable` has no per-cell error prop yet.
+
+`DocumentEditor.test.tsx` (new, 7 tests) exercises both directly against the component: a matched
+top-level and nested error, an unmatched path landing on the page-level `ValidationErrors` list, no
+error UI when `errors` is omitted, `dataKeyedPaths` rendering side by side with the default per-key
+boxes in the same document, and an error under a data-keyed entry.
+
+```
+$ npx vitest run src/domains/config
+ Test Files  6 passed (6)
+      Tests  59 passed (59)
+$ npm run typecheck
+(clean)
+$ npx eslint src/domains/config src/components/forms --max-warnings=0
+(clean)
+```
+
+Commit `1ff9b348` -- `(CFG) step:04 DocumentEditor -- path-mapped errors and dataKeyedPaths as KeyValueTable`.
+
+## CFG-3b step:05 — forms README
+
+`frontend/src/components/forms/README.md`: house-style intro (the no-axe-in-vitest note; `DocumentEditor`
+stays the Advanced/JSON escape hatch, not replaced) followed by one minimal, accurate usage example
+per primitive, matching its actual prop signature. Commit `33511f60`.
+
+## CFG-3b acceptance
+
+```
+$ npx vitest run src/components/forms src/domains/config src/api/mergePatch.test.ts
+ Test Files  21 passed (21)
+      Tests  141 passed (141)
+$ npm run typecheck
+> tsc -b --pretty false
+(clean, no output)
+$ npm run lint
+> eslint . --max-warnings=0
+(clean, no output -- whole project, as the brief requires)
+$ git status --short
+(empty -- everything committed)
+```
+
+Every item in the brief's Acceptance section is met: all twelve primitives with a render/interaction
+test each (no axe integration exists in this repo -- role/name/keyboard assertions used instead, per
+the brief's fallback instruction, and recorded at step:00); `DocumentEditor` path-mapped errors and
+`KeyValueTable` rendering with their own tests; the three existing callers' tests unchanged in file
+and green; typecheck and whole-project lint clean; the README. Head `33511f60`. `merge_status` set to
+`PENDING` in `drop.json`.
