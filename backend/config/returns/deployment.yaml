@@ -1,0 +1,35 @@
+# The env-held business switches (D-CFG-4), packaged as the RELEASE default.
+#
+# This file is what a first publish adopts when no release yet carries a
+# `deployment` section (`configuration/application/packaged_adoption.py`'s
+# carry-forward, CFG-6.design.md §3). The values a deployment actually sets
+# in `.env`/compose are overlaid onto this file at bootstrap time
+# (`deployment_payload_from_settings`, `configuration/deployment_settings.py`)
+# -- never onto a running release, which is why these values look identical
+# to the field defaults in `configuration/settings.py`: this is the
+# bootstrap/development baseline, not a specific deployment's answer.
+#
+# After the first publish, this file no longer has authority: an operator
+# changes provider order, model pools, dependency-simulation modes, feedback
+# learning and support-ticket mode at `/config/deployment`, and the release is
+# what every process reads (hot-adopted within ~5s, no restart).
+deployment:
+  ai:
+    provider_order:
+      - GOOGLE
+      - NVIDIA
+      - SIMULATOR
+    model_pools: {}
+    google:
+      thinking_budget: 2048
+      response_schema: false
+  dependencies:
+    omc: SIMULATED
+    parcel: SIMULATED
+    freight: SIMULATED
+    lsi: SIMULATED
+  feedback_learning:
+    enabled: true
+  support_ticket:
+    mode: INTERNAL
+    base_url: null
