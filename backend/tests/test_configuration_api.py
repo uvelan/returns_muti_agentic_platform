@@ -102,8 +102,9 @@ def configuration_client(
     records: list[dict[str, Any]] = []
     app.state.audit_records = records
 
-    async def record_audit(_request: Request, **entry: Any) -> None:
+    async def record_audit(_request: Request, **entry: Any) -> str:
         records.append(dict(entry))
+        return f"audit-{len(records)}"
 
     monkeypatch.setattr(
         "return_platform.configuration.api.releases.record_configuration_audit",
@@ -625,6 +626,134 @@ def test_every_release_change_leaves_an_audit_record(
     assert patch_record["details"]["patchKeys"] == ["policy_evaluation"]
     assert "policy_evaluation.enabled" in patch_record["details"]["changedPaths"]
     assert records[2]["details"]["status"] == "VALIDATED"
+
+
+# --- publish (single transaction) ---------------------------------------------
+
+
+def test_publish_creates_patches_and_releases_in_one_call(
+    configuration_client: TestClient,
+) -> None:
+    client = configuration_client
+    response = client.post(
+        "/api/config/publish",
+        json={
+            "release_id": "published-v1",
+            "domain_key": "RETURN_PLATFORM",
+            "patch": {"policy_evaluation": {"enabled": True, "disabled_reason": None}},
+            "expected_head_revision": 0,
+            "note": "turning eligibility evaluation on",
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["release_id"] == "published-v1"
+    assert data["status"] == "RELEASED"
+    assert data["head_revision"] == 1
+    assert data["domains"]["RETURN_PLATFORM"]["policy_evaluation"]["enabled"] is True
+    assert data["audit_ids"] and all(isinstance(i, str) for i in data["audit_ids"])
+
+    active = client.get("/api/config/runtime")
+    assert active.status_code == 200
+    assert active.json()["data"]["release_id"] == "published-v1"
+
+
+def test_publish_generates_a_release_id_when_none_is_given(
+    configuration_client: TestClient,
+) -> None:
+    client = configuration_client
+    response = client.post(
+        "/api/config/publish",
+        json={
+            "domain_key": "RETURN_PLATFORM",
+            "patch": {},
+            "expected_head_revision": 0,
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["release_id"].startswith("publish-")
+
+
+def test_publish_refuses_an_existing_release_id(configuration_client: TestClient) -> None:
+    client = configuration_client
+    _create_draft(client, "taken")
+    response = client.post(
+        "/api/config/publish",
+        json={
+            "release_id": "taken",
+            "domain_key": "RETURN_PLATFORM",
+            "patch": {},
+            "expected_head_revision": 0,
+        },
+    )
+    assert response.status_code == 409, response.text
+
+
+def test_publish_refuses_an_invalid_patch_and_leaves_nothing_behind(
+    configuration_client: TestClient,
+) -> None:
+    client = configuration_client
+    response = client.post(
+        "/api/config/publish",
+        json={
+            "release_id": "publish-invalid",
+            "domain_key": "RETURN_PLATFORM",
+            "patch": {"agents": {"order_discovery": None}},
+            "expected_head_revision": 0,
+        },
+    )
+    assert response.status_code == 422, response.text
+
+    releases = client.get("/api/config/releases").json()["data"]
+    statuses = {release["status"] for release in releases}
+    assert statuses <= {"ARCHIVED"}, statuses
+
+
+def test_publish_refuses_a_stale_head_and_leaves_nothing_behind(
+    configuration_client: TestClient,
+) -> None:
+    client = configuration_client
+    response = client.post(
+        "/api/config/publish",
+        json={
+            "release_id": "publish-stale",
+            "domain_key": "RETURN_PLATFORM",
+            "patch": {},
+            "expected_head_revision": 5,
+        },
+    )
+    assert response.status_code == 409, response.text
+    assert response.json()["detail"]["code"] == "CONFIGURATION_REVISION_CONFLICT"
+
+    releases = client.get("/api/config/releases").json()["data"]
+    statuses = {release["status"] for release in releases}
+    assert statuses <= {"ARCHIVED"}, statuses
+
+
+def test_publish_needs_the_release_write_capability() -> None:
+    from return_platform.security import roles as r
+    from return_platform.security.capabilities import CONFIG_RELEASE_WRITE, capabilities_for_roles
+
+    app = FastAPI()
+    app.include_router(router)
+    unentitled = next(
+        role
+        for role in sorted(r.ALL_ROLES)
+        if CONFIG_RELEASE_WRITE not in capabilities_for_roles(frozenset({role}))
+    )
+
+    @app.middleware("http")
+    async def attach_principal(request: Request, call_next: Any) -> Any:
+        request.state.principal = Principal(subject="reader", roles=frozenset({unentitled}))
+        request.state.correlation_id = "test-correlation-id"
+        return await call_next(request)
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/config/publish",
+        json={"domain_key": "RETURN_PLATFORM", "patch": {}, "expected_head_revision": 0},
+    )
+    assert response.status_code == 403, response.text
 
 
 # --- packaged adoption --------------------------------------------------------

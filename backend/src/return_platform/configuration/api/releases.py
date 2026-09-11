@@ -40,6 +40,7 @@ from return_platform.configuration.application.release_promotion import (
 )
 from return_platform.configuration.graph_repository import (
     ConfigurationGraphRepository,
+    ConfigurationReleaseNode,
 )
 from return_platform.configuration.return_configuration import (
     ReturnPlatformConfiguration,
@@ -143,20 +144,23 @@ class CreateReleasePayload(BaseModel):
     from_active: bool = True
 
 
-async def create_release(
-    payload: CreateReleasePayload,
+async def _active_or_baseline_domains(
     request: Request,
-    user_id: str = Depends(require_write_roles),
-) -> APIResponse[dict[str, Any]]:
-    """Create a draft by cloning the active release or current validated baseline."""
+    repo: ConfigurationGraphRepository,
+    active_release: ConfigurationReleaseNode | None,
+    *,
+    from_active: bool,
+) -> dict[str, Any]:
+    """The domains a new draft starts from: the active release, or the
+    packaged baseline for whichever domain it does not carry.
 
-    repo = resolve_configuration_repository(request)
-    if await repo.get_release(payload.release_id) is not None:
-        raise HTTPException(status_code=409, detail=f"Release {payload.release_id} already exists")
-
+    Shared by `create_release` and `publish_configuration` (CFG-3a) so a
+    single-call publish clones a release exactly the way the four-round-trip
+    path always has -- one behaviour, not a second copy of it for the
+    collapsed pipeline.
+    """
     domains_to_copy: dict[str, Any] = {}
-    active_release = await repo.get_active_release()
-    if active_release is not None and payload.from_active:
+    if active_release is not None and from_active:
         domains_to_copy = await repo.get_all_domain_configs(active_release.release_id)
 
     loaded = getattr(request.app.state, "return_configuration", None)
@@ -185,6 +189,24 @@ async def create_release(
             DEPENDENCY_SIMULATION_DOMAIN_KEY,
             loaded_dependency_simulation.configuration.model_dump(mode="json"),
         )
+    return domains_to_copy
+
+
+async def create_release(
+    payload: CreateReleasePayload,
+    request: Request,
+    user_id: str = Depends(require_write_roles),
+) -> APIResponse[dict[str, Any]]:
+    """Create a draft by cloning the active release or current validated baseline."""
+
+    repo = resolve_configuration_repository(request)
+    if await repo.get_release(payload.release_id) is not None:
+        raise HTTPException(status_code=409, detail=f"Release {payload.release_id} already exists")
+
+    active_release = await repo.get_active_release()
+    domains_to_copy = await _active_or_baseline_domains(
+        request, repo, active_release, from_active=payload.from_active
+    )
 
     for domain_key, domain_payload in domains_to_copy.items():
         await repo.save_draft_domain(
@@ -238,7 +260,7 @@ async def record_configuration_audit(
     actor: str,
     target: str,
     details: dict[str, Any],
-) -> None:
+) -> str:
     """One audit record per configuration release change, in the platform's audit log.
 
     Release create, domain patch and promotion left no entry in the `audit`
@@ -254,18 +276,36 @@ async def record_configuration_audit(
     503 because the audit store was unreachable -- the operator would retry and
     cut a second release. The failure is logged with everything the record
     would have carried, so the gap is visible rather than silent.
+
+    **Returns a correlation id, not the storage primary key.** `append_audit`
+    (`operations/repository.py`, outside this lease's Owns list) assigns its
+    own `_id` and does not hand it back. `/publish` and `/adopt-packaged`
+    need something to report as `audit_ids` -- an id an operator can hand to
+    support, or grep the log line above for -- so one is generated here,
+    stamped into the stored record as `details["auditId"]`, and returned
+    unconditionally, even when the write below fails: the id is a token this
+    call assigned, not a promise the record is queryable, and the failure
+    right above it is what says whether it is.
     """
+    audit_id = str(uuid4())
     try:
         repository = resolve_operational_repository(request)
-        await repository.append_audit(action=action, actor=actor, target=target, details=details)
+        await repository.append_audit(
+            action=action,
+            actor=actor,
+            target=target,
+            details={**details, "auditId": audit_id},
+        )
     except Exception:  # noqa: BLE001 -- a failure here must not undo a completed write
         logger.exception(
-            "configuration_audit_not_recorded action=%s actor=%s target=%s details=%s",
+            "configuration_audit_not_recorded action=%s actor=%s target=%s auditId=%s details=%s",
             action,
             actor,
             target,
+            audit_id,
             json.dumps(details, sort_keys=True, default=str),
         )
+    return audit_id
 
 
 _CHANGED_PATHS_CAP = 50
@@ -610,6 +650,147 @@ async def promote_release_status(
     data = outcome.release.model_dump(mode="json")
     data["domains"] = outcome.domains
     data["head_revision"] = outcome.head_revision
+    if outcome.activated_snapshot is not None:
+        data["runtime_activation"] = {
+            "release_id": outcome.activated_snapshot.release_id,
+            "checksum_sha256": outcome.activated_snapshot.checksum_sha256,
+            "head_revision": outcome.activated_snapshot.head_revision,
+            "loaded_at": outcome.activated_snapshot.loaded_at,
+        }
+    return APIResponse(data=data, meta=_response_meta(request))
+
+
+# --- publish (single transaction) ---------------------------------------------
+#
+# CFG-3a scope item 2. Every screen that changes one prompt or one policy
+# used to be four round trips -- create, patch, promote VALIDATED, promote
+# RELEASED -- each one a chance for a concurrent editor's own draft to land
+# in between. This composes the three primitives the brief names
+# (`promote_configuration_release`, the canonical payload helper
+# `_canonical_domain_payload`, and `record_configuration_audit`) directly
+# rather than calling `create_release`/`patch_domain_config`/
+# `promote_release_status` as sub-requests: those three already exist as
+# HTTP handlers with their own response shapes, and composing THOSE would
+# make this a wrapper around wrappers rather than the one-transaction
+# handler the brief asks for. `_active_or_baseline_domains` is shared with
+# `create_release` for exactly the one piece that WOULD otherwise be a
+# second copy -- the baseline clone.
+
+
+class PublishConfigurationPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    #: Omit to let the server assign one; name one to make the id
+    #: predictable (a runbook, a migration script). Either way this is a NEW
+    #: release -- PATCH is the surface for editing one already in flight,
+    #: and it takes the id as a path segment for exactly that reason.
+    release_id: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]+$",
+    )
+    domain_key: str
+    patch: dict[str, Any]
+    expected_head_revision: int = Field(ge=0)
+    note: str | None = Field(default=None, max_length=2000)
+
+
+async def publish_configuration(
+    body: PublishConfigurationPayload,
+    request: Request,
+    user_id: str = Depends(require_capability(capabilities.CONFIG_RELEASE_WRITE)),
+) -> APIResponse[dict[str, Any]]:
+    """Create-from-active, canonical patch, VALIDATED, RELEASED -- one call.
+
+    **On any refusal the draft this call created is archived, not left
+    behind** (`_archive_draft_on_refusal`): a caller retrying after a 409 or
+    422 must not find a half-published release occupying the id it asked
+    for. Every step's own audit record is still written (create, patch,
+    promote x2) -- `audit_ids` in the response is this call's OWN summary
+    record, written only once every step has actually succeeded; the
+    per-step trail is independently queryable via `GET /audit?target=<release>`.
+    """
+    repo = resolve_configuration_repository(request)
+    release_id = body.release_id or f"publish-{uuid4().hex[:16]}"
+    if await repo.get_release(release_id) is not None:
+        raise HTTPException(status_code=409, detail=f"Release {release_id} already exists")
+
+    try:
+        active_release = await repo.get_active_release()
+        domains_to_copy = await _active_or_baseline_domains(
+            request, repo, active_release, from_active=True
+        )
+        for domain_key, domain_payload in domains_to_copy.items():
+            await repo.save_draft_domain(
+                release_id, domain_key, cast(dict[str, Any], domain_payload), actor_id=user_id
+            )
+        if active_release is not None and active_release.metadata:
+            await repo.set_release_metadata(release_id, dict(active_release.metadata))
+
+        current = await repo.get_domain_config(release_id, body.domain_key)
+        if current is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Domain {body.domain_key} was not found in release {release_id}",
+            )
+        updated_payload = _canonical_domain_payload(
+            body.domain_key, _apply_merge_patch(current, body.patch)
+        )
+        try:
+            await repo.save_draft_domain(
+                release_id, body.domain_key, updated_payload, actor_id=user_id
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+        resources = getattr(request.app.state, "resources", None)
+        store = resources if isinstance(resources, RuntimeResources) else None
+        activator = getattr(request.app.state, "runtime_configuration_activator", None)
+        promotion_kwargs: dict[str, Any] = {
+            "repository": repo,
+            "release_id": release_id,
+            "actor_id": user_id,
+            "mongo": store.mongo if store is not None else None,
+            "mongo_database": store.settings.mongo_database if store is not None else None,
+            "activator": (
+                activator if isinstance(activator, RuntimeConfigurationActivator) else None
+            ),
+        }
+        try:
+            await promote_configuration_release(target_status="VALIDATED", **promotion_kwargs)
+            outcome = await promote_configuration_release(
+                target_status="RELEASED",
+                expected_head_revision=body.expected_head_revision,
+                **promotion_kwargs,
+            )
+        except ReleasePromotionError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+    except HTTPException:
+        await _archive_draft_on_refusal(repo, release_id, user_id)
+        raise
+
+    details: dict[str, Any] = {
+        "domainKey": body.domain_key,
+        "patchKeys": sorted(body.patch),
+        "clonedFrom": active_release.release_id if active_release is not None else None,
+        "headRevision": outcome.head_revision,
+        "checksumSha256": outcome.release.checksum_sha256,
+    }
+    if body.note:
+        details["note"] = body.note
+    audit_id = await record_configuration_audit(
+        request,
+        action="CONFIGURATION_RELEASE_PUBLISHED",
+        actor=user_id,
+        target=release_id,
+        details=details,
+    )
+
+    data = outcome.release.model_dump(mode="json")
+    data["domains"] = outcome.domains
+    data["head_revision"] = outcome.head_revision
+    data["audit_ids"] = [audit_id]
     if outcome.activated_snapshot is not None:
         data["runtime_activation"] = {
             "release_id": outcome.activated_snapshot.release_id,

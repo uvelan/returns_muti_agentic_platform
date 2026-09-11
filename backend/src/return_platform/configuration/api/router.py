@@ -43,6 +43,7 @@ from return_platform.configuration.api.releases import (
     CreateReleasePayload,
     PatchDomainPayload,
     PromoteReleasePayload,
+    PublishConfigurationPayload,
     ValidateDomainPayload,
     resolve_configuration_repository,
 )
@@ -60,6 +61,9 @@ from return_platform.configuration.api.releases import (
 )
 from return_platform.configuration.api.releases import (
     promote_release_status as console_promote_release_status,
+)
+from return_platform.configuration.api.releases import (
+    publish_configuration as console_publish_configuration,
 )
 from return_platform.configuration.api.releases import (
     validate_domain_config as console_validate_domain_config,
@@ -308,6 +312,33 @@ async def validate_domain(
     capability an eventual patch would.
     """
     response = await console_validate_domain_config(domain_key, body, request, _user_id)
+    return _ok(request, response.data)
+
+
+# --- publish --------------------------------------------------------------
+#
+# CFG-3a scope item 2: create-from-active, canonical patch, promote
+# VALIDATED, promote RELEASED with the head check, and the audit records --
+# one call, replacing the four `/releases` + PATCH + `/promote` x2 round
+# trips every Configuration screen used to make. See
+# `publish_configuration`'s own docstring for why it composes
+# `promote_configuration_release`/`_canonical_domain_payload`/
+# `record_configuration_audit` directly rather than calling the three
+# handlers above as sub-requests.
+
+
+@router.post("/publish", response_model=APIResponse[dict[str, Any]])
+async def publish(
+    body: PublishConfigurationPayload,
+    request: Request,
+    user_id: str = Depends(require_capability(capabilities.CONFIG_RELEASE_WRITE)),
+) -> APIResponse[Any]:
+    """Draft, patch and publish one behaviour domain in a single call.
+
+    On refusal the draft this call created is archived, not left behind --
+    a retry after a 409 or 422 finds no half-published release in its way.
+    """
+    response = await console_publish_configuration(body, request, user_id)
     return _ok(request, response.data)
 
 

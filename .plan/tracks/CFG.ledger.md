@@ -1126,3 +1126,60 @@ stays the one documented non-write exception).
 
 Head sha: see commit. `merge_status: PARTIAL`. Remaining: item 2 (`/publish`),
 item 6 (audit filter), item 7 (OpenAPI regen).
+
+## CFG-3a step:07 — item 2: `POST /api/config/publish`
+
+Single-call publish: create-from-active, canonical patch, promote VALIDATED,
+promote RELEASED with the head check, and the audit records. Composes the
+three primitives the brief names directly -- `promote_configuration_release`,
+`_canonical_domain_payload` (via the same merge-patch path
+`patch_domain_config` uses), `record_configuration_audit` -- rather than
+calling `create_release`/`patch_domain_config`/`promote_release_status` as
+sub-requests, since those are HTTP handlers with their own response shapes
+and composing them would be a wrapper around wrappers. The one piece that
+WOULD have been a second copy (the active-or-baseline domain clone) is
+shared: extracted `_active_or_baseline_domains` out of `create_release`
+unchanged in behaviour, and `publish_configuration` calls the same helper.
+
+On any refusal inside the try block (404 unknown domain, 409 patch/version
+conflict, 422 invalid patch, 409/422/503 from `ReleasePromotionError`) the
+draft this call created is archived via `_archive_draft_on_refusal` (already
+built for `/adopt-packaged`) before the HTTPException propagates -- proved
+by two tests reading `GET /releases` back and asserting every release's
+status is in `{ARCHIVED}` (an invalid patch, and a stale
+`expected_head_revision`).
+
+`audit_ids`: `record_configuration_audit` (releases.py, not the
+Owns-list-excluded `operations/repository.py`) now generates and returns a
+correlation id, stamped into the stored record as `details["auditId"]` and
+returned even on a best-effort write failure -- `append_audit` itself
+assigns its own storage `_id` and was left untouched, out of scope. Every
+call site (`create_release`, `patch_domain_config`, `promote_release_status`,
+`adopt_packaged_release`) ignores the new return value except
+`publish_configuration`, which writes one summary `CONFIGURATION_RELEASE_PUBLISHED`
+record after every step succeeds and reports its id as `audit_ids`; the
+per-step trail (create/patch/promote x2) stays independently queryable by
+target. `configuration_client`'s audit-recording test double updated to
+return a fake id, matching the real function's new contract (no test
+previously depended on the old `None` return).
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/test_configuration_api.py -q -p no:cacheprovider
+30 passed in 17.86s
+$ .venv/Scripts/python.exe -m pytest tests/configuration tests/test_configuration_api.py tests/test_every_console_path_is_mounted.py tests/api tests/test_graph_configuration_bootstrap.py tests/security -q -p no:cacheprovider
+736 passed, 13 deselected, 2 warnings in 106.31s
+$ .venv/Scripts/python.exe -m ruff check src/return_platform/configuration/api/releases.py src/return_platform/configuration/api/router.py tests/test_configuration_api.py tests/configuration/test_canonical_config_api.py tests/test_every_console_path_is_mounted.py
+All checks passed!
+$ .venv/Scripts/python.exe -m ruff format --check <same 5 files>
+5 files already formatted
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy src/return_platform/configuration/api/releases.py src/return_platform/configuration/api/router.py
+Success: no issues found in 2 source files
+```
+
+Mutation-surface pin (`test_canonical_config_api.py`) and the write-route
+guard tables (`test_every_console_path_is_mounted.py`'s
+`CONFIGURATION_WRITE_ROUTES`/`CONFIGURATION_CAPABILITY_ROUTES`) updated for
+`/publish`, both `CONFIG_RELEASE_WRITE`-guarded.
+
+Head sha: see commit. `merge_status: PARTIAL`. Remaining: item 6 (audit
+filter), item 7 (OpenAPI regen), final acceptance sweep.

@@ -124,6 +124,11 @@ CONFIGURATION_WRITE_ROUTES: tuple[tuple[str, str], ...] = (
     ("post", "/api/config/releases"),
     ("patch", "/api/config/releases/{release_id}/domains/{domain_key}"),
     ("post", "/api/config/releases/{release_id}/promote"),
+    # CFG-3a: the collapsed single-call publish path and the packaged-adoption
+    # write, both real mutations (see test_canonical_config_api.py's
+    # test_the_release_lifecycle_is_the_only_mutation_surface_here).
+    ("post", "/api/config/publish"),
+    ("post", "/api/config/adopt-packaged"),
 )
 
 
@@ -219,6 +224,8 @@ CONFIGURATION_CAPABILITY_ROUTES: dict[tuple[str, str], str] = {
         "patch",
         "/api/config/releases/{release_id}/domains/{domain_key}",
     ): capabilities.CONFIG_RELEASE_WRITE,
+    ("post", "/api/config/publish"): capabilities.CONFIG_RELEASE_WRITE,
+    ("post", "/api/config/adopt-packaged"): capabilities.CONFIG_RELEASE_WRITE,
 }
 
 

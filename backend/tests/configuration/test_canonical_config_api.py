@@ -141,11 +141,11 @@ def test_the_release_lifecycle_is_the_only_mutation_surface_here() -> None:
     patch reaches the same outcome without letting a caller overwrite fields it
     never read.
 
-    `POST /adopt-packaged` (CFG-3a) is a fourth genuine mutation, not an
-    exception to this rule -- it publishes a release exactly the way
-    `/releases` + PATCH + `/promote` would, through the same
-    `publish_release_with_domains` pipeline, with the units it adopts decided
-    by `adopt_packaged_configuration` rather than a caller-supplied patch.
+    `POST /publish` and `POST /adopt-packaged` (CFG-3a) are two more genuine
+    mutations, not exceptions to this rule -- each publishes a release
+    exactly the way `/releases` + PATCH + `/promote` x2 would, collapsed
+    into one call: `/publish` from a caller-supplied patch,
+    `/adopt-packaged` from the units `adopt_packaged_configuration` decides.
 
     **`POST /validate/{domain_key}` is not a mutation.** It is POST-shaped
     because a payload or a patch does not fit a GET's query string, not
@@ -169,6 +169,7 @@ def test_the_release_lifecycle_is_the_only_mutation_surface_here() -> None:
         ("/api/config/releases/{release_id}/domains/{domain_key}", "PATCH"),
         ("/api/config/releases/{release_id}/promote", "POST"),
         ("/api/config/validate/{domain_key}", "POST"),
+        ("/api/config/publish", "POST"),
         ("/api/config/adopt-packaged", "POST"),
     }, mutations
 
