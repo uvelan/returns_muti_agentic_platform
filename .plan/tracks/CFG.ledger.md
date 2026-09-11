@@ -3395,3 +3395,22 @@ Files: `frontend/src/domains/config/UndecidedKeysPanel.tsx`, `OverviewSection.te
 to step:07, and the F7 correction to step:01). `drop.json`: `head_sha` corrected to this step's commit,
 `status` moved from PENDING to RV-ready, and the F10 misattribution in `acceptance`/`done` corrected to
 name the real cause.
+
+---
+
+## CFG-5 merged at 58b1e409 (orchestrator)
+
+RV round 2 PASS on `b3d8f06e` (round 1: one blocking -- the disabled "Take packaged file" button faded
+its text to 2.04:1 and was the recurring `/config/overview` sweep failure the implementer had filed
+under the F10 flake; fixed at the cause, measured 9.34:1 in the browser, mock sweep 135/135). Item 5
+(agents API repoint) was split into CFG-5b by the orchestrator. Advisories carried: H1 (disabled
+button visually identical to enabled apart from the cursor) and H2 (the regression test pins an
+`opacity-` spelling, not the property) into CFG-5b's Agents screen work; H4 (one restored comment
+still missing at `DataSourcesSection.tsx:400`) and H5 (the intermittent `/config/return-policy`
+reflow at 320px, outside Owns) into CFG-7; H3 (drop status) moot at merge. The "warn" mock setting
+surfaced three more unhandled routes (`/api/config/adoption`, `/api/shipment-status-catalog`,
+`/api/shipments`) besides the two `/support` ones -- carried into CFG-7.
+
+Serving worktree moved to `58b1e409` (frontend-only change, no backend restart). CFG-5b worktree
+prepared from `58b1e409`. CFG-6 implementer running in parallel on `feat/cfg-6-deployment-section`
+from `fd2874ca` (backend + one screen; file-disjoint).
