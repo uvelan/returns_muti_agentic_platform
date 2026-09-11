@@ -2999,3 +2999,93 @@ Files: `frontend/src/domains/config/SimulationSection.tsx`, `SimulationSection.t
 deleted `frontend/src/domains/config/BusinessSection.tsx`, `BusinessSection.test.tsx`.
 `drop.json` PARTIAL: items 1-4, 6, 8 done; item 5 split to CFG-5b (out of scope here); items 7, 9,
 10, 11 remain.
+
+## CFG-5 step:07 — `/config/source-bindings` screen (item 7)
+
+`DataSourcesSection.tsx`: source-binding overrides plus the sync trigger and run history, moved from
+`/sync`.
+
+**Named "Source Bindings", not "Data Sources" -- audit finding D1.** The brief's own design table
+calls the route `/config/data-sources`; `registry.ts` already explains why that label was removed
+from `CONFIG_SECTIONS` once (`"Data Sources" is deliberately absent... It is now the Graph Schema
+Analyzer's Data Sources section`), and reusing it here would restore exactly the collision D1 names.
+The URL is `/config/source-bindings` instead -- a deliberate deviation from the brief's literal path,
+recorded here rather than silently followed into the same defect an earlier lease already fixed.
+
+**Source bindings are a direct write, not a configuration release.** `PUT`/`DELETE
+/api/source-bindings/{dataset}` write immediately (`sourceBindings.ts`'s own docstring: no draft, no
+Validate, no Publish), so this screen does not ride `TypedSectionScreen` -- a new panel instead, gated
+on `config.source.rebind`, with a per-dataset Rebind form (source asset id, connector type, object
+reference as a `KeyValueTable`, incremental cursor field) and a Clear action.
+
+**The sync half moved from `SyncControlPage.tsx` (`/sync`), logic unchanged.** `RunListPane`,
+`StartSyncForm`, `RunDetailPane`, `StatusPill`, `Pane`, `Facts` are the same functions, same behaviour
+-- only the `DomainRail` portal (which renders nothing outside a domain's own rail slot, confirmed by
+the fact the original tests never exercised its content) is replaced with an inline summary panel
+that actually renders inside a Configuration tab. `SyncControlPage.tsx` and its test are deleted;
+`/sync` now renders `SyncRedirect.tsx` (`<Redirect to="/config/source-bindings" replace />`) via
+`domainScreens.ts`, the domain entry itself staying registered so a bookmark still lands somewhere
+real, the same shape `/config/support-template`'s alias uses.
+
+**`routeManifest.ts` needed a real fix, not a suppression.** `/sync` redirecting before paint means it
+renders no heading of its own -- the sweep's generic per-domain loop expected `<h1>Source Sync</h1>`
+and got Configuration's heading instead. `HEADING_MISMATCH` was the wrong tool: `routeManifest.test.ts`
+asserts `HEADING_MISMATCH_ROUTES` stays *empty*, by design (a permanent "acceptable mismatch" entry
+would be exactly the defect that invariant exists to catch). Fixed the way `ROOT_PATH` already handles
+its own redirect: `/sync` is now hand-added to `CANONICAL_ROUTES` with `domain: null, name: ""`
+(matching any heading rather than asserting a specific, absent one) and excluded from the generic
+per-domain loop via a new `REDIRECTING_DOMAINS` set, keeping both `page identity` invariants
+genuinely empty rather than gaining a permanent, documented exception.
+
+Live-sweep confirms the fix: `/sync mounts and answers` passes, along with the rest of the full sweep
+(134/135; the one failure is the already-documented F10 color-contrast flake on `/config`, reproduced
+2/2 under `-g` filtering and 0/1 in a standalone isolated probe -- the same cold/contended-server
+signature CFG-4's review and this lease's steps 01 and 03 already recorded, not a regression).
+
+```
+$ npx vitest run                       # whole frontend suite
+ Test Files  86 passed (86)
+      Tests  1047 passed (1047)
+
+$ npm run typecheck
+typecheck exit: 0
+$ npm run lint
+lint exit: 0
+```
+
+`dev:mock` route sweep:
+
+```
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g "sync|source-bindings"
+  9 passed -- /sync, /config/source-bindings, /graph-schema/sync, each render + keyboard + axe
+
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts       # full sweep
+  134 passed, 1 failed (/config axe color-contrast -- F10-class flake, see above)
+```
+
+Live e2e run, disposable `vite --port 5199`, stopped afterwards; `:5173`/`:8000` never restarted:
+
+```
+$ E2E_REAL_BASE_URL=http://localhost:5199 npx playwright test --project=cfg4-e2e e2e/config-source-bindings.spec.ts --workers=1 --reporter=list --timeout=60000
+  ok Source bindings -- real stack › rebinds source_products' cursor field, then clears the override
+     (6.0s)
+  1 passed
+```
+
+No configuration head revision to compare (source bindings are outside the release lifecycle);
+verified instead by reading `GET /api/source-bindings` before, after the rebind, and after the clear:
+
+```
+source_products.incrementalCursorField  before: source_updated_at
+                                         after rebind: e2e_cfg5_test_cursor, overridden: true
+                                         after clear: source_updated_at, overridden: false  (identical to before)
+```
+
+Files: `frontend/src/domains/config/DataSourcesSection.tsx`, `DataSourcesSection.test.tsx`,
+`frontend/src/domains/sync/SyncRedirect.tsx`, `frontend/src/domains/domainScreens.ts`,
+`frontend/src/domains/registry.ts`, `frontend/src/domains/routeManifest.ts`,
+`frontend/src/domains/config/ConfigurationPage.tsx`, `frontend/e2e/config-source-bindings.spec.ts`;
+deleted `frontend/src/domains/sync/SyncControlPage.tsx`, `SyncControlPage.test.tsx`.
+`drop.json` PARTIAL: items 1-4, 6, 7, 8 done; item 5 split to CFG-5b; item 10 (a Playwright spec per
+new screen) is complete too -- workflow, support, integrations, simulation and source-bindings each
+have one, run once and reverted; items 9, 11 remain.

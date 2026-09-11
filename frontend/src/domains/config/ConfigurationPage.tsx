@@ -10,6 +10,7 @@ import {
 } from "../../api/configuration";
 import { useCapabilities } from "../../hooks/capabilityContext";
 import { AgentsSection } from "./AgentsSection";
+import { DataSourcesSection } from "./DataSourcesSection";
 import { DiscoverySection } from "./DiscoverySection";
 import { FulfilmentSection } from "./FulfilmentSection";
 import { IntegrationsSection } from "./IntegrationsSection";
@@ -153,6 +154,8 @@ function TabBody({ tab, canReadReleases }: { tab: Tab; canReadReleases: boolean 
       return <IntegrationsSection />;
     case "Simulation":
       return <SimulationSection />;
+    case "Source Bindings":
+      return <DataSourcesSection />;
     case "Runtime":
       return <RuntimeTab />;
     case "Releases":

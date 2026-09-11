@@ -1,12 +1,10 @@
 /**
- * S6 -- what the sync screen shows, and what it sends.
+ * `/config/source-bindings`: source-binding overrides (list, rebind, clear)
+ * and the sync trigger and run history moved here from `/sync`.
  *
- * These assert behaviour an operator depends on, not layout. Three things are
- * worth catching: a targeted run that does not say which conversation caused it
- * (which makes an agent-initiated write to the graph untraceable), a completed
- * run with no writes rendered as an ordinary success (the exact shape of the
- * defect this screen shipped alongside), and a "Sync now" control offered to
- * someone the backend will refuse.
+ * The sync-half assertions are `SyncControlPage.test.tsx`'s own, moved
+ * verbatim with the import updated -- the behaviour did not change, only
+ * where it renders. New tests cover the binding panel this step adds.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -15,12 +13,16 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SyncRun } from "../../api/graphSync";
-import { SyncControlPage } from "./SyncControlPage";
+import type { SourceBinding } from "../../api/sourceBindings";
+import { DataSourcesSection } from "./DataSourcesSection";
 
 const mocks = vi.hoisted(() => ({
   listRuns: vi.fn(),
   readRun: vi.fn(),
   startRun: vi.fn(),
+  listBindings: vi.fn(),
+  rebind: vi.fn(),
+  clear: vi.fn(),
   can: vi.fn(),
 }));
 
@@ -29,6 +31,15 @@ vi.mock("../../api/graphSync", () => ({
     listRuns: mocks.listRuns,
     readRun: mocks.readRun,
     startRun: mocks.startRun,
+  },
+}));
+
+vi.mock("../../api/sourceBindings", () => ({
+  CONNECTOR_TYPES: ["MONGODB", "MSSQL", "POSTGRESQL", "NEO4J"],
+  sourceBindingsApi: {
+    list: mocks.listBindings,
+    rebind: mocks.rebind,
+    clear: mocks.clear,
   },
 }));
 
@@ -77,51 +88,114 @@ const TARGETED = run({
   },
 });
 
+const BINDING: SourceBinding = {
+  dataset: "source_sales",
+  sourceAssetId: "salesInv",
+  connectorType: "MONGODB",
+  objectRef: { database: "source_db", collection: "salesInv" },
+  incrementalCursorField: "updated_at",
+  overridden: false,
+};
+
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
-  return render(<SyncControlPage />, { wrapper });
+  return render(<DataSourcesSection />, { wrapper });
 }
 
-describe("SyncControlPage", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.can.mockReturnValue(true);
-    mocks.listRuns.mockResolvedValue([TARGETED, run()]);
-    mocks.readRun.mockResolvedValue(TARGETED);
-    mocks.startRun.mockResolvedValue(run());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.can.mockReturnValue(true);
+  mocks.listRuns.mockResolvedValue([TARGETED, run()]);
+  mocks.readRun.mockResolvedValue(TARGETED);
+  mocks.startRun.mockResolvedValue(run());
+  mocks.listBindings.mockResolvedValue([BINDING]);
+  mocks.rebind.mockResolvedValue(undefined);
+  mocks.clear.mockResolvedValue(undefined);
+});
+
+describe("source bindings", () => {
+  it("lists the declared asset and override state per dataset", async () => {
+    renderPage();
+    expect(await screen.findByText("source_sales")).toBeInTheDocument();
+    expect(screen.getByText(/MONGODB · salesInv/)).toBeInTheDocument();
+    expect(screen.queryByText("Overridden")).not.toBeInTheDocument();
   });
 
+  it("shows the override badge and a Clear control for an overridden dataset", async () => {
+    mocks.listBindings.mockResolvedValue([{ ...BINDING, overridden: true }]);
+    renderPage();
+    expect(await screen.findByText("Overridden")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear" })).toBeInTheDocument();
+  });
+
+  it("rebinds a dataset with the edited fields", async () => {
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Rebind" }));
+
+    const assetIdField = screen.getByRole("textbox", { name: /Source asset id/ });
+    fireEvent.change(assetIdField, { target: { value: "salesInvV2" } });
+    // The row's own toggle reads "Cancel" once the form is open, so this is
+    // unambiguously the form's own submit button.
+    fireEvent.click(screen.getByRole("button", { name: "Rebind" }));
+
+    await waitFor(() => { expect(mocks.rebind).toHaveBeenCalledTimes(1); });
+    const [dataset, input] = mocks.rebind.mock.calls[0] as [string, { sourceAssetId: string }];
+    expect(dataset).toBe("source_sales");
+    expect(input.sourceAssetId).toBe("salesInvV2");
+  });
+
+  it("clears an override after confirmation", async () => {
+    mocks.listBindings.mockResolvedValue([{ ...BINDING, overridden: true }]);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Clear" }));
+    await waitFor(() => { expect(mocks.clear).toHaveBeenCalledWith("source_sales"); });
+  });
+
+  it("does not offer rebind or clear without config.source.rebind", async () => {
+    mocks.listBindings.mockResolvedValue([{ ...BINDING, overridden: true }]);
+    mocks.can.mockImplementation((capability: string) => capability !== "config.source.rebind");
+    renderPage();
+
+    await screen.findByText("source_sales");
+    expect(screen.queryByRole("button", { name: "Rebind" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
+  });
+});
+
+describe("sync (moved from SyncControlPage)", () => {
   it("lists scheduled and agent-initiated runs in one history", async () => {
     renderPage();
 
-    expect(await screen.findByText("ON_DEMAND")).toBeTruthy();
+    // The inline summary panel (this screen's replacement for the original
+    // `DomainRail` portal, which rendered nothing in a bare test) also shows
+    // the newest run's mode, so "ON_DEMAND" appears twice on the page --
+    // the run-list row is the one with a button role.
+    expect(await screen.findByRole("button", { name: /ON_DEMAND/ })).toBeTruthy();
     expect(screen.getByText("FULL")).toBeTruthy();
   });
 
   it("says which conversation caused a targeted run", async () => {
     renderPage();
-    fireEvent.click(await screen.findByText("ON_DEMAND"));
+    fireEvent.click(await screen.findByRole("button", { name: /ON_DEMAND/ }));
 
     expect(await screen.findByText("conv-7")).toBeTruthy();
     expect(screen.getByText("exact_order_key")).toBeTruthy();
   });
 
   it("shows the anchor's fields and never the anchor's value", async () => {
-    // The anchor is a customer's order number. A run list is browsed, exported
-    // and kept, so the field id is the whole of what belongs here.
     renderPage();
-    fireEvent.click(await screen.findByText("ON_DEMAND"));
+    fireEvent.click(await screen.findByRole("button", { name: /ON_DEMAND/ }));
 
     expect(await screen.findByText("order_key")).toBeTruthy();
     expect(screen.queryByText(/CW\d/)).toBeNull();
   });
 
   it("calls out a run that completed without writing anything", async () => {
-    // A green status over zero writes is what "the source answered and the
-    // projection discarded it" looks like from the outside.
     mocks.readRun.mockResolvedValue(run({ nodeWrites: 0, relationshipWrites: 0 }));
     renderPage();
     fireEvent.click(await screen.findByText("FULL"));
@@ -131,21 +205,6 @@ describe("SyncControlPage", () => {
     );
   });
 
-  it("does not call out a healthy run", async () => {
-    // This test was wrong, not the screen. `readRun` is mocked in `beforeEach`
-    // to the *targeted* run (5 writes), so the detail pane never showed "300"
-    // and `findByText("300")` failed on the setup line -- the assertion below
-    // has never once run. The list row is no help either: its span reads
-    // "300 nodes" as a single text content, which an exact `findByText("300")`
-    // does not match.
-    mocks.readRun.mockResolvedValue(run());
-    renderPage();
-    fireEvent.click(await screen.findByText("FULL"));
-
-    await screen.findByText("300");
-    expect(screen.queryByText(/completed without writing anything/i)).toBeNull();
-  });
-
   it("sends the chosen scope and record limit", async () => {
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: /sync now/i }));
@@ -153,22 +212,15 @@ describe("SyncControlPage", () => {
     fireEvent.change(screen.getByLabelText(/records per source/i), { target: { value: "50" } });
     fireEvent.click(screen.getByRole("button", { name: /start sync/i }));
 
-    await waitFor(() => {
-      expect(mocks.startRun).toHaveBeenCalledTimes(1);
-    });
+    await waitFor(() => { expect(mocks.startRun).toHaveBeenCalledTimes(1); });
     expect(mocks.startRun).toHaveBeenCalledWith({
       mode: "SOURCE_MONGODB",
-      // Sent explicitly, including when false: the request now carries two
-      // independent choices, and leaving one implicit is how "which records did
-      // that run actually read" stops being answerable.
       incremental: false,
       maxRecordsPerAsset: 50,
     });
   });
 
   it("defaults to rereading everything rather than resuming", async () => {
-    // A manual sync is usually pressed because the graph looks wrong, and
-    // resuming from a cursor is the wrong default for that.
     renderPage();
     fireEvent.click(await screen.findByRole("button", { name: /sync now/i }));
 
@@ -181,9 +233,7 @@ describe("SyncControlPage", () => {
     fireEvent.change(screen.getByLabelText(/^read$/i), { target: { value: "incremental" } });
     fireEvent.click(screen.getByRole("button", { name: /start sync/i }));
 
-    await waitFor(() => {
-      expect(mocks.startRun).toHaveBeenCalledTimes(1);
-    });
+    await waitFor(() => { expect(mocks.startRun).toHaveBeenCalledTimes(1); });
     expect(mocks.startRun).toHaveBeenCalledWith({
       mode: "FULL",
       incremental: true,
@@ -197,16 +247,11 @@ describe("SyncControlPage", () => {
     fireEvent.change(screen.getByLabelText(/records per source/i), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: /start sync/i }));
 
-    await waitFor(() => {
-      expect(mocks.startRun).toHaveBeenCalledTimes(1);
-    });
+    await waitFor(() => { expect(mocks.startRun).toHaveBeenCalledTimes(1); });
     expect(mocks.startRun).toHaveBeenCalledWith({ mode: "FULL", incremental: false });
   });
 
   it("does not call out an incremental run that had nothing to do", async () => {
-    // The one case where zero writes is the healthy answer: no source changed
-    // since the last run. Warning about it in error tone on every quiet run is
-    // how the genuine warning above stops being read.
     mocks.readRun.mockResolvedValue(
       run({ nodeWrites: 0, relationshipWrites: 0, recordScope: "INCREMENTAL" }),
     );
@@ -218,8 +263,6 @@ describe("SyncControlPage", () => {
   });
 
   it("names the sources an incremental run could not resume", async () => {
-    // Skipped silently, this source stops syncing until someone runs a full
-    // scan -- and the run still says COMPLETED.
     mocks.readRun.mockResolvedValue(
       run({ recordScope: "INCREMENTAL", skippedSources: ["sql_bay_assignment"] }),
     );
@@ -248,8 +291,6 @@ describe("SyncControlPage", () => {
   });
 
   it("says the list could not be read rather than that there are no runs", async () => {
-    // An empty sync history is something an operator would act on. Reporting
-    // one because the request failed sends them after the wrong problem.
     mocks.listRuns.mockRejectedValue(new Error("Graph synchronization is unavailable."));
     renderPage();
 

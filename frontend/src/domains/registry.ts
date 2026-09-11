@@ -13,6 +13,7 @@ import {
   Inbox,
   Layers,
   LayoutDashboard,
+  Link2,
   Lock,
   Mail,
   MessagesSquare,
@@ -199,6 +200,13 @@ export const CONFIG_SECTIONS = [
   // `BusinessSection.tsx` and its test are gone in the same commit as this
   // entry.
   "Simulation",
+  // CFG-5: source-binding overrides plus the sync trigger and run history
+  // moved from the `/sync` domain (`SyncRedirect.tsx`). Named "Source
+  // Bindings", not "Data Sources" -- that label is the Graph Schema
+  // Analyzer's own section (`/graph-schema/data-sources`), and reusing it
+  // here is exactly the collision the audit's D1 finding named. See
+  // `DataSourcesSection.tsx`'s own note.
+  "Source Bindings",
   "Modules",
   "Security",
   "Audit",
@@ -277,6 +285,7 @@ export const DOMAINS: readonly DomainDefinition[] = [
       Releases: Rocket,
       Integrations: Plug,
       Simulation: FlaskConical,
+      "Source Bindings": Link2,
       Modules: Package,
       Security: Lock,
       Audit: ScrollText,
@@ -336,18 +345,19 @@ export const DOMAINS: readonly DomainDefinition[] = [
     }),
   },
   {
+    // CFG-5: the screen this domain rendered -- run history, run detail,
+    // "Sync now" -- moved to `/config/source-bindings` (`DataSourcesSection.tsx`),
+    // alongside the source-binding overrides that answer the other half of
+    // "where does the graph actually get this from". The domain entry stays
+    // registered (a bookmark still lands somewhere real; `SyncRedirect.tsx`
+    // is what actually renders here now) rather than being deleted outright.
     path: "/sync",
     name: "Source Sync",
-    description: "Sync runs, what each one read, and what it wrote to the graph.",
+    description: "Redirects to Configuration -- Source Bindings, where this screen lives now.",
     purpose: "Check the graph is current, and rebuild it from the sources when it is not.",
     icon: RefreshCw,
-    // Its own capability, and it already existed. `config.source.read` is the
-    // right question -- "may this person see how the platform reads its
-    // sources" -- so this domain does not join the two that had to borrow one.
     requires: "config.source.read",
     screenPhase: 22,
-    // One workspace: a run history and the run it opens. The mode filter
-    // narrows a list rather than switching what the screen is.
     sections: [],
   },
   {
