@@ -14,15 +14,27 @@ export type RuntimeSlice = {
   readonly releaseId: string;
   readonly headRevision: number | null;
   readonly configuration: JsonObject;
+  /**
+   * CFG-6: this process's own environment (`app.state.settings.environment`),
+   * added to `GET /api/config/runtime` so `/config/deployment` can render a
+   * production-refused option disabled with the reason on it, before an
+   * operator ever tries to publish one. `null` on a payload from before this
+   * field existed (or an unrecognised value) -- treated as "unknown", never
+   * as "production", so a screen does not falsely disable an option a real
+   * production environment would allow.
+   */
+  readonly environment: string | null;
 };
 
 export function runtimeSliceOf(snapshot: Readonly<Record<string, unknown>>): RuntimeSlice {
   const releaseId = snapshot.release_id;
   const head = snapshot.head_revision;
+  const environment = snapshot.environment;
   return {
     releaseId: typeof releaseId === "string" ? releaseId : "unknown",
     headRevision: typeof head === "number" ? head : null,
     configuration: asObject(snapshot.configuration as JsonObject | undefined),
+    environment: typeof environment === "string" ? environment : null,
   };
 }
 

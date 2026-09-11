@@ -30,6 +30,7 @@ import {
   Settings,
   Settings2,
   ShieldCheck,
+  SlidersHorizontal,
   Ticket,
   Truck,
   Warehouse,
@@ -186,6 +187,10 @@ export const CONFIG_SECTIONS = [
   "Discovery",
   "Return Policy",
   "Fulfilment",
+  // CFG-6 (D-CFG-4): the env-held business switches, released -- the last of
+  // the wave-A-style typed sections, placed beside the other three rather
+  // than under Business (retired by CFG-5; see that lease's own note below).
+  "Deployment",
   // CFG-5, wave B: the case workflow's stage sequence and SLAs, waits and
   // timeouts, business calendars, and housekeeping -- see `WorkflowSection.tsx`.
   "Workflow",
@@ -280,6 +285,7 @@ export const DOMAINS: readonly DomainDefinition[] = [
       Discovery: Search,
       "Return Policy": Gavel,
       Fulfilment: Warehouse,
+      Deployment: SlidersHorizontal,
       Workflow,
       Runtime: Cpu,
       Releases: Rocket,
