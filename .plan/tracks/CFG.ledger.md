@@ -2037,3 +2037,33 @@ $ npm run typecheck
 $ npm run lint
 (no output, exit 0)
 ```
+
+## CFG-4 step:04 — /config/return-policy (Order item 4)
+
+`return_method_derivation` (`default_method`/`freight_method` as `EnumSelect` -- options drawn
+from `return_policy.normalized_return_methods` itself, the document's own operator-declared
+catalogue every one of these fields cross-validates against server-side, not an OpenAPI enum
+and not an invented list; `freight_keywords` `TagListInput`; `ship_via_methods` `KeyValueTable`;
+`bol_tendering_instruction_types` `TagListInput`). `return_method_requirements` as the brief's
+own "matrix (method x requirement checkboxes)": a small local component reading/writing the
+real `[{method, requires}]` list shape (confirmed against `ReturnMethodRequirementConfiguration`
+-- not a `method -> {flag: bool}` mapping) through a method x `REQUIREMENT_DIMENSIONS` grid; a
+method with every box unchecked has no row at all, matching "unmapped, not refused".
+`return_eligibility_policy` as `FieldGroup`s with `EnumSelect` for outcomes, scoped to
+`standard_stock_return`/`outside_standard_window`/`stock_classification`'s decision fields (the
+real `EligibilityDecision`/`ReturnWindowBasis`/`StockClassificationDefault` enums) plus
+`delivery_claim`/`warranty_issue`'s reason lists and a `precedence` `OrderedList`;
+`restocking_fee`/`special_or_nonstock` render on no typed control (Advanced covers them).
+`policy_evaluation` as `Toggle` with `reasonField.requiredWhen: "off"` -- an exact match for the
+model's own `enabled`/`disabled_reason` cross-field rule, not something built specially for this
+screen.
+
+```
+$ npx vitest run src/domains/config/ReturnPolicySection.test.tsx
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+$ npm run typecheck
+(no output, exit 0)
+$ npm run lint
+(no output, exit 0)
+```
