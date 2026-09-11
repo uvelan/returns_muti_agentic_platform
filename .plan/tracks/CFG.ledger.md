@@ -777,3 +777,89 @@ the brief's fallback instruction, and recorded at step:00); `DocumentEditor` pat
 `KeyValueTable` rendering with their own tests; the three existing callers' tests unchanged in file
 and green; typecheck and whole-project lint clean; the README. Head `33511f60`. `merge_status` set to
 `PENDING` in `drop.json`.
+
+## CFG-3b step:06 — RV round 1 fixes
+
+RV round 1 (`.plan/reviews/CFG-3b.md`, reviewed head `47340cc7`) returned **CHANGES_REQUIRED** on B1
+(BLOCKING) and asked for A4/A1/A3 alongside it; A2/A5/A6/A7/A8 stay advisory, carried to CFG-4 per the
+review's own Judgement.
+
+**B1 (fixed).** `ObjectNode`'s data-keyed branch flattened `KeyValueEntry[]` into a plain `JsonObject`
+on every keystroke (`for (const entry of next) nextValue[entry.key] = entry.value;`), so a rename that
+collided with another row's key -- reachable by ordinary typing, not only a deliberate collision --
+silently overwrote that row and its value *before* `KeyValueTable` could render the duplicate state.
+RV's reproduction: renaming `CPU` to `XPW` with `XPW` already present left one row, no alert, and
+`onSubmit` received `{"ship_via_methods":{"XPW":"PARCEL"}}` -- data loss on the publish path.
+
+Fix: split the data-keyed branch into its own component, `DataKeyedObjectNode`, which holds `entries`
+as local state (a *list* can hold two rows with the same key for as long as a rename is in progress; a
+plain JS object cannot) and only flattens to the document once every key is unique and non-empty
+(`keyValueBlockReason`). While a collision or a blank key exists, a new `FormMetaContext.reportBlocked`
+callback tells `DocumentEditor` to disable Save with the reason as its `title`, and to force the editor
+dirty -- an unresolved in-progress edit is not "nothing to publish" even though nothing has reached
+`draft` yet. `onSave` also refuses to submit while blocked, belt-and-braces alongside the disabled
+button. An external change to the document (Reset, a sibling JSON/split-mode edit) abandons the local,
+unresolved edit via React's documented "adjust state when a prop changes" render-phase pattern
+(`https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes`) --
+**not** a `useEffect` calling the local `setPending`, because `eslint-plugin-react-hooks@7`'s
+`set-state-in-effect` rule correctly refuses that (first attempt hit it; ledger'd here since it is a
+real constraint the repo's tooling enforces, not a style nit -- effects are for synchronizing with
+something *outside* the component, and this component's own `pending` state is not outside it). Telling
+the *ancestor* (`DocumentEditor`'s `blocked` state) genuinely is outside this component, so that part
+stays in an effect, keyed off `pending` (not `value`) so it does not re-fire on every unrelated parent
+re-render.
+
+New test, `DocumentEditor.test.tsx`, reproduces P5 exactly: both rows survive with their own values,
+both duplicate alerts show, Save is disabled with the collision named as the reason, a forced click
+while blocked does not call `onSubmit`, and renaming on to `XPW2` both clears the block and delivers
+`onSubmit({ ship_via_methods: { XPW2: "COUNTER", XPW: "PARCEL" } })`.
+
+**A4 (fixed).** Two new `KeyValueTable.test.tsx` tests: the row-reindexing invariant -- three rows,
+give the two that will survive their own distinct in-progress (invalid) JSON drafts, delete the middle
+row, assert each survivor kept its own value *and* its own draft, neither dropped nor handed to the
+other -- and the in-place duplicate alert at the `KeyValueTable` level alone (no `DocumentEditor`
+involved): rename row 1 onto row 2's key, assert both rows survive with their own values, both flip
+`aria-invalid`, and both alerts read "This key is used more than once."
+
+**A1 (fixed + documented).** `errors` path matching now normalises `foo[3].bar` to `foo.3.bar`
+(`normalizeErrorPath`) before matching, so a bracket-index path -- the shape a pydantic-`loc`-based
+validator is likely to emit -- reaches its field the same as the dotted form `childPath` already
+produces internally. New `DocumentEditor.test.tsx` test covers it directly (`fields[3].priority`
+matches the fourth item's field, not the page-level list). Documented in
+`components/forms/README.md`'s new "Notes" section, alongside the still-open A2 limit (a data-keyed key
+containing `.` is not addressable by either convention -- accepted as a documented limit, not fixed
+here).
+
+**A3 (documented, no code change).** `components/forms/README.md`'s Notes section explains that a
+data-keyed object's round-trip through a plain JS object hoists integer-like keys (`"0"`, `"2"`,
+`"10"`) to the front in numeric order regardless of insertion order -- a JavaScript
+property-enumeration rule, not something this editor does -- and that payload key order carries no
+meaning to the backend (a merge patch is a JSON object; only `KeyValueTable`'s own row order, which is
+preserved, is meaningful).
+
+`drop.json`'s `head_sha` corrected to this step's commit (it had been left one commit behind at
+`33511f60`, RV's finding under Scope/Q7 -- harmless, but worth fixing here too).
+
+```
+$ npx vitest run src/components/forms src/domains/config src/api/mergePatch.test.ts
+ Test Files  21 passed (21)
+      Tests  145 passed (145)
+
+$ npm run typecheck
+> tsc -b --pretty false
+(clean, no output)
+
+$ npm run lint
+> eslint . --max-warnings=0
+(clean, no output -- whole project)
+
+$ npx vitest run
+ FAIL  src/domains/registry.test.ts > declares exactly the canonical domains   (expected 8, received 9: "/shipments")
+ FAIL  src/domains/registry.test.ts > shares a visibility capability only where that is deliberate
+ Test Files  1 failed | 78 passed (79)
+      Tests  2 failed | 966 passed (968)
+```
+
+Exactly the two pre-existing `registry.test.ts` failures RV's own Q6 baseline already carried at 962
+passing; 966 now is +4 (the new tests above, all passing) with nothing else broken. Commit `48ccbb79` --
+`(CFG) step:06 RV round 1 fixes`. Head `48ccbb79e474f6aac83ac5e19baae4b373a73d6f`.

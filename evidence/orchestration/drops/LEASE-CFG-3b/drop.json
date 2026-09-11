@@ -2,7 +2,7 @@
   "lease_id": "CFG-3b",
   "branch": "feat/cfg-3b-form-primitives",
   "base_sha": "734a16dc",
-  "head_sha": "33511f608a70c8c5c2ac4d9fd8b26f16ee1de4c7",
+  "head_sha": "48ccbb79e474f6aac83ac5e19baae4b373a73d6f",
   "files": [
     "frontend/src/components/forms/Field.tsx",
     "frontend/src/components/forms/Field.test.tsx",
@@ -35,10 +35,17 @@
     "frontend/src/domains/config/DocumentEditor.test.tsx"
   ],
   "tests": {
-    "npx vitest run src/components/forms src/domains/config src/api/mergePatch.test.ts": "141 passed (21 files)",
+    "npx vitest run src/components/forms src/domains/config src/api/mergePatch.test.ts": "145 passed (21 files)",
     "npm run typecheck": "clean",
-    "npm run lint (whole project)": "clean"
+    "npm run lint (whole project)": "clean",
+    "npx vitest run (whole suite)": "966 passed, 2 failed (78 passed | 1 failed files) -- the two pre-existing src/domains/registry.test.ts failures RV's own baseline already carried; nothing else fails"
   },
   "remaining": [],
+  "rv_round_1": {
+    "verdict": "CHANGES_REQUIRED",
+    "reviewed_head": "47340cc7",
+    "fixed": ["B1", "A4", "A1", "A3"],
+    "left_advisory_for_cfg4": ["A2", "A5", "A6", "A7", "A8"]
+  },
   "merge_status": "PENDING"
 }
