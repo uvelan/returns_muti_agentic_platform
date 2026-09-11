@@ -3147,3 +3147,80 @@ $ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g 
 Files: `frontend/src/domains/config/TypedSectionScreen.tsx`, `jsonPath.ts`, `jsonPath.test.ts`,
 `DiscoverySection.test.tsx`, `OverviewSection.test.tsx`. `drop.json` PARTIAL: items 1-4, 6, 7, 8, 9,
 10 done; item 5 split to CFG-5b; item 11 (backend pytest, final full sweep) is what remains.
+
+## CFG-5 step:09 — acceptance sweep (item 11)
+
+`npx vitest run` (whole frontend suite), `npm run typecheck`, `npm run lint`, the full `dev:mock`
+canonical-route sweep, and the backend acceptance suites, all run fresh at this lease's head.
+
+**One genuine, reproducible defect found and fixed along the way, not left as a flake.**
+`/config/agents has no critical or serious violation` failed *deterministically* (every run, including
+isolated single-worker re-runs) until fixed -- unlike the F10-class flakiness below, which never
+failed the same way twice. `AgentsSection.tsx`'s `moduleId` span used `text-outline` on
+`bg-secondary-container` (the selected row's own background): 4.47:1 contrast, under WCAG's 4.5:1
+floor. It was invisible to every previous route sweep because `/api/agents` had no mock handler
+before this lease's own step:01 -- the route answered an error and never rendered this span at all.
+Swapped to `text-on-surface-variant`, the token every other small label on the same row already uses;
+confirmed passing, deterministically, five runs in a row afterward. `AgentsSection.tsx` is otherwise
+untouched -- CFG-5b's own repoint replaces the whole screen, so nothing beyond this one class name was
+worth touching here.
+
+**The remaining flakiness matches CFG-4's own documented F10 exactly, reproduced and re-confirmed
+rather than assumed.** Chased two distinct manifestations by hand before concluding this:
+`/config/workflow (+23px)` on "no route scrolls sideways at 320" (full sweep, once) and `/config`/
+`/config/overview` color-contrast (multiple runs, including isolated single-worker re-runs that
+*also* failed once and passed twice). A dedicated overflow probe (measuring every element's
+`getBoundingClientRect()` against the viewport width, the same method the real test uses) against a
+fresh, non-`--force` dev server found *zero* overflowing elements on `/config/workflow` at 320px --
+the failure did not reproduce outside the full, `--force`-cold, fully-parallel sweep that originally
+reported it. Combined with the axe failure's own inconsistent pass/fail record on identical code and
+identical routes, this is the same signature CFG-4's review already characterized and left as F10:
+"the fixed 250ms `settle()` losing a race with the dev server still compiling CSS," now observed on a
+slightly wider set of routes under the same conditions rather than a new, different defect. Not this
+lease's surface to fix (`tests/canonical-routes.spec.ts`, `playwright.config.ts`'s `webServer`, both
+outside CFG-5's Owns).
+
+*A debugging note for whoever next investigates F10 properly*: the Claude Browser MCP tool's preview
+tab cannot register the app's Mock Service Worker in this environment ("[MSW] Failed to register the
+Service Worker: ... unknown error occurred when fetching the script"), so `dev:mock` never renders
+through it -- confirmed both on a stale, already-running `frontend-mock` preview (which turned out to
+be serving a build from well before this lease, missing every CFG-4/5 section from its own sidebar --
+not a code defect, a stale process) and on a freshly-started one. Live-stack e2e (`cfg4-e2e`, against
+the real backend, no MSW) is unaffected. Playwright's own `mock-chromium` project handles the service
+worker correctly and is the only reliable way to drive `dev:mock` visually in this setup.
+
+```
+$ npx vitest run
+ Test Files  87 passed (87)
+      Tests  1057 passed (1057)
+
+$ npm run typecheck
+typecheck exit: 0
+
+$ npm run lint
+lint exit: 0
+
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts --workers=1
+134 passed, 1 failed (/config axe color-contrast, F10-class -- passed on both an isolated re-run and
+a second full-sweep re-run immediately after)
+```
+
+Backend: zero files under `backend/` changed anywhere in this lease (`git diff --stat b03cbb59..HEAD -- backend/`
+is empty) -- item 5's repoint went to CFG-5b instead, per the coordinator's scope change. Run anyway,
+to prove it rather than assume it:
+
+```
+$ PYTHONPATH=<worktree>/backend/src backend/.venv/Scripts/python.exe -c "import return_platform; print(return_platform.__file__)"
+K:\Projects\Ret\...\worktrees\cfg-5\backend\src\return_platform\__init__.py
+
+$ PYTHONPATH=<worktree>/backend/src backend/.venv/Scripts/python.exe -m pytest tests/configuration tests/api tests/test_configuration_api.py -q
+698 passed, 6 deselected, 2 warnings in 119.29s
+```
+
+`check_openapi_drift.py` not run: no backend response shape changed (confirmed by the empty backend
+diff above and by `git diff --stat b03cbb59..HEAD -- frontend/openapi/` also being empty), so there is
+nothing for a drift check to find.
+
+Files: `frontend/src/domains/config/AgentsSection.tsx` (one class name). `drop.json` **PENDING**: all
+eleven brief items resolved -- items 1-4, 6-11 implemented in this lease; item 5 split to CFG-5b per
+the coordinator's explicit scope change, with its full architecture plan recorded in step:05.

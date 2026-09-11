@@ -93,7 +93,18 @@ export function AgentsSection() {
                   <span className="block truncate text-sm font-semibold text-on-surface">
                     {agent.name}
                   </span>
-                  <span className="mt-1 block truncate font-mono text-[10px] text-outline">
+                  {/*
+                    CFG-5 item 11: `text-outline` on `bg-secondary-container`
+                    (the selected row's own background) measured 4.47:1,
+                    under WCAG's 4.5:1 floor for this text's size --
+                    invisible to `dev:mock`'s own axe sweep until CFG-5 item 1
+                    gave `/api/agents` a working mock; the route answered an
+                    error before that, which never rendered this span at all.
+                    `text-on-surface-variant` is the token every other small
+                    label on this same row already uses (`status`, the
+                    version, `configurationSourceLabel`) and it passes.
+                  */}
+                  <span className="mt-1 block truncate font-mono text-[10px] text-on-surface-variant">
                     {agent.moduleId}
                   </span>
                   <span className="mt-2 flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-on-surface-variant">
