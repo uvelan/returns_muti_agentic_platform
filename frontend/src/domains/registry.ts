@@ -6,6 +6,7 @@ import {
   Cpu,
   Database,
   FolderOpen,
+  Gavel,
   Hand,
   Headset,
   History,
@@ -23,12 +24,14 @@ import {
   RotateCcw,
   Route,
   ScrollText,
+  Search,
   Server,
   Settings,
   Settings2,
   ShieldCheck,
   Ticket,
   Truck,
+  Warehouse,
   Waypoints,
 } from "lucide-react";
 
@@ -167,6 +170,14 @@ export const CONFIG_SECTIONS = [
   // support template is a document an operator edits and publishes, and the
   // Business tab is a read of the runtime snapshot.
   "Support Template",
+  // CFG-4, wave A: the first four typed sections, each a page of its own
+  // rather than a `Business` tab entry -- see `BusinessSection.tsx`'s own
+  // note on why the four groups these come from (discovery, policy,
+  // fulfilment) were removed from that tab wholesale. Placed next to
+  // `Business`, which still carries every section without a typed screen.
+  "Discovery",
+  "Return Policy",
+  "Fulfilment",
   "Runtime",
   "Releases",
   "Integrations",
@@ -241,6 +252,9 @@ export const DOMAINS: readonly DomainDefinition[] = [
       Overview: LayoutDashboard,
       Agents: Bot,
       "Support Template": Mail,
+      Discovery: Search,
+      "Return Policy": Gavel,
+      Fulfilment: Warehouse,
       Runtime: Cpu,
       Releases: Rocket,
       Integrations: Plug,

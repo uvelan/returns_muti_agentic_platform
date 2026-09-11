@@ -2097,3 +2097,48 @@ $ npm run lint
 All four typed screens (Discovery, Return policy, Fulfilment, and Overview -- next) are built.
 Remaining: Overview's undecided-keys panel, registry/routeManifest/BusinessSection wiring, the
 Playwright specs, and final acceptance.
+
+## CFG-4 step:06 — /config/overview undecided-keys panel; registry wiring for all four screens (Order item 2)
+
+`UndecidedKeysPanel.tsx` -- `GET /api/config/packaged-drift`, rendered. Addresses both carried
+CFG-3a advisories directly:
+- **F5** -- the panel states its own vocabulary in its header copy ("a key with no domain prefix
+  is a `RETURN_PLATFORM` top-level key, the same vocabulary `POST /adopt-packaged`'s own `units`
+  list takes") and `unitId`/`unitLabel` build/display exactly that convention (`<key>` for
+  `RETURN_PLATFORM`, `<DOMAIN>/<unit>` otherwise) rather than a bare key with no domain marked.
+- **F11** -- the panel renders each domain's own `would_adopt` independently rather than
+  computing one summary across all three; `RETURN_PLATFORM` answering `[]` (no active release to
+  merge against) and `AI_GATEWAY`/`DEPENDENCY_SIMULATION` answering every packaged unit (falling
+  back to the packaged file itself in that same state) render side by side, neither hidden nor
+  flagged as a mismatch. New test asserts both shapes appear from one mocked response.
+
+Split from a per-row diff summary (from `would_adopt`/`filled_leaves`, per the design table) plus
+a separate "Take packaged file" action (confirm, then `POST /adopt-packaged` with `[unitId]` and
+the runtime snapshot's own `head_revision` as the lock) for each `undecided` entry, and a
+separate informational "would adopt on the next start" list with no action attached (`would_adopt`
+is not the same claim as `undecided` -- a key can be decided and still be what the file would give
+on a future bootstrap).
+
+**Extracted `OverviewSection.tsx` from `ConfigurationPage.tsx`'s inline `OverviewTab`**, matching
+the naming and file-per-screen convention the other three CFG-4 screens use (and the brief's own
+`OverviewSection.test.tsx` naming) -- `ConfigurationPage.tsx` now only wires tabs, consistent with
+its Owns-list description.
+
+**Registry**: `CONFIG_SECTIONS` gains `"Discovery"`, `"Return Policy"`, `"Fulfilment"` (icons
+`Search`/`Gavel`/`Warehouse`), placed next to `Business` -- the tab every one of them peels a
+group of sections off of. `routeManifest.ts` needed no edit: routes are derived from `DOMAINS`,
+so the three new `/config/{slug}` addresses exist automatically once the registry names the
+sections.
+
+```
+$ npx vitest run src/domains/config/OverviewSection.test.tsx
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+$ npx vitest run src/domains/config
+ Test Files  11 passed (11)
+      Tests  89 passed (89)
+$ npm run typecheck
+(no output, exit 0)
+$ npm run lint
+(no output, exit 0)
+```

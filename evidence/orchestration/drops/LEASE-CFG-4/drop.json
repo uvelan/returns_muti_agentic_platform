@@ -27,7 +27,12 @@
     "frontend/src/domains/config/ReturnPolicySection.tsx",
     "frontend/src/domains/config/ReturnPolicySection.test.tsx",
     "frontend/src/domains/config/FulfilmentSection.tsx",
-    "frontend/src/domains/config/FulfilmentSection.test.tsx"
+    "frontend/src/domains/config/FulfilmentSection.test.tsx",
+    "frontend/src/domains/config/OverviewSection.tsx",
+    "frontend/src/domains/config/OverviewSection.test.tsx",
+    "frontend/src/domains/config/UndecidedKeysPanel.tsx",
+    "frontend/src/domains/config/ConfigurationPage.tsx",
+    "frontend/src/domains/registry.ts"
   ],
   "tests": {
     "npx vitest run src/components/forms src/domains/config src/mocks src/api/configuration.ts": "clean",
@@ -35,8 +40,7 @@
     "npm run lint": "clean"
   },
   "remaining": [
-    "/config/overview undecided-keys panel",
-    "registry/routeManifest/BusinessSection removals + registry test fix + known_test_failures.json",
+    "BusinessSection removals + registry test fix + known_test_failures.json",
     "F5/F11 advisories (drift panel wording, packaged-drift shape rendering + test)",
     "Playwright specs, run once against the live stack and reverted",
     "final acceptance: vitest/typecheck/lint whole project, dev:mock route sweep"
