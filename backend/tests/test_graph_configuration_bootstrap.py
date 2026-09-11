@@ -23,6 +23,23 @@ from return_platform.dependency_simulation.configuration import (
 )
 
 
+def _expected_return_platform_baseline(payload: dict[str, Any]) -> dict[str, str]:
+    """The RETURN_PLATFORM `PACKAGED_KEY_DIGESTS` baseline `main()` should record.
+
+    CFG-6: `deployment` is a `CARRY_FORWARD_SPLIT_KEYS` entry now (like
+    `AI_GATEWAY`'s `tasks` and `DEPENDENCY_SIMULATION`'s `dependencies`), so
+    the baseline is keyed by UNIT -- `deployment.ai`, `deployment.dependencies`,
+    `deployment.feedback_learning`, `deployment.support_ticket` -- not by the
+    single top-level key `deployment`. Every other RETURN_PLATFORM key is
+    still one unit, so this is a superset of the pre-CFG-6
+    `bootstrap_graph_configuration._key_digests(payload)` answer.
+    """
+    split_keys = bootstrap_graph_configuration.CARRY_FORWARD_SPLIT_KEYS[RETURN_PLATFORM_DOMAIN_KEY]
+    return bootstrap_graph_configuration._key_digests(
+        bootstrap_graph_configuration._units(payload, split_keys)
+    )
+
+
 class _Driver:
     async def verify_connectivity(self) -> None:
         return None
@@ -484,7 +501,7 @@ async def test_the_publish_records_the_baseline_it_was_built_from(
     release_id = next(iter(repository.saved))
     recorded = repository.written_metadata[release_id]
     assert recorded[bootstrap_graph_configuration.PACKAGED_KEY_DIGESTS] == (
-        bootstrap_graph_configuration._key_digests(packaged_payload)
+        _expected_return_platform_baseline(packaged_payload)
     )
     # The other two domains record their own baseline beside it.
     assert set(recorded[bootstrap_graph_configuration.PACKAGED_DOMAIN_KEY_DIGESTS]) == {
@@ -531,7 +548,7 @@ async def test_a_release_with_no_baseline_keeps_its_values_and_says_which(
     recorded = repository.written_metadata[release_id][
         bootstrap_graph_configuration.PACKAGED_KEY_DIGESTS
     ]
-    expected = bootstrap_graph_configuration._key_digests(packaged_payload)
+    expected = _expected_return_platform_baseline(packaged_payload)
     assert "discovery" not in recorded
     assert recorded == {key: digest for key, digest in expected.items() if key != "discovery"}
 
@@ -750,7 +767,7 @@ async def test_adopt_packaged_is_the_operators_way_out_of_an_undecidable_release
     assert published["discovery"] == packaged_payload["discovery"]
     assert repository.written_metadata[release_id][
         bootstrap_graph_configuration.PACKAGED_KEY_DIGESTS
-    ] == bootstrap_graph_configuration._key_digests(packaged_payload)
+    ] == _expected_return_platform_baseline(packaged_payload)
 
 
 # --- the AI gateway and dependency simulation domains ------------------------
