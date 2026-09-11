@@ -2813,3 +2813,115 @@ Files: `frontend/src/domains/config/IntegrationsSection.tsx`, `IntegrationsSecti
 `BusinessSection.tsx`, `BusinessSection.test.tsx`, `ConfigurationPage.tsx`, `ConfigurationPage.test.tsx`,
 `frontend/src/mocks/handlers/canonicalHandlers.ts`, `frontend/e2e/config-integrations.spec.ts`.
 `drop.json` PARTIAL: items 1-4 done; items 5-11 remain.
+
+## CFG-5 step:05 — checkpoint: item 5 researched, not yet implemented
+
+Read the four files the brief names (`configuration/api/agents.py`, `application/agent_configuration.py`,
+`application/loader.py`, `backend/tests/configuration/test_agent_configuration_releases.py`) plus
+`backend/config/manifest.yaml`, `backend/config/agents/order_discovery.yaml`, and dispatched a
+read-only research pass (`Explore` agent) to trace every runtime consumer before touching anything --
+this is a governance/activation-pipeline change, and a wrong move here is not a test failure, it is a
+broken proposal-approval path. Full findings, so the next step does not re-derive them:
+
+**The architecture, confirmed with file:line evidence:**
+
+- `AgentRegistry.build()` (`agents/registry/registry.py:52-62`) and every agent class
+  (`bay_assignment.py:39`, `feedback.py:18`, `fulfillment.py:18`, `order_analysis.py:77`,
+  `order_discovery.py:38`, `return_workflow.py:20`) read only
+  `ReturnPlatformConfiguration.agents["<id>"]` -- the small model at
+  `return_configuration.py:51-92` (`name`, `version`, `enabled`, `ai_assisted`, `ai_route_ref`; the
+  model's own docstring calls everything below `human_confirmation_required` "Dead knobs, kept only
+  so stored release payloads still parse"). Nothing at runtime reads `AGENT_MODULES`, the packaged
+  `backend/config/agents/*.yaml` files, or `AgentConfigurationService`'s effective document -- every
+  consumer of those (`main.py:563,575`, `configuration/api/agents.py`,
+  `bootstrap/adapters/governance_agent_configuration.py:93-102`,
+  `agent_configuration.py:258`'s `AgentConfigNode` sanity check) is the `/api/agents` console path
+  itself, not a production behaviour path. `order_discovery.yaml`'s real content beyond
+  name/enabled/ai_assisted (`execution_mode`, `input_contexts`/`output_context`, `capabilities`,
+  `dependencies`) is dead: `OrderDiscoveryAgent` is itself frozen ("superseded by
+  `dynamic_knowledge.order_agent`"), and live discovery behaviour is `configuration.discovery:
+  DiscoveryConfiguration` plus the `dynamic_knowledge.order_agent` package.
+- `ConfigurationLoader` (`application/loader.py`) is constructed in exactly two places, both inside
+  `agent_configuration.py` (`:137,243`) -- no other file in `backend/src` or `backend/tests`
+  instantiates it. `backend/config/manifest.yaml`'s non-agent entries (`workflow.return_session`,
+  `sync.order_partial`, `sync.order_full`, `source.sales_inv`, `mapping.sales_inv_order`,
+  `graph.order_discovery`) are loaded by nothing at all -- `AgentConfigurationService._packaged()`
+  filters to `module_type == "AGENT"` only, and nothing else reads the manifest. Their target files
+  do exist on disk (`backend/config/workflows/return_session.yaml`, `sync/order_partial.yaml`,
+  `sync/order_full.yaml`, `sources/sales_inv.yaml`, `mappings/sales_inv_order.yaml`,
+  `graph/order_discovery.yaml`), just unreferenced by any loader.
+- `platform.system_store` (the brief's "leave" entry) is also never read through `ConfigurationLoader`
+  -- `backend/config/platform/system_store.yaml` is loaded by an entirely separate mechanism,
+  `platform/system_store/manifest_loader.py::load_system_store_config`, driven by its own
+  `Settings.system_store_manifest_path` (`configuration/settings.py:25,75`), confirmed by
+  `configuration/README.md:36-37` ("read by its own loader"). The manifest.yaml entry is inert either
+  way; left alone per the brief regardless.
+- publish_release_with_domains (`application/release_promotion.py:198-238`) replaces a domain
+  document whole, not by merge patch: `merged.update({key: dict(value) for key, value in
+  domains.items()})` overwrites the entire `RETURN_PLATFORM` entry with whatever is passed. So
+  repointing the activator at `agents.<id>` cannot send a bare `{"agents": {id: doc}}` -- it must read
+  the active release's current full `RETURN_PLATFORM` document, set `document["agents"][manifest_id]
+  = edited_document` on a copy, and pass the whole modified document as the one domain to overlay.
+  `AgentConfigurationService` needs an `active` callable that returns the whole `RETURN_PLATFORM`
+  document (not just the `agents` sub-mapping it currently overlays), sourced from
+  `app.state.return_configuration_snapshot.domain_payloads["RETURN_PLATFORM"]` the same way
+  `main.py:560-564`'s `_released_agent_modules` closure already reads `AGENT_MODULES` from that
+  snapshot.
+
+**The concrete plan for the next step**, in order:
+
+1. `agent_configuration.py`: drop `ConfigurationLoader`/YAML entirely. Constructor takes
+   `active: Callable[[], Mapping[str, Any]]` returning the current `RETURN_PLATFORM` document (or `{}`
+   pre-bootstrap). `list_agents`/`read` build from `active().get("agents", {})` directly against the
+   `AgentConfiguration` shape. `validate_candidate` becomes `AgentConfiguration(**document)` (plain
+   pydantic validation) plus a sha256 receipt of the canonical serialization -- no more disposable-
+   directory loader round-trip. Add `released_return_platform_document()` returning the whole current
+   `RETURN_PLATFORM` document (deep-copied) for the activator to patch one key of.
+   `AgentSummary`/`AgentConfigurationView`'s `moduleId` collapses to the manifest id (no more separate
+   module concept); `path` becomes a descriptive `"RETURN_PLATFORM.agents.<id>"`; `source` is always
+   `"RELEASE"` now (document why the PACKAGED_BASELINE branch is gone -- `agents` is a required key
+   the release validator already enforces, so there is no longer a state with no release value to fall
+   back from).
+2. `governance_agent_configuration.py`: replace the "clone every module, overwrite one, publish
+   `AGENT_MODULES` whole" sequence with "clone the current whole `RETURN_PLATFORM` document, set
+   `agents[manifest_id]`, publish that one document under `RETURN_PLATFORM_DOMAIN_KEY`" -- still one
+   `publish_release_with_domains` call, same shape, different domain and a narrower overlay.
+3. `main.py`: replace `_released_agent_modules` with a closure reading `domain_payloads.get("RETURN_PLATFORM")`;
+   drop the `AGENT_MODULES_DOMAIN_KEY` import if step 1-2 leave it with no remaining reference (check
+   `configuration/snapshot.py`'s other uses of the constant before removing the constant itself, not
+   just this file's import); update the `AgentConfigurationService(...)` construction call (drop the
+   `settings.configuration_directory` positional argument).
+4. Delete `backend/config/agents/*.yaml` (8 files) and their `agent.*` manifest.yaml entries; delete
+   `workflow.return_session`, `sync.order_partial`, `sync.order_full`, `source.sales_inv`,
+   `mapping.sales_inv_order`, `graph.order_discovery` entries and their now-orphaned target files
+   (`backend/config/workflows/`, `sync/`, `sources/`, `mappings/sales_inv_order.yaml`,
+   `graph/order_discovery.yaml`) since nothing loads them either, per the brief's own instruction to
+   verify with grep and record it -- done above. Keep `platform.system_store`.
+5. `test_agent_configuration_releases.py`: the `AGENT_MODULES_DOMAIN_KEY`-keyed assertions
+   (`modules[AGENT_ID]["payload"]["enabled"]`, "every other agent travelled with it") become
+   `RETURN_PLATFORM_DOMAIN_KEY`-keyed assertions against `agents[AGENT_ID]`; "every other agent
+   travelled with it" is now "every other RETURN_PLATFORM field travelled with it unchanged" (a merge-
+   patch-adjacent claim, not a domain-replacement one); the "no active release" refusal test's premise
+   (a release with only `AGENT_MODULES`, no `RETURN_PLATFORM` to clone from) needs re-justification
+   since target and dependency are now the same domain -- likely becomes "no active release at all"
+   rather than "no RETURN_PLATFORM domain specifically".
+6. `backend/config/README.md`: record the deletions and that `ConfigurationLoader`/`manifest.yaml` now
+   has no remaining consumer except the (intentionally undisturbed) `platform.system_store` entry.
+7. Frontend: `/config/agents` typed table (name, version, `enabled`/`ai_assisted` `Toggle`s,
+   `ai_route_ref` `EnumSelect` from the AI gateway tasks) replacing `AgentsSection.tsx`'s current
+   `DocumentEditor`-over-the-whole-YAML-document approach -- the new `AgentConfigurationView.document`
+   is the small `AgentConfiguration` shape, so the typed form is now a direct fit rather than a
+   simplification of something richer. Keeps the proposal path (`PUT` -> proposal id -> link to
+   `/approvals`) unchanged; `agentConfig.ts`'s types need the narrower `AgentConfiguration` shape too.
+
+Why this step stops here rather than implementing the plan under budget pressure: the change
+touches app-startup wiring (`main.py`), the governance proposal-activation pipeline shared with
+`AI_GATEWAY`/feedback-improvement proposals, and the one release-domain replacement primitive every
+governed write goes through. `test_agent_configuration_releases.py`'s two tests need genuine
+re-justification, not a mechanical rename, and a wrong move here breaks agent editing for every
+operator, not just this lease's own screens. Better implemented in its own budget with room to run the
+full backend suite after each of steps 1-3 rather than once at the end.
+
+Files read only this step; no source changed. `drop.json` PARTIAL: items 1-4 done; item 5 researched
+and planned in full above, not yet implemented; items 6-11 remain (6 and 8 depend on 5's
+`RETURN_PLATFORM_DOMAIN_KEY` import staying available; unrelated otherwise).
