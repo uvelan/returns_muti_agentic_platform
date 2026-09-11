@@ -2,7 +2,7 @@
   "lease_id": "CFG-4",
   "branch": "feat/cfg-4-screens-a",
   "base_sha": "656ba175",
-  "head_sha": "PENDING",
+  "head_sha": "efee678e",
   "files": [
     "frontend/src/domains/config/DocumentEditor.tsx",
     "frontend/src/domains/config/DocumentEditor.test.tsx",
