@@ -40,7 +40,18 @@ try {
     throw "No backend Python environment is available."
   }
   foreach ($script in $preparation) {
-    & $run $script
+    # A preparation script reports failure through its exit code; anything it
+    # writes to stderr is a log line. Under `$ErrorActionPreference = "Stop"`,
+    # Windows PowerShell 5.1 turns a native command's stderr into a terminating
+    # NativeCommandError whenever the host captures output (CI, a scheduled
+    # task, a wrapper redirecting the stream), so the bootstrap's WARNING
+    # `packaged_configuration_not_adopted` -- printed on stderr with exit 0 --
+    # aborted the whole stack here before `$LASTEXITCODE` was ever read.
+    # Observed 2026-09-11. Run the script with Continue so stderr stays a log
+    # line, then decide on the exit code alone.
+    $preference = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try { & $run $script } finally { $ErrorActionPreference = $preference }
     if ($LASTEXITCODE -ne 0) { throw "Runtime preparation failed: $script" }
   }
 } finally { Pop-Location }

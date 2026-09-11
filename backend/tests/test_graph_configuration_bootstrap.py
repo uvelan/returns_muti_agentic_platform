@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 from pydantic import SecretStr
 
+from return_platform.ai.routing.tasks import load_ai_gateway_configuration
 from return_platform.configuration.cli import bootstrap_graph_configuration
 from return_platform.configuration.return_configuration import load_return_configuration
 from return_platform.configuration.settings import (
@@ -12,7 +13,14 @@ from return_platform.configuration.settings import (
     DEFAULT_DEPENDENCY_SIMULATION_CONFIGURATION_PATH,
     DEFAULT_RETURN_CONFIGURATION_PATH,
 )
-from return_platform.configuration.snapshot import RETURN_PLATFORM_DOMAIN_KEY
+from return_platform.configuration.snapshot import (
+    AI_GATEWAY_DOMAIN_KEY,
+    DEPENDENCY_SIMULATION_DOMAIN_KEY,
+    RETURN_PLATFORM_DOMAIN_KEY,
+)
+from return_platform.dependency_simulation.configuration import (
+    load_dependency_simulation_configuration,
+)
 
 
 class _Driver:
@@ -136,8 +144,13 @@ class _CarryForwardRepository:
         self,
         active_payload: dict[str, Any],
         metadata: dict[str, Any] | None = None,
+        domains: dict[str, dict[str, Any]] | None = None,
     ) -> None:
         self.active_payload = active_payload
+        # The AI gateway and dependency simulation domains the active release
+        # carries, when a test needs them; absent, the release has none and the
+        # packaged files publish as they are.
+        self.domains = dict(domains or {})
         # Empty by default: that is a release published before releases recorded
         # a packaged baseline, which is the state every deployment upgrading into
         # this behaviour is in.
@@ -155,10 +168,12 @@ class _CarryForwardRepository:
         self.written_metadata[release_id] = metadata
 
     async def get_domain_config(self, _release_id: str, domain_key: str) -> dict[str, Any] | None:
-        return self.active_payload if domain_key == RETURN_PLATFORM_DOMAIN_KEY else None
+        if domain_key == RETURN_PLATFORM_DOMAIN_KEY:
+            return self.active_payload
+        return self.domains.get(domain_key)
 
     async def get_all_domain_configs(self, _release_id: str) -> dict[str, Any]:
-        return {RETURN_PLATFORM_DOMAIN_KEY: self.active_payload}
+        return {RETURN_PLATFORM_DOMAIN_KEY: self.active_payload, **self.domains}
 
     async def get_release(self, release_id: str) -> SimpleNamespace | None:
         if release_id not in self.saved:
@@ -414,7 +429,15 @@ async def test_the_publish_records_the_baseline_it_was_built_from(
     await bootstrap_graph_configuration.main()
 
     release_id = next(iter(repository.saved))
-    assert repository.written_metadata[release_id] == _baseline_of(packaged_payload)
+    recorded = repository.written_metadata[release_id]
+    assert recorded[bootstrap_graph_configuration.PACKAGED_KEY_DIGESTS] == (
+        bootstrap_graph_configuration._key_digests(packaged_payload)
+    )
+    # The other two domains record their own baseline beside it.
+    assert set(recorded[bootstrap_graph_configuration.PACKAGED_DOMAIN_KEY_DIGESTS]) == {
+        "AI_GATEWAY",
+        "DEPENDENCY_SIMULATION",
+    }
 
 
 @pytest.mark.asyncio
@@ -439,14 +462,142 @@ async def test_a_release_with_no_baseline_keeps_its_values_and_says_which(
     with caplog.at_level("WARNING"):
         await bootstrap_graph_configuration.main()
 
-    published = next(iter(repository.saved.values()))[RETURN_PLATFORM_DOMAIN_KEY]
+    release_id = next(iter(repository.saved))
+    published = repository.saved[release_id][RETURN_PLATFORM_DOMAIN_KEY]
     assert published["discovery"]["identification_fields"] == []
     assert "packaged_configuration_not_adopted" in caplog.text
     assert "discovery" in caplog.text
-    # No baseline is invented for it: stamping the current file onto a release
-    # that is dropping that file's changes would mark them as operator edits and
-    # freeze them out permanently.
-    assert repository.written_metadata == {}
+    # No baseline is invented for the key that lost: stamping the current file
+    # onto a value that is dropping that file's change would mark it as an
+    # operator edit and freeze it out permanently. Every other key is decided --
+    # the release carries exactly what the file says -- so their baseline IS
+    # recorded, and the deployment leaves the undecidable path for all of them
+    # on this run rather than never. Before this was per key, a single
+    # undecidable key kept the whole file's baseline from ever being recorded,
+    # and "at most once" was in practice "on every start, forever".
+    recorded = repository.written_metadata[release_id][
+        bootstrap_graph_configuration.PACKAGED_KEY_DIGESTS
+    ]
+    expected = bootstrap_graph_configuration._key_digests(packaged_payload)
+    assert "discovery" not in recorded
+    assert recorded == {key: digest for key, digest in expected.items() if key != "discovery"}
+
+
+@pytest.mark.asyncio
+async def test_a_leaf_the_release_lacks_is_filled_even_inside_an_undecidable_key(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Observed 2026-09-11 on a deployment whose releases had no baseline: the
+    packaged file had gained `agents.support_response` and five
+    `return_policy.return_method_derivation.ship_via_methods` codes weeks
+    earlier, and no release ever carried them, because the whole top-level key
+    lost the moment any leaf inside it disagreed. A leaf the release does not
+    carry at all cannot be anyone's edit, so it is adopted; a leaf both carry
+    stays the release's, and the key is still named as undecided."""
+    packaged = load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration
+    packaged_payload = packaged.model_dump(mode="json")
+    older = {**packaged_payload, "agents": {**packaged_payload["agents"]}}
+    dropped_agent, dropped_block = next(iter(packaged_payload["agents"].items()))
+    del older["agents"][dropped_agent]
+    edited_agent = next(name for name in older["agents"])
+    older["agents"][edited_agent] = {
+        **older["agents"][edited_agent],
+        "timeout_seconds": 4242,
+    }
+    repository = _CarryForwardRepository(older)
+    _install_bootstrap_doubles(monkeypatch, repository)
+
+    with caplog.at_level("WARNING"):
+        await bootstrap_graph_configuration.main()
+
+    release_id = next(iter(repository.saved))
+    published = repository.saved[release_id][RETURN_PLATFORM_DOMAIN_KEY]
+    assert published["agents"][dropped_agent] == dropped_block
+    assert published["agents"][edited_agent]["timeout_seconds"] == 4242
+    assert "keys=agents" in caplog.text
+    assert (
+        "agents"
+        not in repository.written_metadata[release_id][
+            bootstrap_graph_configuration.PACKAGED_KEY_DIGESTS
+        ]
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_partial_baseline_decides_its_keys_and_leaves_the_rest_undecided(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The second run after the one above: `support` was recorded, `discovery`
+    was not. A packaged change to `support` is adopted from the baseline; the
+    still-baseline-less `discovery` keeps the release's value and is named
+    again rather than silently stamped as an operator edit."""
+    packaged = load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration
+    packaged_payload = packaged.model_dump(mode="json")
+    older_support = {**packaged_payload["support"], "queues": ["OLD-PACKAGED-QUEUE"]}
+    older_discovery = {**packaged_payload["discovery"], "identification_fields": []}
+    older = {**packaged_payload, "support": older_support, "discovery": older_discovery}
+    partial = _baseline_of({"support": older_support})
+    repository = _CarryForwardRepository(older, metadata=partial)
+    _install_bootstrap_doubles(monkeypatch, repository)
+
+    with caplog.at_level("WARNING"):
+        await bootstrap_graph_configuration.main()
+
+    release_id = next(iter(repository.saved))
+    published = repository.saved[release_id][RETURN_PLATFORM_DOMAIN_KEY]
+    assert published["support"] == packaged_payload["support"]
+    assert published["discovery"]["identification_fields"] == []
+    assert "keys=discovery" in caplog.text
+    recorded = repository.written_metadata[release_id][
+        bootstrap_graph_configuration.PACKAGED_KEY_DIGESTS
+    ]
+    assert "support" in recorded
+    assert "discovery" not in recorded
+
+
+@pytest.mark.asyncio
+async def test_adopt_packaged_key_takes_the_file_for_one_key_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The per-key answer to the warning: taking the file for `discovery` must
+    not also take it for the `support` an operator edited."""
+    packaged = load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration
+    packaged_payload = packaged.model_dump(mode="json")
+    operator_queues = ["OPERATOR-EDITED-QUEUE"]
+    older = {
+        **packaged_payload,
+        "discovery": {**packaged_payload["discovery"], "identification_fields": []},
+        "support": {**packaged_payload["support"], "queues": operator_queues},
+    }
+    repository = _CarryForwardRepository(older)
+    _install_bootstrap_doubles(monkeypatch, repository)
+
+    await bootstrap_graph_configuration.main(adopt_packaged_keys=("discovery",))
+
+    release_id = next(iter(repository.saved))
+    published = repository.saved[release_id][RETURN_PLATFORM_DOMAIN_KEY]
+    assert published["discovery"] == packaged_payload["discovery"]
+    assert published["support"]["queues"] == operator_queues
+    recorded = repository.written_metadata[release_id][
+        bootstrap_graph_configuration.PACKAGED_KEY_DIGESTS
+    ]
+    assert "discovery" in recorded
+    assert "support" not in recorded
+
+
+@pytest.mark.asyncio
+async def test_adopt_packaged_key_refuses_a_key_the_file_does_not_have(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    packaged = load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration
+    repository = _CarryForwardRepository(packaged.model_dump(mode="json"))
+    _install_bootstrap_doubles(monkeypatch, repository)
+
+    with pytest.raises(ValueError, match="no_such_key"):
+        await bootstrap_graph_configuration.main(adopt_packaged_keys=("no_such_key",))
+    assert repository.saved == {}
 
 
 @pytest.mark.asyncio
@@ -466,4 +617,177 @@ async def test_adopt_packaged_is_the_operators_way_out_of_an_undecidable_release
     release_id = next(iter(repository.saved))
     published = repository.saved[release_id][RETURN_PLATFORM_DOMAIN_KEY]
     assert published["discovery"] == packaged_payload["discovery"]
-    assert repository.written_metadata[release_id] == _baseline_of(packaged_payload)
+    assert repository.written_metadata[release_id][
+        bootstrap_graph_configuration.PACKAGED_KEY_DIGESTS
+    ] == bootstrap_graph_configuration._key_digests(packaged_payload)
+
+
+# --- the AI gateway and dependency simulation domains ------------------------
+
+
+_EDITED_TASK = "RETURN_STATUS_SUMMARY_V1"
+
+
+def _packaged_ai_gateway() -> dict[str, Any]:
+    return load_ai_gateway_configuration(
+        DEFAULT_AI_GATEWAY_CONFIGURATION_PATH
+    ).configuration.model_dump(mode="json")
+
+
+def _packaged_dependency_simulation() -> dict[str, Any]:
+    return load_dependency_simulation_configuration(
+        DEFAULT_DEPENDENCY_SIMULATION_CONFIGURATION_PATH
+    ).configuration.model_dump(mode="json")
+
+
+def _with_task_edit(ai_gateway: dict[str, Any], **fields: Any) -> dict[str, Any]:
+    edited = {**ai_gateway, "tasks": {**ai_gateway["tasks"]}}
+    edited["tasks"][_EDITED_TASK] = {**edited["tasks"][_EDITED_TASK], **fields}
+    return edited
+
+
+@pytest.mark.asyncio
+async def test_an_operators_ai_task_edit_survives_the_next_start(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Observed 2026-09-11: `maximumOutputTokens` set to 1234 through the config
+    API, and one bootstrap run later it read 192 -- the file's value -- because
+    the AI gateway domain was always published from `ai_gateway.yaml` whole.
+    Every edit made in the AI Control Center went back to the file on the next
+    stack start. The task is carried forward as its own unit now."""
+    packaged = load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration
+    packaged_ai = _packaged_ai_gateway()
+    edited_ai = _with_task_edit(packaged_ai, maximumOutputTokens=1234)
+    repository = _CarryForwardRepository(
+        packaged.model_dump(mode="json"), domains={AI_GATEWAY_DOMAIN_KEY: edited_ai}
+    )
+    _install_bootstrap_doubles(monkeypatch, repository)
+
+    with caplog.at_level("WARNING"):
+        await bootstrap_graph_configuration.main()
+
+    release_id = next(iter(repository.saved))
+    published = repository.saved[release_id][AI_GATEWAY_DOMAIN_KEY]
+    assert published["tasks"][_EDITED_TASK]["maximumOutputTokens"] == 1234
+    untouched = {task: body for task, body in published["tasks"].items() if task != _EDITED_TASK}
+    assert untouched == {t: b for t, b in packaged_ai["tasks"].items() if t != _EDITED_TASK}
+    assert f"domain={AI_GATEWAY_DOMAIN_KEY} keys=tasks.{_EDITED_TASK}" in caplog.text
+    domain_baseline = repository.written_metadata[release_id][
+        bootstrap_graph_configuration.PACKAGED_DOMAIN_KEY_DIGESTS
+    ][AI_GATEWAY_DOMAIN_KEY]
+    assert f"tasks.{_EDITED_TASK}" not in domain_baseline
+    assert "circuitBreaker" in domain_baseline
+
+
+@pytest.mark.asyncio
+async def test_a_packaged_change_to_an_unedited_task_is_adopted_beside_an_edited_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Per task, not per domain: the baseline decides `tasks.<id>` one by one,
+    so an edited task does not freeze the file's changes to the others."""
+    packaged = load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration
+    packaged_ai = _packaged_ai_gateway()
+    other_task = next(task for task in packaged_ai["tasks"] if task != _EDITED_TASK)
+    # The release: one task the operator edited, another still as the file was
+    # when the release was cut -- and the file has since changed that one.
+    older_ai = _with_task_edit(packaged_ai, maximumOutputTokens=1234)
+    older_ai["tasks"][other_task] = {**older_ai["tasks"][other_task], "promptVersion": "older-v0"}
+    older_units = bootstrap_graph_configuration._units(
+        {
+            **packaged_ai,
+            "tasks": {**packaged_ai["tasks"], other_task: older_ai["tasks"][other_task]},
+        },
+        ("tasks",),
+    )
+    metadata = {
+        bootstrap_graph_configuration.PACKAGED_DOMAIN_KEY_DIGESTS: {
+            AI_GATEWAY_DOMAIN_KEY: bootstrap_graph_configuration._key_digests(older_units)
+        }
+    }
+    repository = _CarryForwardRepository(
+        packaged.model_dump(mode="json"),
+        metadata=metadata,
+        domains={AI_GATEWAY_DOMAIN_KEY: older_ai},
+    )
+    _install_bootstrap_doubles(monkeypatch, repository)
+
+    await bootstrap_graph_configuration.main()
+
+    release_id = next(iter(repository.saved))
+    published = repository.saved[release_id][AI_GATEWAY_DOMAIN_KEY]
+    assert published["tasks"][_EDITED_TASK]["maximumOutputTokens"] == 1234
+    assert published["tasks"][other_task] == packaged_ai["tasks"][other_task]
+
+
+@pytest.mark.asyncio
+async def test_adopt_packaged_key_takes_the_file_for_one_ai_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    packaged = load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration
+    packaged_ai = _packaged_ai_gateway()
+    repository = _CarryForwardRepository(
+        packaged.model_dump(mode="json"),
+        domains={AI_GATEWAY_DOMAIN_KEY: _with_task_edit(packaged_ai, maximumOutputTokens=1234)},
+    )
+    _install_bootstrap_doubles(monkeypatch, repository)
+
+    await bootstrap_graph_configuration.main(
+        adopt_packaged_keys=(f"{AI_GATEWAY_DOMAIN_KEY}/tasks.{_EDITED_TASK}",)
+    )
+
+    release_id = next(iter(repository.saved))
+    published = repository.saved[release_id][AI_GATEWAY_DOMAIN_KEY]
+    assert published == packaged_ai
+    domain_baseline = repository.written_metadata[release_id][
+        bootstrap_graph_configuration.PACKAGED_DOMAIN_KEY_DIGESTS
+    ][AI_GATEWAY_DOMAIN_KEY]
+    assert f"tasks.{_EDITED_TASK}" in domain_baseline
+
+
+@pytest.mark.asyncio
+async def test_an_operators_dependency_simulation_edit_survives_the_next_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    packaged = load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration
+    packaged_sim = _packaged_dependency_simulation()
+    edited_sim = {**packaged_sim, "ai": {**packaged_sim["ai"], "temperature": 0.7}}
+    repository = _CarryForwardRepository(
+        packaged.model_dump(mode="json"),
+        domains={DEPENDENCY_SIMULATION_DOMAIN_KEY: edited_sim},
+    )
+    _install_bootstrap_doubles(monkeypatch, repository)
+
+    await bootstrap_graph_configuration.main()
+
+    release_id = next(iter(repository.saved))
+    published = repository.saved[release_id][DEPENDENCY_SIMULATION_DOMAIN_KEY]
+    assert published["ai"]["temperature"] == 0.7
+    assert published["dependencies"] == packaged_sim["dependencies"]
+
+
+@pytest.mark.asyncio
+async def test_a_release_whose_ai_domain_matches_the_file_is_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Carrying the domains forward must not turn an identical release into a
+    publish: the comparison the UNCHANGED path makes still holds."""
+    packaged = load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration
+    packaged_payload = packaged.model_dump(mode="json")
+    repository = _CarryForwardRepository(
+        packaged_payload,
+        metadata=_baseline_of(packaged_payload),
+        domains={
+            AI_GATEWAY_DOMAIN_KEY: _packaged_ai_gateway(),
+            DEPENDENCY_SIMULATION_DOMAIN_KEY: _packaged_dependency_simulation(),
+        },
+    )
+    _install_bootstrap_doubles(monkeypatch, repository)
+
+    await bootstrap_graph_configuration.main()
+
+    assert repository.saved == {}
+    assert (
+        bootstrap_graph_configuration.PACKAGED_DOMAIN_KEY_DIGESTS
+        in (repository.written_metadata["active-release-1"])
+    )

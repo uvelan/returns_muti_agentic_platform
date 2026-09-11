@@ -9,6 +9,7 @@ import {
 } from "../../api/configuration";
 import { useCapabilities } from "../../hooks/capabilityContext";
 import { AgentsSection } from "./AgentsSection";
+import { BusinessSection } from "./BusinessSection";
 import { SupportTemplateSection } from "./SupportTemplateSection";
 import { type CONFIG_SECTIONS, requireDomain } from "../registry";
 import { useDomainSection } from "../useDomainSection";
@@ -57,14 +58,14 @@ const CONFIG_DOMAIN = requireDomain("/config");
 type Tab = (typeof CONFIG_SECTIONS)[number];
 
 /**
- * Tabs with no endpoint of their own, and why -- three of these are *already
+ * Tabs with no endpoint of their own, and why -- one of these is *already
  * served* rather than missing, which is a different statement and worth making.
+ * Business used to be listed here as "already served, see the Runtime tab";
+ * a read is not a write surface, and it is a tab of its own now.
  */
 const UNBACKED: Partial<Record<Tab, string>> = {
   Integrations:
     "Already served. Integrations are fields on the runtime snapshot (configuration.integrations and configuration.runtime_integrations), visible on the Runtime tab. A second endpoint would duplicate them.",
-  Business:
-    "Already served. The runtime snapshot's configuration field is the business configuration; see the Runtime tab.",
   Modules:
     "No endpoint, deliberately. The kernel module registry is empty by design, so a /modules route would answer [] forever -- a shell that always says nothing is worse than an honest absence. A release's module list is reachable through its domain payloads.",
   Security:
@@ -107,6 +108,10 @@ function TabBody({ tab, canReadReleases }: { tab: Tab; canReadReleases: boolean 
       return <AgentsSection />;
     case "Support Template":
       return <SupportTemplateSection />;
+    // Was "already served, see the Runtime tab" -- a read. Every section the
+    // release carries is editable here; the runtime snapshot is what it edits.
+    case "Business":
+      return <BusinessSection />;
     case "Runtime":
       return <RuntimeTab />;
     case "Releases":

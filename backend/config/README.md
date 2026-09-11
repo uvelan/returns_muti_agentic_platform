@@ -55,6 +55,17 @@ manifest mechanism and are being migrated incrementally:
 - `returns/production.yaml` → its `features` block feeds `FeaturesConfig`; its `platform` block
   feeds `PlatformConfig`.
 
+**Read this first (audited 2026-09-11).** The two translations above are test-only. What every
+process actually runs is the RELEASED release in the Neo4j configuration graph, whose three
+domains are published from `returns/production.yaml` (`RETURN_PLATFORM`), `ai_gateway.yaml`
+(`AI_GATEWAY`) and `dependency_simulation.yaml` (`DEPENDENCY_SIMULATION`) by
+`return_platform/configuration/cli/bootstrap_graph_configuration.py` at every stack start, and
+edited afterwards through `/api/config` and the Configuration, Support Template and AI Control
+Center screens. `production.yaml` has no `features:`/`platform:` keys -- the live flag block is
+`feature_flags:`, which parses but is read by nothing. See
+`return_platform/configuration/README.md` (Precedence) for the carry-forward rules that decide
+whether an edited packaged file reaches a deployment that already has a release.
+
 No other file is loaded this way. Adding a new singleton requires an explicit new call in
 `compatibility.py`, not a naming convention.
 

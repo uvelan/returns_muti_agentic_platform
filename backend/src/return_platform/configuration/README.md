@@ -17,6 +17,38 @@ resolution. Nothing downstream ever reads a domain model directly; everything re
 BOOTSTRAP_ENV  →  BASELINE  →  ACTIVE_RELEASE  →  (output) RuntimeSnapshot
 ```
 
+**What actually runs (audited 2026-09-11).** The manifest-driven path below
+(`loader.py` → `compatibility.py` → `RuntimeSnapshot` → `precedence.py`) is
+exercised only by `tests/configuration/`; no process constructs it. Every
+process resolves its configuration through `runtime_activation.py` →
+`runtime_loader.py` → `snapshot.py::ConfigurationSnapshotBuilder`, which reads
+the RELEASED release from the Neo4j configuration graph and holds three domain
+payloads: `RETURN_PLATFORM` (`config/returns/production.yaml`), `AI_GATEWAY`
+(`config/ai_gateway.yaml`) and `DEPENDENCY_SIMULATION`
+(`config/dependency_simulation.yaml`). The packaged files are the *baseline*
+the bootstrap publishes from (`cli/bootstrap_graph_configuration.py`) and the
+fallback when no release exists (development only); once a release exists the
+graph wins and editing a packaged file changes nothing running until the
+bootstrap carries the change forward. `Settings` (environment) supplies only
+deployment values -- hosts, credentials, provider order and model pools, feature
+switches read at process start -- and never overrides a release domain. The
+manifest modules under `config/agents/`, `policies/`, `workflows/`, `sync/`,
+`sources/`, `mappings/`, `graph/` are read structurally by the Agents editing
+API and by nothing at runtime; `platform/system_store.yaml` is read by its own
+loader in `platform/system_store/manifest_loader.py`.
+
+**Carry-forward.** The bootstrap decides, per top-level key of `RETURN_PLATFORM`
+and per unit of the other two domains (one AI task, one simulated dependency),
+whether a value in the active release was edited by an operator or merely
+predates a change to the packaged file, using the baseline digests the release
+records in its metadata (`packaged_key_digests`, `packaged_domain_key_digests`).
+A key with no baseline is decided only where no judgement is needed (absent
+from the release, or identical to the file, or differing only by leaves the
+release lacks); otherwise the release wins, the key is named in a
+`packaged_configuration_not_adopted` warning, and `--adopt-packaged-key` is the
+operator's per-unit answer. Releases published through `/api/config` carry the
+baseline forward when they clone the active release.
+
 `application/precedence.py::ConfigurationPrecedenceEvaluator` enforces this. `BOOTSTRAP_ENV` may
 only supply an explicit allowlisted set of deployment/bootstrap fields (region, host, port,
 log_level, credentials, …) — business configuration must never come from environment

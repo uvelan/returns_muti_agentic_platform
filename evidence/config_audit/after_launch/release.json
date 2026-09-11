@@ -1,0 +1,14 @@
+{
+ "head": {
+  "rev": 65,
+  "by": "linux-runtime-bootstrap",
+  "at": "2026-09-11T06:39:03.893Z"
+ },
+ "release": {
+  "id": "return-platform-cc56121100dcb3df",
+  "by": "linux-runtime-bootstrap",
+  "at": "2026-09-11T06:39:01.092Z",
+  "ck": "d2b83b98ee2dad08ef4db23206e280e858f188dac8dd9497a61b2a52a96ae099",
+  "meta": "{\"packaged_key_digests\": {\"assumption_set_version\": \"1b2db6eb8b9cfdce52515a89aa8e9dba90aadc2bdb64a8a0203075a7d27d6d8e\", \"business_calendars\": \"bad74bc4330420fc083df5c1a514084fb221dd46ad5fe13fe798d4809ef72d2b\", \"context_assembly\": \"63673c6a829c22f531f2eee8299ea989f8c0a46bb1f60f9a612d6de7143a2d9c\", \"copilot\": \"2fc8855ff851941d13074c8e9d8668c0f88de7fdf44335c639fe270119c96475\", \"extensions\": \"c7df9f3281c13287a4da720b156963c55b2cbecf85135422eaa57054ccdee0f1\", \"feature_flags\": \"559820d85e6d40115fca48ec8590181db44d0b089265e8ce172e729d546225ad\", \"housekeeping\": \"d0994c0071df5c8cc3f437b10d0bcb26237b2de5095c8ce55afc4e6a8bfac3f7\", \"integrations\": \"8bfdc8e1a15f2eea6b384890d9a80fa2244083af1a19e157bcc029dc72aeaa4e\", \"omc\": \"2675edeabc2d234c95a6fa6de853b3934e33fb8c19df7016c7194d2494432592\", \"return_case\": \"d30acc4c5be1ef0d81aa781c905cec297b0a1b93688ad4325865a0fa0639e2d3\", \"runtime_integrations\": \"96f78e419dd561c1517135f287b17e75ce54b402e5525fe6191c58cdcc80adf2\", \"schema_version\": \"a51162aeeb057ca4e3df627977231de20b581f0d0d418ca3a111bc0e408ac6cc\", \"selection_vocabulary\": \"47cd4f46caa41c501ac9bc3b96a2d14f19e51ab4063fc2f4dbc62cb50ed3b1e6\", \"support\": \"62b59a63115c0630df0ae38559034ae74909619386af83d30be9ef310f4d39b3\", \"support_gate\": \"4241b2674dde9627354c3248817fd9dbc81c22310e2d1ddc3c8e807963393699\", \"support_resolver\": \"9858302a5a6cba3161c3831c7db1f9ca3864ef74daef3adede30ac6692a9b601\", \"support_template\": \"2e05f92e11b164de61ec4011cdc72850a14714dfd057ed8fb31a4f870fda0b4d\", \"workflow\": \"1d49fa50aefd9225e7bc935de3962fcca79b16c03df83197c6cea364bc537dbb\"}}"
+ }
+}

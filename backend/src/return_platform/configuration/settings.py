@@ -233,8 +233,6 @@ class Settings(BaseSettings):
     # configured well under these ceilings.
     ai_timeout_seconds: float = Field(default=12.0, ge=0.5, le=300.0)
     ai_global_timeout_seconds: float = Field(default=30.0, ge=1.0, le=900.0)
-    ai_max_attempts_per_provider: int = Field(default=2, ge=1, le=4)
-    ai_max_concurrency: int = Field(default=16, ge=1, le=256)
     ai_requests_per_minute: int = Field(default=120, ge=1, le=100_000)
     ai_max_payload_bytes: int = Field(default=16_384, ge=1_024, le=1_048_576)
     ai_interception_default: bool = False
@@ -251,7 +249,6 @@ class Settings(BaseSettings):
     # configuration, and `validate_relationships` refuses it in production
     # exactly as it refuses MANUAL in the provider order.
     ai_response_interception: bool = False
-    ai_prompt_version: str = Field(default="return-eligibility-v1", min_length=1, max_length=128)
     ai_allowed_endpoint_hosts: tuple[str, ...] = (
         "generativelanguage.googleapis.com",
         "integrate.api.nvidia.com",

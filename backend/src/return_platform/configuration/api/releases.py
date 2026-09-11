@@ -28,6 +28,7 @@ from return_platform.dependency_simulation.configuration import (
     DependencySimulationConfiguration,
     LoadedDependencySimulationConfiguration,
 )
+from return_platform.operations.repository import resolve_operational_repository
 from return_platform.resources import RuntimeResources
 from return_platform.security.authorization import require_read_roles, require_write_roles
 from return_platform.shared.contracts import APIResponse, ResponseMeta
@@ -240,12 +241,115 @@ async def create_release(
             actor_id=user_id,
         )
 
+    # The packaged baseline the cloned release was built from, carried onto the
+    # clone -- the same carry `publish_release_with_domains` does for a governed
+    # change, and it was missing here, on the path every Configuration screen
+    # publishes through. `bootstrap_graph_configuration` reads the baseline to
+    # tell an operator's edit apart from a change to the packaged file; a
+    # release without one is undecidable for every key, so each publish from
+    # the UI put the deployment back at "the release wins, the file's changes
+    # are logged and dropped". Observed 2026-09-11: a task edit published from
+    # the AI Control Center produced a RELEASED release with empty metadata one
+    # start after the bootstrap had recorded a baseline.
+    #
+    # The operator's edits need no special treatment: they move their keys away
+    # from the baseline, which is exactly how the next bootstrap reads them as
+    # edited and leaves them alone.
+    if active_release is not None and payload.from_active and active_release.metadata:
+        await repo.set_release_metadata(payload.release_id, dict(active_release.metadata))
+
     release = await repo.get_release(payload.release_id)
     if release is None:
         raise HTTPException(status_code=500, detail="Configuration release creation failed")
+    await record_configuration_audit(
+        request,
+        action="CONFIGURATION_RELEASE_CREATED",
+        actor=user_id,
+        target=payload.release_id,
+        details={
+            "clonedFrom": active_release.release_id
+            if active_release is not None and payload.from_active
+            else None,
+            "domains": sorted(domains_to_copy),
+        },
+    )
     data = release.model_dump(mode="json")
     data["domains"] = await repo.get_all_domain_configs(payload.release_id)
     return APIResponse(data=data, meta=_response_meta(request))
+
+
+async def record_configuration_audit(
+    request: Request,
+    *,
+    action: str,
+    actor: str,
+    target: str,
+    details: dict[str, Any],
+) -> None:
+    """One audit record per configuration release change, in the platform's audit log.
+
+    Release create, domain patch and promotion left no entry in the `audit`
+    collection that `GET /api/config/audit` serves: the only trail was the
+    release's `created_by` and each domain's `updated_by`, overwritten on every
+    edit, with no before/after. An operator asking who changed a threshold and
+    what it was before had no answer. This is the same `append_audit` the AI
+    gateway and governance kernel already write through -- one log, not a
+    second one.
+    """
+    repository = resolve_operational_repository(request)
+    await repository.append_audit(action=action, actor=actor, target=target, details=details)
+
+
+def _changed_paths(before: Any, after: Any, prefix: str = "") -> list[str]:
+    """Dotted paths whose value differs between two JSON documents, capped."""
+    if isinstance(before, dict) and isinstance(after, dict):
+        paths: list[str] = []
+        for key in sorted(set(before) | set(after)):
+            child = f"{prefix}.{key}" if prefix else key
+            if key not in before or key not in after:
+                paths.append(child)
+            else:
+                paths.extend(_changed_paths(before[key], after[key], child))
+            if len(paths) >= 50:
+                return paths[:50]
+        return paths
+    return [] if before == after else [prefix or "$"]
+
+
+def _canonical_domain_payload(domain_key: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Validate a domain payload and return the form the platform persists.
+
+    What is stored is `model_dump(mode="json")` of the validated model, never
+    the dictionary the caller sent. The bootstrap decides whether anything
+    changed by comparing the active release's stored payload with its own
+    `model_dump` of the packaged file (`cli/bootstrap_graph_configuration.py`),
+    so a payload saved in any other shape -- a merge patch that left a defaulted
+    key out, a list where the model holds a tuple, keys in another order -- read
+    as a change on every start and republished the release with a new head
+    revision each time (finding F-0084). One shape on the way in, and the
+    comparison means what it says.
+
+    A domain key outside the three the platform reads is refused rather than
+    stored unvalidated: nothing would ever read it, but it would ride along in
+    every clone of the release and count in its checksum.
+    """
+    try:
+        if domain_key == RETURN_PLATFORM_DOMAIN_KEY:
+            return ReturnPlatformConfiguration.model_validate(payload).model_dump(mode="json")
+        if domain_key == AI_GATEWAY_DOMAIN_KEY:
+            return AIGatewayConfiguration.model_validate(payload).model_dump(mode="json")
+        if domain_key == DEPENDENCY_SIMULATION_DOMAIN_KEY:
+            return DependencySimulationConfiguration.model_validate(payload).model_dump(mode="json")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    raise HTTPException(
+        status_code=404,
+        detail=(
+            f"Domain {domain_key} is not a configuration domain; expected one of "
+            f"{RETURN_PLATFORM_DOMAIN_KEY}, {AI_GATEWAY_DOMAIN_KEY}, "
+            f"{DEPENDENCY_SIMULATION_DOMAIN_KEY}"
+        ),
+    )
 
 
 class SaveDomainPayload(BaseModel):
@@ -292,25 +396,19 @@ async def save_domain_config(
     """Save a validated domain payload into a mutable draft release."""
 
     repo = resolve_configuration_repository(request)
-    if domain_key == RETURN_PLATFORM_DOMAIN_KEY:
-        try:
-            ReturnPlatformConfiguration.model_validate(body.payload)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-    elif domain_key == AI_GATEWAY_DOMAIN_KEY:
-        try:
-            AIGatewayConfiguration.model_validate(body.payload)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-    elif domain_key == DEPENDENCY_SIMULATION_DOMAIN_KEY:
-        try:
-            DependencySimulationConfiguration.model_validate(body.payload)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    canonical = _canonical_domain_payload(domain_key, body.payload)
+    previous = await repo.get_domain_config(release_id, domain_key)
     try:
-        await repo.save_draft_domain(release_id, domain_key, body.payload, actor_id=user_id)
+        await repo.save_draft_domain(release_id, domain_key, canonical, actor_id=user_id)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await record_configuration_audit(
+        request,
+        action="CONFIGURATION_DOMAIN_REPLACED",
+        actor=user_id,
+        target=f"{release_id}/{domain_key}",
+        details={"changedPaths": _changed_paths(previous or {}, canonical)},
+    )
 
     updated = await repo.get_domain_config(release_id, domain_key)
     return APIResponse(
@@ -339,22 +437,7 @@ async def patch_domain_config(
             status_code=404,
             detail=f"Domain {domain_key} was not found in release {release_id}",
         )
-    updated_payload = _apply_merge_patch(current, body.patch)
-    if domain_key == RETURN_PLATFORM_DOMAIN_KEY:
-        try:
-            ReturnPlatformConfiguration.model_validate(updated_payload)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-    elif domain_key == AI_GATEWAY_DOMAIN_KEY:
-        try:
-            AIGatewayConfiguration.model_validate(updated_payload)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-    elif domain_key == DEPENDENCY_SIMULATION_DOMAIN_KEY:
-        try:
-            DependencySimulationConfiguration.model_validate(updated_payload)
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    updated_payload = _canonical_domain_payload(domain_key, _apply_merge_patch(current, body.patch))
     try:
         await repo.save_draft_domain(
             release_id,
@@ -364,6 +447,16 @@ async def patch_domain_config(
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    await record_configuration_audit(
+        request,
+        action="CONFIGURATION_DOMAIN_PATCHED",
+        actor=user_id,
+        target=f"{release_id}/{domain_key}",
+        details={
+            "patchKeys": sorted(body.patch),
+            "changedPaths": _changed_paths(current, updated_payload),
+        },
+    )
     return APIResponse(
         data={"domain_key": domain_key, "payload": updated_payload},
         meta=_response_meta(request),
@@ -411,6 +504,23 @@ async def promote_release_status(
         )
     except ReleasePromotionError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    await record_configuration_audit(
+        request,
+        action="CONFIGURATION_RELEASE_PROMOTED",
+        actor=user_id,
+        target=release_id,
+        details={
+            "status": body.status,
+            "headRevision": outcome.head_revision,
+            "checksumSha256": outcome.release.checksum_sha256,
+            "activatedReleaseId": (
+                outcome.activated_snapshot.release_id
+                if outcome.activated_snapshot is not None
+                else None
+            ),
+        },
+    )
 
     data = outcome.release.model_dump(mode="json")
     data["domains"] = outcome.domains

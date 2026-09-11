@@ -14,6 +14,7 @@ from neo4j import AsyncGraphDatabase
 from pydantic import ValidationError
 
 from return_platform.ai.routing.tasks import (
+    AIGatewayConfiguration,
     LoadedAIGatewayConfiguration,
     load_ai_gateway_configuration,
 )
@@ -37,6 +38,7 @@ from return_platform.configuration.snapshot import (
     RETURN_PLATFORM_DOMAIN_KEY,
 )
 from return_platform.dependency_simulation.configuration import (
+    DependencySimulationConfiguration,
     load_dependency_simulation_configuration,
 )
 from return_platform.secrets.runtime import (
@@ -57,6 +59,80 @@ logger = logging.getLogger(__name__)
 #: guessing "the file" would silently undo operator edits on every restart.
 PACKAGED_KEY_DIGESTS = "packaged_key_digests"
 
+#: Release metadata key holding the same baseline for the OTHER two domains,
+#: keyed by domain: `{"AI_GATEWAY": {unit: digest}, "DEPENDENCY_SIMULATION": {...}}`.
+#:
+#: Until this existed those domains were not carried forward at all -- every
+#: publish took `ai_gateway.yaml` and `dependency_simulation.yaml` whole, so an
+#: AI task edited in the AI Control Center went back to the file on the next
+#: stack start. Observed 2026-09-11: `maximumOutputTokens` set to 1234 through
+#: the API, one bootstrap run later it read 192, the file's value.
+PACKAGED_DOMAIN_KEY_DIGESTS = "packaged_domain_key_digests"
+
+#: The mapping keys inside each domain whose ENTRIES carry forward one by one.
+#:
+#: A domain's top-level keys are its units, as for the business domain -- except
+#: that `tasks` is one key holding every AI task and `dependencies` one key
+#: holding every simulated system. Deciding those whole would let one edited
+#: task freeze the file's changes to every other task, so each entry is its own
+#: unit: `tasks.RETURN_STATUS_SUMMARY_V1`, `dependencies.OMC`.
+CARRY_FORWARD_SPLIT_KEYS: dict[str, tuple[str, ...]] = {
+    AI_GATEWAY_DOMAIN_KEY: ("tasks",),
+    DEPENDENCY_SIMULATION_DOMAIN_KEY: ("dependencies",),
+}
+
+
+def _units(payload: Mapping[str, Any], split_keys: tuple[str, ...]) -> dict[str, Any]:
+    """A payload as carry-forward units: top-level keys, split keys by entry."""
+    units: dict[str, Any] = {}
+    for key, value in payload.items():
+        if key in split_keys and isinstance(value, dict) and value:
+            for entry, entry_value in value.items():
+                units[f"{key}.{entry}"] = entry_value
+        else:
+            units[key] = value
+    return units
+
+
+def _assemble(units: Mapping[str, Any], split_keys: tuple[str, ...]) -> dict[str, Any]:
+    """The inverse of `_units`."""
+    payload: dict[str, Any] = {}
+    for unit, value in units.items():
+        head, dot, entry = unit.partition(".")
+        if head in split_keys:
+            container = payload.setdefault(head, {})
+            if dot:
+                container[entry] = value
+        else:
+            payload[unit] = value
+    return payload
+
+
+def _adopt_requests(adopt_packaged_keys: tuple[str, ...]) -> dict[str, set[str]]:
+    """`--adopt-packaged-key` values by domain.
+
+    A bare key names a business-domain key (`discovery`); a qualified one names a
+    unit of another domain (`AI_GATEWAY/tasks.RETURN_STATUS_SUMMARY_V1`,
+    `DEPENDENCY_SIMULATION/dependencies.OMC`).
+    """
+    requests: dict[str, set[str]] = {}
+    known_domains = {
+        RETURN_PLATFORM_DOMAIN_KEY,
+        AI_GATEWAY_DOMAIN_KEY,
+        DEPENDENCY_SIMULATION_DOMAIN_KEY,
+    }
+    for raw in adopt_packaged_keys:
+        domain, slash, unit = raw.partition("/")
+        if not slash:
+            domain, unit = RETURN_PLATFORM_DOMAIN_KEY, raw
+        if domain not in known_domains or not unit:
+            raise ValueError(
+                f"adopt-packaged-key {raw!r} does not name a configuration domain unit; "
+                f"expected <key> or <DOMAIN>/<unit> with DOMAIN one of {sorted(known_domains)}"
+            )
+        requests.setdefault(domain, set()).add(unit)
+    return requests
+
 
 def _key_digests(payload: Mapping[str, Any]) -> dict[str, str]:
     """One digest per top-level key, over its canonical JSON."""
@@ -68,45 +144,86 @@ def _key_digests(payload: Mapping[str, Any]) -> dict[str, str]:
     }
 
 
+def _fill_absent_leaves(packaged_value: Any, active_value: Any) -> Any:
+    """The active value, plus every mapping entry the packaged value has and it lacks.
+
+    Recursive over mappings only. A leaf both sides carry keeps the active
+    value -- that is the undecidable case, and the release wins it -- but a leaf
+    the release does not carry at all cannot be an operator's edit of anything:
+    it is a key the file gained after the release was cut (a new agent block, a
+    new ship-via code), and leaving it out froze every such addition out of a
+    deployment that had no baseline. The one thing this cannot tell apart is an
+    operator who deleted a mapping entry the file still carries; that entry
+    comes back on the next publish, and the warning names the key.
+    """
+    if not isinstance(packaged_value, dict) or not isinstance(active_value, dict):
+        return active_value
+    filled = dict(active_value)
+    for key, value in packaged_value.items():
+        if key not in filled:
+            filled[key] = value
+        else:
+            filled[key] = _fill_absent_leaves(value, filled[key])
+    return filled
+
+
 def _carry_forward(
     packaged: Mapping[str, Any],
     active_payload: Mapping[str, Any],
     baseline: Mapping[str, Any] | None,
-) -> tuple[dict[str, Any], tuple[str, ...]]:
+) -> tuple[dict[str, Any], tuple[str, ...], dict[str, str]]:
     """Combine the packaged file with the active release, and say what it dropped.
 
-    Returns the merged payload and the keys the packaged file changed that could
-    NOT be adopted -- empty whenever the answer is exact.
+    Returns the merged payload, the keys the packaged file changed that could
+    NOT be adopted -- empty whenever the answer is exact -- and the baseline
+    digests the publish may truthfully record: one per top-level key whose
+    published value is known to be the packaged file's, or whose baseline was
+    already recorded.
 
-    With a baseline the decision is per key and needs no judgement: a release
+    With a baseline entry for a key the decision needs no judgement: a release
     value that still matches what the packaged file said when the release was cut
     was never edited, so the file's new value replaces it; a value that has moved
     away from that baseline was changed by someone after the file was read -- an
     operator through the config API, or this bootstrap writing AI receipts into
     `runtime_integrations` -- and is kept.
 
-    Without a baseline nothing can be decided, so nothing is: the release wins,
-    exactly as before, and the keys that lost are named to the caller rather than
-    dropped in silence. A release published by this function records a baseline,
-    so a deployment needs the undecidable path at most once.
-    """
-    if baseline is None:
-        merged = {**packaged, **active_payload}
-        unadopted = tuple(
-            sorted(
-                key
-                for key, value in packaged.items()
-                if key in active_payload and active_payload[key] != value
-            )
-        )
-        return merged, unadopted
+    Without a baseline entry a key is decided only where no judgement is needed:
+    the release does not carry it (the file's value is adopted), or the release
+    carries exactly the file's value (nothing to decide), or the two differ only
+    by leaves the release lacks (those are filled in, see `_fill_absent_leaves`).
+    A key that still differs after that keeps the release's value and is named to
+    the caller rather than dropped in silence.
 
+    The baseline is recorded PER KEY, and only for keys this run decided. A key
+    left undecided stays undecided on the next run rather than being stamped as
+    an operator edit -- which is what recording the whole file would do, and
+    what froze packaged changes out for good on every deployment whose first
+    release predated baselines: no baseline could be recorded while any key was
+    undecidable, so none ever was, and "at most once" became "every start".
+    """
+    known = dict(baseline or {})
+    packaged_digests = _key_digests(packaged)
     active_digests = _key_digests(active_payload)
-    merged = dict(active_payload)
+    merged: dict[str, Any] = {}
+    unadopted: list[str] = []
+    recordable: dict[str, str] = {}
     for key, value in packaged.items():
-        if key not in active_payload or active_digests[key] == baseline.get(key):
+        if key not in active_payload:
             merged[key] = value
-    return merged, ()
+        elif key in known:
+            merged[key] = value if active_digests[key] == known[key] else active_payload[key]
+        elif active_payload[key] == value:
+            merged[key] = value
+        else:
+            filled = _fill_absent_leaves(value, active_payload[key])
+            merged[key] = filled
+            if filled != value:
+                unadopted.append(key)
+        if key in known or merged[key] == value:
+            recordable[key] = packaged_digests[key]
+    for key, value in active_payload.items():
+        merged.setdefault(key, value)
+    return merged, tuple(sorted(unadopted)), recordable
 
 
 def _require_secret_resolver(resolver: SecretResolver | None) -> SecretResolver:
@@ -213,6 +330,7 @@ async def main(
     force_ai_validation: bool = False,
     refresh_ai_routes: bool = False,
     adopt_packaged: bool = False,
+    adopt_packaged_keys: tuple[str, ...] = (),
 ) -> None:
     settings, resolver = await resolve_runtime_settings_from_vault(
         Settings(),
@@ -257,17 +375,18 @@ async def main(
             settings.dependency_simulation_configuration_path
         )
 
-        # Whether what gets published is a truthful baseline for the packaged
-        # file -- which is what gates recording one at all.
+        # The baseline the publish may truthfully record, per top-level key.
         #
-        # True by default because the ordinary case is the honest one: with no
-        # active release, or none carrying this domain, the published payload IS
-        # the packaged file. It goes false only where a payload is carried
-        # forward that this run could not decide about, because the published
-        # payload then still holds values the file has since changed, and
-        # stamping the current file over them would mark those dropped changes as
-        # deliberate edits and freeze them out for good.
-        baseline_decidable = True
+        # The whole file by default because the ordinary case is the honest one:
+        # with no active release, or none carrying this domain, the published
+        # payload IS the packaged file. Where a payload is carried forward,
+        # `_carry_forward` narrows this to the keys it could decide: a key whose
+        # published value still holds something the file has since changed is
+        # left out, because stamping the current file over it would mark that
+        # dropped change as a deliberate edit and freeze it out for good.
+        packaged_payload = loaded.configuration.model_dump(mode="json")
+        recordable_baseline: dict[str, str] = _key_digests(packaged_payload)
+        adopt_requests = _adopt_requests(adopt_packaged_keys)
         existing_configuration: ReturnPlatformConfiguration | None = None
         if active is not None:
             active_payload = await repository.get_domain_config(
@@ -326,32 +445,45 @@ async def main(
                 # had ever published a release -- which is every deployment after
                 # its first boot. The run said `UNCHANGED` and nothing else.
                 baseline = active.metadata.get(PACKAGED_KEY_DIGESTS)
-                baseline_decidable = baseline is not None or adopt_packaged
 
-                merged_payload, unadopted = _carry_forward(
-                    loaded.configuration.model_dump(mode="json"),
+                merged_payload, unadopted, recordable_baseline = _carry_forward(
+                    packaged_payload,
                     active_payload,
                     baseline,
                 )
+                # The operator's answer to an undecidable key, and the only
+                # thing here that can overwrite an operator's own edits -- which
+                # is why it is a flag and not a default. Per key so that taking
+                # the file for `discovery` does not also take it for the
+                # `policy_evaluation` an operator switched on.
+                adopted_keys = set(adopt_requests.get(RETURN_PLATFORM_DOMAIN_KEY, ()))
+                if adopt_packaged:
+                    adopted_keys.update(packaged_payload)
+                unknown_keys = sorted(adopted_keys - set(packaged_payload))
+                if unknown_keys:
+                    raise ValueError(
+                        "adopt-packaged-key names keys the packaged configuration "
+                        f"does not have: {', '.join(unknown_keys)}"
+                    )
+                packaged_digests = _key_digests(packaged_payload)
+                for key in adopted_keys:
+                    merged_payload[key] = packaged_payload[key]
+                    recordable_baseline[key] = packaged_digests[key]
+                unadopted = tuple(key for key in unadopted if key not in adopted_keys)
                 if unadopted:
                     logger.warning(
                         "packaged_configuration_not_adopted release_id=%s keys=%s; "
-                        "this release predates the packaged baseline, so an edit to "
-                        "the release and an edit to the packaged file cannot be told "
-                        "apart and the release wins. Re-run with --adopt-packaged to "
-                        "take the packaged file for these keys; the release it "
-                        "publishes records a baseline and this cannot recur.",
+                        "these keys have no recorded baseline and the release and "
+                        "the packaged file disagree inside them, so an operator's "
+                        "edit and a change to the file cannot be told apart and "
+                        "the release wins (leaves the release lacks were filled "
+                        "from the file). Every other key now carries a baseline "
+                        "and decides itself from here on. Re-run with "
+                        "--adopt-packaged-key <key> to take the packaged file for "
+                        "one of these keys, or --adopt-packaged for all of them.",
                         active.release_id,
                         ",".join(unadopted),
                     )
-                if adopt_packaged:
-                    # The operator's answer to the paragraph above, and the only
-                    # thing here that can overwrite an operator's own edits --
-                    # which is why it is a flag and not a default.
-                    merged_payload = {
-                        **active_payload,
-                        **loaded.configuration.model_dump(mode="json"),
-                    }
                 try:
                     existing_configuration = ReturnPlatformConfiguration.model_validate(
                         merged_payload
@@ -366,6 +498,89 @@ async def main(
                         error.error_count(),
                         error,
                     )
+
+        # The other two domains, carried forward the same way. Each is decided
+        # per unit against the baseline recorded for that domain, and validated
+        # as a whole afterwards: a merge that no longer validates falls back to
+        # the packaged file for that domain, loudly, as the business domain does.
+        packaged_domains: dict[str, dict[str, Any]] = {
+            AI_GATEWAY_DOMAIN_KEY: loaded_ai_gateway.configuration.model_dump(mode="json"),
+            DEPENDENCY_SIMULATION_DOMAIN_KEY: (
+                loaded_dependency_simulation.configuration.model_dump(mode="json")
+            ),
+        }
+        domain_models: dict[str, type[AIGatewayConfiguration | DependencySimulationConfiguration]]
+        domain_models = {
+            AI_GATEWAY_DOMAIN_KEY: AIGatewayConfiguration,
+            DEPENDENCY_SIMULATION_DOMAIN_KEY: DependencySimulationConfiguration,
+        }
+        carried_domains: dict[str, dict[str, Any]] = dict(packaged_domains)
+        recordable_domain_baselines: dict[str, dict[str, str]] = {}
+        domain_baselines: Mapping[str, Any] = (
+            (active.metadata.get(PACKAGED_DOMAIN_KEY_DIGESTS) or {}) if active is not None else {}
+        )
+        for domain_key, packaged_domain in packaged_domains.items():
+            split_keys = CARRY_FORWARD_SPLIT_KEYS[domain_key]
+            packaged_units = _units(packaged_domain, split_keys)
+            recordable_domain_baselines[domain_key] = _key_digests(packaged_units)
+            requested_units = set(adopt_requests.get(domain_key, ()))
+            if adopt_packaged:
+                requested_units.update(packaged_units)
+            unknown_units = sorted(requested_units - set(packaged_units))
+            if unknown_units:
+                raise ValueError(
+                    f"adopt-packaged-key names units {domain_key} does not have: "
+                    + ", ".join(unknown_units)
+                )
+            active_domain = (
+                await repository.get_domain_config(active.release_id, domain_key)
+                if active is not None
+                else None
+            )
+            if active_domain is None:
+                continue
+            merged_units, unadopted_units, recordable = _carry_forward(
+                packaged_units,
+                _units(active_domain, split_keys),
+                domain_baselines.get(domain_key),
+            )
+            packaged_unit_digests = _key_digests(packaged_units)
+            for unit in requested_units:
+                merged_units[unit] = packaged_units[unit]
+                recordable[unit] = packaged_unit_digests[unit]
+            unadopted_units = tuple(u for u in unadopted_units if u not in requested_units)
+            merged_domain = _assemble(merged_units, split_keys)
+            try:
+                merged_domain = (
+                    domain_models[domain_key].model_validate(merged_domain).model_dump(mode="json")
+                )
+            except ValidationError as error:
+                logger.error(
+                    "active_domain_no_longer_validates release_id=%s domain=%s errors=%d; "
+                    "falling back to the packaged configuration for this domain. "
+                    "Operator values carried by that release are NOT preserved -- "
+                    "re-apply them after this publish. Detail: %s",
+                    active.release_id if active is not None else "",
+                    domain_key,
+                    error.error_count(),
+                    error,
+                )
+                continue
+            carried_domains[domain_key] = merged_domain
+            recordable_domain_baselines[domain_key] = recordable
+            if unadopted_units:
+                logger.warning(
+                    "packaged_configuration_not_adopted release_id=%s domain=%s keys=%s; "
+                    "these units have no recorded baseline and the release and the "
+                    "packaged file disagree inside them, so an operator's edit and a "
+                    "change to the file cannot be told apart and the release wins. "
+                    "Re-run with --adopt-packaged-key %s/<unit> to take the packaged "
+                    "file for one of them.",
+                    active.release_id if active is not None else "",
+                    domain_key,
+                    ",".join(unadopted_units),
+                    domain_key,
+                )
 
         base_configuration = existing_configuration or loaded.configuration
         configuration = await _prepare_return_configuration(
@@ -382,10 +597,12 @@ async def main(
         baseline_payload = configuration.model_dump(mode="json")
         domain_payloads = {
             RETURN_PLATFORM_DOMAIN_KEY: baseline_payload,
-            AI_GATEWAY_DOMAIN_KEY: (loaded_ai_gateway.configuration.model_dump(mode="json")),
-            DEPENDENCY_SIMULATION_DOMAIN_KEY: (
-                loaded_dependency_simulation.configuration.model_dump(mode="json")
-            ),
+            AI_GATEWAY_DOMAIN_KEY: carried_domains[AI_GATEWAY_DOMAIN_KEY],
+            DEPENDENCY_SIMULATION_DOMAIN_KEY: carried_domains[DEPENDENCY_SIMULATION_DOMAIN_KEY],
+        }
+        release_metadata = {
+            PACKAGED_KEY_DIGESTS: recordable_baseline,
+            PACKAGED_DOMAIN_KEY_DIGESTS: recordable_domain_baselines,
         }
         payload_checksum = hashlib.sha256(
             json.dumps(
@@ -407,15 +624,8 @@ async def main(
                 # release keeps its value. Recording what the file says NOW is
                 # what keeps that key readable as an operator edit next time
                 # instead of drifting back into "changed by someone, unknown".
-                if baseline_decidable:
-                    await repository.set_release_metadata(
-                        active.release_id,
-                        {
-                            PACKAGED_KEY_DIGESTS: _key_digests(
-                                loaded.configuration.model_dump(mode="json")
-                            )
-                        },
-                    )
+                if recordable_baseline:
+                    await repository.set_release_metadata(active.release_id, release_metadata)
                 print(f"graph_configuration_release={active.release_id}")
                 print("graph_configuration_status=UNCHANGED")
                 return
@@ -475,11 +685,8 @@ async def main(
         # frozen at VALIDATED. A publish that reached RELEASED and failed here
         # leaves a correct release with no baseline, which is the recoverable
         # direction: the next run decides nothing and says so.
-        if baseline_decidable:
-            await repository.set_release_metadata(
-                release_id,
-                {PACKAGED_KEY_DIGESTS: _key_digests(loaded.configuration.model_dump(mode="json"))},
-            )
+        if recordable_baseline:
+            await repository.set_release_metadata(release_id, release_metadata)
 
         print(f"graph_configuration_release={release_id}")
         print("graph_configuration_status=READY")
@@ -519,7 +726,23 @@ def run() -> None:
             "overwriting the active release. Needed only for a release published "
             "before releases recorded a packaged baseline: without one, a publish "
             "cannot tell an operator's edit from a change to the file and keeps the "
-            "release. This is the only path that can overwrite an operator's edits."
+            "release. This and --adopt-packaged-key are the only paths that can "
+            "overwrite an operator's edits; prefer the per-key form."
+        ),
+    )
+    parser.add_argument(
+        "--adopt-packaged-key",
+        action="append",
+        default=[],
+        metavar="KEY",
+        help=(
+            "Take the packaged configuration file for ONE unit (repeatable), "
+            "overwriting the active release for that unit only: a business key "
+            "such as `discovery`, or `AI_GATEWAY/tasks.<TASK_ID>`, "
+            "`DEPENDENCY_SIMULATION/dependencies.<NAME>`. "
+            "The narrow form of --adopt-packaged: answers a "
+            "packaged_configuration_not_adopted warning for the key it names "
+            "without touching any key an operator edited."
         ),
     )
     args = parser.parse_args()
@@ -536,6 +759,7 @@ def run() -> None:
             force_ai_validation=args.force_ai_validation,
             refresh_ai_routes=args.refresh_ai_routes,
             adopt_packaged=args.adopt_packaged,
+            adopt_packaged_keys=tuple(args.adopt_packaged_key),
         )
     )
 
