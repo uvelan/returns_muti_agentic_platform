@@ -25,7 +25,9 @@
     "frontend/src/domains/config/runtimeSlice.ts",
     "frontend/src/domains/config/knownSourcePaths.ts",
     "frontend/src/domains/config/ReturnPolicySection.tsx",
-    "frontend/src/domains/config/ReturnPolicySection.test.tsx"
+    "frontend/src/domains/config/ReturnPolicySection.test.tsx",
+    "frontend/src/domains/config/FulfilmentSection.tsx",
+    "frontend/src/domains/config/FulfilmentSection.test.tsx"
   ],
   "tests": {
     "npx vitest run src/components/forms src/domains/config src/mocks src/api/configuration.ts": "clean",
@@ -34,7 +36,6 @@
   },
   "remaining": [
     "/config/overview undecided-keys panel",
-    "/config/fulfilment",
     "registry/routeManifest/BusinessSection removals + registry test fix + known_test_failures.json",
     "F5/F11 advisories (drift panel wording, packaged-drift shape rendering + test)",
     "Playwright specs, run once against the live stack and reverted",

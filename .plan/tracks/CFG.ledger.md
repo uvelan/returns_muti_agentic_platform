@@ -2067,3 +2067,33 @@ $ npm run typecheck
 $ npm run lint
 (no output, exit 0)
 ```
+
+## CFG-4 step:05 — /config/fulfilment (Order item 5)
+
+`shipment_tracking.statuses` as `OrderedList` of rungs (code/label/ladder/ordinal, `terminal`/
+`exception_state` `Toggle`s, `allowed_next` `TagListInput` suggested from the ladder's own known
+codes, `projection_status` `EnumSelect` over the real five-value `Literal` plus a `(none)` option
+for the field's `| None`). Noted in the card's own description: reordering the list is for
+readability only -- `ordinal` is a separate, explicit integer field on each rung and is what the
+platform actually orders by, so the card exposes it directly rather than implying array position
+is authoritative. `source_mirror`/`source_constants` -- confirmed nested under `shipment_tracking`,
+not top-level siblings the brief's table wording could be read as -- both `KeyValueTable`. `bay`
+(`require_physical_receipt`/`allow_prearrival_reservation` `Toggle`s, `eligible_statuses`
+`TagListInput`); **no capacity fields exist on `BayConfiguration`** (confirmed by reading the class
+body directly -- the brief's design table names them, the model does not carry them; the only
+"capacity" concept in the codebase is a case fact, not configuration), so none are rendered.
+`omc`'s seven fields (two table names, two string-map `KeyValueTable`s, three `Toggle`s).
+
+```
+$ npx vitest run src/domains/config/FulfilmentSection.test.tsx
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+$ npm run typecheck
+(no output, exit 0)
+$ npm run lint
+(no output, exit 0)
+```
+
+All four typed screens (Discovery, Return policy, Fulfilment, and Overview -- next) are built.
+Remaining: Overview's undecided-keys panel, registry/routeManifest/BusinessSection wiring, the
+Playwright specs, and final acceptance.
