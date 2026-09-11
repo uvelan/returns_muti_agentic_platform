@@ -170,7 +170,13 @@ export const CONFIG_SECTIONS = [
   // Next to Agents rather than under Business: like an agent's module, the
   // support template is a document an operator edits and publishes, and the
   // Business tab is a read of the runtime snapshot.
-  "Support Template",
+  //
+  // CFG-5: was "Support Template", one tab over one key. It is now "Support",
+  // six tabs over six keys (the Channel B bridge's gate, ingress, resolver
+  // and context-assembly policies joined the template) -- see
+  // `SupportSection.tsx`. `/config/support-template` redirects here for one
+  // release (`ConfigurationPage.tsx`).
+  "Support",
   // CFG-4, wave A: the first four typed sections, each a page of its own
   // rather than a `Business` tab entry -- see `BusinessSection.tsx`'s own
   // note on why the four groups these come from (discovery, policy,
@@ -255,7 +261,7 @@ export const DOMAINS: readonly DomainDefinition[] = [
     sections: sections(CONFIG_SECTIONS, {
       Overview: LayoutDashboard,
       Agents: Bot,
-      "Support Template": Mail,
+      Support: Mail,
       Discovery: Search,
       "Return Policy": Gavel,
       Fulfilment: Warehouse,

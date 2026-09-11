@@ -265,10 +265,35 @@ describe("Configuration tabs D3 backed", () => {
         },
       },
     });
+    goToSection("/config", "support");
+    render(<ConfigurationPage />, { wrapper });
+
+    expect(await screen.findByText("Support handoff template")).toBeInTheDocument();
+  });
+
+  // CFG-5: `Support Template` became the `Template` tab of `Support`
+  // (`SupportSection.tsx`). `/config/support-template` is a stale bookmark
+  // now, and `useDomainSection`'s own unrecognised-slug fallback would land
+  // it on `Overview` -- the domain's *first* section, not the tab a visitor
+  // actually wants -- so `ConfigurationPage` checks for this path ahead of
+  // that resolution and redirects instead.
+  it("redirects the old support-template deep link to the new Support tab", async () => {
+    mocks.runtime.mockResolvedValue({
+      release_id: "rel-1",
+      head_revision: 7,
+      configuration: {
+        support_template: {
+          template_id: "support-handoff",
+          default_variant_id: "default",
+          variants: [],
+        },
+      },
+    });
     goToSection("/config", "support-template");
     render(<ConfigurationPage />, { wrapper });
 
     expect(await screen.findByText("Support handoff template")).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/config/support");
   });
 
   it("says integrations are already served rather than pending", async () => {

@@ -2646,3 +2646,87 @@ Files: `frontend/src/domains/config/WorkflowSection.tsx`, `WorkflowSection.test.
 `frontend/src/domains/registry.ts`, `frontend/src/domains/config/ConfigurationPage.tsx`,
 `frontend/src/mocks/handlers/canonicalHandlers.ts`, `frontend/e2e/config-workflow.spec.ts`.
 `drop.json` PARTIAL: items 1-2 done; items 3-11 remain.
+
+## CFG-5 step:03 — `/config/support` screen, six tabs (item 3)
+
+`SupportSection.tsx`: local tab state (not a URL segment -- the brief's design table lists
+`/config/support` as one row), six tabs over six `RETURN_PLATFORM` keys. **Template** is
+`SupportTemplateSection`, moved here unchanged (imported, not edited) -- it stays on its own
+four-round-trip publish pipeline rather than `TypedSectionScreen`'s single call, which is not this
+lease's change to make. **Gate** (`support_gate`), **Ingress** (`support_ingress`), **Resolver**
+(`support_resolver`) and **Context assembly** (`context_assembly`) are typed `TypedSectionScreen`
+forms built from the four models under `backend/src/return_platform/configuration/`
+(`support_gate_configuration.py`, `support_ingress_configuration.py`,
+`support_resolver_configuration.py`, `context_assembly_configuration.py`). **Queues** is
+`SupportConfiguration` (the `support` key) -- authority mode, external mirror, default priority,
+queues, outbox topic.
+
+Coverage is deliberately partial on Resolver: `tool_bindings` (five references per binding, one
+validated against the tool-schema registry at parse time) has no typed control -- the same
+partial-coverage choice CFG-4 made for `source_resolution`'s nineteen path lists. Advanced mode
+edits the same slice as JSON.
+
+**Alias redirect.** `Support Template` is `Support`'s `Template` tab now, so `/config/support-template`
+is a stale bookmark. `useDomainSection`'s own unrecognised-slug fallback lands an unrecognised path
+on the domain's *first* section (`Overview`), which is not what a `support-template` visitor wants
+-- so `ConfigurationPage.tsx` checks for the legacy path ahead of that resolution and renders a real
+`<Redirect to="/config/support" replace />` (wouter), verified in a test that checks
+`window.location.pathname` after the redirect, not just that something rendered.
+
+**Business tab correction, this step and a fix to step:02's own oversight.** `BusinessSection.tsx`'s
+`BUSINESS_GROUPS` still offered `workflow`/`return_case`/`business_calendars`/`housekeeping` as a
+group after step:02 shipped a typed screen for all four -- a second write path CFG-4's own
+precedent (discovery/return-policy/fulfilment) says not to leave standing. Removed that group this
+step, alongside the new `support` group's five keys, and added all nine to `EDITED_ELSEWHERE` as
+pointers. `BusinessSection.test.tsx` rewritten: the "platform" group (`integrations`/`copilot`) and
+"simulation" group are what the offered-sections tests now exercise; the removed-sections test gained
+the nine new keys. Business tab is not empty yet -- `platform`/`simulation` remain -- so it is not
+retired (item 8, pending items 4 and 6).
+
+Mock fixtures added for all five new keys (`support_gate`/`support_ingress`/`support_resolver`/
+`context_assembly`/`support`) in `canonicalHandlers.ts`'s runtime configuration.
+
+```
+$ npx vitest run                       # whole frontend suite
+ Test Files  85 passed (85)
+      Tests  1036 passed (1036)
+
+$ npm run typecheck
+typecheck exit: 0
+$ npm run lint
+lint exit: 0
+```
+
+`dev:mock` route sweep, scoped to `support` (warm server):
+
+```
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g "support"
+  12 passed -- /support, /support/work-queue, /support/rma-tickets, /config/support, each for
+  render + keyboard + axe (confirms step:01's /support fix holds, and task_1349209e's gap is
+  unaffected by anything this step touched)
+```
+
+Live e2e run, disposable `vite --port 5199`, stopped afterwards; `:5173`/`:8000` never restarted:
+
+```
+$ E2E_REAL_BASE_URL=http://localhost:5199 npx playwright test --project=cfg4-e2e e2e/config-support.spec.ts --workers=1 --reporter=list --timeout=60000
+  ok Support -- real stack › adds an ingress intent, publishes, and the runtime snapshot reflects
+     it -- then reverts (5.8s)
+  1 passed
+```
+
+One bug caught before the spec passed: `TagListInput` with `suggestions` sets the input's `list`
+attribute, which gives Chromium's accessibility tree the implicit role `combobox`, not `textbox`
+(HTML-AAM) -- `config-discovery.spec.ts`'s "Item conditions" field has no suggestions and stays
+`textbox`, which is what made this the first CFG-4/5 spec to hit it. Fixed by querying `combobox`.
+
+```
+head_revision before/after: 119 121                (one publish, one revert)
+release       before/after: publish-574d703efc4a45a0 publish-6e8616f231584f6f
+support_ingress.intents  identical: True (test intent absent both times it matters)
+```
+
+Files: `frontend/src/domains/config/SupportSection.tsx`, `SupportSection.test.tsx`,
+`BusinessSection.tsx`, `BusinessSection.test.tsx`, `ConfigurationPage.tsx`, `ConfigurationPage.test.tsx`,
+`frontend/src/domains/registry.ts`, `frontend/src/mocks/handlers/canonicalHandlers.ts`,
+`frontend/e2e/config-support.spec.ts`. `drop.json` PARTIAL: items 1-3 done; items 4-11 remain.

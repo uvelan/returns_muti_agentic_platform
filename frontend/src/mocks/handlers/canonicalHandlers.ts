@@ -706,6 +706,72 @@ const MOCK_BUSINESS_CALENDARS = [
   },
 ];
 
+/** CFG-5's `/config/support` -- five of its six tabs' domain keys (Template's `support_template` already exists above). */
+const MOCK_SUPPORT_GATE = {
+  request_grouping: "one_per_case",
+  template_review: {
+    enabled: true,
+    review_wait_seconds: 28_800,
+    reminder_interval_seconds: 7_200,
+    max_reminders: 3,
+    on_timeout: "hold",
+  },
+};
+
+const MOCK_SUPPORT_INGRESS = {
+  nl_enabled: false,
+  intents: [
+    "info_request",
+    "rma_issued",
+    "label_issued",
+    "shipping_instruction",
+    "tracking_provided",
+    "partial_fulfillment",
+    "rejection",
+    "acknowledgement",
+    "other",
+  ],
+  parking: { retention_seconds: 2_592_000, per_case_quota: 50, alert_dedupe_window_seconds: 900 },
+  multi_record_framing_prompt_key: "support-multi-record-do-not-mix",
+  agent_disclosure: {
+    display_name: "Returns Assistant",
+    disclosure_line:
+      "This message was written by the Returns Assistant, an automated agent working on this return case. A branch associate reviews and can answer anything it cannot.",
+  },
+  outbound_templates: {},
+  limits: {
+    max_body_characters: 16_000,
+    max_messages_per_case_per_window: 60,
+    rate_window_seconds: 60,
+    max_identifier_characters: 256,
+  },
+};
+
+const MOCK_SUPPORT_RESOLVER = {
+  fact_confidence_millionths: 900_000,
+  graph_confidence_millionths: 900_000,
+  tool_bindings: [],
+  reply_gate: { default: "review_required", per_intent: {} },
+  clarification_resets_deadline: true,
+  per_case_llm_budget: 12,
+  trigger_intents: ["info_request"],
+};
+
+const MOCK_CONTEXT_ASSEMBLY = {
+  pinned_fact_names: [],
+  token_budget: 8_000,
+  tokenizer_version: "wordpiece-approx.v1",
+  compaction: { trigger_fraction_millionths: 800_000, summary_task_id: "support.context.summarize.v1" },
+};
+
+const MOCK_SUPPORT_QUEUES = {
+  authority_mode: "PLATFORM_MANAGED",
+  external_mirror_enabled: true,
+  default_priority: "NORMAL",
+  queues: ["SUPPORT"],
+  external_ticket_outbox_topic: "support.tickets.outbox",
+};
+
 const MOCK_HOUSEKEEPING = {
   enabled: true,
   interval_seconds: 900,
@@ -1648,6 +1714,12 @@ export const canonicalHandlers = [
             return_case: MOCK_RETURN_CASE,
             business_calendars: MOCK_BUSINESS_CALENDARS,
             housekeeping: MOCK_HOUSEKEEPING,
+            // CFG-5's /config/support (Template's support_template is above).
+            support_gate: MOCK_SUPPORT_GATE,
+            support_ingress: MOCK_SUPPORT_INGRESS,
+            support_resolver: MOCK_SUPPORT_RESOLVER,
+            context_assembly: MOCK_CONTEXT_ASSEMBLY,
+            support: MOCK_SUPPORT_QUEUES,
           },
         },
         "runtime",

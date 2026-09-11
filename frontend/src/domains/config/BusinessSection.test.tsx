@@ -64,11 +64,23 @@ const SNAPSHOT = {
     // CFG-4 gave discovery/return_policy/policy_evaluation/shipment_tracking
     // their own typed screens; this document still carries `discovery` (the
     // release does), but the Business tab no longer offers it -- see the
-    // "no longer offers the four sections" test below.
+    // "no longer offers" test below.
     discovery: { identification_fields: [], max_candidates: 5 },
     policy_evaluation: { enabled: false, disabled_reason: "paused on this host" },
+    // CFG-5 gave workflow and support their own typed screens the same way;
+    // these two keys are carried but, like discovery above, no longer
+    // offered -- pointed at instead.
     housekeeping: { retire_after_days: 30 },
     support: { queue: "support-inbox", ship_via_methods: { CPU: "COUNTER", XPW: "PARCEL" } },
+    // The two sections the "platform" group still offers.
+    integrations: {
+      topics: {
+        omc_events: { enabled: true, topic: "omc.events" },
+        ai_events: { enabled: false, topic: "ai.events" },
+      },
+      ai_may_fabricate_success: false,
+    },
+    copilot: { order_discovery_agent_id: "order-discovery-agent", candidate_columns: [] },
   },
   dependency_simulation_configuration: {
     enabled: true,
@@ -105,10 +117,13 @@ describe("the sections an operator can edit", () => {
   it("offers the sections the release carries, grouped, and not the ones it lacks", async () => {
     render(<BusinessSection />, { wrapper: Wrapper });
 
-    expect(await screen.findByRole("button", { name: "Housekeeping" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Support" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Integrations" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copilot" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dependency simulation" })).toBeInTheDocument();
-    // Not in the snapshot: never offered, because the tab invents nothing.
+    // Carried by the release but moved to typed screens -- pointed at, not offered.
+    expect(screen.queryByRole("button", { name: "Housekeeping" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Support" })).not.toBeInTheDocument();
+    // Never in the snapshot at all: never offered, because the tab invents nothing.
     expect(screen.queryByRole("button", { name: "Workflow" })).not.toBeInTheDocument();
     // Has a screen of its own: pointed at, not offered.
     expect(screen.getByText(/Edited on their own screens/)).toHaveTextContent("agents");
@@ -116,13 +131,16 @@ describe("the sections an operator can edit", () => {
 
   // CFG-4: discovery, return_policy/return_eligibility_policy/
   // policy_evaluation, and shipment_tracking/bay/omc each gained a typed
-  // screen; the Business tab no longer offers any of them, even for a
-  // section the release still carries (`discovery`, in `SNAPSHOT` above) --
-  // a second write path to the same field once a typed one exists is exactly
-  // what this tab's own module docstring says it is not for.
-  it("no longer offers discovery, return-policy or fulfilment sections -- they moved to typed screens", async () => {
+  // screen; CFG-5: workflow/return_case/business_calendars/housekeeping and
+  // support/support_gate/support_ingress/support_resolver/context_assembly
+  // did too. The Business tab no longer offers any of them, even for a
+  // section the release still carries (`discovery`, `housekeeping`,
+  // `support`, in `SNAPSHOT` above) -- a second write path to the same field
+  // once a typed one exists is exactly what this tab's own module docstring
+  // says it is not for.
+  it("no longer offers discovery, return-policy, fulfilment, workflow or support sections -- they moved to typed screens", async () => {
     render(<BusinessSection />, { wrapper: Wrapper });
-    await screen.findByRole("button", { name: "Housekeeping" });
+    await screen.findByRole("button", { name: "Integrations" });
 
     for (const label of [
       "Discovery",
@@ -135,24 +153,37 @@ describe("the sections an operator can edit", () => {
       "Shipment tracking",
       "Bay placement",
       "Order management",
+      "Workflow",
+      "Return case",
+      "Business calendars",
+      "Housekeeping",
+      "Support",
+      "Support gate",
+      "Support ingress",
+      "Support resolver",
+      "Context assembly",
     ]) {
       expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
     }
 
-    // Pointed at instead, the same way agents/support_template already are.
+    // Pointed at instead, the same way agents already is.
     const elsewhere = screen.getByText(/Edited on their own screens/);
     expect(elsewhere).toHaveTextContent("discovery");
     expect(elsewhere).toHaveTextContent("Discovery tab");
     expect(elsewhere).toHaveTextContent("policy_evaluation");
     expect(elsewhere).toHaveTextContent("Return Policy tab");
+    expect(elsewhere).toHaveTextContent("housekeeping");
+    expect(elsewhere).toHaveTextContent("Workflow tab");
+    expect(elsewhere).toHaveTextContent("support");
+    expect(elsewhere).toHaveTextContent("Support tab");
   });
 
   it("loads the active release's section rather than an invented one", async () => {
     const user = userEvent.setup();
     render(<BusinessSection />, { wrapper: Wrapper });
 
-    await openSection(user, "Support");
-    expect(await screen.findByDisplayValue("support-inbox")).toBeInTheDocument();
+    await openSection(user, "Copilot");
+    expect(await screen.findByDisplayValue("order-discovery-agent")).toBeInTheDocument();
     expect(screen.getByText(/Release rel-7/)).toBeInTheDocument();
   });
 });
@@ -162,9 +193,12 @@ describe("publishing a section", () => {
     const user = userEvent.setup();
     render(<BusinessSection />, { wrapper: Wrapper });
 
-    await openSection(user, "Housekeeping");
-    await screen.findByDisplayValue(30);
-    await replaceJson(user, "Housekeeping JSON", { retire_after_days: 45 });
+    await openSection(user, "Copilot");
+    await screen.findByDisplayValue("order-discovery-agent");
+    await replaceJson(user, "Copilot JSON", {
+      order_discovery_agent_id: "order-discovery-agent-v2",
+      candidate_columns: [],
+    });
     await user.click(screen.getByRole("button", { name: /publish release/i }));
 
     await waitFor(() => { expect(mocks.promote).toHaveBeenCalledTimes(2); });
@@ -174,9 +208,9 @@ describe("publishing a section", () => {
       string,
       Record<string, unknown>,
     ];
-    expect(releaseId).toMatch(/^business-housekeeping-/);
+    expect(releaseId).toMatch(/^business-copilot-/);
     expect(domainKey).toBe("RETURN_PLATFORM");
-    expect(patch).toEqual({ housekeeping: { retire_after_days: 45 } });
+    expect(patch).toEqual({ copilot: { order_discovery_agent_id: "order-discovery-agent-v2" } });
     expect(mocks.promote).toHaveBeenLastCalledWith(releaseId, "RELEASED", 66);
     expect(await screen.findByRole("status")).toHaveTextContent(/is published/);
   });
@@ -185,18 +219,18 @@ describe("publishing a section", () => {
     const user = userEvent.setup();
     render(<BusinessSection />, { wrapper: Wrapper });
 
-    await openSection(user, "Support");
-    await screen.findByDisplayValue("support-inbox");
-    await replaceJson(user, "Support JSON", {
-      queue: "support-inbox",
-      ship_via_methods: { CPU: "COUNTER" },
+    await openSection(user, "Integrations");
+    await screen.findByDisplayValue("omc.events");
+    await replaceJson(user, "Integrations JSON", {
+      topics: { omc_events: { enabled: true, topic: "omc.events" } },
+      ai_may_fabricate_success: false,
     });
     await user.click(screen.getByRole("button", { name: /publish release/i }));
 
     await waitFor(() => { expect(mocks.patchDomain).toHaveBeenCalled(); });
     const [, , patch] = mocks.patchDomain.mock.calls[0] as [string, string, unknown];
     expect(patch).toEqual({
-      support: { ship_via_methods: { XPW: null } },
+      integrations: { topics: { ai_events: null } },
     });
   });
 
@@ -228,7 +262,7 @@ describe("publishing a section", () => {
     const user = userEvent.setup();
     render(<BusinessSection />, { wrapper: Wrapper });
 
-    await openSection(user, "Housekeeping");
+    await openSection(user, "Copilot");
     expect(await screen.findByText(/Read-only access/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /publish release/i })).toBeDisabled();
   });

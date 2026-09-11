@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Redirect, useLocation } from "wouter";
 
 import {
   ALLOWED_PROMOTIONS,
@@ -14,7 +15,7 @@ import { DiscoverySection } from "./DiscoverySection";
 import { FulfilmentSection } from "./FulfilmentSection";
 import { OverviewSection } from "./OverviewSection";
 import { ReturnPolicySection } from "./ReturnPolicySection";
-import { SupportTemplateSection } from "./SupportTemplateSection";
+import { SupportSection } from "./SupportSection";
 import { WorkflowSection } from "./WorkflowSection";
 import { type CONFIG_SECTIONS, requireDomain } from "../registry";
 import { useDomainSection } from "../useDomainSection";
@@ -77,14 +78,30 @@ const UNBACKED: Partial<Record<Tab, string>> = {
     "Not configuration. The role model is code, and a caller's own grants are on /api/principal. Publishing the whole role-to-capability table would let this screen reimplement authorization locally, which is what the capability layer exists to prevent.",
 };
 
+/**
+ * CFG-5: `Support Template` became one tab of `Support`. Bookmarks and links
+ * to the old route must keep working for one release rather than landing on
+ * whatever `useDomainSection`'s unrecognised-slug fallback happens to pick
+ * (the domain's *first* section, `Overview` -- not `Support`, and not the
+ * `Template` tab a `/config/support-template` visitor actually wants). A
+ * real redirect, checked ahead of the normal tab resolution, is what keeps
+ * "the URL still works" true rather than "the URL still renders something".
+ */
+const LEGACY_SUPPORT_TEMPLATE_PATH = "/config/support-template";
+
 export function ConfigurationPage() {
   const { can } = useCapabilities();
+  const [location] = useLocation();
   // The section comes from the URL and the sidebar sets it, so the screen
   // holds no navigation state of its own.
   const tab = useDomainSection(CONFIG_DOMAIN) as Tab;
 
   if (!can("config.runtime.read")) {
     return <p className="text-sm text-slate-600">You do not have access to configuration.</p>;
+  }
+
+  if (location === LEGACY_SUPPORT_TEMPLATE_PATH || location.startsWith(`${LEGACY_SUPPORT_TEMPLATE_PATH}/`)) {
+    return <Redirect to="/config/support" replace />;
   }
 
   return (
@@ -111,8 +128,8 @@ function TabBody({ tab, canReadReleases }: { tab: Tab; canReadReleases: boolean 
       return <OverviewSection canReadReleases={canReadReleases} />;
     case "Agents":
       return <AgentsSection />;
-    case "Support Template":
-      return <SupportTemplateSection />;
+    case "Support":
+      return <SupportSection />;
     case "Discovery":
       return <DiscoverySection />;
     case "Return Policy":

@@ -66,42 +66,22 @@ function section(key: string, title: string, hint: string): Subject {
 /**
  * Derived from the release's own sections -- see the module note.
  *
- * **Three groups are gone: discovery, policy, fulfilment.** CFG-4 gave each
- * a typed screen of its own -- `/config/discovery`, `/config/return-policy`,
- * `/config/fulfilment` -- and this tab's job was always the honest first
- * step for sections whose shape had not earned a typed form yet, not a
- * second write path once one exists. The ten sections those three groups
- * covered (`discovery`, `source_resolution`, `clarification_policy`,
- * `selection_vocabulary`; `return_policy`, `return_eligibility_policy`,
- * `policy_evaluation`; `shipment_tracking`, `bay`, `omc`) are unreachable
- * from here now -- `EDITED_ELSEWHERE`-style, except there is no single field
- * name to point at three groups' worth of sections, so they are simply
- * absent rather than listed as "moved".
+ * **Five groups are gone: discovery, policy, fulfilment, workflow, support.**
+ * CFG-4 gave the first three a typed screen of its own --
+ * `/config/discovery`, `/config/return-policy`, `/config/fulfilment` -- and
+ * CFG-5 gave the other two theirs -- `/config/workflow`, `/config/support`
+ * (six tabs, the template included) -- and this tab's job was always the
+ * honest first step for sections whose shape had not earned a typed form
+ * yet, not a second write path once one exists. The nineteen sections those
+ * five groups covered (`discovery`, `source_resolution`,
+ * `clarification_policy`, `selection_vocabulary`; `return_policy`,
+ * `return_eligibility_policy`, `policy_evaluation`; `shipment_tracking`,
+ * `bay`, `omc`; `workflow`, `return_case`, `business_calendars`,
+ * `housekeeping`; `support`, `support_gate`, `support_ingress`,
+ * `support_resolver`, `context_assembly`) are unreachable from here now,
+ * pointed at instead through `EDITED_ELSEWHERE`.
  */
 const BUSINESS_GROUPS: readonly Group[] = [
-  {
-    id: "workflow",
-    title: "Workflow and case timing",
-    blurb: "Stages, waits, calendars and housekeeping of a return case.",
-    subjects: [
-      section("workflow", "Workflow", "Stage sequence and handlers."),
-      section("return_case", "Return case", "Timeouts and waits a case is bounded by."),
-      section("business_calendars", "Business calendars", "Working days the waits count in."),
-      section("housekeeping", "Housekeeping", "What is retired, and when."),
-    ],
-  },
-  {
-    id: "support",
-    title: "Support",
-    blurb: "The handoff to Support and what comes back. The template has its own tab.",
-    subjects: [
-      section("support", "Support", "Queues, mirrors and outbox topics."),
-      section("support_gate", "Support gate", "Which requests wait for a review."),
-      section("support_ingress", "Support ingress", "How replies from Support are read."),
-      section("support_resolver", "Support resolver", "How a reply is matched to its request."),
-      section("context_assembly", "Context assembly", "What a Support request carries."),
-    ],
-  },
   {
     id: "platform",
     title: "Integrations and features",
@@ -129,7 +109,6 @@ const BUSINESS_GROUPS: readonly Group[] = [
 /** Sections with a screen of their own; offered as a pointer, not an editor. */
 const EDITED_ELSEWHERE: Readonly<Record<string, string>> = {
   agents: "Agents tab -- an edit there is proposed and approved, not published directly.",
-  support_template: "Support Template tab, which also previews the draft against a case.",
   runtime_integrations: "AI Control Center -- Providers & Models.",
   // CFG-4: the three groups a typed screen took over, one pointer per
   // section rather than one per group -- an operator who remembers a field
@@ -144,6 +123,20 @@ const EDITED_ELSEWHERE: Readonly<Record<string, string>> = {
   shipment_tracking: "Fulfilment tab -- the status ladder and its transitions.",
   bay: "Fulfilment tab -- reservation and eligibility rules.",
   omc: "Fulfilment tab -- cancellation and display rules.",
+  // CFG-5: the workflow group.
+  workflow: "Workflow tab -- stage sequence and SLAs.",
+  return_case: "Workflow tab -- waits and timeouts a case is bounded by.",
+  business_calendars: "Workflow tab -- the working days those waits count in.",
+  housekeeping: "Workflow tab -- what is reclaimed, and when.",
+  // CFG-5: the support group. `support_template` moved from its own pointer
+  // to this list along with the rest -- it is a tab of Support now, not a
+  // section with a whole tab to itself.
+  support: "Support tab -- Queues.",
+  support_template: "Support tab -- Template, which also previews the draft against a case.",
+  support_gate: "Support tab -- Gate, which requests wait for a review.",
+  support_ingress: "Support tab -- Ingress, how the platform reads and answers Support.",
+  support_resolver: "Support tab -- Resolver, how a reply is matched to its request.",
+  context_assembly: "Support tab -- Context assembly, what a Support request carries.",
 };
 
 type Snapshot = {
