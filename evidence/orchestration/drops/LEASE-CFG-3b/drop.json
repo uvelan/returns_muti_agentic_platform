@@ -2,7 +2,7 @@
   "lease_id": "CFG-3b",
   "branch": "feat/cfg-3b-form-primitives",
   "base_sha": "734a16dc",
-  "head_sha": "edb5cf9086ce4814bb0568f4df9429ccee25d31f",
+  "head_sha": "d983a6d9c46a3d4d0befeca8baad1101cb547100",
   "files": [
     "frontend/src/components/forms/Field.tsx",
     "frontend/src/components/forms/Field.test.tsx",
@@ -15,16 +15,28 @@
     "frontend/src/components/forms/DurationField.tsx",
     "frontend/src/components/forms/DurationField.test.tsx",
     "frontend/src/components/forms/EnumSelect.tsx",
-    "frontend/src/components/forms/EnumSelect.test.tsx"
+    "frontend/src/components/forms/EnumSelect.test.tsx",
+    "frontend/src/components/forms/TagListInput.tsx",
+    "frontend/src/components/forms/TagListInput.test.tsx",
+    "frontend/src/components/forms/OrderedList.tsx",
+    "frontend/src/components/forms/OrderedList.test.tsx",
+    "frontend/src/components/forms/KeyValueTable.tsx",
+    "frontend/src/components/forms/KeyValueTable.test.tsx",
+    "frontend/src/components/forms/PathPicker.tsx",
+    "frontend/src/components/forms/PathPicker.test.tsx",
+    "frontend/src/components/forms/DiffPreview.tsx",
+    "frontend/src/components/forms/DiffPreview.test.tsx",
+    "frontend/src/components/forms/PublishBar.tsx",
+    "frontend/src/components/forms/PublishBar.test.tsx",
+    "frontend/src/components/forms/ValidationErrors.tsx",
+    "frontend/src/components/forms/ValidationErrors.test.tsx"
   ],
   "tests": {
-    "vitest src/components/forms": "29 passed (6 files)",
+    "vitest src/components/forms": "69 passed (13 files)",
     "typecheck": "clean",
     "lint (src/components/forms only)": "clean"
   },
   "remaining": [
-    "group 2: TagListInput, OrderedList, KeyValueTable, PathPicker",
-    "group 3: DiffPreview (over api/mergePatch.ts), PublishBar, ValidationErrors",
     "DocumentEditor: errors prop with path-mapped rendering, dataKeyedPaths rendering as KeyValueTable",
     "frontend/src/components/forms/README.md",
     "full acceptance run: npx vitest run src/components/forms src/domains/config src/api/mergePatch.test.ts, npm run typecheck, npm run lint (whole project)"

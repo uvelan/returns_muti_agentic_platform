@@ -650,3 +650,72 @@ One fix during lint: `Toggle.tsx`'s `reasonMissing` used `reasonField?.value` af
 of aliased conditions), so the optional chain was flagged unnecessary; dropped it.
 
 Commit `edb5cf90` -- `(CFG) step:01 form primitives group 1 -- Field, FieldGroup, Toggle, NumberField, DurationField, EnumSelect`.
+
+## CFG-3b step:02 — form primitives group 2: TagListInput, OrderedList, KeyValueTable, PathPicker
+
+`KeyValueTable.tsx` reuses `api/mergePatch.ts`'s `JsonValue`/`JsonRecord` rather than declaring a
+third copy of the recursive JSON type `DocumentEditor.Json` and `mergePatch.JsonValue` already are
+independently (each carries the same `eslint-disable @typescript-eslint/consistent-type-definitions`
+comment for the same reason: a self-referential type alias resolves to `error` under the typed
+lint rules while an interface does not). `BusinessSection.tsx` already crosses this exact boundary
+(`mergePatchOf(loaded, document)` with `DocumentEditor.JsonObject` values), which is why passing
+`DocumentEditor.Json` values into `KeyValueTable`'s `JsonValue`-typed props type-checks with no cast.
+
+```
+$ npx vitest run src/components/forms
+ Test Files  10 passed (10)
+      Tests  55 passed (55)
+$ npm run typecheck
+(clean)
+$ npx eslint src/components/forms --max-warnings=0
+(clean, after two fixes below)
+```
+
+Two lint/correctness fixes, both in `KeyValueTable.tsx`'s row-removal and reorder handlers for the
+`jsonDrafts` side-state (keyed by row index): a computed-key destructure-and-discard
+(`const { [index]: _removed, ...rest } = prev`) trips `@typescript-eslint/no-unused-vars` (no
+`varsIgnorePattern` is configured for `_`-prefixed locals in this repo's eslint config, only
+`args`/`caughtErrors`), and also had a real bug -- it dropped the removed row's own draft but never
+shifted the later rows' drafts down an index, so a JSON draft two rows below a deletion would
+silently point at the wrong row after the delete. `moveAt`'s swap had the same shift bug plus a
+`delete` on a dynamic key (`@typescript-eslint/no-dynamic-delete`). Both replaced with explicit
+reindexing loops.
+
+Test fixes: an `<input list="...">` computes an accessible role of `combobox`, not `textbox`
+(PathPicker always sets `list`; TagListInput only when `suggestions` is passed) -- two tests assumed
+`textbox` and were corrected. `OrderedList`'s reorder buttons are named from `keyOf(item)`, which in
+the test fixture is the lowercase stage id (`"intake"`), not the capitalised display name
+(`"Intake"`) `renderItem` shows -- corrected the button-name assertions to match, since the
+component has no other string to name a generic `T`'s row from.
+
+Commit `fdd7d062` -- `(CFG) step:02 form primitives group 2 -- TagListInput, OrderedList, KeyValueTable, PathPicker`.
+
+## CFG-3b step:03 — form primitives group 3: DiffPreview, PublishBar, ValidationErrors
+
+`DiffPreview.tsx` calls `mergePatchOf` from `api/mergePatch.ts` directly (per the brief: "DiffPreview
+(over api/mergePatch.ts)") and flattens the resulting patch into one row per changed leaf path,
+walking into any key whose value is an object on both sides rather than showing the whole subtree
+as one opaque row. `PublishBar.tsx` rides the existing `PublishProgress` component. `ValidationErrors`
+exports the `{path, message}` type `DocumentEditor`'s new `errors` prop (next step) will use.
+
+```
+$ npx vitest run src/components/forms
+ Test Files  13 passed (13)
+      Tests  69 passed (69)
+$ npm run typecheck
+(clean, after one fix below)
+$ npx eslint src/components/forms --max-warnings=0
+(clean, after one fix below)
+```
+
+One typecheck + one lint fix in `DiffPreview.tsx`: the "no prior value" fallback used `undefined`
+(`isRecord(before) ? before[key] : undefined`), which does not satisfy `isRecord`'s `JsonValue`
+parameter type -- `JsonValue` has no `undefined` member, only `null` -- so `tsc` refused the
+recursive call. Switched the fallback to `null` throughout, consistent with how a `DiffRow` already
+represents "nothing here before". That also left `format()`'s `value === undefined` branch
+genuinely unreachable, which `@typescript-eslint/no-unnecessary-condition` correctly flagged; removed it.
+
+Commit `d983a6d9` -- `(CFG) step:03 form primitives group 3 -- ValidationErrors, DiffPreview, PublishBar`.
+
+All twelve primitives from the brief's table are now done. Remaining: `DocumentEditor` (`errors` +
+`dataKeyedPaths`), `frontend/src/components/forms/README.md`, and the full acceptance run.
