@@ -26,5 +26,5 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["tests"]
+  "include": ["tests", "e2e"]
 }

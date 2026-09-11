@@ -26,6 +26,7 @@ const ALL_CAPABILITIES = [
   "returns.audit.read",
   "config.runtime.read",
   "config.release.read",
+  "config.release.write",
   "config.release.promote",
   "config.source.read",
   "config.source.write",
@@ -375,6 +376,285 @@ const MOCK_SUPPORT_TEMPLATE = {
       ],
     },
   ],
+};
+
+/**
+ * The CFG-4 typed-screen sections of the `RETURN_PLATFORM` behaviour domain,
+ * as the runtime snapshot's `configuration` carries them.
+ *
+ * Populated only for the fields the four typed screens actually read and
+ * write (`.plan/tracks/CFG-4.brief.md`'s design table) -- discovery's
+ * `conversation`/`progressive`/`anchor_extractors` blocks, for one, are real
+ * required fields on the backend model but render on no typed control here,
+ * only in each screen's Advanced/JSON escape hatch, so a mock fixture the
+ * typed screens never read from does not need to fabricate them. `/runtime`
+ * is declared `dict[str, Any]` on the backend (configuration documents are
+ * not typed in OpenAPI), so the contract test does not -- and structurally
+ * cannot -- check this fixture against `ReturnPlatformConfiguration`; what
+ * has to hold is that this shape matches what the typed screens' own
+ * TypeScript types expect, which is the pairing that actually gets exercised.
+ */
+const MOCK_DISCOVERY = {
+  web_order_pattern: "^WEB-\\d{8}$",
+  ambiguity_gap_millionths: 150_000,
+  auto_confirmation_allowed: false,
+  anchor_weights: { order_number: 900_000, tracking_number: 700_000 },
+  conflict_penalty_millionths: 250_000,
+  strong_anchors: ["exact_order_key", "tracking_number"],
+  anchor_extractors: [{ anchor_type: "order_number", patterns: ["\\bWEB-\\d{8}\\b"] }],
+  free_text_fallback_anchor: "customer_description",
+  conversation: {},
+  progressive: {},
+  identification_fields: [
+    {
+      field_id: "order_number",
+      intent_key: "order_number",
+      enabled: true,
+      value_type: "STRING",
+      multiple: false,
+      label: "Order number",
+      description: "The web or Trilogie order number the customer gives.",
+      aliases: ["order #", "web order"],
+      normalization: "TRIM",
+      sensitivity: "NONE",
+      clarification_priority: 100,
+      searches: [
+        {
+          entity: "SalesOrder",
+          field: "orderNumber",
+          strategy: "EXACT",
+          limit: 5,
+          result_fields: ["orderNumber", "orderDate"],
+          value_form: "AS_TYPED",
+          narrow_with: [],
+          searches_only_with: null,
+          known_values: [],
+        },
+      ],
+      searches_only_with: null,
+      known_values: [],
+    },
+    {
+      field_id: "tracking_number",
+      intent_key: "tracking_number",
+      enabled: true,
+      value_type: "STRING",
+      multiple: false,
+      label: "Tracking number",
+      description: "The carrier tracking number on the shipment label.",
+      aliases: ["tracking #", "pro number"],
+      normalization: "DIGITS",
+      sensitivity: "NONE",
+      clarification_priority: 60,
+      searches: [
+        {
+          entity: "Shipment",
+          field: "trackingNumber",
+          strategy: "EXACT",
+          limit: 5,
+          result_fields: ["trackingNumber"],
+          value_form: "DIGITS",
+          narrow_with: [],
+          searches_only_with: null,
+          known_values: [],
+        },
+      ],
+      searches_only_with: null,
+      known_values: [],
+    },
+  ],
+};
+
+const MOCK_SOURCE_RESOLUTION = {
+  sales_invoice_collection: "source_sales",
+  customer_collection: "source_customers",
+  shipment_collection: "source_shipments",
+  product_collection: "source_products",
+  order_number_paths: ["salesOrder.orderNumber"],
+  order_date_paths: ["salesOrder.orderDate"],
+  delivery_proof: {
+    order_code_paths: [],
+    invoice_order_codes: [],
+    file_paths: [],
+    order_file_value: null,
+    ship_via_paths: [],
+    collected_ship_via_codes: [],
+    route_status_paths: [],
+    route_completed_value: null,
+    signature_paths: [],
+  },
+  ship_via_paths: ["salesOrder.shipVia"],
+  customer_account_paths: ["salesOrder.customerAccount"],
+  customer_phone_paths: ["customer.phone"],
+  customer_email_paths: ["customer.email"],
+  web_order_paths: ["salesOrder.webOrderNumber"],
+  trilogie_order_paths: ["salesOrder.trilogieOrderNumber"],
+  customer_id_paths: ["customer.customerId"],
+  customer_name_paths: ["customer.name"],
+  product_colour_paths: [],
+  customer_city_paths: ["customer.city"],
+  customer_postal_code_paths: ["customer.postalCode"],
+  customer_account_type_paths: [],
+  line_id_paths: ["salesOrderLine.lineId"],
+  product_id_paths: ["salesOrderLine.productId"],
+  sku_paths: ["salesOrderLine.sku"],
+  product_description_paths: ["salesOrderLine.description"],
+  shipped_quantity_paths: ["salesOrderLine.shippedQuantity"],
+  phone_field: "customer.phone",
+  email_field: "customer.email",
+  customer_master_id_field: "customer.masterId",
+  tracking_field: "shipment.trackingNumber",
+  tracking_order_field: "shipment.orderNumber",
+};
+
+const MOCK_CLARIFICATION_POLICY = {
+  version: "2026.1",
+  max_prompts_per_turn: 2,
+  max_fields_per_turn: 2,
+  max_distinct_values_for_ai: 5,
+  phrasing_owner: "CONFIG",
+  field_selection_owner: "CONFIG",
+  fields: [
+    {
+      field: "order_number",
+      label: "Order number",
+      priority: 100,
+      customer_answerable: true,
+      field_group: "identification",
+      anchor_type: "order_number",
+      candidate_field: null,
+      answer_ttl_seconds: 3600,
+      confirmation_required: true,
+      validation_pattern: null,
+    },
+    {
+      field: "tracking_number",
+      label: "Tracking number",
+      priority: 60,
+      customer_answerable: true,
+      field_group: "identification",
+      anchor_type: "tracking_number",
+      candidate_field: null,
+      answer_ttl_seconds: 3600,
+      confirmation_required: false,
+      validation_pattern: null,
+    },
+  ],
+  goals: {
+    identify_order: { preferred_field_groups: ["identification"], preferred_fields: ["order_number"] },
+  },
+};
+
+const MOCK_SELECTION_VOCABULARY = {
+  reasons: ["SHIPPING_DAMAGE", "SHORTAGE", "CHANGED_MIND"],
+  conditions: ["NEW_IN_BOX", "OPENED", "DAMAGED"],
+};
+
+const MOCK_RETURN_POLICY = {
+  normalized_return_methods: ["PARCEL_RETURN", "FREIGHT_RETURN", "BRANCH_DROPOFF"],
+  return_method_derivation: {
+    default_method: "PARCEL_RETURN",
+    freight_method: "FREIGHT_RETURN",
+    freight_keywords: ["heavy", "freight", "pallet"],
+    ship_via_methods: { CPU: "PARCEL_RETURN", BLT: "FREIGHT_RETURN" },
+  },
+  return_method_requirements: [
+    { method: "PARCEL_RETURN", requires: ["RMA", "LABEL", "TRACKING"] },
+    { method: "FREIGHT_RETURN", requires: ["RMA", "BOL", "PICKUP"] },
+    { method: "BRANCH_DROPOFF", requires: ["RMA", "RETURN_LOCATION"] },
+  ],
+  bol_tendering_instruction_types: ["CARRIER_SCHEDULED", "CUSTOMER_DROPOFF"],
+  rga_required_product_resolutions: ["EXACT_SKU"],
+  heavy_pickup_required_fields: ["pallet_count"],
+  branch_staging: {},
+};
+
+const MOCK_RETURN_ELIGIBILITY_POLICY = {
+  id: "eligibility-mock",
+  version: "2026.1",
+  authority: "Returns Policy Council",
+  source_document: "RTN-POL-01",
+  source_revision: "2026-06-01",
+  precedence: ["CUSTOMER_CONTRACT_OVERRIDE", "SPECIAL_ORDER_MANUFACTURER_POLICY", "FERGUSON_STANDARD_RETURN"],
+  standard_stock_return: {
+    purchase_window: { days: 30, basis: "PURCHASE_DATE" },
+    decision_when_satisfied: "APPROVE",
+    conditions: ["RESTOCKING_FEE_APPLIES"],
+    unstated_condition_facts: "REVIEW_REQUIRED",
+  },
+  restocking_fee: { amount_source: ["SELLER_CONFIGURATION"] },
+  stock_classification: { unresolved_default: "REVIEW_REQUIRED" },
+  special_or_nonstock: {},
+  outside_standard_window: { decision: "REVIEW_REQUIRED", reason_code: "OUTSIDE_STANDARD_RETURN_WINDOW" },
+  delivery_claim: {
+    conditions: ["SHIPPING_DAMAGE", "SHORTAGE"],
+    reporting_window: { business_days: 2, basis: "DELIVERY_DATE" },
+  },
+  warranty_issue: { reasons: ["MANUFACTURER_WARRANTY_ISSUE", "PRODUCT_FAILURE_AFTER_INSTALLATION"] },
+};
+
+const MOCK_POLICY_EVALUATION = { enabled: true, disabled_reason: null };
+
+const MOCK_SHIPMENT_TRACKING = {
+  statuses: [
+    {
+      code: "AWAITING_HANDOFF",
+      label: "Awaiting handoff",
+      ladder: "parcel",
+      ordinal: 0,
+      terminal: false,
+      exception_state: false,
+      color_token: "progress",
+      allowed_next: ["IN_TRANSIT"],
+      projection_status: "AWAITING_HANDOFF",
+    },
+    {
+      code: "IN_TRANSIT",
+      label: "In transit",
+      ladder: "parcel",
+      ordinal: 1,
+      terminal: false,
+      exception_state: false,
+      color_token: "progress",
+      allowed_next: ["DELIVERED"],
+      projection_status: "IN_TRANSIT",
+    },
+    {
+      code: "DELIVERED",
+      label: "Delivered",
+      ladder: "parcel",
+      ordinal: 2,
+      terminal: true,
+      exception_state: false,
+      color_token: "success",
+      allowed_next: [],
+      projection_status: "DELIVERED",
+    },
+  ],
+  initial_status_parcel: "AWAITING_HANDOFF",
+  initial_status_freight: "AWAITING_HANDOFF",
+  freight_methods: ["FREIGHT_RETURN"],
+  collection: "shipmentInfo",
+  fields: {},
+  source_mirror: { "shipmentInfoEventData.trkNum": "trackingNumber" },
+  source_constants: { "shipmentInfoEventData.carrier": "MOCK_CARRIER" },
+};
+
+const MOCK_BAY = {
+  authority_mode: "WAREHOUSE_MANAGED",
+  require_physical_receipt: true,
+  allow_prearrival_reservation: false,
+  eligible_statuses: ["AWAITING_RECEIPT", "WAREHOUSE_STAGED"],
+};
+
+const MOCK_OMC = {
+  v2_customer_return_table: "customerReturnV2",
+  v1_customer_return_table: "customerReturnV1",
+  customer_return_display: { PENDING: "Pending", COMPLETE: "Complete" },
+  normalized_statuses: { PENDING: "PENDING", COMPLETE: "COMPLETE" },
+  tendered_is_pickup: false,
+  license_plate_implies_receipt: true,
+  rga_is_customer_return: true,
 };
 
 /**
@@ -1216,6 +1496,17 @@ export const canonicalHandlers = [
             // Support Template tab with something in it rather than the
             // pre-template empty state, which is the rarer of the two.
             support_template: MOCK_SUPPORT_TEMPLATE,
+            // CFG-4's four typed screens.
+            discovery: MOCK_DISCOVERY,
+            source_resolution: MOCK_SOURCE_RESOLUTION,
+            clarification_policy: MOCK_CLARIFICATION_POLICY,
+            selection_vocabulary: MOCK_SELECTION_VOCABULARY,
+            return_policy: MOCK_RETURN_POLICY,
+            return_eligibility_policy: MOCK_RETURN_ELIGIBILITY_POLICY,
+            policy_evaluation: MOCK_POLICY_EVALUATION,
+            shipment_tracking: MOCK_SHIPMENT_TRACKING,
+            bay: MOCK_BAY,
+            omc: MOCK_OMC,
           },
         },
         "runtime",
@@ -1418,6 +1709,162 @@ export const canonicalHandlers = [
       ),
     );
   }),
+
+  // --- CFG-4: validate, publish, adopt-packaged, packaged-drift --------------
+
+  /**
+   * `POST /api/config/validate/{domain_key}` -- CFG-3a scope item 1.
+   *
+   * The one scenario the mock actually judges, rather than rubber-stamping
+   * everything valid: `policy_evaluation.enabled === false` with no
+   * `disabled_reason` -- the exact cross-field rule the backend model
+   * enforces, and the one `/config/return-policy`'s Toggle+reason field is
+   * built to exercise end to end in `dev:mock`.
+   */
+  http.post("/api/config/validate/:domainKey", async ({ request }) => {
+    await delay(80);
+    const body = (await request.json().catch(() => ({}))) as {
+      payload?: Record<string, unknown>;
+      patch?: Record<string, unknown>;
+    };
+    const candidate = body.payload ?? body.patch ?? {};
+    const policyEvaluation = candidate.policy_evaluation;
+    const errors: { path: string; message: string; type: string }[] = [];
+    if (
+      typeof policyEvaluation === "object"
+      && policyEvaluation !== null
+      && (policyEvaluation as Record<string, unknown>).enabled === false
+      && !(policyEvaluation as Record<string, unknown>).disabled_reason
+    ) {
+      errors.push({
+        path: "policy_evaluation.disabled_reason",
+        message: "A reason is required while policy evaluation is disabled.",
+        type: "value_error",
+      });
+    }
+    return HttpResponse.json(envelope({ valid: errors.length === 0, errors }, "validate"));
+  }),
+
+  /**
+   * `POST /api/config/publish` -- CFG-3a scope item 2, CFG-4's write path.
+   * One call: create-from-active, patch, VALIDATED, RELEASED. The mock
+   * echoes the five audit ids the real handler writes, in write order, so a
+   * screen showing "per-step audit ids from the response" has something to
+   * show in `dev:mock`.
+   */
+  http.post("/api/config/publish", async ({ request }) => {
+    await delay(150);
+    const body = (await request.json().catch(() => ({}))) as {
+      release_id?: string | null;
+      domain_key?: string;
+      patch?: Record<string, unknown>;
+      expected_head_revision?: number;
+    };
+    if (body.expected_head_revision === undefined) {
+      return HttpResponse.json(
+        { detail: "expected_head_revision is required to publish a configuration release" },
+        { status: 422 },
+      );
+    }
+    const releaseId = body.release_id ?? `publish-mock-${Date.now().toString(36)}`;
+    return HttpResponse.json(
+      envelope(
+        {
+          release_id: releaseId,
+          status: "RELEASED",
+          created_at: new Date().toISOString(),
+          created_by: "mock-operator",
+          checksum_sha256: "9f2c1a",
+          metadata: {},
+          domains: { [body.domain_key ?? "RETURN_PLATFORM"]: body.patch ?? {} },
+          head_revision: (body.expected_head_revision ?? 0) + 1,
+          audit_ids: [
+            "aud-mock-created",
+            "aud-mock-patched",
+            "aud-mock-validated",
+            "aud-mock-released",
+            "aud-mock-published",
+          ],
+        },
+        "publish",
+      ),
+    );
+  }),
+
+  /**
+   * `POST /api/config/adopt-packaged` -- CFG-3a scope item 3, the Overview
+   * screen's "Take packaged file" action.
+   */
+  http.post("/api/config/adopt-packaged", async ({ request }) => {
+    await delay(150);
+    const body = (await request.json().catch(() => ({}))) as {
+      units?: string[];
+      expected_head_revision?: number;
+    };
+    if (body.expected_head_revision === undefined) {
+      return HttpResponse.json(
+        { detail: "expected_head_revision is required to publish a configuration release" },
+        { status: 422 },
+      );
+    }
+    return HttpResponse.json(
+      envelope(
+        {
+          release_id: `adopt-packaged-mock-${Date.now().toString(36)}`,
+          status: "RELEASED",
+          created_at: new Date().toISOString(),
+          created_by: "mock-operator",
+          checksum_sha256: "3b7d02",
+          metadata: {},
+          domains: {},
+          head_revision: (body.expected_head_revision ?? 0) + 1,
+          undecided: { RETURN_PLATFORM: [], AI_GATEWAY: [], DEPENDENCY_SIMULATION: [] },
+        },
+        "adopt-packaged",
+      ),
+    );
+  }),
+
+  /**
+   * `GET /api/config/packaged-drift` -- the Overview screen's undecided-keys
+   * panel.
+   *
+   * Deliberately shows **both** shapes `would_adopt` can take across domains
+   * (CFG-3a F11): `RETURN_PLATFORM` has a genuinely undecided key
+   * (`discovery`) alongside a decided one (`support_template`, which
+   * `would_adopt` names because the merge actually took the packaged copy);
+   * `AI_GATEWAY` and `DEPENDENCY_SIMULATION` report every packaged unit in
+   * `would_adopt` with nothing undecided -- the "no active release" shape a
+   * real deployment can be in, which is not the same claim `RETURN_PLATFORM`
+   * is making about the same field name. A fixture that only ever showed one
+   * shape would let the panel's F11 handling go unexercised in `dev:mock`.
+   */
+  http.get("/api/config/packaged-drift", async () => {
+    await delay(80);
+    return HttpResponse.json(
+      envelope(
+        {
+          RETURN_PLATFORM: {
+            undecided: ["discovery"],
+            would_adopt: ["support_template"],
+            filled_leaves: ["support_template.default_variant_id"],
+          },
+          AI_GATEWAY: {
+            undecided: [],
+            would_adopt: ["tasks.RETURN_STATUS_SUMMARY_V1", "other"],
+            filled_leaves: [],
+          },
+          DEPENDENCY_SIMULATION: {
+            undecided: [],
+            would_adopt: ["dependencies.OMC"],
+            filled_leaves: [],
+          },
+        },
+        "packaged-drift",
+      ),
+    );
+  }),
+
   // --- data sources (UI-02) ---------------------------------------------------
   //
   // `SourceItem` / `SourceDetail`, field for field. The previous fixture here

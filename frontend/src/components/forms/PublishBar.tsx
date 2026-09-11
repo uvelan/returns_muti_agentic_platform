@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 import type { PublishStep } from "../../api/releasePublish";
 import { PublishProgress } from "../PublishProgress";
 
@@ -31,6 +33,11 @@ export function PublishBar({
   error?: string | null;
 }) {
   const publishDisabled = disabledReason !== undefined || dirtyCount === 0 || publishing;
+  const autoId = useId();
+  // A7 (CFG-3b RV, carried to CFG-4): `title` alone is not reliably announced
+  // for a disabled control, and the visible reason text sat in a sibling
+  // `<span>` with nothing pointing the button at it. Both now share one id.
+  const disabledReasonId = disabledReason !== undefined ? `${autoId}-disabled-reason` : undefined;
 
   return (
     <div className="sticky bottom-0 z-10 flex flex-col gap-2 border-t border-outline-variant bg-surface-container-lowest/95 px-4 py-3 shadow-[0_-8px_24px_-16px_rgb(11_31_28_/_0.3)] backdrop-blur">
@@ -55,12 +62,13 @@ export function PublishBar({
           onClick={onPublish}
           disabled={publishDisabled}
           title={disabledReason}
+          aria-describedby={disabledReasonId}
           className="ml-auto rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-on-primary shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {publishing ? "Publishing..." : "Publish"}
         </button>
         {disabledReason !== undefined ? (
-          <span className="basis-full text-xs text-outline">{disabledReason}</span>
+          <span id={disabledReasonId} className="basis-full text-xs text-outline">{disabledReason}</span>
         ) : null}
       </div>
       <PublishProgress steps={steps} error={error} />

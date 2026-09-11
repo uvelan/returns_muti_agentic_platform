@@ -12,12 +12,15 @@ import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
  */
 export function OrderedList<T>({
   label,
+  error,
   items,
   onChange,
   renderItem,
   keyOf,
 }: {
   label: string;
+  /** A list-level error -- "at least one stage is required", an unreachable rung. */
+  error?: string;
   items: readonly T[];
   onChange: (next: T[]) => void;
   renderItem: (item: T, index: number) => ReactNode;
@@ -48,6 +51,7 @@ export function OrderedList<T>({
   return (
     <div className="flex flex-col gap-1.5">
       <p className="premium-kicker">{label}</p>
+      {error !== undefined ? <p role="alert" className="text-xs text-error">{error}</p> : null}
       <ul aria-label={label} className="flex flex-col gap-1.5">
         {items.map((item, index) => {
           const itemKey = keyOf(item);

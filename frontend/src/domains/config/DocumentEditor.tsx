@@ -4,6 +4,7 @@ import { Braces, Columns3, ListTree, Minus, Plus, RotateCcw } from "lucide-react
 
 import { KeyValueTable, type KeyValueEntry, type KeyValueKind } from "../../components/forms/KeyValueTable";
 import { ValidationErrors, type ValidationError } from "../../components/forms/ValidationErrors";
+import { normalizeErrorPath } from "./jsonPath";
 
 /**
  * One JSON document, editable as nested key/value, split view, or raw JSON.
@@ -50,17 +51,6 @@ function isObject(value: Json): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/**
- * `"fields[3].priority"` -> `"fields.3.priority"` -- the only path convention
- * this editor understands internally (see `childPath`) is dot-plus-index, but
- * a backend validator is equally likely to report a pydantic-`loc`-shaped
- * bracket path. Normalising the incoming `errors` path once, before matching,
- * means both spellings reach the same field. Documented in
- * `components/forms/README.md`.
- */
-function normalizeErrorPath(path: string): string {
-  return path.replace(/\[(\d+)\]/g, ".$1");
-}
 
 /** Whether `dotted` (split on `.`) resolves to something inside `document` -- array indices count as segments too. */
 function hasPath(document: Json, segments: readonly string[]): boolean {
@@ -829,6 +819,23 @@ function DataKeyedObjectNode({
   useEffect(() => {
     if (pending === null) reportBlocked(path, null);
   }, [pending, path, reportBlocked]);
+
+  // C1 (CFG-3b RV, carried to CFG-4): clear this node's block when it
+  // unmounts, not only while it is mounted and resolved. Switching to JSON
+  // mode unmounts the whole form editor, `DataKeyedObjectNode` included --
+  // with no cleanup, a duplicate key held at that moment left `blocked`
+  // naming a row no longer on screen, and Save stayed disabled with a
+  // `title` an operator who had already switched away could not act on.
+  //
+  // A second effect, deliberately not folded into the one above: that one
+  // has `pending` in its dependency array, so its cleanup re-runs on every
+  // keystroke that changes `pending`, not only on unmount. Putting the
+  // unconditional `reportBlocked(path, null)` there cleared a genuine,
+  // still-open block the instant the operator typed the very next character
+  // of the rename. This effect's only dependencies are `path` and
+  // `reportBlocked`, both stable for the node's life, so its cleanup fires
+  // on unmount (or a real path change) and nowhere else.
+  useEffect(() => () => { reportBlocked(path, null); }, [path, reportBlocked]);
 
   const entries: KeyValueEntry[] =
     pending ?? Object.entries(value).map(([key, child]) => ({ key, value: child }));

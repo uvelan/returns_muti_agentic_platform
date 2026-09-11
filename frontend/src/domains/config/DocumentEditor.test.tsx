@@ -179,3 +179,43 @@ describe("DocumentEditor -- rename onto an existing key inside a data-keyed tabl
     expect(onSubmit).toHaveBeenCalledWith({ ship_via_methods: { XPW2: "COUNTER", XPW: "PARCEL" } });
   });
 });
+
+describe("DocumentEditor -- blocked state clears on unmount (CFG-3b RV C1)", () => {
+  it("stops disabling Save for a collision no longer on screen once the table unmounts into JSON mode", async () => {
+    const user = userEvent.setup();
+    renderEditor(
+      { ship_via_methods: { CPU: "COUNTER", XPW: "PARCEL" } },
+      { dataKeyedPaths: ["ship_via_methods"] },
+    );
+
+    const saveButton = screen.getByRole("button", { name: "Save" });
+    const key1 = screen.getByRole("textbox", { name: "Key 1" });
+    await user.clear(key1);
+    await user.type(key1, "XPW");
+
+    // Blocked, same as the B1/P5 case: Save is disabled and names the row.
+    expect(saveButton).toBeDisabled();
+    expect(saveButton).toHaveAttribute("title", expect.stringContaining("rename one before publishing"));
+
+    // Switch to JSON mode -- the key/value table, and the duplicate it is
+    // holding, are no longer on screen. Without the unmount cleanup this
+    // left `blocked` naming a row the operator can no longer see or fix from
+    // here, and Save stayed refused with no visible reason (RV C1).
+    await user.click(screen.getByRole("button", { name: "JSON" }));
+    expect(screen.queryByRole("textbox", { name: "Key 1" })).not.toBeInTheDocument();
+
+    await waitFor(() => { expect(saveButton).toBeEnabled(); });
+    expect(saveButton).not.toHaveAttribute("title", expect.stringContaining("rename one before publishing"));
+
+    // Recoverable, per the RV's own probe: switching back to Key-value
+    // remounts the table clean, from the document -- which, per the README's
+    // "intermediate unique rename states commit keystroke by keystroke" note,
+    // holds the last unique prefix the typed rename passed through ("XP", one
+    // keystroke short of the collision with row 2's "XPW") rather than the
+    // original "CPU": only the collision itself never reached the document.
+    await user.click(screen.getByRole("button", { name: "Key-value" }));
+    expect(screen.getByRole("textbox", { name: "Key 1" })).toHaveValue("XP");
+    expect(screen.getByRole("textbox", { name: "Key 2" })).toHaveValue("XPW");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});

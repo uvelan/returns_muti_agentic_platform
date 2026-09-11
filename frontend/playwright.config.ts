@@ -66,6 +66,38 @@ export default defineConfig({
         baseURL: REAL_BASE_URL ?? MOCK_BASE_URL,
       },
     },
+    /**
+     * CFG-4's own real-stack specs -- one per typed screen, under `../e2e`
+     * rather than `./tests`. A dedicated project with its own `testDir`
+     * rather than folding them into `real-chromium` (which runs everything
+     * under `./tests`, `canonical-routes.spec.ts` included): these publish a
+     * real configuration release and revert it, which is a materially
+     * different risk profile from a read-only route sweep, and keeping them
+     * in their own project means running the route sweep can never
+     * accidentally also mutate a live release. Real-stack only, by the same
+     * `requireRealStack()` gate every real-stack spec in this suite uses --
+     * see `../tests/realStack.ts`.
+     *
+     * **Run this project with `--workers=1`.** Each spec reads the
+     * configuration head revision, edits, and publishes with that revision
+     * as its optimistic lock (`POST /api/config/publish`'s
+     * `expected_head_revision`) -- the same lock two operators editing the
+     * same release concurrently trip. Two of these specs racing (the
+     * default across CPU cores) publish against the same starting head, and
+     * the loser gets a real 409 `CONFIGURATION_REVISION_CONFLICT`, mid-test,
+     * with its own revert never sent -- observed running this project with
+     * Playwright's default worker count. `fullyParallel`/`workers` are only
+     * configurable per *run*, not per project, so this is enforced by
+     * convention (and this comment) rather than by the config itself.
+     */
+    {
+      name: "cfg4-e2e",
+      testDir: "./e2e",
+      use: {
+        ...devices["Desktop Chrome"],
+        baseURL: REAL_BASE_URL ?? MOCK_BASE_URL,
+      },
+    },
   ],
   webServer: {
     command: "npm run dev:mock -- --port 5174 --force",

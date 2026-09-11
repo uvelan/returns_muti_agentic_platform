@@ -23,7 +23,7 @@ transcribed from memory. Brief: `.plan/tracks/CFG.brief.md`. Audit: `evidence/co
 | CFG-2 | feat/cfg-2-config-split | 73c276d2 | Opus spike → Sonnet | **MERGED** | LEASE-CFG-2 MERGED | 1 · PASS (e42d92e6) | ff7aed3e |
 | CFG-3a | feat/cfg-3a-config-api | 5dc5a825 | Sonnet | **MERGED** | LEASE-CFG-3a MERGED | PASS (52f01260) | merge commit on trunk |
 | CFG-3b | feat/cfg-3b-form-primitives | 734a16dc | Sonnet | **MERGED** | LEASE-CFG-3b MERGED | PASS (f3a7340d) | merge commit on trunk |
-| CFG-4 | feat/cfg-4-screens-a | after CFG-3a + CFG-3b | Sonnet | NOT_STARTED | — | — | — |
+| CFG-4 | feat/cfg-4-screens-a | 656ba175 | Sonnet | **MERGED** | LEASE-CFG-4 MERGED | PASS (45c14660) | merge commit on trunk |
 | CFG-5 | feat/cfg-5-screens-b | after CFG-4 | Sonnet | NOT_STARTED | — | — | — |
 | CFG-6 | feat/cfg-6-deployment-section | after CFG-2 + CFG-3a | Opus spike → Sonnet | NOT_STARTED | — | — | — |
 | CFG-7 | feat/cfg-7-acceptance | after CFG-5 + CFG-6 | Haiku + Sonnet + RV | NOT_STARTED | — | — | — |
@@ -1852,3 +1852,619 @@ GET /api/config/packaged-drift RETURN_PLATFORM undecided: ['agents', 'clarificat
 frontend 200
 ```
 CFG-4 implementer started on `feat/cfg-4-screens-a` from `656ba175` (worktree `cfg-4`).
+
+---
+
+## CFG-4 step:00 — worktree confirmed, base verified; carried advisories triaged
+
+Worktree `.claude/worktrees/cfg-4`, branch `feat/cfg-4-screens-a`, base `656ba175` (trunk with
+CFG-0..3b merged, per the lease). Frontend-only lease so far.
+
+```
+$ git rev-parse HEAD
+656ba175...
+$ git log --oneline -5
+656ba175 (CFG) merge CFG-3a -- configuration API v2 ...
+1729dd36 (CFG) RV PASS for CFG-3a (52f01260)
+52f01260 (CFG) step:11 drop.json head_sha -- RV round 1 fixes
+29936af9 (CFG) step:11 RV round 1 fixes
+c2d219c4 (CFG) brief for CFG-4 (typed screens wave A) with CFG-3b advisories carried
+```
+
+Read, in the order the brief specifies: `CFG-4.brief.md`, `frontend/src/components/forms/README.md`,
+`.plan/reviews/CFG-3b.md` (A2, A5-A8, C1 carried to this lease) and `.plan/reviews/CFG-3a.md` (F5, F11
+carried), the CFG-3a routes in `backend/src/return_platform/configuration/api/router.py` and
+`releases.py` (read-only), `frontend/src/api/generated/return-platform.d.ts`, the existing pages in
+`frontend/src/domains/config/` with their tests, `registry.ts`/`routeManifest.ts`, and
+`frontend/src/mocks/handlers/canonicalHandlers.ts` + its contract test. Did not read the audit PART
+files.
+
+Two research passes (read-only, backend-model field extraction for the typed forms) confirmed exact
+field names/types/enum values for `discovery`, `source_resolution`, `clarification_policy`,
+`selection_vocabulary`, `return_policy` (incl. `return_method_derivation`, `return_method_requirements`),
+`return_eligibility_policy`, `policy_evaluation`, `shipment_tracking`, `source_mirror`,
+`source_constants`, `bay`, `omc` on `ReturnPlatformConfiguration` -- none of these documents use an
+alias generator, so the wire shape is exactly the Python field names (snake_case), matching every
+other config document this platform already edits as a merge patch.
+
+**Carried advisories triaged up front**, since three of the five land in shared primitives every new
+screen will use:
+- **C1** (`DocumentEditor.tsx`) -- taken. The `blocked`-clearing effect on `DataKeyedObjectNode` gained
+  a *second*, separate effect whose only job is the unmount cleanup (`useEffect(() => () =>
+  reportBlocked(path, null), [path, reportBlocked])`). Folding the cleanup into the existing
+  `[pending, path, reportBlocked]`-keyed effect (the review's literal two-line suggestion) was tried
+  first and is wrong: that effect's cleanup then re-runs on every keystroke that changes `pending`, so
+  it cleared a genuine, still-open duplicate-key block the instant the operator typed the next
+  character -- caught by the pre-existing B1/P5 regression test going red. New test in
+  `DocumentEditor.test.tsx`: block on a duplicate, switch to JSON mode (unmounts the table), Save
+  re-enables; switch back to Key-value, the table remounts clean from the document (which holds the
+  last unique prefix the abandoned rename passed through, per the README's own note -- not the
+  original value, since only the colliding keystroke never reached the document).
+- **A5** (`KeyValueTable.tsx`) -- taken. The new-key input's invalid state (taken / pattern mismatch)
+  now has a real `role="alert"` paragraph, `aria-describedby`-wired to the input, alongside the
+  existing `aria-invalid` and the button's `title` (not reliably announced for a disabled control).
+  Two new tests.
+- **A6** (`KeyValueTable.tsx`, `OrderedList.tsx`) -- taken. Both gained an optional `error?: string`
+  prop, rendered as a `role="alert"` paragraph at the top of the control, for a refusal that names the
+  whole list/mapping rather than one row/item (an empty required list, say) -- the same shape `Field`
+  already gives every scalar control. One new test each.
+- **A7** (`PublishBar.tsx`) -- taken. `disabledReason` now reaches the Publish button through
+  `aria-describedby` (a stable id shared with the reason `<span>`), not only through `title` and a
+  sibling element with no relationship to the button. Two new tests.
+- **A2** -- no code change (re-confirmed the CFG-3b RV's own judgement: a data-keyed key containing
+  `.` is not addressable by either error-path convention, documented as a limit in the forms README,
+  not a defect).
+- **A8** -- discharged by this lease's own scope (the typed screens and `/validate` usage below).
+
+```
+$ npx vitest run src/components/forms src/domains/config/DocumentEditor.test.tsx
+ Test Files  14 passed (14)
+      Tests  88 passed (88)
+$ npm run typecheck
+(no output, exit 0)
+$ npm run lint
+(no output, exit 0)
+```
+
+`drop.json` written PARTIAL, `head_sha: "PENDING"` until this step's commit lands (recorded in a
+follow-up, the same one-commit lag every prior CFG step used).
+
+## CFG-4 step:01 — carried advisories: C1, A5, A6, A7 (see step:00)
+
+Combined into step:00 above since triaging which advisories needed code came first and the fixes
+followed directly from it; no separate narrative. Commit `(CFG) step:01 carried advisories -- C1
+unmount cleanup, A5/A6/A7 described errors` covers `DocumentEditor.tsx`, `KeyValueTable.tsx`,
+`OrderedList.tsx`, `PublishBar.tsx` and their tests.
+
+## CFG-4 step:02 — typed API client methods, MSW handlers, contract tests (Order item 1)
+
+`frontend/src/api/configuration.ts`: `validateDomain`, `publish`, `adoptPackaged`, `packagedDrift`,
+typed against the CFG-3a routes read from `releases.py` (`ValidateDomainPayload`,
+`PublishConfigurationPayload`, `AdoptPackagedPayload`, `summarize_packaged_drift`'s response shape) --
+`PublishResult`/`AdoptPackagedResult` mirror `ConfigurationReleaseNode` (no alias generator, stays
+snake_case, unlike `ConfigurationReleaseView`, confirmed by reading `graph_repository.py:86-94`
+directly rather than assuming). `PackagedDriftDomain` documents CFG-3a F5 (a unit with no `DOMAIN/`
+prefix is a `RETURN_PLATFORM` key) and F11 (`would_adopt` answers "nothing merged yet" two different,
+both-correct ways across domains) directly on the type so a caller reads the caveat at the type, not
+only in a review file.
+
+**`config.release.write` did not exist as a frontend capability at all** -- `frontend/src/api/
+principal.ts`'s `Capability` union had `config.release.read`/`config.release.promote` but not
+`.write`, even though CFG-3a's backend has gated `create_release`/`patch_domain_config`/`publish`/
+`adopt_packaged` on it since that lease. The brief's own design table ("capability
+`config.release.write` gates editing") requires calling `can("config.release.write")`, which does not
+type-check without this. Added the one union member (with a comment on why it is narrower than
+`.promote`) and the matching entry in `canonicalHandlers.ts`'s `ALL_CAPABILITIES` mock list --
+outside this lease's literal Owns list (`principal.ts` is not named), but necessary plumbing the brief's
+own design depends on and additive/low-risk (one new union member, one new mock grant).
+
+MSW: four new handlers (`validate/:domainKey` judges the one real cross-field rule --
+`policy_evaluation.enabled=false` with no `disabled_reason` -- so `/config/return-policy`'s Validate
+button has something to actually reject in `dev:mock`; `publish` and `adopt-packaged` echo audit ids/
+head revision; `packaged-drift` deliberately answers "nothing merged yet" both ways across its three
+domains, per F11, so the Overview panel's handling of both shapes is exercised rather than assumed).
+Runtime mock's `configuration` gained `discovery`/`source_resolution`/`clarification_policy`/
+`selection_vocabulary`/`return_policy`/`return_eligibility_policy`/`policy_evaluation`/
+`shipment_tracking`/`bay`/`omc`, populated for the fields the four typed screens actually read and
+write (not the full pydantic model -- `/runtime` is `dict[str, Any]` on the wire, so the contract test
+does not, and structurally cannot, check this fixture against `ReturnPlatformConfiguration`; what has
+to hold, and does, is that the fixture matches what the typed screens' own TS types expect).
+
+Contract test: 5 new `ROUTES` entries (two `validate` bodies -- the pass-through case and the one the
+mock actually rejects -- plus `publish`, `adopt-packaged`, `packaged-drift`), all three of "named in the
+committed OpenAPI document", "every handler accounted for" and "every body conforms to its declared
+schema" passing.
+
+```
+$ npx vitest run src/mocks/handlers/canonicalHandlers.contract.test.ts
+ Test Files  1 passed (1)
+      Tests  63 passed (63)
+$ npx vitest run src/components/forms src/domains/config src/mocks src/api/configuration.ts
+ Test Files  11 passed (11)
+      Tests  168 passed (168)
+$ npm run typecheck
+(no output, exit 0)
+$ npm run lint
+(no output, exit 0)
+```
+
+## CFG-4 step:03 — /config/discovery (Order item 3)
+
+New shared plumbing, reused by the other two remaining typed screens:
+- `jsonPath.ts` -- immutable `getPath`/`setPath` through a `Json` document by dotted/indexed
+  path, plus `sliceOf`/`asObject`/`asArray`/`asString`/`asNumber`/`asBoolean`/`asStringArray`
+  narrowing helpers. Not a JSON-Pointer library -- paths are always known statically at each
+  call site, so there is no parsing or escaping to get right.
+- `runtimeSlice.ts` -- `runtimeSliceOf` (release id / head revision / configuration, off
+  `GET /api/config/runtime`) and `errorsByPath` (`ValidationErrorItem[]` -> `Map<path,message>`
+  for `Field`'s `error` prop), shared field names instead of every screen re-deriving them.
+- `TypedSectionScreen.tsx` -- the chrome every typed screen shares: typed-form/Advanced(JSON)
+  toggle over the same section slice, `DiffPreview`, page-level `ValidationErrors`, and a
+  `PublishBar` wired to `POST /validate/{domain}` and `POST /publish`. `renderTyped` gets
+  `get`/`set` bound through `jsonPath.ts` rather than the whole draft object. Advanced mode
+  literally swaps in `DocumentEditor` over the same slice with its own submit, publishing
+  through the same single-call `/publish` route rather than `runPublishPipeline` (the JSON
+  editors CFG-3b built keep using the four-call pipeline -- out of this lease's Owns list to
+  change, and the brief's design for CFG-4's new screens names `/publish` specifically).
+- `TextField.tsx` -- a plain `NonBlank` string field built on `Field`, the same way
+  `NumberField`/`EnumSelect`/`PathPicker` are. Local to `domains/config/`, not
+  `components/forms/` (that directory is carried-advisories-only for this lease).
+- `PathPickerList.tsx` -- a `tuple[str, ...]` of source paths as add/remove `PathPicker`s
+  (list membership matters, order does not -- unlike `OrderedList`'s subjects).
+- `knownSourcePaths.ts` -- `PathPicker`'s suggestions, read from `schemaReleasesApi.
+  activeDocument()`. Documented as best-effort: this client has no typed model of the schema
+  document's internal shape (`schemaReleases.ts` types the release envelope, not the document),
+  and `PathPicker` itself is built to make that safe -- free text is always accepted regardless
+  of what `paths` lists, so a suggestion list that misses real paths costs an operator nothing
+  but a worse autocomplete, never a rejected edit.
+
+**`/config/discovery` covers, typed:** `discovery.ambiguity_gap_millionths` (`NumberField`),
+`.auto_confirmation_allowed` (`Toggle`), `.free_text_fallback_anchor` (`TextField`),
+`.strong_anchors` (`TagListInput`), `.identification_fields` (`OrderedList` of cards --
+field_id/intent_key/label/clarification_priority, `aliases`/`known_values` as `TagListInput`,
+a nested `searches` sub-editor per field); six of `source_resolution`'s nineteen `*_paths`
+fields as `PathPickerList` (the brief's own wording is "PathPicker lists", plural, not "every
+`*_paths` field" -- covering all nineteen near-identically would not buy an operator anything
+`Advanced` does not already give them, and a banner names the rest); `clarification_policy.
+fields` as `OrderedList` (priority, label, `customer_answerable`/`confirmation_required` as
+`Toggle`); `selection_vocabulary.reasons`/`.conditions` as `TagListInput`.
+
+**Deviation from the brief's design table, with reason:** the table says "`selection_vocabulary`
+as `KeyValueTable`". Reading the actual model (`SelectionVocabularyConfiguration`,
+`return_configuration.py:795`) shows it is not a mapping at all -- `{reasons: tuple[str,...],
+conditions: tuple[str,...]}`, two string tuples. `KeyValueTable` edits an object whose *keys*
+are data; there is no key here to edit, so `TagListInput` (the primitive for a string array)
+is what the actual shape calls for. Recorded here rather than silently diverging from a design
+table CFG.brief.md itself says was "made concrete" from the model -- in this one instance the
+model turned out to disagree with the table's assumption.
+
+**`strategy`/`value_form` (searches) and `value_type`/`normalization`/`sensitivity`
+(identification fields) are `TextField`, not `EnumSelect`,** despite the design table naming
+`EnumSelect` for `strategy`. Confirmed by reading the model directly: none of the five is a
+pydantic `Literal`/enum -- each is a `NonBlank` free string with documented conventions in a
+comment (`EXACT`/`CONTAINS`/`FULLTEXT`, `AS_TYPED`/`DIGITS`/`LOWERCASE`, etc.). The brief's own
+rule directly under the design table -- "where the schema is a free string, the field is a text
+input... Never invent an option list" -- is the one that governs when the table's suggested
+control and the actual model shape disagree; an `EnumSelect` here would present five made-up
+options as if they were exhaustive.
+
+```
+$ npx vitest run src/domains/config/DiscoverySection.test.tsx
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+$ npm run typecheck
+(no output, exit 0)
+$ npm run lint
+(no output, exit 0)
+```
+
+## CFG-4 step:04 — /config/return-policy (Order item 4)
+
+`return_method_derivation` (`default_method`/`freight_method` as `EnumSelect` -- options drawn
+from `return_policy.normalized_return_methods` itself, the document's own operator-declared
+catalogue every one of these fields cross-validates against server-side, not an OpenAPI enum
+and not an invented list; `freight_keywords` `TagListInput`; `ship_via_methods` `KeyValueTable`;
+`bol_tendering_instruction_types` `TagListInput`). `return_method_requirements` as the brief's
+own "matrix (method x requirement checkboxes)": a small local component reading/writing the
+real `[{method, requires}]` list shape (confirmed against `ReturnMethodRequirementConfiguration`
+-- not a `method -> {flag: bool}` mapping) through a method x `REQUIREMENT_DIMENSIONS` grid; a
+method with every box unchecked has no row at all, matching "unmapped, not refused".
+`return_eligibility_policy` as `FieldGroup`s with `EnumSelect` for outcomes, scoped to
+`standard_stock_return`/`outside_standard_window`/`stock_classification`'s decision fields (the
+real `EligibilityDecision`/`ReturnWindowBasis`/`StockClassificationDefault` enums) plus
+`delivery_claim`/`warranty_issue`'s reason lists and a `precedence` `OrderedList`;
+`restocking_fee`/`special_or_nonstock` render on no typed control (Advanced covers them).
+`policy_evaluation` as `Toggle` with `reasonField.requiredWhen: "off"` -- an exact match for the
+model's own `enabled`/`disabled_reason` cross-field rule, not something built specially for this
+screen.
+
+```
+$ npx vitest run src/domains/config/ReturnPolicySection.test.tsx
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+$ npm run typecheck
+(no output, exit 0)
+$ npm run lint
+(no output, exit 0)
+```
+
+## CFG-4 step:05 — /config/fulfilment (Order item 5)
+
+`shipment_tracking.statuses` as `OrderedList` of rungs (code/label/ladder/ordinal, `terminal`/
+`exception_state` `Toggle`s, `allowed_next` `TagListInput` suggested from the ladder's own known
+codes, `projection_status` `EnumSelect` over the real five-value `Literal` plus a `(none)` option
+for the field's `| None`). Noted in the card's own description: reordering the list is for
+readability only -- `ordinal` is a separate, explicit integer field on each rung and is what the
+platform actually orders by, so the card exposes it directly rather than implying array position
+is authoritative. `source_mirror`/`source_constants` -- confirmed nested under `shipment_tracking`,
+not top-level siblings the brief's table wording could be read as -- both `KeyValueTable`. `bay`
+(`require_physical_receipt`/`allow_prearrival_reservation` `Toggle`s, `eligible_statuses`
+`TagListInput`); **no capacity fields exist on `BayConfiguration`** (confirmed by reading the class
+body directly -- the brief's design table names them, the model does not carry them; the only
+"capacity" concept in the codebase is a case fact, not configuration), so none are rendered.
+`omc`'s seven fields (two table names, two string-map `KeyValueTable`s, three `Toggle`s).
+
+```
+$ npx vitest run src/domains/config/FulfilmentSection.test.tsx
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+$ npm run typecheck
+(no output, exit 0)
+$ npm run lint
+(no output, exit 0)
+```
+
+All four typed screens (Discovery, Return policy, Fulfilment, and Overview -- next) are built.
+Remaining: Overview's undecided-keys panel, registry/routeManifest/BusinessSection wiring, the
+Playwright specs, and final acceptance.
+
+## CFG-4 step:06 — /config/overview undecided-keys panel; registry wiring for all four screens (Order item 2)
+
+`UndecidedKeysPanel.tsx` -- `GET /api/config/packaged-drift`, rendered. Addresses both carried
+CFG-3a advisories directly:
+- **F5** -- the panel states its own vocabulary in its header copy ("a key with no domain prefix
+  is a `RETURN_PLATFORM` top-level key, the same vocabulary `POST /adopt-packaged`'s own `units`
+  list takes") and `unitId`/`unitLabel` build/display exactly that convention (`<key>` for
+  `RETURN_PLATFORM`, `<DOMAIN>/<unit>` otherwise) rather than a bare key with no domain marked.
+- **F11** -- the panel renders each domain's own `would_adopt` independently rather than
+  computing one summary across all three; `RETURN_PLATFORM` answering `[]` (no active release to
+  merge against) and `AI_GATEWAY`/`DEPENDENCY_SIMULATION` answering every packaged unit (falling
+  back to the packaged file itself in that same state) render side by side, neither hidden nor
+  flagged as a mismatch. New test asserts both shapes appear from one mocked response.
+
+Split from a per-row diff summary (from `would_adopt`/`filled_leaves`, per the design table) plus
+a separate "Take packaged file" action (confirm, then `POST /adopt-packaged` with `[unitId]` and
+the runtime snapshot's own `head_revision` as the lock) for each `undecided` entry, and a
+separate informational "would adopt on the next start" list with no action attached (`would_adopt`
+is not the same claim as `undecided` -- a key can be decided and still be what the file would give
+on a future bootstrap).
+
+**Extracted `OverviewSection.tsx` from `ConfigurationPage.tsx`'s inline `OverviewTab`**, matching
+the naming and file-per-screen convention the other three CFG-4 screens use (and the brief's own
+`OverviewSection.test.tsx` naming) -- `ConfigurationPage.tsx` now only wires tabs, consistent with
+its Owns-list description.
+
+**Registry**: `CONFIG_SECTIONS` gains `"Discovery"`, `"Return Policy"`, `"Fulfilment"` (icons
+`Search`/`Gavel`/`Warehouse`), placed next to `Business` -- the tab every one of them peels a
+group of sections off of. `routeManifest.ts` needed no edit: routes are derived from `DOMAINS`,
+so the three new `/config/{slug}` addresses exist automatically once the registry names the
+sections.
+
+```
+$ npx vitest run src/domains/config/OverviewSection.test.tsx
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+$ npx vitest run src/domains/config
+ Test Files  11 passed (11)
+      Tests  89 passed (89)
+$ npm run typecheck
+(no output, exit 0)
+$ npm run lint
+(no output, exit 0)
+```
+
+## CFG-4 step:07 — BusinessSection removals, registry test fix, known_test_failures.json (Order item 6)
+
+`BusinessSection.tsx`: removed the `discovery`, `policy` and `fulfilment` groups wholesale (ten
+sections across three groups: `discovery`, `source_resolution`, `clarification_policy`,
+`selection_vocabulary`; `return_policy`, `return_eligibility_policy`, `policy_evaluation`;
+`shipment_tracking`, `bay`, `omc`) -- each now has a typed screen, and a second write path to a
+field a typed screen already owns is exactly what this tab's own module docstring says it exists
+not to be. `EDITED_ELSEWHERE` gained one entry per removed section (not one per group -- there is
+no single field name for three groups) pointing at the tab that replaced it, the same pattern
+`agents`/`support_template` already used, so a field an operator remembers from this tab is still
+findable rather than silently gone. `BusinessSection.test.tsx` rewritten onto sections from the
+groups that remain (`housekeeping`, `support`) plus a new test asserting all ten removed section
+labels are absent and pointed at instead.
+
+**`registry.test.ts`'s two pre-existing failures, fixed as the brief specified:** `/shipments`
+(added after the registry tests were last updated) is a real third domain on `returns.session.read`
+-- deliberate, per its own module comment (no `shipments.*` capability exists) -- so `declares
+exactly the canonical domains` now expects nine paths including `/shipments`, and `shares a
+visibility capability only where that is deliberate` now expects the three-way group rather than
+two. Neither test's *behaviour* changed, only what a correct registry looks like now that
+`/shipments` genuinely exists; unrelated to CFG-4's own screens. `scripts/ci/known_test_failures.json`'s
+frontend list is now empty, its `$comment` updated to say why.
+
+**Also caught and fixed: `controlBoundaryContrast.test.ts`**, an existing whole-repo guard against
+sub-3:1 control borders (WCAG 1.4.11), flagged four of this lease's own "Add ..." buttons
+(`DiscoverySection.tsx` x2, `FulfilmentSection.tsx`, `PathPickerList.tsx`) for `border-outline-variant`
+on a full-bordered button -- copied from `KeyValueTable.tsx`'s dashed-border *container* rather than
+its own Add-row *button*, which already uses the higher-contrast `border-outline-control`. Fixed by
+matching that token; not a new exemption, a token mismatch this lease introduced and the existing
+guard caught before it reached review.
+
+```
+$ npx vitest run src/domains/registry.test.ts src/domains/config/BusinessSection.test.tsx src/controlBoundaryContrast.test.ts
+ Test Files  3 passed (3)
+      Tests  26 passed (26)
+$ npx vitest run   # whole frontend suite
+ Test Files  83 passed (83)
+      Tests  1002 passed (1002)
+$ npm run typecheck
+(no output, exit 0)
+$ npm run lint
+(no output, exit 0)
+```
+
+Zero known failures on the frontend suite now -- `known_test_failures.json`'s frontend
+`known_failures` is `[]`.
+
+## CFG-4 step:08 — Playwright specs, run once against the live stack and reverted (Order item 8)
+
+**The live frontend at :5173 is another worktree's checkout, not mine.** Navigating there first
+(to sanity-check) showed the trunk baseline -- no Discovery/Return Policy/Fulfilment tabs, no
+`UndecidedKeysPanel` -- confirming CFG-4's own frontend code was never going to be reachable
+through it. Started a second, disposable frontend dev server from this worktree
+(`npx vite --port 5183`, `.env`'s existing `FRONTEND_BACKEND_TARGET=http://localhost:8000` proxies
+its `/api/*` to the same live, shared backend) rather than touching the running :5173 process at
+all -- "never restart it" is about that process, not about whether another one may exist alongside
+it. Confirmed via `/api/principal` through both origins that they read the same live
+`dev-operator` principal and the same backend. Stopped the :5183 process once the run was done;
+:5173 and :8000 were never touched.
+
+Added `frontend/e2e/` as a **separate Playwright project** (`cfg4-e2e`, own `testDir`) rather than
+folding these into `real-chromium`, which runs `tests/canonical-routes.spec.ts` (read-only) --
+keeping the route sweep and these publish-and-revert specs in different projects means running one
+can never accidentally also run the other. `tsconfig.e2e.json`'s `include` gained `"e2e"` so these
+type-check under `npm run typecheck`.
+
+Four specs, one per screen, each `requireRealStack()`-gated (skips loudly when `E2E_REAL_BASE_URL`
+is unset, same convention as the rest of the real-stack suite):
+- **Discovery, Return policy, Fulfilment**: open, add one uniquely-named tag to a `TagListInput`
+  field, Validate, Publish, `GET /api/config/runtime` reflects it, remove the tag, Publish again,
+  `GET /api/config/runtime` no longer has it.
+- **Overview**: read-only, deliberately -- see the spec's own long comment. "Take packaged file"
+  (`POST /api/config/adopt-packaged`) rewrites baseline metadata across the whole release, not one
+  field a merge patch can cleanly undo; on a live stack shared with other work, the safer scope is
+  to prove the screen reads `GET /api/config/packaged-drift` correctly (both F11 shapes) and
+  renders F5's vocabulary, without writing anything.
+
+**Two real findings from the live run, both fixed, neither a defect in the shipped screens:**
+- Discovery's spec originally targeted `discovery.strong_anchors` (per the design table's own
+  field). The real backend 422'd it: `"strong anchors require extraction patterns"` -- each entry
+  must name a field with a matching `discovery.anchor_extractors` pattern, a cross-field rule
+  neither research pass had surfaced. Switched the spec to `selection_vocabulary.conditions`
+  ("Item conditions"), which the model documents as genuinely free-form. No product code changed;
+  the typed field itself is correct (this is exactly what `Validate` exists to catch, and did).
+- `TagListInput` renders as ARIA role `combobox` when given `suggestions` (an `<input list="...">`)
+  and `textbox` otherwise -- true of the primitive since CFG-3b, not a regression here. Specs
+  updated to query the right role per field (`Strong anchors`/`Eligible statuses` pass
+  `suggestions`; `Freight keywords` does not).
+- Running all four with Playwright's default (parallel, one worker per core) produced a real
+  `409 CONFIGURATION_REVISION_CONFLICT` -- two specs' publishes raced the same
+  `expected_head_revision` lock, exactly as two operators editing concurrently would. Not a bug:
+  the optimistic lock did its job. Documented in `playwright.config.ts` and each spec's header:
+  **run this project with `--workers=1`** (Playwright has no per-project `workers`). The one failed
+  run left `return_policy.return_method_derivation.freight_keywords` carrying the test keyword
+  (its own revert publish was the one that lost the race); cleaned up by hand via one corrective
+  `POST /api/config/publish` before re-running serially, verified clean by an independent
+  `GET /api/config/runtime` read afterward.
+
+```
+$ npm run typecheck && npm run lint
+(no output, exit 0 both)
+
+$ E2E_REAL_BASE_URL=http://localhost:5183 npx playwright test --project=cfg4-e2e --workers=1 --reporter=list --timeout=60000
+Running 4 tests using 1 worker
+  ok 1 [cfg4-e2e] config-discovery.spec.ts: adds an item condition, publishes, and the runtime snapshot reflects it -- then reverts (7.4s)
+  ok 2 [cfg4-e2e] config-fulfilment.spec.ts: adds a bay-eligible status, publishes, and the runtime snapshot reflects it -- then reverts (6.8s)
+  ok 3 [cfg4-e2e] config-overview.spec.ts: reads the active release and renders the undecided-keys panel from the live packaged-drift (2.0s)
+  ok 4 [cfg4-e2e] config-return-policy.spec.ts: adds a freight keyword, publishes, and the runtime snapshot reflects it -- then reverts (7.3s)
+  4 passed (25.7s)
+```
+
+Post-run live state, independently verified via `GET /api/config/runtime`:
+`freight_keywords` = original 10 entries (no test keyword); `bay.eligible_statuses` = original 3
+entries (no test status); `selection_vocabulary.conditions` = original 12 entries (no test
+condition). Nothing left behind; the :5173/:8000 stack was never restarted.
+
+## CFG-4 step:09 — final acceptance sweep, `merge_status: PENDING`
+
+```
+$ npx vitest run                                    # whole frontend suite
+ Test Files  83 passed (83)
+      Tests  1002 passed (1002)
+
+$ npm run typecheck                                  # tsc -b --pretty false
+(no output, exit 0)
+
+$ npm run lint                                        # eslint . --max-warnings=0
+(no output, exit 0)
+
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts --reporter=list
+                                                       # dev:mock route sweep, whole manifest
+Running 129 tests using 4 workers
+  ... /config/discovery, /config/return-policy, /config/fulfilment, /config/overview all: mount
+      and answer with no error, keyboard contract holds, no horizontal overflow at any of the six
+      required viewports, zero critical/serious axe violations ...
+identity pending: 0 of 40
+heading mismatch: 0
+  129 passed (1.9m)
+
+$ E2E_REAL_BASE_URL=http://localhost:5183 npx playwright test --project=cfg4-e2e --workers=1 --reporter=list
+Running 4 tests using 1 worker
+  ok config-discovery.spec.ts, config-fulfilment.spec.ts, config-overview.spec.ts, config-return-policy.spec.ts
+  4 passed (25.7s)
+```
+
+Zero known failures on the frontend suite (`known_test_failures.json`'s frontend list is `[]`).
+`known_test_failures.json`'s backend list is unchanged (empty; this lease touched no backend code).
+
+Scope check against the Owns list: every file changed sits under `frontend/src/domains/config/**`,
+`frontend/src/domains/registry.ts`/`registry.test.ts`, `frontend/src/api/configuration.ts`,
+`frontend/src/mocks/handlers/canonicalHandlers.ts` (+ contract test),
+`frontend/src/components/forms/**` (carried advisories only -- `KeyValueTable.tsx`, `OrderedList.tsx`,
+`PublishBar.tsx` and their tests), `frontend/e2e/**`, plus `frontend/playwright.config.ts` and
+`frontend/tsconfig.e2e.json` (necessary to make `frontend/e2e/**` actually runnable, not itself
+named in Owns) and `frontend/src/api/principal.ts` (the missing `config.release.write` capability
+the brief's own design depends on, also not itself named in Owns) -- both additions are recorded
+with their reasoning in step:02 and step:08 above. `backend/` untouched. No `git stash` used at any
+point.
+
+Head sha: `08c9001deeccc28746da5396e9deddda9bb8cfb2`. `drop.json`'s `remaining` is now empty and
+`merge_status: PENDING` -- ready for RV.
+
+## CFG-4 step:10 — RV round 1 fixes
+
+RV round 1 (`.plan/reviews/CFG-4.md` @ a4d623a5) returned CHANGES_REQUIRED: F1 and F2 blocking,
+F3-F10 advisory. Both blocking findings fixed at the cause; every advisory taken except two left
+with a ledger line each, as instructed.
+
+**F1 (BLOCKING, fixed) -- `UndecidedKeysPanel.tsx`'s `diffSummary`.** Used to infer "no active
+release" from a unit's absence in `would_adopt`. That inference is wrong by construction for
+exactly the rows the panel exists to show: `_carry_forward` (`packaged_adoption.py:228-243`) gives
+an undecided key `merged[key] = _fill_absent_leaves(value, active[key])` -- the release's own value,
+kept -- so `_would_adopt` (`:552-584`), which reports a key only when `merged[key] ==
+packaged[key]`, never reports an undecided key that has a real active release to be undecided
+against. On the live stack this was six false sentences ("No active release... adopting is
+refused") next to six enabled "Take packaged file" buttons that would, in fact, publish
+immediately. Fixed to derive "no active release" from `headRevision` (the prop `OverviewSection`
+already passes down, `null` exactly when there is none) instead. For an undecided key with an
+active release, the summary now says what carry-forward actually did -- the release's own value is
+kept, `filled_leaves` names what the packaged file would still fill in under it if any exist -- and
+states the action's consequence plainly: "Taking the packaged file for this whole key replaces
+every value the release holds for it." Two new tests in `OverviewSection.test.tsx`, one using the
+live stack's own exact shape (six undecided keys, `RETURN_PLATFORM.would_adopt` empty,
+`filled_leaves` empty, an active release present) asserting the false sentence is gone and the
+correct summary renders six times, one using a `filled_leaves`-populated fixture asserting the leaf
+names render.
+
+**F2 (BLOCKING, fixed) -- `TypedSectionScreen.tsx`'s typed branch ignored `canWrite`.** Only the
+Advanced/JSON branch's `DocumentEditor` gated on it (which already wraps its form in `<fieldset
+disabled>`, `DocumentEditor.tsx:406`); the typed branch rendered `renderTyped(...)` directly, so a
+principal with `config.release.promote` but not `config.release.write` saw every field on all
+three screens enabled, and the backend would 403 the first write. Fixed the same way
+`DocumentEditor` does: `renderTyped`'s output is now wrapped in `<fieldset disabled={!canWrite}>`,
+which cascades to every input/select/textarea/button it renders with no change needed inside any of
+the three screens, plus the same read-only notice paragraph `DocumentEditor` shows. One new test
+per screen (`DiscoverySection`/`ReturnPolicySection`/`FulfilmentSection.test.tsx`) with
+`config.release.promote` granted and `config.release.write` withheld, asserting a representative
+field is disabled and the notice renders -- the missing case; every existing test covered only
+missing `promote`.
+
+**A1 / F3 (advisory, taken) -- indexed error paths now match both spellings.** The one indexed
+lookup in this lease (`FulfilmentSection.tsx`'s status cards) builds `shipment_tracking.statuses.0.code`
+(dot-plus-index, `childPath`'s own convention); the backend's `_dotted_error_path` emits
+`shipment_tracking.statuses[0].code` (bracketed, per its own docstring example). `errorsByPath`
+matched neither to the other. Fixed by moving `normalizeErrorPath` (CFG-3b A1, previously private to
+`DocumentEditor.tsx`) to `jsonPath.ts` -- `react-refresh/only-export-components` refuses a plain
+function export alongside a component, so a component file could not keep exporting it once a
+second module needed it -- and having `errorsByPath` normalise every incoming path through it before
+keying the map. `DocumentEditor.tsx` now imports the same function rather than owning a private
+copy. One new test (`FulfilmentSection.test.tsx`) asserts a bracketed path lands on the right status
+card's Code field.
+
+**A2 / F4 (advisory, taken) -- the CFG-3a "F5" label here was wrong.** `UndecidedKeysPanel.tsx`'s
+module docstring and `configuration.ts`'s `PackagedDriftDomain` doc comment both cited "CFG-3a F5"
+for the unit-naming vocabulary note; CFG-3a's actual F5 is a *backend* finding ("rollback narrower
+than 'any refusal'" on `adopt_packaged_configuration`'s own `except` clause, `.plan/reviews/CFG-3a.md:19`),
+explicitly carried forward and untouched by anything in this lease (CFG-4's brief: "Must not touch:
+backend"). Both comments corrected to drop the mislabel; the real F5 **remains open** and is carried
+to CFG-6 (or whichever lease next touches `backend/return_platform/configuration`) -- recording it
+here since this is the lease that found and fixed the misattribution.
+
+**A3 / F5 (advisory, taken) -- a 409 no longer strands the operator.** `publish` had no `onError`,
+so a revision conflict left `expectedHeadRevision` stale forever (every retry reproduced the same
+409) and the only refresh that existed changed `active.releaseId`, the editor's own React `key`,
+silently discarding the draft. Fixed with a local `headRevisionOverride`, refreshed via a direct
+`configApi.runtime()` call (off the shared query cache, so it cannot trigger the parent's
+key-based remount) on a 409, shown as "The release moved to head N while you were editing. Review
+the diff and publish again." alongside the draft, which survives untouched. One new test
+(`DiscoverySection.test.tsx`) publishes into a mocked 409, asserts the draft and notice, retries,
+and asserts the second call carries the fresh head revision.
+
+**A4 / F6 (advisory, left, ledger line) -- `dirtyCount` counts top-level section keys, not
+leaves.** `Object.keys(patch).length` in `TypedSectionScreen.tsx` is correct for gating Publish
+(0 means nothing staged) but "1 change staged" after twelve edited fields inside `discovery`
+overstates nothing and understates everything. Left for a future lease: fixing it means walking
+the patch to count leaves (or relabelling as "N section(s) changed"), a real but small UI polish
+with no functional consequence RV found -- not bundled into this round given F1/F2 were the
+blocking work.
+
+**A5 / F7 (advisory, taken) -- `bay.eligible_statuses` suggestions now include the deployment's
+own values.** `BayConfiguration.eligible_statuses` carries no enum (`tuple[NonBlank, ...]`); the
+hardcoded suggestion list (six codes documented in `case_placement.py`'s comments) was missing two
+of the live release's own three values (`WAREHOUSE_RECEIVED`, `INSPECTION_COMPLETE`) and named one
+(`PLANNED`) that exists nowhere in `backend/src`. Fixed by seeding suggestions from the loaded
+value first (`asStringArray(bay.eligible_statuses)`, always accurate to what is running) unioned
+with the documented codes, and the hint now says plainly that no enum exists and the list is not
+exhaustive -- the same caveat `knownSourcePaths.ts` already carries for `PathPicker`.
+
+**A6 / F8 (advisory, taken) -- `error` props wired at the list call sites that have a path to
+carry.** `OrderedList`/`KeyValueTable`'s `error` prop (CFG-3b A6) existed and was tested but no
+screen passed one, so a validation error naming a whole list (not one of its rows) still only
+reached the page-level summary. Wired at nine call sites across the three typed screens: Discovery's
+identification/clarification field lists, Return Policy's ship-via table and precedence order,
+Fulfilment's status ladder and all four `KeyValueTable`s (source mirror/constants,
+customer-return-display, normalized-statuses).
+
+**A7 / F9 (advisory, taken) -- one refused-publish test per screen.** `publish` was mocked resolved
+in every existing test across all three typed screens; a 409 and a 422 were both unexercised. Added
+one rejected-publish test to each of `DiscoverySection`/`ReturnPolicySection`/
+`FulfilmentSection.test.tsx` (a 422, the shape publish's own plain-string `detail` actually takes):
+the error message shows and the draft is intact, not reverted.
+
+**A8 / F10 (advisory, left, ledger line) -- the `dev:mock` route sweep is flaky on a cold
+`--force` server, not because of anything in this lease's code.** RV reproduced a `/config`
+`color-contrast` axe failure 2/2 times against Playwright's own cold-boot `webServer` and 0/2
+against an already-warm one, tracing it to the fixed 250ms `settle()` in
+`tests/canonical-routes.spec.ts` losing a race with the dev server still compiling CSS the first
+time `/config` (now the heaviest route in the manifest) is requested. Not this lease's surface to
+fix (`tests/canonical-routes.spec.ts`, `playwright.config.ts`'s `webServer`, and the release gate
+that invokes it are all outside CFG-4's Owns list) -- worth a note wherever the release gate runs
+this sweep: warm the server first, or wait for a stylesheet rather than a fixed timeout.
+
+```
+$ npx vitest run
+ Test Files  83 passed (83)
+      Tests  1012 passed (1012)
+
+$ npm run typecheck
+(no output, exit 0)
+
+$ npm run lint
+(no output, exit 0)
+```
+
+Live e2e run, disposable `vite --port 5186` (`.env`'s `FRONTEND_BACKEND_TARGET=http://localhost:8000`),
+stopped afterwards; `:5173`/`:8000` never restarted:
+
+```
+$ E2E_REAL_BASE_URL=http://localhost:5186 npx playwright test --project=cfg4-e2e --workers=1 --reporter=list --timeout=60000
+Running 4 tests using 1 worker
+  ok config-discovery.spec.ts, config-fulfilment.spec.ts, config-overview.spec.ts, config-return-policy.spec.ts
+  4 passed (24.7s)
+```
+
+`GET /api/config/runtime` read independently, before and after:
+
+```
+head_revision before/after: 105 111                (six publishes: three edits, three reverts)
+release       before/after: publish-79a0ff332b7d4c2a publish-e20ae19b3dd0486a
+selection_vocabulary.conditions   identical: True
+return_policy...freight_keywords  identical: True
+bay.eligible_statuses             identical: True
+```
+
+Head sha: see commit. `drop.json`'s `merge_status: PENDING` -- ready for RV round 2.
