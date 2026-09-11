@@ -267,6 +267,7 @@ async def main(
             active_metadata=active_metadata,
             adopt_packaged=adopt_packaged,
             adopt_packaged_keys=adopt_packaged_keys,
+            release_id=active.release_id if active is not None else None,
         )
         existing_configuration = adoption.existing_return_platform_configuration
         recordable_baseline = adoption.recordable_baseline

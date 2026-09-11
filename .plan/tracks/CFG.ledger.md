@@ -1365,3 +1365,157 @@ into shared parametrizations bringing the net to 38).
 
 Head sha: `933b39c3bf88eda9091664794a478f488516b88f`. `merge_status: PENDING`
 -- this lease's own definition of done is met. Ready for RV.
+
+## CFG-3a step:11 — RV round 1 fixes
+
+RV verdict on `2d4cea7a`: CHANGES_REQUIRED (F1, F2 blocking; F3-F10 advisory).
+`.plan/reviews/CFG-3a.md`. Fixed on the same branch.
+
+**F1 (BLOCKING) -- `would_adopt` disagreed with the merge for a baselined,
+operator-edited key.** `_would_adopt` derived its answer from `key not in
+undecided`, and a key WITH a recorded baseline that an operator moved away
+from is decided (the release wins) without ever entering `unadopted` --
+`_carry_forward`'s `elif key in known:` branch keeps `active_payload[key]`
+and never appends to `unadopted`. So a key like that, differing from the
+current packaged value, was wrongly reported as `would_adopt` while the
+merge actually kept the release's edit. Rewrote `_would_adopt` to take the
+MERGED value as a third argument and report a key only when `merged[key] ==
+packaged[key]` -- it can no longer claim an adoption the merge did not make,
+by construction rather than by re-deriving the same "not undecided" logic
+RV showed was insufficient. `summarize_packaged_drift` now threads
+`result.merged_domains` (via `_units` for the two split-key domains) into
+`_would_adopt` instead of the `undecided` frozenset. Docstrings in both
+`packaged_adoption.py` (`_would_adopt`, `summarize_packaged_drift`) and
+`releases.py` (`get_packaged_drift`, ~:1002-1013) rewritten to state what
+the fixed code actually guarantees, not what RV found false.
+
+New `tests/configuration/test_packaged_adoption.py` (3 tests): RV's exact
+reproduction shape -- a key (`discovery`) with a baseline digest recorded
+against an OLDER packaged value, the active release edited away from that
+baseline, and the packaged file independently moved again -- asserts the
+merge keeps the operator's edit AND `would_adopt` agrees; a positive case
+(a key the release predates is still reported adopted); and the
+no-active-release case. One pre-existing test
+(`test_packaged_drift_with_no_active_release_shows_everything_adoptable`)
+asserted the OLD, disagreeing behaviour for "no active release" (`would_adopt`
+listing every packaged key with no merge having run at all) -- renamed and
+corrected to assert nothing is reported adopted before anything has been
+merged.
+
+**F2 (BLOCKING) -- `/publish` claimed a per-step audit trail it did not
+write.** `publish_configuration` called `promote_configuration_release`
+and `_canonical_domain_payload` directly (the brief's own primitives), not
+the three route handlers that call `record_configuration_audit`
+themselves -- so only one summary `CONFIGURATION_RELEASE_PUBLISHED` record
+existed, and the docstring's claim of a create/patch/promote x2 trail
+mirroring the four-call path was false. Now calls `record_configuration_audit`
+itself at each step -- `CONFIGURATION_RELEASE_CREATED` (after the clone),
+`CONFIGURATION_DOMAIN_PATCHED` (with `changedPaths`, the same before/after
+leaf diff `patch_domain_config` records, not just `patchKeys`), two
+`CONFIGURATION_RELEASE_PROMOTED` (VALIDATED then RELEASED, matching
+`promote_release_status`'s own detail shape) -- inside the same rollback
+`try`, so a step's record is written only once that step itself succeeded;
+the summary record is written last, after every step has. `audit_ids` in
+the response is now all five ids, in write order.
+
+Strengthened `test_publish_creates_patches_and_releases_in_one_call` to
+assert exactly 5 distinct audit ids and the five actions in order, with
+`changedPaths` and both promotion statuses on the right records -- the same
+shape `test_every_release_change_leaves_an_audit_record` already pins for
+the four-call path. New `test_publish_leaves_a_per_step_audit_trail_queryable_by_target`:
+points a fake `console_list_audit_logs` at the SAME in-memory list
+`configuration_client`'s audit-recording double populates, then asserts
+`GET /api/config/audit?target=<release>` and `?target=<release>/RETURN_PLATFORM`
+list exactly the four release-level and one domain-level record respectively
+-- the two sides of F2's claim checked against one source of truth rather
+than trusted separately (there is no real Mongo in this suite).
+
+**F3 (advisory, taken)** -- `release_id` restored to the four moved log
+lines (`packaged_configuration_not_adopted`, `active_release_no_longer_validates`,
+`active_domain_no_longer_validates` x2) via a new `release_id: str | None = None`
+parameter on `adopt_packaged_configuration`, threaded from `main()`
+(`active.release_id if active is not None else None`) and both `releases.py`
+call sites. `domain=%s` kept alongside it (it is what tells the two RETURN_PLATFORM
+lines from the per-domain ones apart, which `release_id` alone cannot).
+
+**F4 (advisory, taken)** -- `adopt_packaged_configuration` gained `log:
+bool = True`; `summarize_packaged_drift` passes `log=False`, so `GET
+/packaged-drift` computes the identical decision without writing the
+publish-time warnings a browser-polled read must not turn into steady-state
+noise. New `test_packaged_drift_emits_no_warning_on_the_read_path`: the
+fixture has a genuinely undecided key (so the write path WOULD warn),
+`caplog` at WARNING level, asserts `packaged_configuration_not_adopted`
+never appears.
+
+**F6 (advisory, taken)** -- new `tests/configuration/test_get_domain_version_live_infra.py`,
+`pytest.mark.live_infra` (deselected from the default run, same as every
+other real-Neo4j test in this suite; `scripts/dev/run_real_infra_suite.sh`
+selects it back in). Saves a probe domain twice against a real
+`Neo4jConfigurationGraphRepository`, asserts `get_domain_version` returns
+1 then 2, and `None` for an unknown domain and an unknown release; cleans
+up its own nodes in a fixture `finally`. Not run here (this lease's
+environment rules forbid touching live infrastructure); RV's own direct
+verification against the dev graph during the review is what the module
+docstring cites as the basis for this test's assertions.
+
+**F7 (advisory, taken)** -- `test_dotted_error_path_maps_list_indices_as_brackets`,
+parametrised exactly over RV's four cases (`("a","b")->"a.b"`,
+`("a",2,"b")->"a[2].b"`, `(0,"a")->"[0].a"`, `("a",1,2)->"a[1][2]"`), calling
+`_dotted_error_path` directly.
+
+**F9 (advisory, taken)** -- `MAX_ACTIONS = 20` in `audit.py`; the router's
+`actions` query param gained `Query(max_length=MAX_ACTIONS)` (refuses over
+20 with a 422 before `list_logs` ever runs -- verified this actually
+constrains the query LIST length, not a string length, against a minimal
+FastAPI reproduction); `list_logs` itself re-checks the cap (`ValueError`)
+for any non-HTTP caller. `AuditService.list_logs` now uses `{"$in": [...]}`
+(index-friendly) when no `actions` entry ends in `*`, falling back to the
+`$regex` alternation only when at least one does. Five new tests in
+`test_audit_filter.py`: `$in` chosen for an all-exact list, `$regex` chosen
+when one entry has a wildcard, the cap raising `ValueError` past
+`MAX_ACTIONS`, the router's 422 for the same, and `re.escape` still applied
+in the alternation.
+
+**F10 (advisory, taken)** -- `test_publish_refuses_an_existing_release_id`
+now also asserts the pre-existing draft `taken` is still `DRAFT` after the
+409 -- pins that the existence check (before the `try`) keeps
+`_archive_draft_on_refusal` from ever touching a release this request did
+not create.
+
+**F5 and F8 (advisory, left as-is per the coordinator's instruction) --**
+F5: "on any refusal the draft is archived" is narrower than written (only
+`HTTPException`/`ReleasePromotionError` trigger the rollback; a `ValueError`
+or driver error from the unguarded `save_draft_domain` clone loop would not).
+Left because RV's own judgement was that the practical exposure is small --
+a 500 is not a refusal in the sense the sentence means -- and tightening the
+`except` clause is a behaviour change to a path with no coverage either way,
+better done deliberately in CFG-4 than folded into a fix-round diff. F8:
+narrowing create/patch to `CONFIG_RELEASE_WRITE` drops `return_platform_service`
+along with the four operator roles it was never meant to keep; RV verified
+directly that no caller exists (`frontend/src/api/configuration.ts` gates
+both actions on `config.release.promote`, which the service role never held
+either) -- left as a verified non-issue, no code change warranted.
+
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/configuration/test_packaged_adoption.py tests/test_configuration_api.py tests/configuration/test_audit_filter.py -q -p no:cacheprovider
+52 passed in 19.60s
+$ .venv/Scripts/python.exe -m pytest tests/test_configuration_api.py tests/configuration tests/test_graph_configuration_bootstrap.py tests/test_every_console_path_is_mounted.py tests/api -q -p no:cacheprovider
+728 passed, 6 deselected, 2 warnings in 110.66s      (the brief's exact command; +14 net over round 1's 714)
+$ .venv/Scripts/python.exe -m ruff check <9 changed/new files> && .venv/Scripts/python.exe -m ruff format --check <same>
+All checks passed! / 9 files already formatted
+$ PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m mypy <5 changed src files>
+Success: no issues found in 5 source files
+$ cd .. && PYTHONPATH=$WT/backend/src backend/.venv/Scripts/python.exe scripts/check_openapi_drift.py --write   # actions max_length changed the schema
+status PASS (write mode)
+$ PYTHONPATH=$WT/backend/src backend/.venv/Scripts/python.exe scripts/check_openapi_drift.py
+status PASS, diffs: []
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests/dynamic_knowledge/test_confirmation_starts_the_case_workflow.py tests/dynamic_knowledge/test_order_discovery_smoke_net.py tests/dynamic_knowledge/test_reasoning_stage_prompts.py tests/dynamic_knowledge/test_turn_temporal_grounding.py tests/test_ai_a_rejected_parse_is_repaired_on_its_own_route.py tests/test_ai_route_balancing_design.py tests/test_ai_single_dispatch_boundary.py tests/test_enforced_contracts_are_disclosed.py tests/test_keyless_reasoning_is_held_for_a_human.py tests/configuration tests/api -q -p no:cacheprovider
+42 failed, 774 passed, 6 deselected, 2 warnings in 103.35s   -- the exact same 42 ids as every prior run, none touching configuration
+```
+
+`drop.json`'s `head_sha` is set to this step's own commit sha, recorded via
+a small follow-up update after the fix commit landed (a commit cannot name
+its own hash inside its own content) -- the same lag every prior step in
+this lease recorded it with.
+
+Head sha: see commit. `merge_status: PENDING` -- ready for RV round 2.

@@ -33,7 +33,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
-from return_platform.configuration.api.audit import AuditLog
+from return_platform.configuration.api.audit import MAX_ACTIONS, AuditLog
 from return_platform.configuration.api.audit import get_audit_log as console_get_audit_log
 from return_platform.configuration.api.audit import list_audit_logs as console_list_audit_logs
 from return_platform.configuration.api.releases import (
@@ -561,7 +561,9 @@ async def list_configuration_audit(
     # Both default to unset, which is the unfiltered read this route always
     # was -- an operator's dashboard asking for one release's trail is new
     # traffic, not a narrowing of what every existing caller already gets.
-    actions: Annotated[list[str] | None, Query()] = None,
+    # Capped at MAX_ACTIONS (RV F9): refused as a 422 here, before an
+    # unbounded `$regex` alternation ever reaches Mongo.
+    actions: Annotated[list[str] | None, Query(max_length=MAX_ACTIONS)] = None,
     target: Annotated[str | None, Query()] = None,
     _user_id: str = Depends(require_read_roles),
 ) -> APIResponse[Any]:

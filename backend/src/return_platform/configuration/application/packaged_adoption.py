@@ -316,6 +316,8 @@ def adopt_packaged_configuration(
     active_metadata: Mapping[str, Any],
     adopt_packaged: bool = False,
     adopt_packaged_keys: tuple[str, ...] = (),
+    release_id: str | None = None,
+    log: bool = True,
 ) -> PackagedAdoptionResult:
     """Merge packaged configuration into an active release: one decision.
 
@@ -337,12 +339,27 @@ def adopt_packaged_configuration(
     a key name must fail the same way whether or not a release exists yet
     (RV F5 on CFG-0).
 
+    `release_id` names the active release in the warning/error lines below,
+    the way the pre-extraction inline code did (RV F3: the move dropped it
+    in favour of `domain=%s`, and it was the one identifier telling an
+    operator WHICH release lost an unadopted value). Optional because a
+    caller with no release object yet (there is none in practice: both
+    `main()` and `POST /adopt-packaged`/`GET /packaged-drift` always have
+    one when this branch runs) has nothing truthful to pass.
+
+    `log` is `False` for `summarize_packaged_drift`'s read-only computation
+    (RV F4): the warnings below are meant for a publish that is ABOUT to
+    discard something, not for an Overview panel a browser polls, which
+    would otherwise turn a real warning into steady-state noise on every
+    request.
+
     Raises `ValueError` for an unknown adopted key/unit/domain, exactly as
     `main()`'s inline checks did; raises nothing else -- a domain that no
     longer validates after merging is logged and fallen back to, never
     raised, because a publish (or an API read) must not fail outright over
     one domain's stale release.
     """
+    release_label = release_id if release_id is not None else "<none>"
     packaged_payload = dict(packaged_return_platform)
     recordable_baseline: dict[str, str] = _key_digests(packaged_payload)
     adopt_requests = _adopt_requests(adopt_packaged_keys)
@@ -371,16 +388,17 @@ def adopt_packaged_configuration(
             recordable_baseline[key] = packaged_digests[key]
         unadopted = tuple(key for key in unadopted if key not in adopted_keys)
         undecided[RETURN_PLATFORM_DOMAIN_KEY] = unadopted
-        if unadopted:
+        if unadopted and log:
             logger.warning(
-                "packaged_configuration_not_adopted domain=%s keys=%s; these keys have "
-                "no recorded baseline and the release and the packaged file disagree "
-                "inside them, so an operator's edit and a change to the file cannot be "
-                "told apart and the release wins (leaves the release lacks were filled "
-                "from the file). Every other key now carries a baseline and decides "
-                "itself from here on. Re-run with --adopt-packaged-key <key> to take "
-                "the packaged file for one of these keys, or --adopt-packaged for all "
-                "of them.",
+                "packaged_configuration_not_adopted release_id=%s domain=%s keys=%s; "
+                "these keys have no recorded baseline and the release and the packaged "
+                "file disagree inside them, so an operator's edit and a change to the "
+                "file cannot be told apart and the release wins (leaves the release "
+                "lacks were filled from the file). Every other key now carries a "
+                "baseline and decides itself from here on. Re-run with "
+                "--adopt-packaged-key <key> to take the packaged file for one of these "
+                "keys, or --adopt-packaged for all of them.",
+                release_label,
                 RETURN_PLATFORM_DOMAIN_KEY,
                 ",".join(unadopted),
             )
@@ -388,14 +406,17 @@ def adopt_packaged_configuration(
         try:
             existing_configuration = ReturnPlatformConfiguration.model_validate(merged_payload)
         except ValidationError as error:
-            logger.error(
-                "active_release_no_longer_validates domain=%s errors=%d; falling back to "
-                "the packaged configuration. Operator values carried by that release are "
-                "NOT preserved -- re-apply them after this publish. Detail: %s",
-                RETURN_PLATFORM_DOMAIN_KEY,
-                error.error_count(),
-                error,
-            )
+            if log:
+                logger.error(
+                    "active_release_no_longer_validates release_id=%s domain=%s errors=%d; "
+                    "falling back to the packaged configuration. Operator values carried "
+                    "by that release are NOT preserved -- re-apply them after this "
+                    "publish. Detail: %s",
+                    release_label,
+                    RETURN_PLATFORM_DOMAIN_KEY,
+                    error.error_count(),
+                    error,
+                )
         else:
             merged_domains[RETURN_PLATFORM_DOMAIN_KEY] = existing_configuration.model_dump(
                 mode="json"
@@ -444,27 +465,31 @@ def adopt_packaged_configuration(
         try:
             validated_domain = domain_models[domain_key].model_validate(merged_domain)
         except ValidationError as error:
-            logger.error(
-                "active_domain_no_longer_validates domain=%s errors=%d; falling back to "
-                "the packaged configuration for this domain. Operator values carried by "
-                "that release are NOT preserved -- re-apply them after this publish. "
-                "Detail: %s",
-                domain_key,
-                error.error_count(),
-                error,
-            )
+            if log:
+                logger.error(
+                    "active_domain_no_longer_validates release_id=%s domain=%s errors=%d; "
+                    "falling back to the packaged configuration for this domain. "
+                    "Operator values carried by that release are NOT preserved -- "
+                    "re-apply them after this publish. Detail: %s",
+                    release_label,
+                    domain_key,
+                    error.error_count(),
+                    error,
+                )
             undecided[domain_key] = unadopted_units
             continue
         carried_domains[domain_key] = validated_domain.model_dump(mode="json")
         recordable_domain_baselines[domain_key] = recordable
         undecided[domain_key] = unadopted_units
-        if unadopted_units:
+        if unadopted_units and log:
             logger.warning(
-                "packaged_configuration_not_adopted domain=%s keys=%s; these units have "
-                "no recorded baseline and the release and the packaged file disagree "
-                "inside them, so an operator's edit and a change to the file cannot be "
-                "told apart and the release wins. Re-run with --adopt-packaged-key %s/"
-                "<unit> to take the packaged file for one of them.",
+                "packaged_configuration_not_adopted release_id=%s domain=%s keys=%s; "
+                "these units have no recorded baseline and the release and the packaged "
+                "file disagree inside them, so an operator's edit and a change to the "
+                "file cannot be told apart and the release wins. Re-run with "
+                "--adopt-packaged-key %s/<unit> to take the packaged file for one of "
+                "them.",
+                release_label,
                 domain_key,
                 ",".join(unadopted_units),
                 domain_key,
@@ -525,22 +550,36 @@ def _added_leaf_paths(packaged_value: Any, active_value: Any, prefix: str) -> li
 
 
 def _would_adopt(
-    packaged: Mapping[str, Any], active: Mapping[str, Any], undecided: frozenset[str]
+    packaged: Mapping[str, Any],
+    active: Mapping[str, Any],
+    merged: Mapping[str, Any] | None,
 ) -> tuple[str, ...]:
-    """Keys/units the packaged file changed (or added) that are NOT undecided.
+    """Keys/units this run's MERGE actually took from the packaged file.
 
-    Every one of these is either absent from `active` (a brand new key/unit,
-    nothing to conflict with) or present with a different value and decided
-    in the file's favour -- `adopt_packaged_configuration` already excluded
-    the conflicted case from `undecided`'s complement by construction, so
-    this is a filter, not a second decision.
+    Derived from the merge result, not from `undecided`'s complement.
+    "Not undecided" and "the file was taken" are different questions: a key
+    with a RECORDED BASELINE that an operator edited away from the file is
+    exactly the case `_carry_forward` (see its own docstring) keeps the
+    release's value for and does NOT add to `unadopted` -- it is decided,
+    just decided against the file. Filtering on "not undecided" alone put
+    that key in `would_adopt` while the merge discarded it (RV F1: baseline
+    `{"discovery": …}`, packaged `{"threshold": 3}`, active `{"threshold":
+    2}` -- `would_adopt` said `('discovery',)`, the merge kept `2`). Asking
+    the merge directly cannot make that mistake: a key is reported only when
+    `merged[key]` actually equals the packaged value.
+
+    `merged` is `None` when there was nothing to merge (no active
+    payload/domain for this level) or the merge did not validate; either way
+    there is nothing decided yet to report as adopted.
     """
+    if merged is None:
+        return ()
     _unset = object()
     return tuple(
         sorted(
             key
             for key, value in packaged.items()
-            if key not in undecided and active.get(key, _unset) != value
+            if merged.get(key, _unset) == value and active.get(key, _unset) != value
         )
     )
 
@@ -552,6 +591,7 @@ def summarize_packaged_drift(
     active_return_platform: Mapping[str, Any] | None,
     active_domains: Mapping[str, Mapping[str, Any]],
     active_metadata: Mapping[str, Any],
+    release_id: str | None = None,
 ) -> dict[str, DomainDrift]:
     """The Overview screen's undecided-keys panel, per domain.
 
@@ -559,9 +599,12 @@ def summarize_packaged_drift(
     is read straight off its result, so this can never disagree with what
     `POST /adopt-packaged` (or the CLI) would actually do -- then derives the
     two read-only fields neither of those callers has a use for, from the
-    same packaged/active inputs. No write, no `--adopt-packaged-key`: this is
-    always the "nothing explicitly requested" computation, because the panel
-    it serves is what tells an operator which keys exist to be requested.
+    same packaged/active inputs plus the merge result itself. No write, no
+    `--adopt-packaged-key`: this is always the "nothing explicitly
+    requested" computation, because the panel it serves is what tells an
+    operator which keys exist to be requested. `log=False`: a read-only
+    panel a browser polls must not turn `adopt_packaged_configuration`'s
+    publish-time warnings into steady-state noise (RV F4).
     """
     result = adopt_packaged_configuration(
         packaged_return_platform=packaged_return_platform,
@@ -569,11 +612,14 @@ def summarize_packaged_drift(
         active_return_platform=active_return_platform,
         active_domains=active_domains,
         active_metadata=active_metadata,
+        release_id=release_id,
+        log=False,
     )
 
     drift: dict[str, DomainDrift] = {}
 
     active_rp = dict(active_return_platform or {})
+    merged_rp = result.merged_domains.get(RETURN_PLATFORM_DOMAIN_KEY)
     undecided_rp = frozenset(result.undecided.get(RETURN_PLATFORM_DOMAIN_KEY, ()))
     filled_rp: list[str] = []
     for key in sorted(undecided_rp):
@@ -582,7 +628,7 @@ def summarize_packaged_drift(
         )
     drift[RETURN_PLATFORM_DOMAIN_KEY] = DomainDrift(
         undecided=result.undecided.get(RETURN_PLATFORM_DOMAIN_KEY, ()),
-        would_adopt=_would_adopt(packaged_return_platform, active_rp, undecided_rp),
+        would_adopt=_would_adopt(packaged_return_platform, active_rp, merged_rp),
         filled_leaves=tuple(filled_rp),
     )
 
@@ -590,6 +636,12 @@ def summarize_packaged_drift(
         split_keys = CARRY_FORWARD_SPLIT_KEYS[domain_key]
         packaged_units = _units(packaged_domain, split_keys)
         active_units = _units(active_domains.get(domain_key, {}), split_keys)
+        # AI_GATEWAY/DEPENDENCY_SIMULATION are always present in
+        # `merged_domains` (falling back to the packaged domain itself when
+        # there was nothing to merge or the merge did not validate), so
+        # `merged_units` here is never `None` -- unlike RETURN_PLATFORM,
+        # which is genuinely absent in those two cases.
+        merged_units = _units(result.merged_domains[domain_key], split_keys)
         undecided_units = frozenset(result.undecided.get(domain_key, ()))
         filled_units: list[str] = []
         for unit in sorted(undecided_units):
@@ -598,7 +650,7 @@ def summarize_packaged_drift(
             )
         drift[domain_key] = DomainDrift(
             undecided=result.undecided.get(domain_key, ()),
-            would_adopt=_would_adopt(packaged_units, active_units, undecided_units),
+            would_adopt=_would_adopt(packaged_units, active_units, merged_units),
             filled_leaves=tuple(filled_units),
         )
 

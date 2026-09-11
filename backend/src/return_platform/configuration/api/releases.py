@@ -706,16 +706,30 @@ async def publish_configuration(
     **On any refusal the draft this call created is archived, not left
     behind** (`_archive_draft_on_refusal`): a caller retrying after a 409 or
     422 must not find a half-published release occupying the id it asked
-    for. Every step's own audit record is still written (create, patch,
-    promote x2) -- `audit_ids` in the response is this call's OWN summary
-    record, written only once every step has actually succeeded; the
-    per-step trail is independently queryable via `GET /audit?target=<release>`.
+    for.
+
+    **Writes the same per-step audit records the four-call path writes.**
+    `create_release`, `patch_domain_config` and `promote_release_status`
+    each call `record_configuration_audit` themselves; this handler calls
+    `promote_configuration_release` and `_canonical_domain_payload`
+    directly (the brief's own primitives, not the three route handlers --
+    see the module note above), so it must call `record_configuration_audit`
+    itself at each step or the trail those three would have left simply
+    would not exist. RV F2: an earlier version of this handler wrote one
+    summary `CONFIGURATION_RELEASE_PUBLISHED` record and claimed the
+    per-step trail existed anyway -- it did not. Now: `CONFIGURATION_
+    RELEASE_CREATED`, `CONFIGURATION_DOMAIN_PATCHED` (with `changedPaths`,
+    the same before/after leaf diff the four-call path records), two
+    `CONFIGURATION_RELEASE_PROMOTED` (VALIDATED then RELEASED), and the
+    summary record last -- every id returned in `audit_ids`, in that order,
+    all independently queryable via `GET /audit?target=<release>`.
     """
     repo = resolve_configuration_repository(request)
     release_id = body.release_id or f"publish-{uuid4().hex[:16]}"
     if await repo.get_release(release_id) is not None:
         raise HTTPException(status_code=409, detail=f"Release {release_id} already exists")
 
+    audit_ids: list[str] = []
     try:
         active_release = await repo.get_active_release()
         domains_to_copy = await _active_or_baseline_domains(
@@ -727,6 +741,20 @@ async def publish_configuration(
             )
         if active_release is not None and active_release.metadata:
             await repo.set_release_metadata(release_id, dict(active_release.metadata))
+        audit_ids.append(
+            await record_configuration_audit(
+                request,
+                action="CONFIGURATION_RELEASE_CREATED",
+                actor=user_id,
+                target=release_id,
+                details={
+                    "clonedFrom": (
+                        active_release.release_id if active_release is not None else None
+                    ),
+                    "domains": sorted(domains_to_copy),
+                },
+            )
+        )
 
         current = await repo.get_domain_config(release_id, body.domain_key)
         if current is None:
@@ -743,6 +771,18 @@ async def publish_configuration(
             )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        audit_ids.append(
+            await record_configuration_audit(
+                request,
+                action="CONFIGURATION_DOMAIN_PATCHED",
+                actor=user_id,
+                target=f"{release_id}/{body.domain_key}",
+                details={
+                    "patchKeys": sorted(body.patch),
+                    "changedPaths": _changed_paths(current, updated_payload),
+                },
+            )
+        )
 
         resources = getattr(request.app.state, "resources", None)
         store = resources if isinstance(resources, RuntimeResources) else None
@@ -758,7 +798,27 @@ async def publish_configuration(
             ),
         }
         try:
-            await promote_configuration_release(target_status="VALIDATED", **promotion_kwargs)
+            validated_outcome = await promote_configuration_release(
+                target_status="VALIDATED", **promotion_kwargs
+            )
+        except ReleasePromotionError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        audit_ids.append(
+            await record_configuration_audit(
+                request,
+                action="CONFIGURATION_RELEASE_PROMOTED",
+                actor=user_id,
+                target=release_id,
+                details={
+                    "status": "VALIDATED",
+                    "headRevision": validated_outcome.head_revision,
+                    "checksumSha256": validated_outcome.release.checksum_sha256,
+                    "activatedReleaseId": None,
+                },
+            )
+        )
+
+        try:
             outcome = await promote_configuration_release(
                 target_status="RELEASED",
                 expected_head_revision=body.expected_head_revision,
@@ -766,6 +826,24 @@ async def publish_configuration(
             )
         except ReleasePromotionError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+        audit_ids.append(
+            await record_configuration_audit(
+                request,
+                action="CONFIGURATION_RELEASE_PROMOTED",
+                actor=user_id,
+                target=release_id,
+                details={
+                    "status": "RELEASED",
+                    "headRevision": outcome.head_revision,
+                    "checksumSha256": outcome.release.checksum_sha256,
+                    "activatedReleaseId": (
+                        outcome.activated_snapshot.release_id
+                        if outcome.activated_snapshot is not None
+                        else None
+                    ),
+                },
+            )
+        )
     except HTTPException:
         await _archive_draft_on_refusal(repo, release_id, user_id)
         raise
@@ -779,18 +857,20 @@ async def publish_configuration(
     }
     if body.note:
         details["note"] = body.note
-    audit_id = await record_configuration_audit(
-        request,
-        action="CONFIGURATION_RELEASE_PUBLISHED",
-        actor=user_id,
-        target=release_id,
-        details=details,
+    audit_ids.append(
+        await record_configuration_audit(
+            request,
+            action="CONFIGURATION_RELEASE_PUBLISHED",
+            actor=user_id,
+            target=release_id,
+            details=details,
+        )
     )
 
     data = outcome.release.model_dump(mode="json")
     data["domains"] = outcome.domains
     data["head_revision"] = outcome.head_revision
-    data["audit_ids"] = [audit_id]
+    data["audit_ids"] = audit_ids
     if outcome.activated_snapshot is not None:
         data["runtime_activation"] = {
             "release_id": outcome.activated_snapshot.release_id,
@@ -930,6 +1010,7 @@ async def adopt_packaged_release(
             },
             active_metadata=active.metadata,
             adopt_packaged_keys=tuple(body.units),
+            release_id=active.release_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -1004,10 +1085,15 @@ async def get_packaged_drift(
     Runs `summarize_packaged_drift`, which itself runs
     `adopt_packaged_configuration` with nothing explicitly requested -- the
     same computation `POST /adopt-packaged` would run for an empty `units`
-    list -- so this can never show a key as decidable that adopting it would
-    then refuse. Gated the same way `/adopt-packaged` is: this is the panel
-    that tells an operator what there is to request, not a general
-    configuration read.
+    list. `undecided` is read straight off that result. `would_adopt` is
+    derived from the MERGE `adopt_packaged_configuration` actually produced,
+    not from `undecided`'s complement (RV F1: a key with a recorded baseline
+    that an operator edited away from the file is decided -- `_carry_forward`
+    keeps the release's value and does not mark it undecided -- but that is
+    not the same as the file being taken, and only the merge result can say
+    which one happened). Gated the same way `/adopt-packaged` is: this is
+    the panel that tells an operator what there is to request, not a
+    general configuration read.
     """
     repo = resolve_configuration_repository(request)
     active = await repo.get_active_release()
@@ -1024,6 +1110,7 @@ async def get_packaged_drift(
             key: value for key, value in active_domain_payloads.items() if key in packaged_domains
         },
         active_metadata=active.metadata if active is not None else {},
+        release_id=active.release_id if active is not None else None,
     )
 
     data = {

@@ -463,6 +463,28 @@ def test_patch_refuses_a_stale_expected_version(
     assert no_lock.status_code == 200, no_lock.text
 
 
+@pytest.mark.parametrize(
+    ("loc", "expected"),
+    [
+        (("a", "b"), "a.b"),
+        (("a", 2, "b"), "a[2].b"),
+        ((0, "a"), "[0].a"),
+        (("a", 1, 2), "a[1][2]"),
+    ],
+)
+def test_dotted_error_path_maps_list_indices_as_brackets(
+    loc: tuple[int | str, ...], expected: str
+) -> None:
+    """RV CFG-3a round 1 F7: the brief specifies list indices as `[n]`
+    explicitly, and only the dotted-string case was exercised by the
+    integration test below. `_dotted_error_path` is the function the brief's
+    example (`return_policy.return_method_derivation.default_method`) and
+    every validate response's `path` field go through."""
+    from return_platform.configuration.api.releases import _dotted_error_path
+
+    assert _dotted_error_path(loc) == expected
+
+
 def test_validate_a_standalone_payload_reports_path_mapped_errors(
     configuration_client: TestClient,
 ) -> None:
@@ -651,11 +673,106 @@ def test_publish_creates_patches_and_releases_in_one_call(
     assert data["status"] == "RELEASED"
     assert data["head_revision"] == 1
     assert data["domains"]["RETURN_PLATFORM"]["policy_evaluation"]["enabled"] is True
+    # RV CFG-3a round 1 F2: the same five records the four-call path (create,
+    # patch, promote x2) plus this call's own summary would leave -- not one.
     assert data["audit_ids"] and all(isinstance(i, str) for i in data["audit_ids"])
+    assert len(data["audit_ids"]) == 5
+    assert len(set(data["audit_ids"])) == 5  # every id distinct
+
+    records = client.app.state.audit_records
+    published_records = [
+        r for r in records if r["target"] in ("published-v1", "published-v1/RETURN_PLATFORM")
+    ]
+    assert [r["action"] for r in published_records] == [
+        "CONFIGURATION_RELEASE_CREATED",
+        "CONFIGURATION_DOMAIN_PATCHED",
+        "CONFIGURATION_RELEASE_PROMOTED",
+        "CONFIGURATION_RELEASE_PROMOTED",
+        "CONFIGURATION_RELEASE_PUBLISHED",
+    ]
+    patch_record = published_records[1]
+    assert patch_record["details"]["patchKeys"] == ["policy_evaluation"]
+    assert "policy_evaluation.enabled" in patch_record["details"]["changedPaths"]
+    assert [r["details"]["status"] for r in published_records[2:4]] == ["VALIDATED", "RELEASED"]
 
     active = client.get("/api/config/runtime")
     assert active.status_code == 200
     assert active.json()["data"]["release_id"] == "published-v1"
+
+
+def test_publish_leaves_a_per_step_audit_trail_queryable_by_target(
+    configuration_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """RV CFG-3a round 1 F2: `GET /api/config/audit?target=<release>` must
+    actually list the per-step records `/publish` claims to write, not just
+    the summary one. `configuration_client`'s fixture replaces
+    `record_configuration_audit` with an in-memory recorder (there is no
+    real Mongo in this suite); this test points the READ side at that same
+    in-memory list, filtered by `target`, so the two sides of the claim are
+    checked against a single source of truth rather than trusted separately.
+    """
+    import return_platform.configuration.api.router as router_module
+    from return_platform.configuration.api.audit import AuditLog
+    from return_platform.shared.contracts import APIResponse, ResponseMeta
+
+    client = configuration_client
+    published = client.post(
+        "/api/config/publish",
+        json={
+            "release_id": "published-audited",
+            "domain_key": "RETURN_PLATFORM",
+            "patch": {"policy_evaluation": {"enabled": True, "disabled_reason": None}},
+            "expected_head_revision": 0,
+        },
+    )
+    assert published.status_code == 200, published.text
+    expected_ids = set(published.json()["data"]["audit_ids"])
+
+    records = client.app.state.audit_records
+
+    async def fake_list_audit_logs(
+        _request: Any, _user_id: Any, *, actions: Any = None, target: Any = None
+    ) -> APIResponse[list[AuditLog]]:
+        from datetime import UTC, datetime
+
+        matched = [r for r in records if target is None or r["target"] == target]
+        logs = [
+            AuditLog(
+                id=f"audit-{i}",
+                action=r["action"],
+                actor=r["actor"],
+                target=r["target"],
+                timestamp=datetime.now(UTC),
+                details=r["details"],
+            )
+            for i, r in enumerate(matched)
+        ]
+        return APIResponse(data=logs, meta=ResponseMeta(request_id="test"))
+
+    monkeypatch.setattr(router_module, "console_list_audit_logs", fake_list_audit_logs)
+
+    listed = client.get("/api/config/audit", params={"target": "published-audited"})
+    assert listed.status_code == 200, listed.text
+    actions = [entry["action"] for entry in listed.json()["data"]]
+    assert actions == [
+        "CONFIGURATION_RELEASE_CREATED",
+        "CONFIGURATION_RELEASE_PROMOTED",
+        "CONFIGURATION_RELEASE_PROMOTED",
+        "CONFIGURATION_RELEASE_PUBLISHED",
+    ]
+
+    listed_domain = client.get(
+        "/api/config/audit", params={"target": "published-audited/RETURN_PLATFORM"}
+    )
+    assert listed_domain.status_code == 200, listed_domain.text
+    assert [entry["action"] for entry in listed_domain.json()["data"]] == [
+        "CONFIGURATION_DOMAIN_PATCHED"
+    ]
+
+    # Every record `/publish` wrote (one per id it returned) is reachable
+    # through one of the two targets its own steps used -- none missing,
+    # none extra.
+    assert len(actions) + len(listed_domain.json()["data"]) == len(expected_ids)
 
 
 def test_publish_generates_a_release_id_when_none_is_given(
@@ -675,6 +792,11 @@ def test_publish_generates_a_release_id_when_none_is_given(
 
 
 def test_publish_refuses_an_existing_release_id(configuration_client: TestClient) -> None:
+    """RV CFG-3a round 1 F10: the existence check sits before the `try`, so
+    a refused publish naming someone else's release id must not touch that
+    release at all -- `_archive_draft_on_refusal` archiving a release this
+    request did not create would be a new and worse bug than the one it
+    exists to prevent."""
     client = configuration_client
     _create_draft(client, "taken")
     response = client.post(
@@ -687,6 +809,9 @@ def test_publish_refuses_an_existing_release_id(configuration_client: TestClient
         },
     )
     assert response.status_code == 409, response.text
+
+    taken = client.get("/api/config/releases/taken").json()["data"]
+    assert taken["status"] == "DRAFT"
 
 
 def test_publish_refuses_an_invalid_patch_and_leaves_nothing_behind(
@@ -900,17 +1025,42 @@ def test_packaged_drift_reports_undecided_would_adopt_and_filled_leaves(
     assert "discovery" not in data["RETURN_PLATFORM"]["would_adopt"]
 
 
-def test_packaged_drift_with_no_active_release_shows_everything_adoptable(
+def test_packaged_drift_emits_no_warning_on_the_read_path(
+    configuration_client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """RV CFG-3a round 1 F4: a panel a browser polls must not turn
+    `adopt_packaged_configuration`'s publish-time `packaged_configuration_
+    not_adopted` warning into steady-state noise. The fixture in this test
+    has an undecided key (`discovery`, no recorded baseline) -- exactly the
+    condition that logs a WARNING on the write path -- so a clean caplog
+    here is a real assertion, not a vacuous one."""
+    client = configuration_client
+    _release_with_an_edited_discovery(client, "drift-quiet")
+
+    with caplog.at_level("WARNING"):
+        response = client.get("/api/config/packaged-drift")
+
+    assert response.status_code == 200, response.text
+    assert "discovery" in response.json()["data"]["RETURN_PLATFORM"]["undecided"]
+    assert "packaged_configuration_not_adopted" not in caplog.text
+
+
+def test_packaged_drift_with_no_active_release_shows_nothing_undecided_or_adopted(
     configuration_client: TestClient,
 ) -> None:
-    """With nothing published yet there is nothing to disagree with, so every
-    packaged key is something a first publish would carry -- not undecided."""
+    """With nothing published yet there is nothing to disagree with -- no
+    key is undecided -- and no merge has run to say anything was actually
+    taken from the file yet either (RV CFG-3a round 1 F1: `would_adopt` is
+    read off the merge result now, not guessed from "not undecided", and
+    there is no merge at all when there is no active release to merge
+    against). A first publish still carries the whole packaged file; this
+    panel just has nothing decided to report before one exists."""
     client = configuration_client
     response = client.get("/api/config/packaged-drift")
     assert response.status_code == 200, response.text
     data = response.json()["data"]
     assert data["RETURN_PLATFORM"]["undecided"] == []
-    assert "discovery" in data["RETURN_PLATFORM"]["would_adopt"]
+    assert data["RETURN_PLATFORM"]["would_adopt"] == []
 
 
 @pytest.mark.asyncio

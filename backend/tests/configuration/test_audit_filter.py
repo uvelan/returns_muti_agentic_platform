@@ -92,13 +92,16 @@ class _FakeCollection:
 
 def _matches(document: dict[str, Any], query: dict[str, Any]) -> bool:
     """Just enough of Mongo's query language for these tests: exact-match
-    keys, and `{"$regex": pattern}` for `action`."""
+    keys, `{"$regex": pattern}` and `{"$in": [...]}` for `action`."""
     import re
 
     for key, expected in query.items():
         actual = document.get(key)
         if isinstance(expected, dict) and "$regex" in expected:
             if not re.match(expected["$regex"], str(actual)):
+                return False
+        elif isinstance(expected, dict) and "$in" in expected:
+            if actual not in expected["$in"]:
                 return False
         elif actual != expected:
             return False
@@ -194,3 +197,95 @@ async def test_actions_and_target_combine() -> None:
     assert len(results) == 1
     assert results[0].action == "CONFIGURATION_RELEASE_PROMOTED"
     assert results[0].target == "release-1"
+
+
+# --- RV CFG-3a round 1 F9 -----------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_all_exact_actions_use_in_not_regex() -> None:
+    """No entry ends in `*` -- the whole list is exact matches, which can use
+    Mongo's `$in` (and its index) instead of an unindexed `$regex` scan."""
+    service, collection = _service_with(
+        [
+            _record("CONFIGURATION_RELEASE_PROMOTED"),
+            _record("AI_ROUTE_REFRESHED"),
+            _record("GOVERNANCE_PROPOSAL_APPROVED"),
+        ]
+    )
+
+    results = await service.list_logs(
+        actions=["CONFIGURATION_RELEASE_PROMOTED", "AI_ROUTE_REFRESHED"]
+    )
+
+    assert collection.queries[0]["action"] == {
+        "$in": ["CONFIGURATION_RELEASE_PROMOTED", "AI_ROUTE_REFRESHED"]
+    }
+    assert {log.action for log in results} == {
+        "CONFIGURATION_RELEASE_PROMOTED",
+        "AI_ROUTE_REFRESHED",
+    }
+
+
+@pytest.mark.asyncio
+async def test_one_prefix_entry_falls_back_to_regex_for_the_whole_list() -> None:
+    """A single `*` entry among otherwise-exact ones still needs the
+    alternation -- `$in` cannot express a prefix match."""
+    service, collection = _service_with([_record("CONFIGURATION_RELEASE_PROMOTED")])
+
+    await service.list_logs(actions=["AI_ROUTE_REFRESHED", "CONFIGURATION_*"])
+
+    assert "$regex" in collection.queries[0]["action"]
+
+
+@pytest.mark.asyncio
+async def test_more_than_max_actions_is_refused() -> None:
+    from return_platform.configuration.api.audit import MAX_ACTIONS
+
+    service, _collection = _service_with([])
+
+    with pytest.raises(ValueError, match="at most"):
+        await service.list_logs(actions=[f"ACTION_{i}" for i in range(MAX_ACTIONS + 1)])
+
+
+def test_max_actions_is_enforced_as_a_query_parameter_bound() -> None:
+    """The HTTP-facing half of F9: the router refuses an over-long `actions`
+    list with a 422 before `list_logs` is ever called, via FastAPI's own
+    `Query(max_length=...)` -- not by relying on the service-level check
+    alone."""
+    from fastapi import FastAPI, Request
+    from fastapi.testclient import TestClient
+
+    from return_platform.configuration.api.audit import MAX_ACTIONS
+    from return_platform.configuration.api.router import router
+    from return_platform.security.principal import Principal
+
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def _attach(request: Request, call_next):  # type: ignore[no-untyped-def]
+        request.state.principal = Principal(subject="reader", roles=frozenset({"console_admin"}))
+        request.state.correlation_id = "test-correlation-id"
+        return await call_next(request)
+
+    app.include_router(router)
+    client = TestClient(app)
+
+    too_many = [("actions", f"ACTION_{i}") for i in range(MAX_ACTIONS + 1)]
+    response = client.get("/api/config/audit", params=too_many)
+
+    assert response.status_code == 422, response.text
+
+
+def test_special_regex_characters_in_an_action_name_are_still_escaped_in_the_alternation() -> None:
+    """Redundant with `test_special_regex_characters_in_an_action_name_are_escaped`
+    above at the `_action_pattern` level, pinned again here because F9's
+    review specifically checked `re.escape` was applied -- a regression that
+    dropped it would otherwise only be caught by that one earlier test."""
+    import re
+
+    from return_platform.configuration.api.audit import _action_pattern
+
+    pattern = _action_pattern(["A.B*"])
+    assert re.match(pattern, "A.B_ANYTHING")
+    assert not re.match(pattern, "AxB_ANYTHING")
