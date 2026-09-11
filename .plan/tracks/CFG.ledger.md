@@ -703,3 +703,56 @@ All checks passed!
 $ .venv/Scripts/python.exe -m ruff format --check <same>
 would reformat 0 files (4 files reformatted then re-verified)
 ```
+
+## CFG-2 step:05 — full suite confirmed clean before deletion; 25-key listing; openapi drift
+
+**Key listing (brief's "Evidence to paste"):** the 25 top-level keys of `production.yaml` before the split and the composed document's key listing after, both derived programmatically (not hand-typed):
+```
+ORIGINAL keys ( 25 ): ['schema_version', 'assumption_set_version', 'agents', 'discovery',
+'source_resolution', 'clarification_policy', 'return_policy', 'selection_vocabulary', 'workflow',
+'support', 'omc', 'bay', 'return_case', 'business_calendars', 'integrations', 'policy_evaluation',
+'context_assembly', 'support_ingress', 'support_resolver', 'copilot', 'runtime_integrations',
+'return_eligibility_policy', 'shipment_tracking', 'support_gate', 'support_template']
+
+COMPOSED keys ( 25 ): ['schema_version', 'assumption_set_version', 'agents', 'discovery',
+'source_resolution', 'clarification_policy', 'selection_vocabulary', 'return_policy',
+'policy_evaluation', 'return_eligibility_policy', 'workflow', 'return_case', 'business_calendars',
+'support', 'context_assembly', 'support_ingress', 'support_resolver', 'support_gate',
+'support_template', 'omc', 'bay', 'shipment_tracking', 'integrations', 'copilot',
+'runtime_integrations']
+
+Equal key sets: True
+Equal full dict: True
+```
+(Order differs -- composed follows the part-file grouping, not the original file's line order -- which the design explicitly says is cosmetic, sect. 4 risk 7: digests and dict equality are order-invariant. Set and dict equality both hold.)
+
+**Full suite, run twice** (before and after the 53-file bulk fix, to isolate its effect):
+```
+$ cd backend && PYTHONPATH=$WT/backend/src .venv/Scripts/python.exe -m pytest tests -q -p no:cacheprovider --ignore=tests/configuration/test_concurrent_activation.py
+# before the 53-file fix:
+42 failed, 5295 passed, 10 skipped, 515 deselected, 2 warnings in 283.50s (0:04:43)
+# after the 53-file fix and prose cleanup:
+42 failed, 5295 passed, 10 skipped, 515 deselected, 2 warnings in 294.40s (0:04:54)
+```
+Identical counts both runs -- the bulk fix changed which path string a test builds, not which file that path resolves to (production.yaml/ai_gateway.yaml still exist on disk at this point), so no test's outcome moved. The 42 failures are the same 9 modules RV's CFG-1 review (`.plan/reviews/CFG-1.md` Q6) named as pre-existing and base-identical:
+```
+$ grep "^FAILED" <output> | sed -E 's/FAILED (tests\/[^:]+::).*/\1/' | sort -u
+tests/dynamic_knowledge/test_confirmation_starts_the_case_workflow.py::
+tests/dynamic_knowledge/test_order_discovery_smoke_net.py::
+tests/dynamic_knowledge/test_reasoning_stage_prompts.py::
+tests/dynamic_knowledge/test_turn_temporal_grounding.py::
+tests/test_ai_a_rejected_parse_is_repaired_on_its_own_route.py::
+tests/test_ai_route_balancing_design.py::
+tests/test_ai_single_dispatch_boundary.py::
+tests/test_enforced_contracts_are_disclosed.py::
+tests/test_keyless_reasoning_is_held_for_a_human.py::
+```
+Exactly nine modules -- the same nine RV's throwaway-worktree diff found identical between the CFG-0 base and the CFG-1 branch. 5295 passed vs CFG-1's final 5276 = 19 more, exactly the 19 tests this lease adds (`test_packaged_configuration_composition.py`: 12, `test_settings_configuration_paths.py`: 7) -- the acceptance bound ("pass count up by exactly the tests added") holds precisely, not just approximately.
+
+```
+$ python scripts/check_openapi_drift.py
+{"stage": "4E", "gate": "openapi_drift", "mode": "check", ..., "diffs": [], "status": "PASS", "exit_code": 0}
+```
+No route or schema touched by this lease -- green without regeneration, as the acceptance line requires.
+
+Proceeding to the deletion commit now that the suite is confirmed clean with both packaged files still present.
