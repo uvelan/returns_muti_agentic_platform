@@ -1,0 +1,4183 @@
+{
+ "agents": {
+  "bay_assignment": {
+   "ai_assisted": false,
+   "ai_route_ref": null,
+   "capabilities": [
+    "filter_eligible_bays",
+    "rank_bays",
+    "recommend_overflow_or_hold",
+    "explain_exclusions"
+   ],
+   "circuit_breaker_failure_threshold": 5,
+   "enabled": true,
+   "human_confirmation_required": true,
+   "implementation_id": "built_in.bay_assignment",
+   "max_concurrency": 10,
+   "name": "Bay Assignment Agent",
+   "policy_ref": null,
+   "prompt_ref": null,
+   "requests_per_minute": 60,
+   "retry_max_attempts": 3,
+   "state_namespace": "bay_assignment",
+   "task_queue": "returns.bay-assignment",
+   "timeout_seconds": 30.0,
+   "version": "2.0"
+  },
+  "feedback_learning": {
+   "ai_assisted": true,
+   "ai_route_ref": "FEEDBACK_RECOMMENDATION_V1",
+   "capabilities": [
+    "calculate_operational_metrics",
+    "detect_rework_patterns",
+    "detect_assumption_mismatches",
+    "recommend_policy_changes"
+   ],
+   "circuit_breaker_failure_threshold": 5,
+   "enabled": true,
+   "human_confirmation_required": true,
+   "implementation_id": "built_in.feedback_learning",
+   "max_concurrency": 10,
+   "name": "Feedback Learning Agent",
+   "policy_ref": null,
+   "prompt_ref": null,
+   "requests_per_minute": 60,
+   "retry_max_attempts": 3,
+   "state_namespace": "feedback_learning",
+   "task_queue": "returns.feedback-learning",
+   "timeout_seconds": 30.0,
+   "version": "2.0"
+  },
+  "order_analysis": {
+   "ai_assisted": true,
+   "ai_route_ref": "ORDER_CANDIDATE_ANALYSIS_V1",
+   "capabilities": [
+    "evaluate_candidates",
+    "generate_smart_questions"
+   ],
+   "circuit_breaker_failure_threshold": 5,
+   "enabled": true,
+   "human_confirmation_required": true,
+   "implementation_id": "built_in.order_analysis",
+   "max_concurrency": 10,
+   "name": "Order Analysis Agent",
+   "policy_ref": null,
+   "prompt_ref": null,
+   "requests_per_minute": 60,
+   "retry_max_attempts": 3,
+   "state_namespace": "order_analysis",
+   "task_queue": "returns.order-analysis",
+   "timeout_seconds": 30.0,
+   "version": "2.0"
+  },
+  "order_discovery": {
+   "ai_assisted": true,
+   "ai_route_ref": null,
+   "capabilities": [
+    "normalize_evidence",
+    "classify_order_source",
+    "rank_candidates",
+    "explain_candidate_evidence",
+    "recommend_dynamic_clarification"
+   ],
+   "circuit_breaker_failure_threshold": 5,
+   "enabled": true,
+   "human_confirmation_required": true,
+   "implementation_id": "built_in.order_discovery",
+   "max_concurrency": 10,
+   "name": "Order Discovery Agent",
+   "policy_ref": null,
+   "prompt_ref": null,
+   "requests_per_minute": 60,
+   "retry_max_attempts": 3,
+   "state_namespace": "order_discovery",
+   "task_queue": "returns.order-discovery",
+   "timeout_seconds": 30.0,
+   "version": "2.0"
+  },
+  "return_fulfillment": {
+   "ai_assisted": false,
+   "ai_route_ref": null,
+   "capabilities": [
+    "normalize_omc_status",
+    "distinguish_rma_rga",
+    "interpret_parcel_and_freight_state",
+    "detect_stale_or_conflicting_evidence"
+   ],
+   "circuit_breaker_failure_threshold": 5,
+   "enabled": true,
+   "human_confirmation_required": false,
+   "implementation_id": "built_in.return_fulfillment",
+   "max_concurrency": 10,
+   "name": "Return Fulfillment Agent",
+   "policy_ref": null,
+   "prompt_ref": null,
+   "requests_per_minute": 60,
+   "retry_max_attempts": 3,
+   "state_namespace": "return_fulfillment",
+   "task_queue": "returns.return-fulfillment",
+   "timeout_seconds": 30.0,
+   "version": "2.0"
+  },
+  "return_workflow": {
+   "ai_assisted": true,
+   "ai_route_ref": null,
+   "capabilities": [
+    "identify_missing_fields",
+    "enforce_evidence_requirements",
+    "recommend_physical_path",
+    "draft_support_request",
+    "summarize_clarification"
+   ],
+   "circuit_breaker_failure_threshold": 5,
+   "enabled": true,
+   "human_confirmation_required": true,
+   "implementation_id": "built_in.return_workflow",
+   "max_concurrency": 10,
+   "name": "Return Workflow Agent",
+   "policy_ref": null,
+   "prompt_ref": null,
+   "requests_per_minute": 60,
+   "retry_max_attempts": 3,
+   "state_namespace": "return_workflow",
+   "task_queue": "returns.return-workflow",
+   "timeout_seconds": 30.0,
+   "version": "2.0"
+  },
+  "support_response": {
+   "ai_assisted": false,
+   "ai_route_ref": null,
+   "capabilities": [],
+   "circuit_breaker_failure_threshold": 5,
+   "enabled": true,
+   "human_confirmation_required": true,
+   "implementation_id": null,
+   "max_concurrency": 10,
+   "name": "Support Response Agent",
+   "policy_ref": null,
+   "prompt_ref": null,
+   "requests_per_minute": 60,
+   "retry_max_attempts": 3,
+   "state_namespace": null,
+   "task_queue": null,
+   "timeout_seconds": 30.0,
+   "version": "1.0"
+  }
+ },
+ "assumption_set_version": "FERGUSON-RETURN-ASSUMPTIONS-1.0",
+ "bay": {
+  "allow_prearrival_reservation": true,
+  "authority_mode": "PROJECTION",
+  "eligible_statuses": [
+   "AWAITING_RECEIPT",
+   "WAREHOUSE_RECEIVED",
+   "INSPECTION_COMPLETE"
+  ],
+  "require_physical_receipt": false
+ },
+ "business_calendars": [
+  {
+   "calendar_id": "default",
+   "holidays": [],
+   "timezone": "America/New_York",
+   "working_periods": [
+    {
+     "end_minute": 1440,
+     "start_minute": 0,
+     "weekday": 0
+    },
+    {
+     "end_minute": 1440,
+     "start_minute": 0,
+     "weekday": 1
+    },
+    {
+     "end_minute": 1440,
+     "start_minute": 0,
+     "weekday": 2
+    },
+    {
+     "end_minute": 1440,
+     "start_minute": 0,
+     "weekday": 3
+    },
+    {
+     "end_minute": 1440,
+     "start_minute": 0,
+     "weekday": 4
+    },
+    {
+     "end_minute": 1440,
+     "start_minute": 0,
+     "weekday": 5
+    },
+    {
+     "end_minute": 1440,
+     "start_minute": 0,
+     "weekday": 6
+    }
+   ]
+  }
+ ],
+ "clarification_policy": {
+  "field_selection_owner": "LLM",
+  "fields": [
+   {
+    "anchor_type": "ORDER_NUMBER",
+    "answer_ttl_seconds": null,
+    "candidate_field": "orderReference",
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "order_number",
+    "field_group": "ORDER_ANCHOR",
+    "label": "Ferguson order number or web order number",
+    "priority": 120,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": "CUSTOMER_ID",
+    "answer_ttl_seconds": null,
+    "candidate_field": "customerReference",
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "customer_id",
+    "field_group": "CUSTOMER_ANCHOR",
+    "label": "customer ID",
+    "priority": 115,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": "TRACKING_NUMBER",
+    "answer_ttl_seconds": null,
+    "candidate_field": null,
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "tracking_number",
+    "field_group": "SHIPMENT_ANCHOR",
+    "label": "tracking number",
+    "priority": 110,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": null,
+    "answer_ttl_seconds": null,
+    "candidate_field": null,
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "invoice_number",
+    "field_group": "ORDER_ANCHOR",
+    "label": "invoice number",
+    "priority": 105,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": null,
+    "answer_ttl_seconds": null,
+    "candidate_field": null,
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "customer_po_number",
+    "field_group": "ORDER_ANCHOR",
+    "label": "customer PO number",
+    "priority": 100,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": "EMAIL",
+    "answer_ttl_seconds": null,
+    "candidate_field": "email",
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "email",
+    "field_group": "CUSTOMER_ANCHOR",
+    "label": "email used on the order",
+    "priority": 95,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": "PHONE",
+    "answer_ttl_seconds": null,
+    "candidate_field": "phone",
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "phone",
+    "field_group": "CUSTOMER_ANCHOR",
+    "label": "phone number used on the order",
+    "priority": 90,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": "CUSTOMER_NAME",
+    "answer_ttl_seconds": null,
+    "candidate_field": "customerName",
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "customer_name",
+    "field_group": "CUSTOMER_NARROWING",
+    "label": "name on the order",
+    "priority": 85,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": null,
+    "answer_ttl_seconds": null,
+    "candidate_field": null,
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "company_name",
+    "field_group": "CUSTOMER_NARROWING",
+    "label": "company name",
+    "priority": 80,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": "ZIP_CODE",
+    "answer_ttl_seconds": null,
+    "candidate_field": "postalCode",
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "zip_code",
+    "field_group": "CUSTOMER_NARROWING",
+    "label": "ZIP code on the order",
+    "priority": 75,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": "SKU",
+    "answer_ttl_seconds": null,
+    "candidate_field": "sku",
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "product_sku",
+    "field_group": "LINE_NARROWING",
+    "label": "SKU or item number",
+    "priority": 70,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": "PRODUCT_DESCRIPTION",
+    "answer_ttl_seconds": null,
+    "candidate_field": "productDescription",
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "product_description",
+    "field_group": "LINE_NARROWING",
+    "label": "product description",
+    "priority": 65,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": "DATE_RANGE",
+    "answer_ttl_seconds": null,
+    "candidate_field": "orderDate",
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "approximate_purchase_date",
+    "field_group": "DATE_NARROWING",
+    "label": "approximate purchase date",
+    "priority": 60,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": "SHIPPING_ADDRESS",
+    "answer_ttl_seconds": null,
+    "candidate_field": "shippingAddress",
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "shipping_address",
+    "field_group": "CUSTOMER_NARROWING",
+    "label": "shipping address",
+    "priority": 58,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": "PRODUCT_COLOUR",
+    "answer_ttl_seconds": null,
+    "candidate_field": "productColor",
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "product_colour",
+    "field_group": "LINE_NARROWING",
+    "label": "product colour",
+    "priority": 56,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": null,
+    "answer_ttl_seconds": null,
+    "candidate_field": null,
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "purchase_channel_hint",
+    "field_group": "SOURCE_NARROWING",
+    "label": "where the order was placed",
+    "priority": 55,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": null,
+    "answer_ttl_seconds": null,
+    "candidate_field": null,
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "product_presence",
+    "field_group": "RETURN_CONTEXT",
+    "label": "current product location",
+    "priority": 50,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": null,
+    "answer_ttl_seconds": null,
+    "candidate_field": null,
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "return_reason",
+    "field_group": "RETURN_CONTEXT",
+    "label": "reason for return",
+    "priority": 45,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": null,
+    "answer_ttl_seconds": null,
+    "candidate_field": null,
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "ordered_quantity",
+    "field_group": "RETURN_CONTEXT",
+    "label": "quantity being returned",
+    "priority": 44,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": null,
+    "answer_ttl_seconds": null,
+    "candidate_field": null,
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "branch_location",
+    "field_group": "RETURN_CONTEXT",
+    "label": "branch handling the return",
+    "priority": 43,
+    "validation_pattern": null
+   },
+   {
+    "anchor_type": null,
+    "answer_ttl_seconds": null,
+    "candidate_field": null,
+    "confirmation_required": false,
+    "customer_answerable": true,
+    "field": "proof_reference",
+    "field_group": "RETURN_CONTEXT",
+    "label": "proof of condition reference",
+    "priority": 42,
+    "validation_pattern": null
+   }
+  ],
+  "goals": {
+   "CAPTURE_RETURN_CONTEXT": {
+    "preferred_field_groups": [
+     "RETURN_CONTEXT"
+    ],
+    "preferred_fields": [
+     "return_reason",
+     "product_presence"
+    ]
+   },
+   "DISAMBIGUATE_MULTIPLE_ORDERS": {
+    "preferred_field_groups": [
+     "ORDER_ANCHOR",
+     "DATE_NARROWING",
+     "LINE_NARROWING"
+    ],
+    "preferred_fields": [
+     "order_number",
+     "invoice_number",
+     "customer_po_number",
+     "approximate_purchase_date",
+     "product_sku",
+     "product_description"
+    ]
+   },
+   "IDENTIFY_CUSTOMER": {
+    "preferred_field_groups": [
+     "CUSTOMER_ANCHOR",
+     "CUSTOMER_NARROWING"
+    ],
+    "preferred_fields": [
+     "customer_id",
+     "phone",
+     "email",
+     "customer_name",
+     "company_name",
+     "zip_code"
+    ]
+   },
+   "IDENTIFY_ORDER": {
+    "preferred_field_groups": [
+     "ORDER_ANCHOR",
+     "SHIPMENT_ANCHOR",
+     "CUSTOMER_ANCHOR",
+     "DATE_NARROWING"
+    ],
+    "preferred_fields": [
+     "order_number",
+     "tracking_number",
+     "customer_id",
+     "invoice_number",
+     "customer_po_number",
+     "email",
+     "phone",
+     "approximate_purchase_date"
+    ]
+   },
+   "IDENTIFY_ORDER_LINE": {
+    "preferred_field_groups": [
+     "LINE_NARROWING",
+     "ORDER_ANCHOR"
+    ],
+    "preferred_fields": [
+     "product_sku",
+     "product_description",
+     "order_number",
+     "invoice_number"
+    ]
+   },
+   "IDENTIFY_SOURCE_CHANNEL": {
+    "preferred_field_groups": [
+     "ORDER_ANCHOR",
+     "SOURCE_NARROWING",
+     "CUSTOMER_ANCHOR"
+    ],
+    "preferred_fields": [
+     "order_number",
+     "purchase_channel_hint",
+     "email",
+     "phone"
+    ]
+   }
+  },
+  "max_distinct_values_for_ai": 5,
+  "max_fields_per_turn": 1,
+  "max_prompts_per_turn": 1,
+  "phrasing_owner": "LLM",
+  "version": "v2"
+ },
+ "context_assembly": {
+  "compaction": {
+   "summary_task_id": "support.context.summarize.v1",
+   "trigger_fraction_millionths": 800000
+  },
+  "pinned_fact_names": [],
+  "token_budget": 8000,
+  "tokenizer_version": "wordpiece-approx.v1"
+ },
+ "copilot": {
+  "candidate_columns": [],
+  "order_discovery_agent_id": "order-discovery-agent"
+ },
+ "discovery": {
+  "ambiguity_gap_millionths": 100000,
+  "anchor_extractors": [
+   {
+    "anchor_type": "ORDER_NUMBER",
+    "patterns": [
+     "^W[0-9]{9,12}$",
+     "\\b(?:ORD|SO)-[A-Z0-9-]{3,}\\b",
+     "\\bW[0-9]{9,12}\\b"
+    ]
+   },
+   {
+    "anchor_type": "CUSTOMER_ID",
+    "patterns": [
+     "\\b(?:CUST|PTY)-[A-Z0-9-]{3,}\\b"
+    ]
+   },
+   {
+    "anchor_type": "TRACKING_NUMBER",
+    "patterns": [
+     "\\b1Z[A-Z0-9]{10,}\\b"
+    ]
+   },
+   {
+    "anchor_type": "PHONE",
+    "patterns": [
+     "(?<!\\w)\\+?[0-9][0-9 ()-]{7,}[0-9](?!\\w)"
+    ]
+   },
+   {
+    "anchor_type": "EMAIL",
+    "patterns": [
+     "\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b"
+    ]
+   },
+   {
+    "anchor_type": "SKU",
+    "patterns": [
+     "\\b(?:SKU|PRD)-[A-Z0-9-]{3,}\\b"
+    ]
+   }
+  ],
+  "anchor_weights": {
+   "CUSTOMER_ID": 900000,
+   "CUSTOMER_NAME": 300000,
+   "EMAIL": 650000,
+   "ORDER_NUMBER": 1000000,
+   "PHONE": 650000,
+   "PRODUCT_DESCRIPTION": 250000,
+   "SKU": 450000,
+   "TRACKING_NUMBER": 850000
+  },
+  "auto_confirmation_allowed": false,
+  "conflict_penalty_millionths": 300000,
+  "conversation": {
+   "confirmation_assistant_template": "Order line {order_line_id} is now locked for return processing. Please provide the return reason, quantity, number of packages, preferred shipping method, and any optional notes.",
+   "confirmation_associate_template": "Confirmed order {order_reference}, line item {order_line_id}.",
+   "continue_match_template": "Great! Using {anchor_type} '{anchor_value}', I found {count} matching candidate order(s). Please review the updated list and confirm the item being returned.",
+   "continue_no_match_template": "I checked for {anchor_type} '{anchor_value}', but still couldn't locate a matching order in our systems. Please double-check the number or try searching by customer phone, email, or exact SKU.",
+   "greeting_patterns": [
+    "^(?:hi|hello|hey|greetings|good\\s+(?:morning|afternoon|evening)|help|start|howdy|hi\\s+there|hello\\s+there)[\\s!.,]*$"
+   ],
+   "greeting_response": "Hi there! I'm your AI Copilot, ready to help you with this return. What details do you have? You can give me an order number, a customer's name and zip code, or even just tell me what's wrong with the item.",
+   "greeting_status": "AWAITING_ANCHOR",
+   "greeting_title": "Return Assistance",
+   "initial_match_template": "I located {count} matching order(s) for {anchor_type} '{anchor_value}'. Please review the evidence below and confirm the exact customer and order line to proceed.",
+   "initial_no_match_template": "I searched our order records for {anchor_type} '{anchor_value}', but couldn't find a direct match. Could you provide another identifier such as an order number, customer ID, tracking number, or SKU?",
+   "submission_assistant_template": "Return session {session_id} has been created and transferred to Return Support processing.",
+   "submission_associate_template": "Confirmed return handling details."
+  },
+  "free_text_fallback_anchor": "PRODUCT_DESCRIPTION",
+  "identification_fields": [
+   {
+    "aliases": [
+     "order number",
+     "sales order number",
+     "web order",
+     "SO number"
+    ],
+    "clarification_priority": 20,
+    "description": "The Ferguson sales order number or web order number.",
+    "enabled": true,
+    "exact_match_bonus_millionths": 500000,
+    "field_id": "order_number",
+    "intent_key": "orderNumbers",
+    "known_values": [],
+    "label": "order number",
+    "multiple": true,
+    "normalization": "LOWER_ALPHANUMERIC",
+    "ranking_weight_millionths": 500000,
+    "searches": [
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "sales_order",
+      "field": "sales_order_number",
+      "fulltext_index": null,
+      "limit": 1,
+      "match_label": null,
+      "narrow_with": [],
+      "only_when_nothing_found": false,
+      "result_fields": [],
+      "strategy": "EXACT",
+      "value_form": "AS_TYPED"
+     }
+    ],
+    "searches_only_with": null,
+    "sensitivity": "NONE",
+    "validation_pattern": null,
+    "value_type": "STRING"
+   },
+   {
+    "aliases": [
+     "order id"
+    ],
+    "clarification_priority": 18,
+    "description": "",
+    "enabled": true,
+    "exact_match_bonus_millionths": 500000,
+    "field_id": "order_id",
+    "intent_key": "orderIds",
+    "known_values": [],
+    "label": "order identifier",
+    "multiple": true,
+    "normalization": "LOWER_ALPHANUMERIC",
+    "ranking_weight_millionths": 500000,
+    "searches": [
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "sales_order",
+      "field": "sales_order_number",
+      "fulltext_index": null,
+      "limit": 1,
+      "match_label": null,
+      "narrow_with": [],
+      "only_when_nothing_found": false,
+      "result_fields": [],
+      "strategy": "EXACT",
+      "value_form": "AS_TYPED"
+     }
+    ],
+    "searches_only_with": null,
+    "sensitivity": "NONE",
+    "validation_pattern": null,
+    "value_type": "STRING"
+   },
+   {
+    "aliases": [
+     "customer name",
+     "company name",
+     "business name",
+     "account name"
+    ],
+    "clarification_priority": 85,
+    "description": "Customer or company name as it appears on the order.",
+    "enabled": true,
+    "exact_match_bonus_millionths": 0,
+    "field_id": "customer_name",
+    "intent_key": "customerNames",
+    "known_values": [],
+    "label": "name on the order",
+    "multiple": true,
+    "normalization": "LOWER_ALPHANUMERIC",
+    "ranking_weight_millionths": 300000,
+    "searches": [
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "customer",
+      "field": "customer_name",
+      "fulltext_index": null,
+      "limit": 25,
+      "match_label": null,
+      "narrow_with": [
+       {
+        "intent_key": "productNames",
+        "path": [
+         {
+          "direction": "INBOUND",
+          "relationship": "order_has_line",
+          "target": "sales_order"
+         },
+         {
+          "direction": "INBOUND",
+          "relationship": "customer_placed_order",
+          "target": "customer"
+         }
+        ]
+       },
+       {
+        "intent_key": "streetAddresses",
+        "path": [
+         {
+          "direction": "INBOUND",
+          "relationship": "customer_has_contact_point",
+          "target": "customer"
+         }
+        ]
+       },
+       {
+        "intent_key": "cities",
+        "path": [
+         {
+          "direction": "INBOUND",
+          "relationship": "customer_has_contact_point",
+          "target": "customer"
+         }
+        ]
+       },
+       {
+        "intent_key": "states",
+        "path": [
+         {
+          "direction": "INBOUND",
+          "relationship": "customer_has_contact_point",
+          "target": "customer"
+         }
+        ]
+       },
+       {
+        "intent_key": "postalCodes",
+        "path": [
+         {
+          "direction": "INBOUND",
+          "relationship": "customer_has_contact_point",
+          "target": "customer"
+         }
+        ]
+       },
+       {
+        "intent_key": "emails",
+        "path": [
+         {
+          "direction": "INBOUND",
+          "relationship": "customer_has_contact_point",
+          "target": "customer"
+         }
+        ]
+       },
+       {
+        "intent_key": "phones",
+        "path": [
+         {
+          "direction": "INBOUND",
+          "relationship": "customer_has_contact_point",
+          "target": "customer"
+         }
+        ]
+       }
+      ],
+      "only_when_nothing_found": false,
+      "result_fields": [],
+      "strategy": "CONTAINS",
+      "value_form": "AS_TYPED"
+     },
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "customer",
+      "field": "customer_name",
+      "fulltext_index": null,
+      "limit": 25,
+      "match_label": "customer_name_fuzzy",
+      "narrow_with": [],
+      "only_when_nothing_found": true,
+      "result_fields": [
+       "account_id",
+       "customer_id",
+       "customer_name"
+      ],
+      "strategy": "FULLTEXT",
+      "value_form": "AS_TYPED"
+     },
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 500000,
+      "entity": "contact_point",
+      "field": "contact_first_name",
+      "fulltext_index": null,
+      "limit": 10,
+      "match_label": "contact_name_fallback",
+      "narrow_with": [],
+      "only_when_nothing_found": true,
+      "result_fields": [
+       "account_id",
+       "customer_id",
+       "customer_name",
+       "contact_first_name",
+       "contact_last_name"
+      ],
+      "strategy": "CONTAINS",
+      "value_form": "AS_TYPED"
+     },
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 500000,
+      "entity": "contact_point",
+      "field": "contact_last_name",
+      "fulltext_index": null,
+      "limit": 10,
+      "match_label": "contact_name_fallback",
+      "narrow_with": [],
+      "only_when_nothing_found": true,
+      "result_fields": [
+       "account_id",
+       "customer_id",
+       "customer_name",
+       "contact_first_name",
+       "contact_last_name"
+      ],
+      "strategy": "CONTAINS",
+      "value_form": "AS_TYPED"
+     },
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 450000,
+      "entity": "contact_point",
+      "field": "contact_first_name",
+      "fulltext_index": "contact_name_search_v1",
+      "limit": 25,
+      "match_label": "contact_name_fallback",
+      "narrow_with": [],
+      "only_when_nothing_found": true,
+      "result_fields": [
+       "account_id",
+       "customer_id",
+       "customer_name",
+       "contact_first_name",
+       "contact_last_name"
+      ],
+      "strategy": "FULLTEXT",
+      "value_form": "AS_TYPED"
+     }
+    ],
+    "searches_only_with": null,
+    "sensitivity": "PERSONAL",
+    "validation_pattern": null,
+    "value_type": "STRING"
+   },
+   {
+    "aliases": [
+     "contact",
+     "contact name",
+     "person",
+     "person name",
+     "attention",
+     "attn",
+     "ordered by"
+    ],
+    "clarification_priority": 40,
+    "description": "Given or family name of the contact, not the company.",
+    "enabled": true,
+    "exact_match_bonus_millionths": 100000,
+    "field_id": "contact_name",
+    "intent_key": "contactNames",
+    "known_values": [],
+    "label": "name of the person on the order's contact row",
+    "multiple": true,
+    "normalization": "LOWER_ALPHANUMERIC",
+    "ranking_weight_millionths": 120000,
+    "searches": [
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "contact_point",
+      "field": "contact_first_name",
+      "fulltext_index": null,
+      "limit": 10,
+      "match_label": null,
+      "narrow_with": [],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "account_id",
+       "customer_id",
+       "customer_name",
+       "contact_first_name",
+       "contact_last_name"
+      ],
+      "strategy": "CONTAINS",
+      "value_form": "AS_TYPED"
+     },
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "contact_point",
+      "field": "contact_last_name",
+      "fulltext_index": null,
+      "limit": 10,
+      "match_label": null,
+      "narrow_with": [],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "account_id",
+       "customer_id",
+       "customer_name",
+       "contact_first_name",
+       "contact_last_name"
+      ],
+      "strategy": "CONTAINS",
+      "value_form": "AS_TYPED"
+     },
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 550000,
+      "entity": "contact_point",
+      "field": "contact_first_name",
+      "fulltext_index": "contact_name_search_v1",
+      "limit": 25,
+      "match_label": "contact_name_fuzzy",
+      "narrow_with": [],
+      "only_when_nothing_found": true,
+      "result_fields": [
+       "account_id",
+       "customer_id",
+       "customer_name",
+       "contact_first_name",
+       "contact_last_name"
+      ],
+      "strategy": "FULLTEXT",
+      "value_form": "AS_TYPED"
+     }
+    ],
+    "searches_only_with": null,
+    "sensitivity": "PERSONAL",
+    "validation_pattern": null,
+    "value_type": "STRING"
+   },
+   {
+    "aliases": [
+     "email",
+     "email address",
+     "e-mail"
+    ],
+    "clarification_priority": 95,
+    "description": "",
+    "enabled": true,
+    "exact_match_bonus_millionths": 250000,
+    "field_id": "email",
+    "intent_key": "emails",
+    "known_values": [],
+    "label": "email used on the order",
+    "multiple": true,
+    "normalization": "LOWER_ALPHANUMERIC",
+    "ranking_weight_millionths": 200000,
+    "searches": [
+     {
+      "applies_when_pattern": "@",
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "contact_point",
+      "field": "email",
+      "fulltext_index": null,
+      "limit": 5,
+      "match_label": null,
+      "narrow_with": [
+       {
+        "intent_key": "customerNames",
+        "path": [
+         {
+          "direction": "OUTBOUND",
+          "relationship": "customer_has_contact_point",
+          "target": "contact_point"
+         }
+        ]
+       }
+      ],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "account_id",
+       "customer_id",
+       "customer_name",
+       "email"
+      ],
+      "strategy": "EXACT",
+      "value_form": "AS_TYPED"
+     },
+     {
+      "applies_when_pattern": "^[^@]*$",
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "contact_point",
+      "field": "email",
+      "fulltext_index": null,
+      "limit": 5,
+      "match_label": null,
+      "narrow_with": [
+       {
+        "intent_key": "customerNames",
+        "path": [
+         {
+          "direction": "OUTBOUND",
+          "relationship": "customer_has_contact_point",
+          "target": "contact_point"
+         }
+        ]
+       }
+      ],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "account_id",
+       "customer_id",
+       "customer_name",
+       "email"
+      ],
+      "strategy": "CONTAINS",
+      "value_form": "AS_TYPED"
+     }
+    ],
+    "searches_only_with": null,
+    "sensitivity": "CONTACT",
+    "validation_pattern": null,
+    "value_type": "STRING"
+   },
+   {
+    "aliases": [
+     "phone",
+     "phone number",
+     "telephone",
+     "mobile",
+     "cell"
+    ],
+    "clarification_priority": 90,
+    "description": "",
+    "enabled": true,
+    "exact_match_bonus_millionths": 200000,
+    "field_id": "phone",
+    "intent_key": "phones",
+    "known_values": [],
+    "label": "phone number used on the order",
+    "multiple": true,
+    "normalization": "DIGITS",
+    "ranking_weight_millionths": 200000,
+    "searches": [
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "contact_point",
+      "field": "phone_number",
+      "fulltext_index": null,
+      "limit": 5,
+      "match_label": null,
+      "narrow_with": [
+       {
+        "intent_key": "customerNames",
+        "path": [
+         {
+          "direction": "OUTBOUND",
+          "relationship": "customer_has_contact_point",
+          "target": "contact_point"
+         }
+        ]
+       }
+      ],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "account_id",
+       "customer_id",
+       "customer_name",
+       "phone_number"
+      ],
+      "strategy": "EXACT",
+      "value_form": "AS_TYPED"
+     },
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "contact_point",
+      "field": "phone_number",
+      "fulltext_index": null,
+      "limit": 5,
+      "match_label": null,
+      "narrow_with": [
+       {
+        "intent_key": "customerNames",
+        "path": [
+         {
+          "direction": "OUTBOUND",
+          "relationship": "customer_has_contact_point",
+          "target": "contact_point"
+         }
+        ]
+       }
+      ],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "account_id",
+       "customer_id",
+       "customer_name",
+       "phone_number"
+      ],
+      "strategy": "CONTAINS",
+      "value_form": "DIGITS"
+     },
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "sales_order",
+      "field": "ship_to_phone",
+      "fulltext_index": null,
+      "limit": 5,
+      "match_label": null,
+      "narrow_with": [],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "sales_order_number",
+       "customer_id",
+       "ship_to_phone"
+      ],
+      "strategy": "EXACT",
+      "value_form": "DIGITS"
+     }
+    ],
+    "searches_only_with": null,
+    "sensitivity": "CONTACT",
+    "validation_pattern": null,
+    "value_type": "STRING"
+   },
+   {
+    "aliases": [
+     "street",
+     "address",
+     "street address",
+     "delivery address"
+    ],
+    "clarification_priority": 58,
+    "description": "",
+    "enabled": true,
+    "exact_match_bonus_millionths": 0,
+    "field_id": "street_address",
+    "intent_key": "streetAddresses",
+    "known_values": [],
+    "label": "street address",
+    "multiple": true,
+    "normalization": "LOWER_ALPHANUMERIC",
+    "ranking_weight_millionths": 300000,
+    "searches": [
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "contact_point",
+      "field": "address_line1",
+      "fulltext_index": null,
+      "limit": 10,
+      "match_label": null,
+      "narrow_with": [
+       {
+        "intent_key": "customerNames",
+        "path": [
+         {
+          "direction": "OUTBOUND",
+          "relationship": "customer_has_contact_point",
+          "target": "contact_point"
+         }
+        ]
+       }
+      ],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "account_id",
+       "customer_id",
+       "customer_name",
+       "address_line1"
+      ],
+      "strategy": "CONTAINS",
+      "value_form": "AS_TYPED"
+     }
+    ],
+    "searches_only_with": null,
+    "sensitivity": "PERSONAL",
+    "validation_pattern": null,
+    "value_type": "STRING"
+   },
+   {
+    "aliases": [
+     "city",
+     "town"
+    ],
+    "clarification_priority": 57,
+    "description": "",
+    "enabled": true,
+    "exact_match_bonus_millionths": 0,
+    "field_id": "city",
+    "intent_key": "cities",
+    "known_values": [],
+    "label": "city on the order",
+    "multiple": true,
+    "normalization": "LOWER_ALPHANUMERIC",
+    "ranking_weight_millionths": 150000,
+    "searches": [
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "contact_point",
+      "field": "city",
+      "fulltext_index": null,
+      "limit": 10,
+      "match_label": null,
+      "narrow_with": [
+       {
+        "intent_key": "customerNames",
+        "path": [
+         {
+          "direction": "OUTBOUND",
+          "relationship": "customer_has_contact_point",
+          "target": "contact_point"
+         }
+        ]
+       }
+      ],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "account_id",
+       "customer_id",
+       "customer_name",
+       "city"
+      ],
+      "strategy": "CONTAINS",
+      "value_form": "AS_TYPED"
+     },
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "sales_order",
+      "field": "ship_to_city",
+      "fulltext_index": null,
+      "limit": 10,
+      "match_label": null,
+      "narrow_with": [],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "sales_order_number",
+       "customer_id",
+       "ship_to_city"
+      ],
+      "strategy": "CONTAINS",
+      "value_form": "AS_TYPED"
+     }
+    ],
+    "searches_only_with": null,
+    "sensitivity": "NONE",
+    "validation_pattern": null,
+    "value_type": "STRING"
+   },
+   {
+    "aliases": [
+     "state",
+     "province"
+    ],
+    "clarification_priority": 54,
+    "description": "",
+    "enabled": true,
+    "exact_match_bonus_millionths": 0,
+    "field_id": "state",
+    "intent_key": "states",
+    "known_values": [],
+    "label": "state on the order",
+    "multiple": true,
+    "normalization": "LOWER_ALPHANUMERIC",
+    "ranking_weight_millionths": 50000,
+    "searches": [
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "contact_point",
+      "field": "state",
+      "fulltext_index": null,
+      "limit": 10,
+      "match_label": null,
+      "narrow_with": [
+       {
+        "intent_key": "customerNames",
+        "path": [
+         {
+          "direction": "OUTBOUND",
+          "relationship": "customer_has_contact_point",
+          "target": "contact_point"
+         }
+        ]
+       }
+      ],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "account_id",
+       "customer_id",
+       "customer_name",
+       "state"
+      ],
+      "strategy": "EXACT",
+      "value_form": "AS_TYPED"
+     },
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "sales_order",
+      "field": "ship_to_state",
+      "fulltext_index": null,
+      "limit": 10,
+      "match_label": null,
+      "narrow_with": [],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "sales_order_number",
+       "customer_id",
+       "ship_to_state"
+      ],
+      "strategy": "EXACT",
+      "value_form": "AS_TYPED"
+     }
+    ],
+    "searches_only_with": null,
+    "sensitivity": "NONE",
+    "validation_pattern": null,
+    "value_type": "STRING"
+   },
+   {
+    "aliases": [
+     "zip",
+     "ZIP code",
+     "postcode",
+     "postal code"
+    ],
+    "clarification_priority": 75,
+    "description": "",
+    "enabled": true,
+    "exact_match_bonus_millionths": 0,
+    "field_id": "postal_code",
+    "intent_key": "postalCodes",
+    "known_values": [],
+    "label": "ZIP code on the order",
+    "multiple": true,
+    "normalization": "LOWER_ALPHANUMERIC",
+    "ranking_weight_millionths": 200000,
+    "searches": [
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "contact_point",
+      "field": "postal_code",
+      "fulltext_index": null,
+      "limit": 10,
+      "match_label": null,
+      "narrow_with": [
+       {
+        "intent_key": "customerNames",
+        "path": [
+         {
+          "direction": "OUTBOUND",
+          "relationship": "customer_has_contact_point",
+          "target": "contact_point"
+         }
+        ]
+       }
+      ],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "account_id",
+       "customer_id",
+       "customer_name",
+       "postal_code"
+      ],
+      "strategy": "EXACT",
+      "value_form": "AS_TYPED"
+     },
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "sales_order",
+      "field": "ship_to_postal_code",
+      "fulltext_index": null,
+      "limit": 10,
+      "match_label": null,
+      "narrow_with": [],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "sales_order_number",
+       "customer_id",
+       "ship_to_postal_code"
+      ],
+      "strategy": "EXACT",
+      "value_form": "AS_TYPED"
+     }
+    ],
+    "searches_only_with": null,
+    "sensitivity": "NONE",
+    "validation_pattern": null,
+    "value_type": "STRING"
+   },
+   {
+    "aliases": [
+     "sku",
+     "item number",
+     "part number",
+     "product code"
+    ],
+    "clarification_priority": 70,
+    "description": "",
+    "enabled": true,
+    "exact_match_bonus_millionths": 200000,
+    "field_id": "sku",
+    "intent_key": "skus",
+    "known_values": [],
+    "label": "SKU or item number",
+    "multiple": true,
+    "normalization": "LOWER_ALPHANUMERIC",
+    "ranking_weight_millionths": 200000,
+    "searches": [
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "product",
+      "field": "sku",
+      "fulltext_index": null,
+      "limit": 5,
+      "match_label": null,
+      "narrow_with": [],
+      "only_when_nothing_found": false,
+      "result_fields": [],
+      "strategy": "EXACT",
+      "value_form": "AS_TYPED"
+     }
+    ],
+    "searches_only_with": null,
+    "sensitivity": "NONE",
+    "validation_pattern": null,
+    "value_type": "STRING"
+   },
+   {
+    "aliases": [
+     "product",
+     "item",
+     "description",
+     "what was ordered"
+    ],
+    "clarification_priority": 65,
+    "description": "",
+    "enabled": true,
+    "exact_match_bonus_millionths": 0,
+    "field_id": "product_description",
+    "intent_key": "productNames",
+    "known_values": [],
+    "label": "product description",
+    "multiple": true,
+    "normalization": "LOWER_ALPHANUMERIC",
+    "ranking_weight_millionths": 200000,
+    "searches": [
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "order_line",
+      "field": "product_description",
+      "fulltext_index": null,
+      "limit": 25,
+      "match_label": null,
+      "narrow_with": [
+       {
+        "intent_key": "customerNames",
+        "path": [
+         {
+          "direction": "OUTBOUND",
+          "relationship": "customer_placed_order",
+          "target": "sales_order"
+         },
+         {
+          "direction": "OUTBOUND",
+          "relationship": "order_has_line",
+          "target": "order_line"
+         }
+        ]
+       },
+       {
+        "intent_key": "colors",
+        "path": [
+         {
+          "direction": "INBOUND",
+          "relationship": "line_references_product",
+          "target": "order_line"
+         }
+        ]
+       }
+      ],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "sales_order_number",
+       "account_id",
+       "product_description",
+       "ordered_quantity"
+      ],
+      "strategy": "CONTAINS",
+      "value_form": "AS_TYPED"
+     }
+    ],
+    "searches_only_with": null,
+    "sensitivity": "NONE",
+    "validation_pattern": null,
+    "value_type": "STRING"
+   },
+   {
+    "aliases": [
+     "quantity",
+     "how many",
+     "count"
+    ],
+    "clarification_priority": 40,
+    "description": "",
+    "enabled": true,
+    "exact_match_bonus_millionths": 0,
+    "field_id": "ordered_quantity",
+    "intent_key": "quantities",
+    "known_values": [],
+    "label": "how many were ordered",
+    "multiple": true,
+    "normalization": "NONE",
+    "ranking_weight_millionths": 100000,
+    "searches": [
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "order_line",
+      "field": "ordered_quantity",
+      "fulltext_index": null,
+      "limit": 5,
+      "match_label": null,
+      "narrow_with": [
+       {
+        "intent_key": "productNames",
+        "path": []
+       }
+      ],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "sales_order_number",
+       "product_description",
+       "ordered_quantity"
+      ],
+      "strategy": "EXACT",
+      "value_form": "AS_TYPED"
+     }
+    ],
+    "searches_only_with": null,
+    "sensitivity": "NONE",
+    "validation_pattern": null,
+    "value_type": "INTEGER"
+   },
+   {
+    "aliases": [
+     "from",
+     "since",
+     "after",
+     "earliest"
+    ],
+    "clarification_priority": 60,
+    "description": "",
+    "enabled": true,
+    "exact_match_bonus_millionths": 0,
+    "field_id": "order_date_from",
+    "intent_key": "dateFrom",
+    "known_values": [],
+    "label": "earliest order date",
+    "multiple": false,
+    "normalization": "NONE",
+    "ranking_weight_millionths": 200000,
+    "searches": [
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "sales_order",
+      "field": "order_date",
+      "fulltext_index": null,
+      "limit": 10,
+      "match_label": null,
+      "narrow_with": [],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "sales_order_number",
+       "customer_id",
+       "order_date"
+      ],
+      "strategy": "GTE",
+      "value_form": "AS_TYPED"
+     }
+    ],
+    "searches_only_with": null,
+    "sensitivity": "NONE",
+    "validation_pattern": null,
+    "value_type": "DATE_LOWER_BOUND"
+   },
+   {
+    "aliases": [
+     "to",
+     "until",
+     "before",
+     "latest"
+    ],
+    "clarification_priority": 59,
+    "description": "",
+    "enabled": true,
+    "exact_match_bonus_millionths": 0,
+    "field_id": "order_date_to",
+    "intent_key": "dateTo",
+    "known_values": [],
+    "label": "latest order date",
+    "multiple": false,
+    "normalization": "NONE",
+    "ranking_weight_millionths": 200000,
+    "searches": [
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "sales_order",
+      "field": "order_date",
+      "fulltext_index": null,
+      "limit": 10,
+      "match_label": null,
+      "narrow_with": [],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "sales_order_number",
+       "customer_id",
+       "order_date"
+      ],
+      "strategy": "LTE",
+      "value_form": "AS_TYPED"
+     }
+    ],
+    "searches_only_with": null,
+    "sensitivity": "NONE",
+    "validation_pattern": null,
+    "value_type": "DATE_UPPER_BOUND"
+   },
+   {
+    "aliases": [
+     "around",
+     "roughly",
+     "about that date"
+    ],
+    "clarification_priority": 60,
+    "description": "",
+    "enabled": true,
+    "exact_match_bonus_millionths": 0,
+    "field_id": "approximate_order_date",
+    "intent_key": "approximateDate",
+    "known_values": [],
+    "label": "approximate order date",
+    "multiple": false,
+    "normalization": "NONE",
+    "ranking_weight_millionths": 200000,
+    "searches": [
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "sales_order",
+      "field": "order_date",
+      "fulltext_index": null,
+      "limit": 10,
+      "match_label": null,
+      "narrow_with": [],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "sales_order_number",
+       "customer_id",
+       "order_date"
+      ],
+      "strategy": "BETWEEN",
+      "value_form": "AS_TYPED"
+     }
+    ],
+    "searches_only_with": null,
+    "sensitivity": "NONE",
+    "validation_pattern": null,
+    "value_type": "DATE_POINT"
+   },
+   {
+    "aliases": [
+     "colour",
+     "color",
+     "finish",
+     "shade"
+    ],
+    "clarification_priority": 56,
+    "description": "The colour of the item, matched against the colour the product catalogue records for it (`product.colour_finish`, the first entry of `eco.colorFinish`). A colour is a question about a product and is searched only beside one: \"the white one\" narrows the product search to lines whose catalogue entry is white, and on its own it searches nothing -- the next question is the product. Never matched against product_description, which would put \"Blue Ridge Faucet\" in front of someone who said the tap was blue.",
+    "enabled": true,
+    "exact_match_bonus_millionths": 0,
+    "field_id": "product_colour",
+    "intent_key": "colors",
+    "known_values": [
+     "White",
+     "Black",
+     "Matte Black",
+     "Gray",
+     "Grey",
+     "Silver",
+     "Brass",
+     "Chrome",
+     "Polished Chrome",
+     "Brushed Nickel",
+     "Stainless",
+     "Copper",
+     "Bronze",
+     "Oil Rubbed Bronze",
+     "Brown",
+     "Sand",
+     "Almond",
+     "Biscuit",
+     "Bone",
+     "Blue",
+     "Green"
+    ],
+    "label": "product colour",
+    "multiple": true,
+    "normalization": "LOWER_ALPHANUMERIC",
+    "ranking_weight_millionths": 100000,
+    "searches": [
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "product",
+      "field": "colour_finish",
+      "fulltext_index": null,
+      "limit": 10,
+      "match_label": null,
+      "narrow_with": [],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "sku",
+       "product_description",
+       "colour_finish"
+      ],
+      "strategy": "CONTAINS",
+      "value_form": "AS_TYPED"
+     }
+    ],
+    "searches_only_with": "productNames",
+    "sensitivity": "NONE",
+    "validation_pattern": null,
+    "value_type": "STRING"
+   },
+   {
+    "aliases": [
+     "other details"
+    ],
+    "clarification_priority": 10,
+    "description": "",
+    "enabled": true,
+    "exact_match_bonus_millionths": 0,
+    "field_id": "free_text",
+    "intent_key": "freeTextTerms",
+    "known_values": [],
+    "label": "anything else the associate said",
+    "multiple": true,
+    "normalization": "LOWER_ALPHANUMERIC",
+    "ranking_weight_millionths": 50000,
+    "searches": [
+     {
+      "applies_when_pattern": null,
+      "deferred_score_ceiling_millionths": 600000,
+      "entity": "order_line",
+      "field": "product_description",
+      "fulltext_index": null,
+      "limit": 5,
+      "match_label": null,
+      "narrow_with": [],
+      "only_when_nothing_found": false,
+      "result_fields": [
+       "sales_order_number",
+       "product_description",
+       "ordered_quantity"
+      ],
+      "strategy": "CONTAINS",
+      "value_form": "AS_TYPED"
+     }
+    ],
+    "searches_only_with": null,
+    "sensitivity": "NONE",
+    "validation_pattern": null,
+    "value_type": "STRING"
+   }
+  ],
+  "progressive": {
+   "candidate_limit": 10,
+   "candidate_ttl_seconds": 900,
+   "customer_fulltext_index": "customer_name_search_v2",
+   "dialogue_states": {
+    "generic_disambiguation": "ORDER_DISAMBIGUATION",
+    "no_candidates": "ENTITY_IDENTIFICATION",
+    "single_candidate": "LINE_SELECTION",
+    "slot_disambiguation": "CUSTOMER_DISAMBIGUATION"
+   },
+   "disambiguation_attributes": [
+    {
+     "candidate_field": "customerName",
+     "label": "customer name",
+     "priority": 120,
+     "slot": "customer_name"
+    },
+    {
+     "candidate_field": "billingCity",
+     "label": "customer account city",
+     "priority": 100,
+     "slot": "billing_city"
+    },
+    {
+     "candidate_field": "postalCode",
+     "label": "customer account postal code",
+     "priority": 90,
+     "slot": "postal_code"
+    },
+    {
+     "candidate_field": "accountType",
+     "label": "customer account type",
+     "priority": 80,
+     "slot": "account_type"
+    },
+    {
+     "candidate_field": "productDescription",
+     "label": "product",
+     "priority": 75,
+     "slot": "product_description"
+    },
+    {
+     "candidate_field": "orderStatus",
+     "label": "order status",
+     "priority": 70,
+     "slot": "order_status"
+    },
+    {
+     "candidate_field": "orderReference",
+     "label": "order number",
+     "priority": 10,
+     "slot": "order_number"
+    }
+   ],
+   "enabled": true,
+   "fuzzy_search_anchors": [
+    "CUSTOMER_NAME",
+    "PRODUCT_DESCRIPTION",
+    "SHIPPING_ADDRESS",
+    "ZIP_CODE",
+    "DATE_RANGE",
+    "PRODUCT_COLOUR"
+   ],
+   "max_clarification_options": 10,
+   "max_edit_distance": 2,
+   "one_edit_min_token_length": 4,
+   "product_fulltext_index": "product_description_search_v2",
+   "two_edit_min_token_length": 8,
+   "weak_anchor_source_fallback_enabled": true,
+   "weak_anchor_targeted_graph_upsert_enabled": false
+  },
+  "strong_anchors": [
+   "ORDER_NUMBER",
+   "CUSTOMER_ID",
+   "TRACKING_NUMBER",
+   "PHONE",
+   "EMAIL"
+  ],
+  "web_order_pattern": "^W[0-9]{9,12}$"
+ },
+ "extensions": {
+  "document_artifact_metadata": true,
+  "image_processing": false,
+  "ncr_workflow": false,
+  "ocr_processing": false,
+  "vendor_recovery_workflow": true
+ },
+ "feature_flags": {
+  "copilot_operations_console": false,
+  "graph_first_runtime_configuration": true,
+  "order_discovery_copilot": true,
+  "reusable_conversation_engine": true
+ },
+ "housekeeping": {
+  "ai_interceptions": {
+   "batch_limit": 200,
+   "enabled": true
+  },
+  "enabled": true,
+  "graph_generations": {
+   "abandoned_build_seconds": 21600,
+   "batch_limit": 5,
+   "enabled": true,
+   "node_delete_batch_size": 1000,
+   "orphaned_active_seconds": 86400,
+   "retention_seconds": 86400
+  },
+  "interval_seconds": 900,
+  "order_line_reservations": {
+   "batch_limit": 200,
+   "enabled": true
+  },
+  "probe_databases": {
+   "batch_limit": 50,
+   "enabled": true,
+   "minimum_age_seconds": 3600,
+   "name_suffixes": [
+    "_probe"
+   ]
+  },
+  "stalled_sync_runs": {
+   "batch_limit": 20,
+   "enabled": true,
+   "stall_seconds": 150
+  },
+  "temporal_executions": {
+   "batch_limit": 500,
+   "enabled": true,
+   "minimum_age_seconds": 3600,
+   "reclaimable_task_queue_prefixes": [
+    "test-",
+    "reasoning-"
+   ]
+  }
+ },
+ "integrations": {
+  "carrier_booking": {
+   "ai_may_fabricate_success": false,
+   "authority": "CARRIER_OR_TMS",
+   "enabled": true,
+   "topic": "carrier.return.book"
+  },
+  "customer_notification": {
+   "ai_may_fabricate_success": false,
+   "authority": "NOTIFICATION_PROVIDER",
+   "enabled": true,
+   "topic": "customer.return.notify"
+  },
+  "external_support_mirror": {
+   "ai_may_fabricate_success": false,
+   "authority": "EXTERNAL_TICKET_SYSTEM",
+   "enabled": false,
+   "topic": "return-support.ticket.create"
+  },
+  "omc_return_create": {
+   "ai_may_fabricate_success": false,
+   "authority": "OMC",
+   "enabled": true,
+   "topic": "omc.return.create"
+  }
+ },
+ "omc": {
+  "customer_return_display": {
+   "V1": "Return {id}",
+   "V2": "RMA {id}"
+  },
+  "license_plate_implies_receipt": true,
+  "normalized_statuses": {
+   "CANCELLED": "CANCELLED",
+   "CREDITED": "CUSTOMER_RESOLUTION_COMPLETE",
+   "DENIED": "REJECTED",
+   "ENTERED": "IN_PROGRESS",
+   "ISSUED": "IN_PROGRESS",
+   "PROCESSED": "PHYSICAL_COMPLETE",
+   "REFUNDED": "CUSTOMER_RESOLUTION_COMPLETE",
+   "REQUESTED": "IN_PROGRESS"
+  },
+  "rga_is_customer_return": false,
+  "tendered_is_pickup": false,
+  "v1_customer_return_table": "omc.dbo.returns",
+  "v2_customer_return_table": "omc.returns.returnMerchandiseAuthorization"
+ },
+ "policy_evaluation": {
+  "disabled_reason": null,
+  "enabled": true
+ },
+ "return_case": {
+  "bay_wait_seconds": 120,
+  "business_calendar_id": "default",
+  "item_reservation_ttl_seconds": 1800,
+  "max_reminders": 3,
+  "on_reminders_exhausted": "PARK_FOR_OPERATIONS",
+  "reminder_interval_seconds": 7200,
+  "return_details_required": true,
+  "return_details_wait_seconds": 1800,
+  "support_response_wait_seconds": 1800,
+  "timezone": "UTC"
+ },
+ "return_eligibility_policy": {
+  "authority": "FERGUSON_PUBLIC_TERMS",
+  "delivery_claim": {
+   "conditions": [
+    "SHIPPING_DAMAGE",
+    "SHORTAGE",
+    "SHIPMENT_ERROR",
+    "IMPROPER_DELIVERY"
+   ],
+   "reporting_window": {
+    "basis": "DELIVERY_DATE",
+    "business_days": 2
+   }
+  },
+  "id": "ferguson-standard-return-policy",
+  "outside_standard_window": {
+   "decision": "REVIEW_REQUIRED",
+   "reason_code": "OUTSIDE_STANDARD_RETURN_WINDOW"
+  },
+  "precedence": [
+   "CUSTOMER_CONTRACT_OVERRIDE",
+   "SPECIAL_ORDER_MANUFACTURER_POLICY",
+   "FERGUSON_STANDARD_RETURN"
+  ],
+  "restocking_fee": {
+   "amount": null,
+   "amount_source": [
+    "SELLER_CONFIGURATION",
+    "SELLER_OVERRIDE",
+    "MANUFACTURER"
+   ],
+   "applies_by_default": true,
+   "invent_default_amount": false,
+   "percentage": null,
+   "seller_can_waive": true,
+   "seller_schedule": {
+    "currency": "USD",
+    "default_rate_basis_points": 1500
+   }
+  },
+  "source_document": "Ferguson Terms and Conditions of Sale",
+  "source_revision": "Terms and Conditions of Sale - Rev. May 2025",
+  "special_or_nonstock": {
+   "buyer_fee_acceptance_required": true,
+   "decisions": {
+    "manufacturer_acceptance_accepted_buyer_fee_accepted": "APPROVE",
+    "manufacturer_acceptance_accepted_buyer_fee_rejected": "REJECT",
+    "manufacturer_acceptance_accepted_buyer_fee_unknown": "REVIEW_REQUIRED",
+    "manufacturer_acceptance_rejected": "REJECT",
+    "manufacturer_acceptance_unknown": "REVIEW_REQUIRED"
+   },
+   "manufacturer_acceptance_required": true
+  },
+  "standard_stock_return": {
+   "conditions": [
+    "RESTOCKING_FEE_APPLIES"
+   ],
+   "decision_when_satisfied": "APPROVE",
+   "purchase_window": {
+    "basis": "PURCHASE_DATE",
+    "days": 30
+   },
+   "requirements": {
+    "condition": {
+     "all_original_parts": true,
+     "new": true,
+     "original_packaging": true,
+     "packaging_undamaged": true,
+     "suitable_for_resale": true
+    },
+    "prohibited_states": {
+     "altered": false,
+     "damaged": false,
+     "installed": false,
+     "modified": false,
+     "rebuilt": false,
+     "reconditioned": false,
+     "repaired": false,
+     "used": false
+    },
+    "seller_stocked": true,
+    "special_order": false
+   },
+   "unstated_condition_facts": "REVIEW_REQUIRED"
+  },
+  "stock_classification": {
+   "special_order_product_ids": [],
+   "special_order_sku_prefixes": [],
+   "special_order_skus": [],
+   "unresolved_default": "STANDARD_STOCK"
+  },
+  "version": "2026-08-15",
+  "warranty_issue": {
+   "reasons": [
+    "MANUFACTURING_DEFECT",
+    "PRODUCT_FAILURE_AFTER_INSTALLATION",
+    "COVERED_PRIVATE_LABEL_DEFECT",
+    "MANUFACTURER_WARRANTY_ISSUE"
+   ]
+  }
+ },
+ "return_policy": {
+  "bol_tendering_instruction_types": [
+   "LTL",
+   "BOL",
+   "BRANCH_LTL",
+   "OFFSITE_LTL",
+   "HEAVY_TRUCK_PICKUP"
+  ],
+  "branch_staging": {
+   "allow_branch_inventory_addition": false,
+   "allow_manufacturer_box_marking": false,
+   "require_return_number_tag": true
+  },
+  "heavy_pickup_required_fields": [
+   "address",
+   "contact_name",
+   "contact_phone",
+   "handling_unit_count",
+   "estimated_weight",
+   "dimensions",
+   "palletized",
+   "available_windows"
+  ],
+  "normalized_return_methods": [
+   "PREPAID_PARCEL",
+   "BRANCH_UPS",
+   "BRANCH_LTL",
+   "OFFSITE_PARCEL",
+   "OFFSITE_LTL",
+   "DIRECT_VENDOR",
+   "FIELD_SCRAP",
+   "NO_PHYSICAL_RETURN",
+   "CUSTOMER_KEEP",
+   "UNKNOWN"
+  ],
+  "photo_required_reason_codes": [
+   "DAMAGED",
+   "DEFECTIVE",
+   "WRONG_ITEM"
+  ],
+  "return_method_derivation": {
+   "default_method": "BRANCH_UPS",
+   "freight_keywords": [
+    "WATER HEATER",
+    "WHTR",
+    "BOILER",
+    "FURNACE",
+    "BATHTUB",
+    "CAST IRON",
+    "AIR HANDLER",
+    "CONDENSER",
+    "VANITY",
+    "TOILET"
+   ],
+   "freight_method": "BRANCH_LTL",
+   "ship_via_methods": {
+    "CPU": "BRANCH_UPS",
+    "M": "PREPAID_PARCEL",
+    "OT": "BRANCH_LTL",
+    "WCL": "BRANCH_UPS",
+    "XPW": "PREPAID_PARCEL"
+   }
+  },
+  "return_method_requirements": [
+   {
+    "method": "PREPAID_PARCEL",
+    "requires": [
+     "RMA",
+     "LABEL",
+     "TRACKING",
+     "RECEIPT"
+    ]
+   },
+   {
+    "method": "BRANCH_LTL",
+    "requires": [
+     "RMA",
+     "BOL",
+     "PICKUP",
+     "RECEIPT"
+    ]
+   },
+   {
+    "method": "OFFSITE_LTL",
+    "requires": [
+     "RMA",
+     "BOL",
+     "PICKUP",
+     "RETURN_LOCATION",
+     "RECEIPT"
+    ]
+   },
+   {
+    "method": "CUSTOMER_KEEP",
+    "requires": [
+     "RMA"
+    ]
+   },
+   {
+    "method": "NO_PHYSICAL_RETURN",
+    "requires": [
+     "RMA"
+    ]
+   },
+   {
+    "method": "BRANCH_UPS",
+    "requires": [
+     "RMA",
+     "LABEL",
+     "TRACKING",
+     "RECEIPT"
+    ]
+   },
+   {
+    "method": "OFFSITE_PARCEL",
+    "requires": [
+     "RMA",
+     "LABEL",
+     "TRACKING",
+     "RETURN_LOCATION",
+     "RECEIPT"
+    ]
+   },
+   {
+    "method": "DIRECT_VENDOR",
+    "requires": [
+     "RMA",
+     "RETURN_LOCATION"
+    ]
+   },
+   {
+    "method": "FIELD_SCRAP",
+    "requires": [
+     "RMA"
+    ]
+   }
+  ],
+  "rga_required_product_resolutions": [
+   "RTV"
+  ],
+  "supported_product_presence": [
+   "PRESENT_AT_BRANCH",
+   "OFFSITE_CUSTOMER_RESIDENCE",
+   "OFFSITE_CUSTOMER_JOBSITE",
+   "OFFSITE_COMMERCIAL_SITE",
+   "OFFSITE_VENDOR_SITE",
+   "OFFSITE_OTHER",
+   "NOT_APPLICABLE"
+  ]
+ },
+ "runtime_integrations": {
+  "ai_providers": [],
+  "data_sources": [
+   {
+    "access_mode": "READ_WRITE",
+    "bootstrap_managed": true,
+    "credential": null,
+    "database": "return_platform",
+    "enabled": true,
+    "host": null,
+    "port": null,
+    "priority": 1,
+    "required_datasets": [
+     "associate_conversations",
+     "discovery_locks"
+    ],
+    "source_key": "platform-mongodb",
+    "source_type": "MONGODB",
+    "uri": "mongodb://runtime-resolved.invalid/return_platform",
+    "username": null,
+    "validation_configuration_checksum": null,
+    "validation_receipt_id": null
+   },
+   {
+    "access_mode": "READ_ONLY",
+    "bootstrap_managed": true,
+    "credential": null,
+    "database": "return_source",
+    "enabled": true,
+    "host": null,
+    "port": null,
+    "priority": 1,
+    "required_datasets": [
+     "customers",
+     "salesInv",
+     "products"
+    ],
+    "source_key": "source-mongodb",
+    "source_type": "MONGODB",
+    "uri": "mongodb://runtime-resolved.invalid/return_source",
+    "username": null,
+    "validation_configuration_checksum": null,
+    "validation_receipt_id": null
+   },
+   {
+    "access_mode": "READ_WRITE",
+    "bootstrap_managed": true,
+    "credential": null,
+    "database": "neo4j",
+    "enabled": true,
+    "host": null,
+    "port": null,
+    "priority": 1,
+    "required_datasets": [
+     "customer_name_search_v2",
+     "product_description_search_v2"
+    ],
+    "source_key": "configuration-neo4j",
+    "source_type": "NEO4J",
+    "uri": "bolt://runtime-resolved.invalid:7687",
+    "username": "neo4j",
+    "validation_configuration_checksum": null,
+    "validation_receipt_id": null
+   },
+   {
+    "access_mode": "READ_ONLY",
+    "bootstrap_managed": true,
+    "credential": null,
+    "database": "return_platform",
+    "enabled": true,
+    "host": "runtime-resolved.invalid",
+    "port": 1433,
+    "priority": 1,
+    "required_datasets": [],
+    "source_key": "omc-sqlserver",
+    "source_type": "SQLSERVER",
+    "uri": null,
+    "username": "sa",
+    "validation_configuration_checksum": null,
+    "validation_receipt_id": null
+   },
+   {
+    "access_mode": "READ_WRITE",
+    "bootstrap_managed": true,
+    "credential": null,
+    "database": null,
+    "enabled": true,
+    "host": "runtime-resolved.invalid",
+    "port": 6379,
+    "priority": 1,
+    "required_datasets": [],
+    "source_key": "valkey",
+    "source_type": "VALKEY",
+    "uri": null,
+    "username": null,
+    "validation_configuration_checksum": null,
+    "validation_receipt_id": null
+   },
+   {
+    "access_mode": "READ_WRITE",
+    "bootstrap_managed": true,
+    "credential": null,
+    "database": null,
+    "enabled": true,
+    "host": "runtime-resolved.invalid",
+    "port": 7233,
+    "priority": 1,
+    "required_datasets": [],
+    "source_key": "temporal",
+    "source_type": "TEMPORAL",
+    "uri": null,
+    "username": null,
+    "validation_configuration_checksum": null,
+    "validation_receipt_id": null
+   }
+  ]
+ },
+ "schema_version": "1.0",
+ "selection_vocabulary": {
+  "conditions": [
+   "NEW_IN_ORIGINAL_PACKAGING",
+   "NEW_PACKAGING_OPENED",
+   "NEW_PACKAGING_DAMAGED",
+   "MISSING_ORIGINAL_PARTS",
+   "USED",
+   "INSTALLED",
+   "MODIFIED",
+   "REBUILT",
+   "RECONDITIONED",
+   "REPAIRED",
+   "ALTERED",
+   "DAMAGED"
+  ],
+  "reasons": [
+   "SHIPPING_DAMAGE",
+   "SHORTAGE",
+   "SHIPMENT_ERROR",
+   "IMPROPER_DELIVERY",
+   "MANUFACTURING_DEFECT",
+   "PRODUCT_FAILURE_AFTER_INSTALLATION",
+   "COVERED_PRIVATE_LABEL_DEFECT",
+   "MANUFACTURER_WARRANTY_ISSUE",
+   "CHANGED_MIND",
+   "ORDERED_IN_ERROR",
+   "NO_LONGER_NEEDED",
+   "OTHER"
+  ]
+ },
+ "shipment_tracking": {
+  "collection": "shipmentInfo",
+  "fields": {},
+  "freight_methods": [
+   "BRANCH_LTL",
+   "OFFSITE_LTL"
+  ],
+  "initial_status_freight": "bol_created",
+  "initial_status_parcel": "label_created",
+  "source_constants": {
+   "shipmentInfoEventData.srcSystem": "RETURN_PLATFORM"
+  },
+  "source_mirror": {
+   "shipmentInfoEventData.currentStatus": "current_status",
+   "shipmentInfoEventData.shipmentId": "shipment_id",
+   "shipmentInfoEventData.trilOrdNum": "rma_reference",
+   "shipmentInfoEventData.trkNum": "tracking_reference",
+   "shipmentInfoEventMeta.lastUpdateTs": "updated_at"
+  },
+  "statuses": [
+   {
+    "allowed_next": [
+     "picked_up",
+     "exception",
+     "return_to_sender"
+    ],
+    "code": "label_created",
+    "color_token": "progress",
+    "exception_state": false,
+    "label": "Label created",
+    "ladder": "parcel",
+    "ordinal": 0,
+    "projection_status": "AWAITING_HANDOFF",
+    "terminal": false
+   },
+   {
+    "allowed_next": [
+     "in_transit",
+     "exception",
+     "return_to_sender"
+    ],
+    "code": "picked_up",
+    "color_token": "progress",
+    "exception_state": false,
+    "label": "Picked up",
+    "ladder": "parcel",
+    "ordinal": 1,
+    "projection_status": "IN_TRANSIT",
+    "terminal": false
+   },
+   {
+    "allowed_next": [
+     "arrived_at_facility",
+     "out_for_delivery",
+     "exception",
+     "return_to_sender"
+    ],
+    "code": "in_transit",
+    "color_token": "progress",
+    "exception_state": false,
+    "label": "In transit",
+    "ladder": "parcel",
+    "ordinal": 2,
+    "projection_status": "IN_TRANSIT",
+    "terminal": false
+   },
+   {
+    "allowed_next": [
+     "in_transit",
+     "out_for_delivery",
+     "exception",
+     "return_to_sender"
+    ],
+    "code": "arrived_at_facility",
+    "color_token": "progress",
+    "exception_state": false,
+    "label": "At carrier hub",
+    "ladder": "parcel",
+    "ordinal": 3,
+    "projection_status": "IN_TRANSIT",
+    "terminal": false
+   },
+   {
+    "allowed_next": [
+     "delivered",
+     "delivery_attempted",
+     "exception",
+     "return_to_sender"
+    ],
+    "code": "out_for_delivery",
+    "color_token": "progress",
+    "exception_state": false,
+    "label": "Out for delivery",
+    "ladder": "parcel",
+    "ordinal": 4,
+    "projection_status": "IN_TRANSIT",
+    "terminal": false
+   },
+   {
+    "allowed_next": [],
+    "code": "delivered",
+    "color_token": "success",
+    "exception_state": false,
+    "label": "Delivered",
+    "ladder": "parcel",
+    "ordinal": 5,
+    "projection_status": "DELIVERED",
+    "terminal": true
+   },
+   {
+    "allowed_next": [
+     "out_for_delivery",
+     "in_transit",
+     "exception",
+     "return_to_sender"
+    ],
+    "code": "delivery_attempted",
+    "color_token": "warning",
+    "exception_state": true,
+    "label": "Delivery attempted",
+    "ladder": "parcel",
+    "ordinal": 4,
+    "projection_status": "IN_TRANSIT",
+    "terminal": false
+   },
+   {
+    "allowed_next": [
+     "picked_up",
+     "in_transit",
+     "arrived_at_facility",
+     "out_for_delivery",
+     "return_to_sender"
+    ],
+    "code": "exception",
+    "color_token": "error",
+    "exception_state": true,
+    "label": "Exception",
+    "ladder": "parcel",
+    "ordinal": 2,
+    "projection_status": "IN_TRANSIT",
+    "terminal": false
+   },
+   {
+    "allowed_next": [],
+    "code": "return_to_sender",
+    "color_token": "error",
+    "exception_state": false,
+    "label": "Sent back to sender",
+    "ladder": "parcel",
+    "ordinal": 5,
+    "projection_status": "CANCELLED",
+    "terminal": true
+   },
+   {
+    "allowed_next": [
+     "pending_pickup",
+     "exception"
+    ],
+    "code": "bol_created",
+    "color_token": "progress",
+    "exception_state": false,
+    "label": "BOL created",
+    "ladder": "freight",
+    "ordinal": 0,
+    "projection_status": "AWAITING_HANDOFF",
+    "terminal": false
+   },
+   {
+    "allowed_next": [
+     "picked_up",
+     "exception"
+    ],
+    "code": "pending_pickup",
+    "color_token": "progress",
+    "exception_state": false,
+    "label": "Pending pickup",
+    "ladder": "freight",
+    "ordinal": 1,
+    "projection_status": "AWAITING_HANDOFF",
+    "terminal": false
+   },
+   {
+    "allowed_next": [
+     "at_origin_terminal",
+     "exception",
+     "on_hand"
+    ],
+    "code": "picked_up",
+    "color_token": "progress",
+    "exception_state": false,
+    "label": "Picked up",
+    "ladder": "freight",
+    "ordinal": 2,
+    "projection_status": "IN_TRANSIT",
+    "terminal": false
+   },
+   {
+    "allowed_next": [
+     "in_transit",
+     "on_hand",
+     "exception"
+    ],
+    "code": "at_origin_terminal",
+    "color_token": "progress",
+    "exception_state": false,
+    "label": "At origin terminal",
+    "ladder": "freight",
+    "ordinal": 3,
+    "projection_status": "IN_TRANSIT",
+    "terminal": false
+   },
+   {
+    "allowed_next": [
+     "at_destination_terminal",
+     "on_hand",
+     "exception"
+    ],
+    "code": "in_transit",
+    "color_token": "progress",
+    "exception_state": false,
+    "label": "In transit",
+    "ladder": "freight",
+    "ordinal": 4,
+    "projection_status": "IN_TRANSIT",
+    "terminal": false
+   },
+   {
+    "allowed_next": [
+     "out_for_delivery",
+     "on_hand",
+     "exception"
+    ],
+    "code": "at_destination_terminal",
+    "color_token": "progress",
+    "exception_state": false,
+    "label": "At destination terminal",
+    "ladder": "freight",
+    "ordinal": 5,
+    "projection_status": "IN_TRANSIT",
+    "terminal": false
+   },
+   {
+    "allowed_next": [
+     "delivered",
+     "on_hand",
+     "exception"
+    ],
+    "code": "out_for_delivery",
+    "color_token": "progress",
+    "exception_state": false,
+    "label": "Out for delivery",
+    "ladder": "freight",
+    "ordinal": 6,
+    "projection_status": "IN_TRANSIT",
+    "terminal": false
+   },
+   {
+    "allowed_next": [],
+    "code": "delivered",
+    "color_token": "success",
+    "exception_state": false,
+    "label": "Delivered",
+    "ladder": "freight",
+    "ordinal": 7,
+    "projection_status": "DELIVERED",
+    "terminal": true
+   },
+   {
+    "allowed_next": [
+     "in_transit",
+     "at_destination_terminal",
+     "out_for_delivery",
+     "exception"
+    ],
+    "code": "on_hand",
+    "color_token": "warning",
+    "exception_state": true,
+    "label": "On hand at terminal",
+    "ladder": "freight",
+    "ordinal": 4,
+    "projection_status": "DELIVERED",
+    "terminal": false
+   },
+   {
+    "allowed_next": [
+     "pending_pickup",
+     "picked_up",
+     "at_origin_terminal",
+     "in_transit",
+     "at_destination_terminal",
+     "out_for_delivery",
+     "on_hand"
+    ],
+    "code": "exception",
+    "color_token": "error",
+    "exception_state": true,
+    "label": "Exception",
+    "ladder": "freight",
+    "ordinal": 4,
+    "projection_status": "IN_TRANSIT",
+    "terminal": false
+   }
+  ]
+ },
+ "source_resolution": {
+  "customer_account_paths": [
+   "salesHdrEventData.accountId"
+  ],
+  "customer_account_type_paths": [
+   "salesHdr.salesHdrData.accountType",
+   "salesHdrEventData.accountType",
+   "salesHdrEventData.customerName"
+  ],
+  "customer_city_paths": [
+   "salesHdr.salesHdrData.billToCity",
+   "salesHdrEventData.billingCity",
+   "salesHdrEventData.city"
+  ],
+  "customer_collection": "customerOutboundCDM",
+  "customer_email_paths": [
+   "customer.address.email"
+  ],
+  "customer_id_paths": [
+   "salesHdr.salesHdrData.custId",
+   "salesHdrEventData.customerId"
+  ],
+  "customer_master_id_field": "customerId",
+  "customer_name_paths": [
+   "salesHdr.salesHdrData.custName",
+   "salesHdrEventData.customerName"
+  ],
+  "customer_phone_paths": [
+   "customer.address.phoneNumber"
+  ],
+  "customer_postal_code_paths": [
+   "salesHdr.salesHdrData.billToZip",
+   "salesHdrEventData.billingPostalCode",
+   "salesHdrEventData.postalCode"
+  ],
+  "delivery_proof": {
+   "collected_ship_via_codes": [
+    "CPU",
+    "WCL",
+    "BO"
+   ],
+   "file_paths": [
+    "salesHdrEventData.trilogieFile"
+   ],
+   "invoice_order_codes": [
+    "IO",
+    "ID"
+   ],
+   "order_code_paths": [
+    "salesHdrEventData.orderCode"
+   ],
+   "order_file_value": "ORDER",
+   "route_completed_value": "Completed",
+   "route_status_paths": [
+    "salesHdr.salesHdrData.shipping.fleetwiseStatus"
+   ],
+   "ship_via_paths": [
+    "salesHdr.salesHdrData.shipping.shipViaCode",
+    "salesHdrEventData.shipViaCode"
+   ],
+   "signature_paths": [
+    "salesHdr.salesHdrData.shipping.podSigTd"
+   ]
+  },
+  "email_field": "email",
+  "line_id_paths": [
+   "orderLineId",
+   "lineId",
+   "salesLineId"
+  ],
+  "order_date_paths": [
+   "salesHdr.salesHdrData.orderDate"
+  ],
+  "order_number_paths": [
+   "salesHdrEventData.orderId",
+   "salesHdr.salesHdrData.orderId"
+  ],
+  "phone_field": "phoneNumber",
+  "product_collection": "lkpSearchProduct",
+  "product_colour_paths": [
+   "eco.colorFinish"
+  ],
+  "product_description_paths": [
+   "productDesc",
+   "productDescription"
+  ],
+  "product_id_paths": [
+   "productId",
+   "productUniqueId"
+  ],
+  "sales_invoice_collection": "salesInv",
+  "ship_via_paths": [
+   "salesHdr.salesHdrData.shipping.shipViaCode",
+   "salesHdrEventData.shipViaCode"
+  ],
+  "shipment_collection": "shipmentInfo",
+  "shipped_quantity_paths": [
+   "shipQty",
+   "shippedQuantity",
+   "quantityShipped"
+  ],
+  "sku_paths": [
+   "sku",
+   "modelNumber"
+  ],
+  "tracking_field": "shipmentInfoEventData.trkNum",
+  "tracking_order_field": "shipmentInfoEventData.trilOrdNum",
+  "trilogie_order_paths": [
+   "salesHdrEventData.trilOrdNum",
+   "salesHdrEventData.orderId",
+   "salesHdr.salesHdrData.trilOrdNum"
+  ],
+  "web_order_paths": [
+   "salesHdrEventData.webOrderId",
+   "salesHdrEventData.webOrderNumber",
+   "salesHdr.salesHdrData.webOrderId",
+   "salesHdr.salesHdrData.webOrderNumber"
+  ]
+ },
+ "support": {
+  "authority_mode": "INTERNAL_PLATFORM",
+  "default_priority": "NORMAL",
+  "external_mirror_enabled": false,
+  "external_ticket_outbox_topic": "return-support.ticket.create",
+  "queues": [
+   "RETURNS_SUPPORT",
+   "LOGISTICS",
+   "WAREHOUSE_EXCEPTION",
+   "OMC_EXCEPTION"
+  ]
+ },
+ "support_gate": {
+  "request_grouping": "one_per_case",
+  "template_review": {
+   "enabled": true,
+   "max_reminders": 3,
+   "on_timeout": "hold",
+   "reminder_interval_seconds": 7200,
+   "review_wait_seconds": 28800
+  }
+ },
+ "support_ingress": {
+  "agent_disclosure": {
+   "disclosure_line": "This message was written by the Returns Assistant, an automated agent working on this return case. A branch associate reviews and can answer anything it cannot.",
+   "display_name": "Returns Assistant"
+  },
+  "intents": [
+   "info_request",
+   "rma_issued",
+   "label_issued",
+   "shipping_instruction",
+   "tracking_provided",
+   "partial_fulfillment",
+   "rejection",
+   "acknowledgement",
+   "other"
+  ],
+  "limits": {
+   "max_body_characters": 16000,
+   "max_identifier_characters": 256,
+   "max_messages_per_case_per_window": 60,
+   "rate_window_seconds": 60
+  },
+  "multi_record_framing_prompt_key": "support-multi-record-do-not-mix",
+  "nl_enabled": true,
+  "outbound_templates": {},
+  "parking": {
+   "alert_dedupe_window_seconds": 900,
+   "per_case_quota": 50,
+   "retention_seconds": 2592000
+  }
+ },
+ "support_resolver": {
+  "clarification_resets_deadline": true,
+  "fact_confidence_millionths": 900000,
+  "graph_confidence_millionths": 900000,
+  "per_case_llm_budget": 12,
+  "reply_gate": {
+   "default": "review_required",
+   "per_intent": {}
+  },
+  "tool_bindings": [],
+  "trigger_intents": [
+   "info_request"
+  ]
+ },
+ "support_template": {
+  "default_variant_id": "default",
+  "template_id": "support-handoff",
+  "variants": [
+   {
+    "sections": [
+     {
+      "fields": [],
+      "section_id": "banner",
+      "title": "RETURN SUPPORT REQUEST",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": null,
+        "field_id": "case_id",
+        "formatter": "text",
+        "label": "Case ID",
+        "required": true,
+        "source_binding": "case_fact:case_id",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "work_item_id",
+        "formatter": "text",
+        "label": "Work Item ID",
+        "required": false,
+        "source_binding": "case_fact:work_item_id",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "created_at",
+        "formatter": "date",
+        "label": "Created Date/Time",
+        "required": false,
+        "source_binding": "case_fact:created_at",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "workflow_status",
+        "formatter": "text",
+        "label": "Workflow Status at Handoff",
+        "required": false,
+        "source_binding": "case_fact:workflow_status_at_handoff",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "case",
+      "title": "Case:",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": "Not available",
+        "field_id": "customer_name",
+        "formatter": "text",
+        "label": "Customer Name",
+        "required": false,
+        "source_binding": "case_fact:customer_name",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "customer_reference",
+        "formatter": "text",
+        "label": "Customer Reference",
+        "required": false,
+        "source_binding": "case_fact:customer_id",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "customer_account",
+        "formatter": "text",
+        "label": "Account",
+        "required": false,
+        "source_binding": "case_fact:customer_account",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "contact_associate_name",
+        "formatter": "text",
+        "label": "Branch Associate",
+        "required": false,
+        "source_binding": "case_fact:contact_associate_name",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "contact_associate_email",
+        "formatter": "text",
+        "label": "Branch Associate Email",
+        "required": false,
+        "source_binding": "case_fact:contact_associate_email",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "contact_associate_phone",
+        "formatter": "text",
+        "label": "Branch Associate Phone",
+        "required": false,
+        "source_binding": "case_fact:contact_associate_phone",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "contact_customer_notice",
+        "formatter": "text",
+        "label": "Branch Associate",
+        "required": false,
+        "source_binding": "case_fact:contact_customer_notice",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "contact_customer_phone",
+        "formatter": "text",
+        "label": "Customer Phone",
+        "required": false,
+        "source_binding": "case_fact:contact_customer_phone",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "contact_customer_email",
+        "formatter": "text",
+        "label": "Customer Email",
+        "required": false,
+        "source_binding": "case_fact:contact_customer_email",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "customer",
+      "title": "Customer:",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": "Not available",
+        "field_id": "order_number",
+        "formatter": "text",
+        "label": "Order Number",
+        "required": false,
+        "source_binding": "case_fact:confirmed_order_reference",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "- Selected lines: Not available",
+        "field_id": "selected_items",
+        "formatter": "item_list",
+        "label": null,
+        "required": false,
+        "source_binding": "case_fact:selected_items",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "order",
+      "title": "Order:",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": "Not available",
+        "field_id": "return_method",
+        "formatter": "text",
+        "label": "Return Method",
+        "required": false,
+        "source_binding": "case_fact:return_method",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "requested_resolution",
+        "formatter": "text",
+        "label": "Requested Resolution",
+        "required": false,
+        "source_binding": "case_fact:requested_resolution",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "product_presence",
+        "formatter": "text",
+        "label": "Product Presence",
+        "required": false,
+        "source_binding": "case_fact:product_presence",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "return_details_additional",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "case_fact:return_details_additional",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "associate_notes",
+        "formatter": "text",
+        "label": "Associate Notes",
+        "required": false,
+        "source_binding": "case_fact:associate_notes_rendered",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "return_details",
+      "title": "Return Details:",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": "UNRESOLVED",
+        "field_id": "bay_status",
+        "formatter": "text",
+        "label": "Assignment Status",
+        "required": false,
+        "source_binding": "case_fact:bay_assignment_status",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "bay_reference",
+        "formatter": "text",
+        "label": "Recommended Bay",
+        "required": false,
+        "source_binding": "case_fact:bay_reference",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "bay_warehouse",
+        "formatter": "text",
+        "label": "Warehouse/Branch",
+        "required": false,
+        "source_binding": "case_fact:bay_warehouse_reference",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "bay_return_location",
+        "formatter": "text",
+        "label": "Return Location",
+        "required": false,
+        "source_binding": "case_fact:bay_return_location",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "bay_handling",
+        "formatter": "text",
+        "label": "Handling/Staging Instructions",
+        "required": false,
+        "source_binding": "case_fact:bay_handling_instructions",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "bay_unresolved_reason",
+        "formatter": "text",
+        "label": "Unresolved Reason",
+        "required": false,
+        "source_binding": "case_fact:bay_unresolved_reason",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "bay_assignment",
+      "title": "Bay Assignment:",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": "Not confirmed",
+        "field_id": "order_confirmation",
+        "formatter": "text",
+        "label": "Order Confirmation",
+        "required": false,
+        "source_binding": "case_fact:order_confirmation",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Incomplete",
+        "field_id": "required_return_information",
+        "formatter": "text",
+        "label": "Required Return Information",
+        "required": false,
+        "source_binding": "case_fact:required_return_information",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "awaiting_from_support",
+        "formatter": "text",
+        "label": "Awaiting From Support",
+        "required": false,
+        "source_binding": "case_fact:awaiting_from_support",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not evaluated",
+        "field_id": "policy_evaluation",
+        "formatter": "text",
+        "label": "Policy Evaluation",
+        "required": false,
+        "source_binding": "case_fact:policy_evaluation_rendered",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "bay_source",
+        "formatter": "text",
+        "label": "Bay Assignment Source",
+        "required": false,
+        "source_binding": "literal:Bay Assignment Agent",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "verification",
+      "title": "Verification:",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": null,
+        "field_id": "action_review",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "literal:- Review the complete return request.",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "action_bay",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "literal:- Review or confirm the bay recommendation.",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "manual_bay_action",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "case_fact:manual_bay_action_line",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "action_verify",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "literal:- Verify all Support-owned conditions, including warranty when applicable.",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "action_rma",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "literal:- Create or decline the RMA through the authoritative Support workflow.",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "requested_action",
+      "title": "Requested Support Action:",
+      "visibility_rule": null
+     }
+    ],
+    "selector": {
+     "max_item_count": null,
+     "min_item_count": null,
+     "order_sources": [],
+     "return_reason_classes": [],
+     "shipping_modes": []
+    },
+    "subject_template": "Return {order_number} \u00b7 {customer_name}",
+    "variant_id": "default"
+   },
+   {
+    "sections": [
+     {
+      "fields": [],
+      "section_id": "banner",
+      "title": "RETURN SUPPORT REQUEST",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": null,
+        "field_id": "case_id",
+        "formatter": "text",
+        "label": "Case ID",
+        "required": true,
+        "source_binding": "case_fact:case_id",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "work_item_id",
+        "formatter": "text",
+        "label": "Work Item ID",
+        "required": false,
+        "source_binding": "case_fact:work_item_id",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "created_at",
+        "formatter": "date",
+        "label": "Created Date/Time",
+        "required": false,
+        "source_binding": "case_fact:created_at",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "workflow_status",
+        "formatter": "text",
+        "label": "Workflow Status at Handoff",
+        "required": false,
+        "source_binding": "case_fact:workflow_status_at_handoff",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "case",
+      "title": "Case:",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": "Not available",
+        "field_id": "customer_name",
+        "formatter": "text",
+        "label": "Customer Name",
+        "required": false,
+        "source_binding": "case_fact:customer_name",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "customer_reference",
+        "formatter": "text",
+        "label": "Customer Reference",
+        "required": false,
+        "source_binding": "case_fact:customer_id",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "customer_account",
+        "formatter": "text",
+        "label": "Account",
+        "required": false,
+        "source_binding": "case_fact:customer_account",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "contact_associate_name",
+        "formatter": "text",
+        "label": "Branch Associate",
+        "required": false,
+        "source_binding": "case_fact:contact_associate_name",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "contact_associate_email",
+        "formatter": "text",
+        "label": "Branch Associate Email",
+        "required": false,
+        "source_binding": "case_fact:contact_associate_email",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "contact_associate_phone",
+        "formatter": "text",
+        "label": "Branch Associate Phone",
+        "required": false,
+        "source_binding": "case_fact:contact_associate_phone",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "contact_customer_notice",
+        "formatter": "text",
+        "label": "Branch Associate",
+        "required": false,
+        "source_binding": "case_fact:contact_customer_notice",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "contact_customer_phone",
+        "formatter": "text",
+        "label": "Customer Phone",
+        "required": false,
+        "source_binding": "case_fact:contact_customer_phone",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "contact_customer_email",
+        "formatter": "text",
+        "label": "Customer Email",
+        "required": false,
+        "source_binding": "case_fact:contact_customer_email",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "customer",
+      "title": "Customer:",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": "Not available",
+        "field_id": "order_number",
+        "formatter": "text",
+        "label": "Order Number",
+        "required": false,
+        "source_binding": "case_fact:confirmed_order_reference",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "- Selected lines: Not available",
+        "field_id": "selected_items",
+        "formatter": "item_list",
+        "label": null,
+        "required": false,
+        "source_binding": "case_fact:selected_items",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "order",
+      "title": "Order:",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": "Not available",
+        "field_id": "return_method",
+        "formatter": "text",
+        "label": "Return Method",
+        "required": false,
+        "source_binding": "case_fact:return_method",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "requested_resolution",
+        "formatter": "text",
+        "label": "Requested Resolution",
+        "required": false,
+        "source_binding": "case_fact:requested_resolution",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "product_presence",
+        "formatter": "text",
+        "label": "Product Presence",
+        "required": false,
+        "source_binding": "case_fact:product_presence",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "return_details_additional",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "case_fact:return_details_additional",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "associate_notes",
+        "formatter": "text",
+        "label": "Associate Notes",
+        "required": false,
+        "source_binding": "case_fact:associate_notes_rendered",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "return_details",
+      "title": "Return Details:",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": "UNRESOLVED",
+        "field_id": "bay_status",
+        "formatter": "text",
+        "label": "Assignment Status",
+        "required": false,
+        "source_binding": "case_fact:bay_assignment_status",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "bay_reference",
+        "formatter": "text",
+        "label": "Recommended Bay",
+        "required": false,
+        "source_binding": "case_fact:bay_reference",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "bay_warehouse",
+        "formatter": "text",
+        "label": "Warehouse/Branch",
+        "required": false,
+        "source_binding": "case_fact:bay_warehouse_reference",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "bay_return_location",
+        "formatter": "text",
+        "label": "Return Location",
+        "required": false,
+        "source_binding": "case_fact:bay_return_location",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "bay_handling",
+        "formatter": "text",
+        "label": "Handling/Staging Instructions",
+        "required": false,
+        "source_binding": "case_fact:bay_handling_instructions",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "bay_unresolved_reason",
+        "formatter": "text",
+        "label": "Unresolved Reason",
+        "required": false,
+        "source_binding": "case_fact:bay_unresolved_reason",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "bay_assignment",
+      "title": "Bay Assignment:",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": "Not confirmed",
+        "field_id": "order_confirmation",
+        "formatter": "text",
+        "label": "Order Confirmation",
+        "required": false,
+        "source_binding": "case_fact:order_confirmation",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Incomplete",
+        "field_id": "required_return_information",
+        "formatter": "text",
+        "label": "Required Return Information",
+        "required": false,
+        "source_binding": "case_fact:required_return_information",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "awaiting_from_support",
+        "formatter": "text",
+        "label": "Awaiting From Support",
+        "required": false,
+        "source_binding": "case_fact:awaiting_from_support",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not evaluated",
+        "field_id": "policy_evaluation",
+        "formatter": "text",
+        "label": "Policy Evaluation",
+        "required": false,
+        "source_binding": "case_fact:policy_evaluation_rendered",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "bay_source",
+        "formatter": "text",
+        "label": "Bay Assignment Source",
+        "required": false,
+        "source_binding": "literal:Bay Assignment Agent",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "verification",
+      "title": "Verification:",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": null,
+        "field_id": "action_review",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "literal:- Review the complete return request.",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "action_bay",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "literal:- Review or confirm the bay recommendation.",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "manual_bay_action",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "case_fact:manual_bay_action_line",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "action_label",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "literal:- Issue the prepaid parcel return label.",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "action_verify",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "literal:- Verify all Support-owned conditions, including warranty when applicable.",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "action_rma",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "literal:- Create or decline the RMA through the authoritative Support workflow.",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "requested_action",
+      "title": "Requested Support Action:",
+      "visibility_rule": null
+     }
+    ],
+    "selector": {
+     "max_item_count": null,
+     "min_item_count": null,
+     "order_sources": [],
+     "return_reason_classes": [],
+     "shipping_modes": [
+      "PREPAID_PARCEL",
+      "OFFSITE_PARCEL"
+     ]
+    },
+    "subject_template": "Return {order_number} \u00b7 {customer_name}",
+    "variant_id": "parcel"
+   },
+   {
+    "sections": [
+     {
+      "fields": [],
+      "section_id": "banner",
+      "title": "RETURN SUPPORT REQUEST",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": null,
+        "field_id": "case_id",
+        "formatter": "text",
+        "label": "Case ID",
+        "required": true,
+        "source_binding": "case_fact:case_id",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "work_item_id",
+        "formatter": "text",
+        "label": "Work Item ID",
+        "required": false,
+        "source_binding": "case_fact:work_item_id",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "created_at",
+        "formatter": "date",
+        "label": "Created Date/Time",
+        "required": false,
+        "source_binding": "case_fact:created_at",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "workflow_status",
+        "formatter": "text",
+        "label": "Workflow Status at Handoff",
+        "required": false,
+        "source_binding": "case_fact:workflow_status_at_handoff",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "case",
+      "title": "Case:",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": "Not available",
+        "field_id": "customer_name",
+        "formatter": "text",
+        "label": "Customer Name",
+        "required": false,
+        "source_binding": "case_fact:customer_name",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "customer_reference",
+        "formatter": "text",
+        "label": "Customer Reference",
+        "required": false,
+        "source_binding": "case_fact:customer_id",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "customer_account",
+        "formatter": "text",
+        "label": "Account",
+        "required": false,
+        "source_binding": "case_fact:customer_account",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "contact_associate_name",
+        "formatter": "text",
+        "label": "Branch Associate",
+        "required": false,
+        "source_binding": "case_fact:contact_associate_name",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "contact_associate_email",
+        "formatter": "text",
+        "label": "Branch Associate Email",
+        "required": false,
+        "source_binding": "case_fact:contact_associate_email",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "contact_associate_phone",
+        "formatter": "text",
+        "label": "Branch Associate Phone",
+        "required": false,
+        "source_binding": "case_fact:contact_associate_phone",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "contact_customer_notice",
+        "formatter": "text",
+        "label": "Branch Associate",
+        "required": false,
+        "source_binding": "case_fact:contact_customer_notice",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "contact_customer_phone",
+        "formatter": "text",
+        "label": "Customer Phone",
+        "required": false,
+        "source_binding": "case_fact:contact_customer_phone",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "contact_customer_email",
+        "formatter": "text",
+        "label": "Customer Email",
+        "required": false,
+        "source_binding": "case_fact:contact_customer_email",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "customer",
+      "title": "Customer:",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": "Not available",
+        "field_id": "order_number",
+        "formatter": "text",
+        "label": "Order Number",
+        "required": false,
+        "source_binding": "case_fact:confirmed_order_reference",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "- Selected lines: Not available",
+        "field_id": "selected_items",
+        "formatter": "item_list",
+        "label": null,
+        "required": false,
+        "source_binding": "case_fact:selected_items",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "order",
+      "title": "Order:",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": "Not available",
+        "field_id": "return_method",
+        "formatter": "text",
+        "label": "Return Method",
+        "required": false,
+        "source_binding": "case_fact:return_method",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "requested_resolution",
+        "formatter": "text",
+        "label": "Requested Resolution",
+        "required": false,
+        "source_binding": "case_fact:requested_resolution",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "product_presence",
+        "formatter": "text",
+        "label": "Product Presence",
+        "required": false,
+        "source_binding": "case_fact:product_presence",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "return_details_additional",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "case_fact:return_details_additional",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "associate_notes",
+        "formatter": "text",
+        "label": "Associate Notes",
+        "required": false,
+        "source_binding": "case_fact:associate_notes_rendered",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "return_details",
+      "title": "Return Details:",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": "UNRESOLVED",
+        "field_id": "bay_status",
+        "formatter": "text",
+        "label": "Assignment Status",
+        "required": false,
+        "source_binding": "case_fact:bay_assignment_status",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "bay_reference",
+        "formatter": "text",
+        "label": "Recommended Bay",
+        "required": false,
+        "source_binding": "case_fact:bay_reference",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "bay_warehouse",
+        "formatter": "text",
+        "label": "Warehouse/Branch",
+        "required": false,
+        "source_binding": "case_fact:bay_warehouse_reference",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "bay_return_location",
+        "formatter": "text",
+        "label": "Return Location",
+        "required": false,
+        "source_binding": "case_fact:bay_return_location",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not available",
+        "field_id": "bay_handling",
+        "formatter": "text",
+        "label": "Handling/Staging Instructions",
+        "required": false,
+        "source_binding": "case_fact:bay_handling_instructions",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "bay_unresolved_reason",
+        "formatter": "text",
+        "label": "Unresolved Reason",
+        "required": false,
+        "source_binding": "case_fact:bay_unresolved_reason",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "bay_assignment",
+      "title": "Bay Assignment:",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": "Not confirmed",
+        "field_id": "order_confirmation",
+        "formatter": "text",
+        "label": "Order Confirmation",
+        "required": false,
+        "source_binding": "case_fact:order_confirmation",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Incomplete",
+        "field_id": "required_return_information",
+        "formatter": "text",
+        "label": "Required Return Information",
+        "required": false,
+        "source_binding": "case_fact:required_return_information",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "awaiting_from_support",
+        "formatter": "text",
+        "label": "Awaiting From Support",
+        "required": false,
+        "source_binding": "case_fact:awaiting_from_support",
+        "visibility_rule": null
+       },
+       {
+        "fallback": "Not evaluated",
+        "field_id": "policy_evaluation",
+        "formatter": "text",
+        "label": "Policy Evaluation",
+        "required": false,
+        "source_binding": "case_fact:policy_evaluation_rendered",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "bay_source",
+        "formatter": "text",
+        "label": "Bay Assignment Source",
+        "required": false,
+        "source_binding": "literal:Bay Assignment Agent",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "verification",
+      "title": "Verification:",
+      "visibility_rule": null
+     },
+     {
+      "fields": [
+       {
+        "fallback": null,
+        "field_id": "action_review",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "literal:- Review the complete return request.",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "action_bay",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "literal:- Review or confirm the bay recommendation.",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "manual_bay_action",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "case_fact:manual_bay_action_line",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "action_freight",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "literal:- Arrange LTL freight pickup and issue the Bill of Lading.",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "action_verify",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "literal:- Verify all Support-owned conditions, including warranty when applicable.",
+        "visibility_rule": null
+       },
+       {
+        "fallback": null,
+        "field_id": "action_rma",
+        "formatter": "text",
+        "label": null,
+        "required": false,
+        "source_binding": "literal:- Create or decline the RMA through the authoritative Support workflow.",
+        "visibility_rule": null
+       }
+      ],
+      "section_id": "requested_action",
+      "title": "Requested Support Action:",
+      "visibility_rule": null
+     }
+    ],
+    "selector": {
+     "max_item_count": null,
+     "min_item_count": null,
+     "order_sources": [],
+     "return_reason_classes": [],
+     "shipping_modes": [
+      "BRANCH_LTL",
+      "OFFSITE_LTL"
+     ]
+    },
+    "subject_template": "Return {order_number} \u00b7 {customer_name}",
+    "variant_id": "ltl"
+   }
+  ]
+ },
+ "workflow": {
+  "completion_dimensions": [
+   "customer_resolution_complete",
+   "physical_return_complete",
+   "warehouse_processing_complete",
+   "vendor_recovery_complete",
+   "case_fully_closed"
+  ],
+  "sla_minutes": {
+   "pickup_scheduling": 2880,
+   "return_creation": 1440,
+   "shipping_instructions": 7200,
+   "support_acknowledgement": 5,
+   "support_clarification": 30
+  },
+  "stages": [
+   "INTAKE",
+   "ORDER_DISCOVERY",
+   "ORDER_CONFIRMATION",
+   "RETURN_DETAILS",
+   "SUPPORT_REQUEST",
+   "RETURN_CREATION",
+   "PHYSICAL_RETURN_SETUP",
+   "RETURN_SHIPMENT",
+   "RECEIPT",
+   "CUSTOMER_RESOLUTION",
+   "PRODUCT_DISPOSITION",
+   "WAREHOUSE_PROCESSING",
+   "CUSTOMER_RETURN_COMPLETE",
+   "VENDOR_RECOVERY",
+   "FULLY_CLOSED"
+  ],
+  "version": "2.0"
+ }
+}

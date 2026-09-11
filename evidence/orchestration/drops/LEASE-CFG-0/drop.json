@@ -1,0 +1,14 @@
+{
+  "lease_id": "LEASE-CFG-0",
+  "agent": "orchestrator",
+  "task_id": "CFG-0 land audit fixes",
+  "branch": "feat/cfg-0-audit-fixes",
+  "base_sha": "42b0536b",
+  "head_sha": "1d2c8bed",
+  "created_at": "2026-09-11T11:10:00Z",
+  "files": [".plan/tracks/CFG.brief.md", ".plan/tracks/CFG.ledger.md", ".plan/tracks/CFG-1.brief.md", "evidence/config_audit/"],
+  "tests": {"backend": "54 passed", "frontend": "65 passed", "typecheck": "0", "eslint": "0"},
+  "runtime": {"head_revision": 77, "release_id": "cfg0-return-method-requirements-receipt-20260911-170203", "adoption": "LIVE"},
+  "remaining": ["RV verdict", "merge to refactor/unified-return-platform", "operator decision on agents, clarification_policy, return_policy (default_method, freight_keywords)"],
+  "merge_status": "PENDING"
+}

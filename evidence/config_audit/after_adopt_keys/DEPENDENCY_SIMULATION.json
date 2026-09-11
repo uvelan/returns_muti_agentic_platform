@@ -1,0 +1,108 @@
+{
+ "ai": {
+  "enabled": true,
+  "fallbackAlwaysEnabled": true,
+  "maxOutputTokens": 256,
+  "pricingMicrousdPerMillionTokens": {
+   "GOOGLE": {
+    "input": 0,
+    "output": 0
+   },
+   "NVIDIA": {
+    "input": 0,
+    "output": 0
+   }
+  },
+  "providerOrder": [
+   "GOOGLE",
+   "NVIDIA"
+  ],
+  "taskId": "SIMULATOR_OPERATION_NARRATIVE_V1",
+  "temperature": 0.0,
+  "timeoutSeconds": 4.0
+ },
+ "defaultScenario": "SUCCESS",
+ "dependencies": {
+  "FREIGHT": {
+   "operations": [
+    "REQUEST_QUOTES",
+    "APPROVE_QUOTE",
+    "CREATE_BOL",
+    "TENDER_SHIPMENT",
+    "CONFIRM_BOOKING",
+    "SCHEDULE_APPOINTMENT",
+    "CONFIRM_CARRIER_ARRIVAL",
+    "CONFIRM_PICKUP",
+    "ADVANCE_FREIGHT_TRACKING",
+    "FAIL_PICKUP",
+    "RESCHEDULE_PICKUP"
+   ],
+   "statusSequence": [
+    "QUOTE_REQUESTED",
+    "QUOTED",
+    "QUOTE_APPROVED",
+    "BOL_CREATED",
+    "TENDERED",
+    "BOOKING_PENDING",
+    "BOOKED",
+    "APPOINTMENT_SCHEDULED",
+    "CUSTOMER_READY",
+    "CARRIER_ARRIVED",
+    "PICKED_UP",
+    "IN_TRANSIT",
+    "RECEIVED"
+   ]
+  },
+  "LSI": {
+   "operations": [
+    "GENERATE_RETURN_AUTHORIZATION_ACK",
+    "RECORD_RECEIPT",
+    "ASSIGN_LICENSE_PLATE",
+    "SET_PRODUCT_RESOLUTION",
+    "COMPLETE_WAREHOUSE_PROCESSING",
+    "CREATE_LOT",
+    "CREATE_RGA",
+    "RECORD_VENDOR_DEBIT",
+    "RECORD_VENDOR_CREDIT",
+    "CLOSE_VENDOR_RECOVERY"
+   ],
+   "statusSequence": []
+  },
+  "OMC": {
+   "operations": [
+    "CREATE_RMA",
+    "CREATE_LEGACY_RETURN",
+    "GET_RETURN",
+    "UPDATE_RETURN_STATUS",
+    "SET_RETURN_METHOD",
+    "SET_CUSTOMER_RESOLUTION",
+    "SET_PRODUCT_RESOLUTION",
+    "CREATE_RGA",
+    "RECORD_VENDOR_CREDIT"
+   ],
+   "statusSequence": []
+  },
+  "PARCEL": {
+   "operations": [
+    "CREATE_RETURN_LABEL",
+    "VOID_LABEL",
+    "REISSUE_LABEL",
+    "GET_TRACKING",
+    "ADVANCE_TRACKING",
+    "SIMULATE_EXCEPTION"
+   ],
+   "statusSequence": [
+    "LABEL_CREATED",
+    "PACKAGE_READY",
+    "CARRIER_ACCEPTED",
+    "IN_TRANSIT",
+    "OUT_FOR_DELIVERY",
+    "DELIVERED"
+   ]
+  }
+ },
+ "enabled": true,
+ "modeBanner": "SIMULATED EXTERNAL DEPENDENCY \u2014 NOT PRODUCTION DATA",
+ "schemaVersion": "1.0",
+ "templateVersion": "dependency-simulator-v1"
+}
