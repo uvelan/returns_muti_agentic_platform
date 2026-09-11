@@ -30,6 +30,17 @@ export type Capability =
   | "returns.audit.read"
   | "config.runtime.read"
   | "config.release.read"
+  /**
+   * Drafting and patching a release -- `POST /releases`, `PATCH .../domains/
+   * {key}`, `POST /publish`, `POST /adopt-packaged` (CFG-3a). Narrower than
+   * `config.release.promote`: an operator who can stage a change is not
+   * automatically who is allowed to make it live. Missing from this union
+   * until CFG-4 -- CFG-3a's scope was backend-only, and `router.py`'s own
+   * comment on `create_release` already spelled out the gap this closes: a
+   * role that fails this check but passes `config.release.promote` could
+   * promote a draft it could not have opened or edited itself.
+   */
+  | "config.release.write"
   | "config.release.promote"
   | "config.source.read"
   | "config.source.write"

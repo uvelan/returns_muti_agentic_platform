@@ -1915,3 +1915,55 @@ Combined into step:00 above since triaging which advisories needed code came fir
 followed directly from it; no separate narrative. Commit `(CFG) step:01 carried advisories -- C1
 unmount cleanup, A5/A6/A7 described errors` covers `DocumentEditor.tsx`, `KeyValueTable.tsx`,
 `OrderedList.tsx`, `PublishBar.tsx` and their tests.
+
+## CFG-4 step:02 — typed API client methods, MSW handlers, contract tests (Order item 1)
+
+`frontend/src/api/configuration.ts`: `validateDomain`, `publish`, `adoptPackaged`, `packagedDrift`,
+typed against the CFG-3a routes read from `releases.py` (`ValidateDomainPayload`,
+`PublishConfigurationPayload`, `AdoptPackagedPayload`, `summarize_packaged_drift`'s response shape) --
+`PublishResult`/`AdoptPackagedResult` mirror `ConfigurationReleaseNode` (no alias generator, stays
+snake_case, unlike `ConfigurationReleaseView`, confirmed by reading `graph_repository.py:86-94`
+directly rather than assuming). `PackagedDriftDomain` documents CFG-3a F5 (a unit with no `DOMAIN/`
+prefix is a `RETURN_PLATFORM` key) and F11 (`would_adopt` answers "nothing merged yet" two different,
+both-correct ways across domains) directly on the type so a caller reads the caveat at the type, not
+only in a review file.
+
+**`config.release.write` did not exist as a frontend capability at all** -- `frontend/src/api/
+principal.ts`'s `Capability` union had `config.release.read`/`config.release.promote` but not
+`.write`, even though CFG-3a's backend has gated `create_release`/`patch_domain_config`/`publish`/
+`adopt_packaged` on it since that lease. The brief's own design table ("capability
+`config.release.write` gates editing") requires calling `can("config.release.write")`, which does not
+type-check without this. Added the one union member (with a comment on why it is narrower than
+`.promote`) and the matching entry in `canonicalHandlers.ts`'s `ALL_CAPABILITIES` mock list --
+outside this lease's literal Owns list (`principal.ts` is not named), but necessary plumbing the brief's
+own design depends on and additive/low-risk (one new union member, one new mock grant).
+
+MSW: four new handlers (`validate/:domainKey` judges the one real cross-field rule --
+`policy_evaluation.enabled=false` with no `disabled_reason` -- so `/config/return-policy`'s Validate
+button has something to actually reject in `dev:mock`; `publish` and `adopt-packaged` echo audit ids/
+head revision; `packaged-drift` deliberately answers "nothing merged yet" both ways across its three
+domains, per F11, so the Overview panel's handling of both shapes is exercised rather than assumed).
+Runtime mock's `configuration` gained `discovery`/`source_resolution`/`clarification_policy`/
+`selection_vocabulary`/`return_policy`/`return_eligibility_policy`/`policy_evaluation`/
+`shipment_tracking`/`bay`/`omc`, populated for the fields the four typed screens actually read and
+write (not the full pydantic model -- `/runtime` is `dict[str, Any]` on the wire, so the contract test
+does not, and structurally cannot, check this fixture against `ReturnPlatformConfiguration`; what has
+to hold, and does, is that the fixture matches what the typed screens' own TS types expect).
+
+Contract test: 5 new `ROUTES` entries (two `validate` bodies -- the pass-through case and the one the
+mock actually rejects -- plus `publish`, `adopt-packaged`, `packaged-drift`), all three of "named in the
+committed OpenAPI document", "every handler accounted for" and "every body conforms to its declared
+schema" passing.
+
+```
+$ npx vitest run src/mocks/handlers/canonicalHandlers.contract.test.ts
+ Test Files  1 passed (1)
+      Tests  63 passed (63)
+$ npx vitest run src/components/forms src/domains/config src/mocks src/api/configuration.ts
+ Test Files  11 passed (11)
+      Tests  168 passed (168)
+$ npm run typecheck
+(no output, exit 0)
+$ npm run lint
+(no output, exit 0)
+```

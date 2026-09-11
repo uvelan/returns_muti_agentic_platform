@@ -263,6 +263,46 @@ const ROUTES: readonly Route[] = [
       },
     },
   },
+  // --- CFG-4: validate, publish, adopt-packaged, packaged-drift ------------
+  {
+    method: "post",
+    handler: "/api/config/validate/:domainKey",
+    contract: "/api/config/validate/{domain_key}",
+    url: "/api/config/validate/RETURN_PLATFORM",
+    body: { patch: { policy_evaluation: { enabled: true } } },
+  },
+  {
+    method: "post",
+    handler: "/api/config/validate/:domainKey",
+    contract: "/api/config/validate/{domain_key}",
+    url: "/api/config/validate/RETURN_PLATFORM",
+    // The one shape the mock actually judges: disabled with no reason.
+    body: { patch: { policy_evaluation: { enabled: false } } },
+  },
+  {
+    method: "post",
+    handler: "/api/config/publish",
+    contract: "/api/config/publish",
+    url: "/api/config/publish",
+    body: {
+      domain_key: "RETURN_PLATFORM",
+      patch: { policy_evaluation: { enabled: false, disabled_reason: "rollout paused" } },
+      expected_head_revision: 41,
+    },
+  },
+  {
+    method: "post",
+    handler: "/api/config/adopt-packaged",
+    contract: "/api/config/adopt-packaged",
+    url: "/api/config/adopt-packaged",
+    body: { units: ["discovery"], expected_head_revision: 41 },
+  },
+  {
+    method: "get",
+    handler: "/api/config/packaged-drift",
+    contract: "/api/config/packaged-drift",
+    url: "/api/config/packaged-drift",
+  },
   { method: "get", handler: "/api/config/audit", contract: "/api/config/audit", url: "/api/config/audit" },
   { method: "get", handler: "/api/config/sources", contract: "/api/config/sources", url: "/api/config/sources" },
   {

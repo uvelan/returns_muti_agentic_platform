@@ -11,15 +11,18 @@
     "frontend/src/components/forms/OrderedList.tsx",
     "frontend/src/components/forms/OrderedList.test.tsx",
     "frontend/src/components/forms/PublishBar.tsx",
-    "frontend/src/components/forms/PublishBar.test.tsx"
+    "frontend/src/components/forms/PublishBar.test.tsx",
+    "frontend/src/api/configuration.ts",
+    "frontend/src/api/principal.ts",
+    "frontend/src/mocks/handlers/canonicalHandlers.ts",
+    "frontend/src/mocks/handlers/canonicalHandlers.contract.test.ts"
   ],
   "tests": {
-    "npx vitest run src/components/forms src/domains/config/DocumentEditor.test.tsx": "88 passed (14 files)",
+    "npx vitest run src/components/forms src/domains/config src/mocks src/api/configuration.ts": "clean",
     "npm run typecheck": "clean",
     "npm run lint": "clean"
   },
   "remaining": [
-    "API client methods + MSW handlers + contract tests for validate/publish/adopt-packaged/packaged-drift",
     "/config/overview undecided-keys panel",
     "/config/discovery",
     "/config/return-policy",

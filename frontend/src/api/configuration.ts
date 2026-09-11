@@ -80,6 +80,82 @@ export type RuntimeSnapshot = Readonly<Record<string, unknown>>;
 export type AuditRecord = Readonly<Record<string, unknown>>;
 
 /**
+ * `POST /api/config/validate/{domain_key}` -- CFG-3a scope item 1, CFG-4's
+ * first consumer. `errors` is pydantic's own `ValidationError.errors()`,
+ * mapped to `{path, message, type}` by the backend's `_validation_errors` --
+ * `path` is dot-plus-index, the same convention `DocumentEditor`'s `errors`
+ * prop and the forms README's "Error path convention" already document, so a
+ * typed screen can hand this list straight to `ValidationErrors`/`Field`
+ * without translating it first.
+ */
+export type ValidationErrorItem = { readonly path: string; readonly message: string; readonly type: string };
+
+export type ValidateResult = { readonly valid: boolean; readonly errors: readonly ValidationErrorItem[] };
+
+/**
+ * `POST /api/config/publish` -- CFG-3a scope item 2. Create-from-active,
+ * canonical patch, VALIDATED, RELEASED, one call. `audit_ids` names the five
+ * per-step records the backend writes (CREATED, DOMAIN_PATCHED, two
+ * PROMOTED, PUBLISHED), in write order, each independently queryable via
+ * `GET /api/config/audit?target=<release_id>`.
+ *
+ * Field names mirror `ConfigurationReleaseNode` (`graph_repository.py`) plus
+ * the extra keys `publish_configuration` adds -- that model carries no alias
+ * generator, so (unlike `ConfigurationReleaseView`) this stays snake_case on
+ * the wire.
+ */
+export type PublishResult = {
+  readonly release_id: string;
+  readonly status: ReleaseStatus;
+  readonly created_at: string;
+  readonly created_by: string;
+  readonly checksum_sha256: string;
+  readonly metadata?: Readonly<Record<string, unknown>>;
+  readonly domains: Readonly<Record<string, unknown>>;
+  readonly head_revision: number;
+  readonly audit_ids: readonly string[];
+  readonly runtime_activation?: {
+    readonly release_id: string;
+    readonly checksum_sha256: string;
+    readonly head_revision: number;
+    readonly loaded_at: string;
+  };
+};
+
+/**
+ * `POST /api/config/adopt-packaged` -- CFG-3a scope item 3. Same response
+ * shape as `PublishResult` plus `undecided`, the per-domain leftover after
+ * this call's own units were taken.
+ */
+export type AdoptPackagedResult = PublishResult & {
+  readonly undecided: Readonly<Record<string, readonly string[]>>;
+};
+
+/**
+ * `GET /api/config/packaged-drift` -- the Overview screen's undecided-keys
+ * panel. One entry per domain (`RETURN_PLATFORM`, `AI_GATEWAY`,
+ * `DEPENDENCY_SIMULATION`); a unit name with no `DOMAIN/` prefix is a
+ * `RETURN_PLATFORM` top-level key (CFG-3a F5) -- the vocabulary
+ * `POST /adopt-packaged`'s own `units` list takes.
+ *
+ * **`would_adopt` answers "nothing merged yet" two different ways across
+ * domains (CFG-3a F11), and both are correct for what each domain actually
+ * is:** with no active release, `RETURN_PLATFORM` has nothing to merge
+ * against and reports `[]`; `AI_GATEWAY`/`DEPENDENCY_SIMULATION` fall back to
+ * the packaged file itself in that state, so `merged === packaged` and every
+ * unit is reported. A caller must not read an empty `would_adopt` as "there
+ * is nothing packaged for this domain" -- render what each domain's answer
+ * actually is rather than assuming they agree.
+ */
+export type PackagedDriftDomain = {
+  readonly undecided: readonly string[];
+  readonly would_adopt: readonly string[];
+  readonly filled_leaves: readonly string[];
+};
+
+export type PackagedDrift = Readonly<Record<string, PackagedDriftDomain>>;
+
+/**
  * `ACTIVATED != LIVE` -- contract C5, as one answer an operator can act on.
  *
  * Promoting a release moves the graph pointer and nothing else. The API
@@ -220,4 +296,62 @@ export const configApi = {
         }),
       },
     ),
+
+  /**
+   * Check a payload or a patch against the active release, with no write.
+   * Exactly one of `payload`/`patch` -- the backend 422s on both or neither.
+   * Read roles, not write: safe to call on every keystroke.
+   */
+  validateDomain: (
+    domainKey: string,
+    body: { payload: Readonly<Record<string, unknown>> } | { patch: Readonly<Record<string, unknown>> },
+  ) =>
+    unwrap<ValidateResult>(`/api/config/validate/${encodeURIComponent(domainKey)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+
+  /**
+   * Draft, patch and publish one behaviour domain in a single call -- the
+   * typed screens' write path, replacing the four-round-trip
+   * `createRelease`/`patchDomain`/`promote`x2 sequence `runPublishPipeline`
+   * drives for the JSON editors. `expectedHeadRevision` is the optimistic
+   * lock on the configuration head; `releaseId` is optional (the server
+   * assigns one when omitted).
+   */
+  publish: (options: {
+    domainKey: string;
+    patch: Readonly<Record<string, unknown>>;
+    expectedHeadRevision: number;
+    releaseId?: string;
+    note?: string;
+  }) =>
+    unwrap<PublishResult>("/api/config/publish", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        release_id: options.releaseId ?? null,
+        domain_key: options.domainKey,
+        patch: options.patch,
+        expected_head_revision: options.expectedHeadRevision,
+        note: options.note ?? null,
+      }),
+    }),
+
+  /**
+   * Publish a release adopting the named packaged units -- the API's answer
+   * to a `packaged_configuration_not_adopted` warning. `units` is
+   * `<key>` (a `RETURN_PLATFORM` top-level key) or `<DOMAIN>/<unit>`
+   * (`AI_GATEWAY/tasks.T1`), the same vocabulary `packagedDrift` reports.
+   */
+  adoptPackaged: (units: readonly string[], expectedHeadRevision: number) =>
+    unwrap<AdoptPackagedResult>("/api/config/adopt-packaged", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ units, expected_head_revision: expectedHeadRevision }),
+    }),
+
+  /** The Overview screen's undecided-keys panel: `{undecided, would_adopt, filled_leaves}` per domain. */
+  packagedDrift: () => unwrap<PackagedDrift>("/api/config/packaged-drift"),
 };
