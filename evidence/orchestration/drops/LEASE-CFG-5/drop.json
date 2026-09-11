@@ -2,7 +2,7 @@
   "lease_id": "CFG-5",
   "branch": "feat/cfg-5-screens-b",
   "base_sha": "b03cbb59",
-  "head_sha": "PENDING",
+  "head_sha": "7a636b08",
   "status": "PARTIAL",
   "files": [
     "frontend/src/mocks/handlers/canonicalHandlers.ts",
