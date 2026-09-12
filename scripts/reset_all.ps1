@@ -291,6 +291,27 @@ if ($NoHost -or ($KeepVolumes -and -not $DataOnly)) {
   }
 }
 
+# The reference loader writes no warehouse master, and the SQL migration seeds
+# bays for one warehouse the orders never name. Every order line carries a real
+# inventory warehouse id, so without this the bay agent answers
+# WAREHOUSE_NOT_IN_GRAPH for every return and no case can reach the dock. The
+# backfill mints a master document per warehouse the sales source names; the
+# projection writes them into `platform.bay_configuration`, the only bay
+# authority the platform reads. Both are idempotent and touch nothing that
+# exists. Mirrors step 7/7 of scripts/linux/reset_all.sh, which this script
+# lacked (audit CFG-DEF-12; found again by CFG-7 on 2026-09-12).
+Step "6/6  Seeding warehouse bays for every warehouse the orders name"
+Push-Location $Backend
+try {
+  $env:PYTHONPATH = Join-Path $Backend "src"
+  & $python (Join-Path $Backend "scriptsackfill_warehouse_master.py")
+  if ($LASTEXITCODE -ne 0) { Die "Warehouse master backfill failed; the bay agent would answer WAREHOUSE_NOT_IN_GRAPH." }
+  & $python (Join-Path $Backend "scripts\seed_warehouse_bay_configuration.py")
+  if ($LASTEXITCODE -ne 0) { Die "Bay seeding failed; no case could reach the dock." }
+} finally {
+  Pop-Location
+}
+
 Write-Host "`n[reset] Done." -ForegroundColor Green
 Write-Host "        Confirm the AI routes picked up .env:" -ForegroundColor DarkGray
 Write-Host "          backend\.venv\Scripts\python.exe backend\scripts\validate_ai_gateway_live.py" -ForegroundColor DarkGray
