@@ -1,0 +1,46 @@
+{
+  "lease_id": "CFG-8",
+  "branch": "feat/cfg-8-policy-screen",
+  "base_sha": "35f0356c71b2e9035aca7667e57121eecd74c9f7",
+  "head_sha": "PENDING",
+  "status": "PARTIAL",
+  "files": [
+    "backend/src/return_platform/configuration/api/policy_preview.py",
+    "backend/src/return_platform/configuration/api/router.py",
+    "backend/tests/api/test_policy_preview.py",
+    "backend/tests/configuration/test_canonical_config_api.py",
+    "openapi/return-platform.openapi.json",
+    "backend/openapi/return-platform.openapi.json",
+    "frontend/openapi/return-platform.openapi.json",
+    "openapi.json",
+    "frontend/src/api/generated/return-platform.d.ts",
+    "docs/evidence/stage4_contract_closure/openapi_drift_receipt.json"
+  ],
+  "deleted_files": [],
+  "acceptance": {
+    "backend pytest tests/api/test_policy_preview.py -q": "13 passed",
+    "backend pytest tests/api tests/configuration -q": "695 passed, 6 deselected",
+    "ruff check (touched backend files)": "All checks passed!",
+    "mypy (touched backend files)": "Success: no issues found in 2 source files",
+    "python scripts/check_openapi_drift.py --write": "5 DRIFT entries (expected -- new routes), status PASS",
+    "python scripts/check_openapi_drift.py": "diffs: [], status PASS, exit 0"
+  },
+  "done": [
+    "step:00 base check",
+    "item 1: GET /api/config/packaged/{domain_key} (read roles, redacted, reuses releases.py's _packaged_domain_payloads/_domain_model)",
+    "item 2: POST /api/config/policy/preview (read roles; validates return_eligibility_policy/policy_evaluation with the same models /validate uses; runs policy.evaluator.evaluate_return_eligibility against a fabricated PolicyEvaluationInput built from `sample`; disabled-gate branch answers PolicyGateState.SKIPPED_BY_CONFIGURATION, imported from the workflow rather than restated)",
+    "backend tests: within-window APPROVE + restocking condition; outside-window REVIEW_REQUIRED; a stated failing fact still rejects ahead of the window; evaluation disabled -> SKIPPED_BY_CONFIGURATION with the stated reason; disabled with no reason -> 422 (PolicyEvaluationConfiguration's own rule, not reachable in the route's UNSPECIFIED fallback); an invalid return_eligibility_policy block -> 422 with field paths; an unknown checklist fact name -> 422 naming it; both routes require read roles; the preview route touches no release/repository/resources at all",
+    "test_canonical_config_api.py's mutation-surface test updated: POST /api/config/policy/preview added to the fixed set, docstring extended with the same 'not a mutation, POST-shaped' reasoning /validate already carries",
+    "item 2 (cont'd): OpenAPI regen, all four JSON copies + generated .d.ts, drift check PASS"
+  ],
+  "remaining": [
+    "item 3: frontend client methods + MSW handlers + contract tests",
+    "item 4: PolicySection.tsx blocks 1-6 + test",
+    "item 5: block 7 preview panel",
+    "item 6: ReturnPolicySection.tsx trimmed, registry/routeManifest, registry test",
+    "item 7: e2e spec run once",
+    "item 8: acceptance sweep"
+  ],
+  "out_of_scope_flagged": [],
+  "merge_status": "NOT_MERGED"
+}

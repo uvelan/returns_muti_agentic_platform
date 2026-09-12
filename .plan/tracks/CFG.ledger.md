@@ -4017,3 +4017,144 @@ $ npm run typecheck && npm run lint
 
 Head sha: see commit. `drop.json`'s `merge_status: PENDING` -- ready for RV round 2. The live
 no-restart proof (A10) remains the orchestrator's to run after PASS.
+
+## CFG-8 step:00 — worktree confirmed, base verified
+
+```
+$ git rev-parse HEAD
+35f0356c71b2e9035aca7667e57121eecd74c9f7
+
+$ PYTHONPATH="$(pwd)/backend/src" backend/.venv/Scripts/python.exe -c \
+  "import return_platform; print(return_platform.__file__)"
+K:\Projects\Ret\returns_muti_agentic_platform\.claude\worktrees\cfg-8\backend\src\return_platform\__init__.py
+```
+
+Inside `cfg-8`, confirmed. Base `35f0356c` = "(CFG) merge CFG-6 -- env switches into a release
+deployment section with live adoption; Mongo providerOrder retired; rollback breadth (RV PASS
+064cb96c)" -- trunk with CFG-0..6 merged. `.env`/`.venv`/`node_modules` present (junctioned).
+Greps scoped to `backend/ frontend/src frontend/e2e` throughout; never the repo root.
+
+Read, in order: `CFG-8.brief.md`, `CFG-4.brief.md` and `.plan/reviews/CFG-4.md`,
+`.plan/reviews/CFG-5.md` (H1/H2), `frontend/src/domains/config/ReturnPolicySection.tsx` and
+`TypedSectionScreen.tsx`, `frontend/src/components/forms/README.md`,
+`backend/config/returns/return_policy.yaml` (the packaged `return_eligibility_policy` and
+`policy_evaluation` blocks with their comments), `configuration/return_configuration.py`'s
+`PolicyEvaluationConfiguration`, `policy/eligibility_policy.py` (the seven-block model),
+`policy/evaluator.py` (`evaluate_return_eligibility`), `policy/evaluation_input.py`,
+`policy/outcome.py`, `policy/vocabulary.py`, and `workflows/return_case_activities.py` /
+`return_case_workflow.py` for the exact recorded rule name when the gate is off.
+
+**Correction to the brief's own item 1 UI copy, confirmed against the workflow rather than assumed.**
+The brief's draft "off" sentence read "...carries the reason as `CONDITION_FACTS_NOT_EVALUATED`".
+That is a different mechanism entirely: `PolicyRule.CONDITION_FACTS_NOT_EVALUATED`
+(`policy/vocabulary.py:327`) is what an *enabled* gate's outcome carries when
+`unstated_condition_facts: NOT_EVALUATED` and a case leaves a condition fact unstated -- a live
+evaluation that skipped some checks. What `evaluate_case_eligibility`
+(`workflows/return_case_activities.py:1020-1041`) actually writes when
+`policy_evaluation.enabled` is false is two different case facts:
+`policy_evaluation_state = PolicyGateState.SKIPPED_BY_CONFIGURATION` and
+`policy_evaluation_skip_reason` (the stated `disabled_reason`, confirmed against
+`PolicyGateState` in `workflows/return_case_workflow.py:310-328` and the same two names in
+`PolicyEvaluationConfiguration`'s own docstring, `configuration/return_configuration.py:1420-1422`,
+which calls them "the two fact names to grep for"). Used `SKIPPED_BY_CONFIGURATION` in the
+screen's copy and in the preview route's disabled-gate response instead of the brief's placeholder.
+
+## CFG-8 step:01 — backend items A and B: policy preview, packaged domain read
+
+Items 1 and 2 of the brief, combined into one commit: both are two-route additions to the same
+`configuration/api/router.py`, both new, and both share `_domain_model`/`_packaged_domain_payloads`
+(imported from `releases.py`, which stays outside Owns) -- splitting them into two commits would
+have meant re-touching the same import block twice for no reader benefit.
+
+**Item B**, `GET /api/config/packaged/{domain_key}` -- the composed packaged document for one
+domain, redacted, read roles. Delegates entirely to the exact read `/adopt-packaged` and
+`/packaged-drift` already use (`_packaged_domain_payloads`), so "what is packaged" has one
+implementation across three routes. 404s through the same `_domain_model` `/validate/{domain_key}`
+uses, so an unknown key reads identically on both routes.
+
+**Item A**, `POST /api/config/policy/preview` (new module `configuration/api/policy_preview.py`) --
+body `{return_eligibility_policy, policy_evaluation, sample}`. `sample` is deliberately narrow:
+`days_since_purchase`, `stock_classification` (STANDARD_STOCK/SPECIAL_ORDER/UNRESOLVED, mapped to
+the three underlying tri-state facts), `facts` (a dict keyed by the "What the item must be"
+checklist's own names -- `new`, `suitable_for_resale`, ..., `damaged` -- valued `TRUE`/`FALSE`/
+`UNKNOWN`), and `reason`. Both submitted blocks are validated with the real release models
+(`ReturnEligibilityPolicy`, `PolicyEvaluationConfiguration`) before anything runs, errors mapped to
+`{path, message, type}` through the same `_dotted_error_path` `/validate` uses, prefixed with the
+block name. When `policy_evaluation.enabled` is false, the route answers the disabled-gate outcome
+without touching the evaluator at all: `PolicyGateState.SKIPPED_BY_CONFIGURATION` (imported from
+`workflows/return_case_workflow.py`, read-only) and the stated `disabled_reason` -- see step:00's
+correction for why this, not `CONDITION_FACTS_NOT_EVALUATED`, is the workflow's actual answer.
+Otherwise builds a one-off `PolicyEvaluationInput` from `sample` (`purchase_date`/`delivery_date`
+both derived from `days_since_purchase` counted back from `datetime.now(UTC)`, so either purchase-
+window basis the draft configures answers the same window question) and calls
+`policy.evaluator.evaluate_return_eligibility` directly -- the workflow's own pure function, not a
+second implementation of it. Response: `{evaluation_enabled, decision, route, applied_rules,
+conditions, unanswered_checks, reason_codes, policy_evaluation_state, policy_evaluation_skip_reason}`
+-- a superset of the brief's stated five fields (`route`/`reason_codes`/the two state fields added
+because the preview panel needs to render a WARRANTY/DELIVERY_CLAIM hand-off and the disabled-gate
+state sensibly, not because the contract asked for more than it did).
+
+Both routes gated by `require_read_roles`, not `config.release.write` -- nothing is stored by
+either, matching `/validate/{domain_key}`'s own reasoning exactly.
+
+`test_canonical_config_api.py::test_the_release_lifecycle_is_the_only_mutation_surface_here` asserts
+a fixed set of non-GET routes and would have failed the moment `POST /policy/preview` existed --
+updated to add it to the set, with the docstring extended by one paragraph giving it the same
+"not a mutation, POST-shaped because a body does not fit a GET's query string" reasoning already
+given for `/validate`, plus naming the specific test (`test_policy_preview.py`) that proves no
+release is created, patched or promoted by a preview call. This file is outside CFG-8's `Owns` list
+but the edit is forced by adding a genuine new POST route to `router.py`, exactly the kind of
+necessary excursion CFG-5's own ledger records the same way.
+
+`backend/tests/api/test_policy_preview.py` (new, 13 tests): packaged-domain 200 for all three
+domain keys, 404 naming the valid three, 401 with no principal; preview within window -> APPROVE
+with `RESTOCKING_FEE_APPLIES` and all thirteen checklist names in `unanswered_checks` (the packaged
+policy's own `unstated_condition_facts: NOT_EVALUATED` letting an all-"not stated" sample still
+decide on the window alone -- the brief's own example, verified against the real packaged file
+rather than a hand-built fixture, same reason `test_packaged_adoption.py` gives for the same
+choice); outside window -> `REVIEW_REQUIRED` with `OUTSIDE_STANDARD_WINDOW`/
+`OUTSIDE_STANDARD_RETURN_WINDOW`; a *stated* failing fact (`installed: TRUE`) still rejects ahead of
+the window, `unanswered_checks` empty -- proving `NOT_EVALUATED` only weakens silence, never a
+stated fact; evaluation disabled -> the exact `SKIPPED_BY_CONFIGURATION`/reason shape; disabled with
+no `disabled_reason` -> 422 naming `policy_evaluation` (the model's own cross-field rule refuses
+before evaluation ever runs -- written first expecting 200 with an `"UNSPECIFIED"` fallback,
+corrected once the actual model behaviour surfaced the 422 instead, which is the more useful proof:
+the route's own fallback is provably unreachable given a validated block); an invalid
+`standard_stock_return.decision_when_satisfied: REJECT` (section 20's own forbidden shape) -> 422
+naming `return_eligibility_policy...`; an unknown checklist name in `sample.facts` -> 422 naming
+`sample.facts.<name>`; both routes 401 with no principal; and a call with no `app.state` wired up
+at all to pin that the preview route reads nothing off the app besides the request body.
+
+```
+$ PYTHONPATH=.../backend/src backend/.venv/Scripts/python.exe -m pytest tests/api/test_policy_preview.py -q
+13 passed
+
+$ ... -m pytest tests/api tests/configuration -q
+695 passed, 6 deselected, 2 warnings in 78.88s
+
+$ ruff check src/return_platform/configuration/api/policy_preview.py src/return_platform/configuration/api/router.py \
+    tests/api/test_policy_preview.py tests/configuration/test_canonical_config_api.py
+All checks passed!
+
+$ mypy src/return_platform/configuration/api/policy_preview.py src/return_platform/configuration/api/router.py
+Success: no issues found in 2 source files
+```
+
+## CFG-8 step:02 — OpenAPI regen (all four JSON copies + the .d.ts), drift PASS
+
+```
+$ PYTHONPATH=.../backend/src backend/.venv/Scripts/python.exe scripts/check_openapi_drift.py --write
+"diffs": ["DRIFT: openapi/return-platform.openapi.json", "DRIFT: backend/openapi/return-platform.openapi.json",
+"DRIFT: frontend/openapi/return-platform.openapi.json", "DRIFT: openapi.json",
+"DRIFT: frontend/src/api/generated/return-platform.d.ts"], "status": "PASS", "exit_code": 0
+
+$ ... scripts/check_openapi_drift.py
+"diffs": [], "status": "PASS", "exit_code": 0
+```
+
+Both new routes confirmed present in the generated `.d.ts`
+(`get_packaged_domain_api_config_packaged__domain_key__get`,
+`policy_preview_api_config_policy_preview_post`), response typed as
+`components["schemas"]["APIResponse_dict_str__Any__"]` (the same generic shape every other
+`dict[str, Any]`-typed config route already carries) and the request body as
+`components["schemas"]["PolicyPreviewRequest"]`.

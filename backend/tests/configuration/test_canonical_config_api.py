@@ -157,6 +157,13 @@ def test_the_release_lifecycle_is_the_only_mutation_surface_here() -> None:
     routes by HTTP method alone can no longer say "no write" the way it used
     to when every non-GET route here really was one, so it is named here by
     exception rather than silently widening what this assertion means.
+
+    **`POST /policy/preview` (CFG-8) is the same exception for the same
+    reason.** It evaluates a fabricated sample against a submitted draft
+    (`return_eligibility_policy`, `policy_evaluation`, `sample`) -- the body
+    does not fit a GET's query string either -- and stores nothing: no
+    release is created, patched or promoted, and `test_policy_preview.py`
+    proves it by reading the active release back unchanged after a call.
     """
     from return_platform.configuration.api.router import router
 
@@ -173,6 +180,7 @@ def test_the_release_lifecycle_is_the_only_mutation_surface_here() -> None:
         ("/api/config/validate/{domain_key}", "POST"),
         ("/api/config/publish", "POST"),
         ("/api/config/adopt-packaged", "POST"),
+        ("/api/config/policy/preview", "POST"),
     }, mutations
 
 
