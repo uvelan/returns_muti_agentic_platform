@@ -5364,3 +5364,27 @@ $ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g 
 
 No new palette, font or dependency (existing Tailwind utilities only). Files:
 `frontend/src/components/forms/Toggle.tsx`, `frontend/src/components/forms/Toggle.test.tsx`.
+
+## CFG-7 step:09 — new live e2e spec: /config/deployment (item 1, closes CFG-6's carried proof)
+
+`frontend/e2e/config-deployment.spec.ts` did not exist before this lease -- CFG-6's own drop.json
+listed "Live no-restart proof ... deliberately not executed from this worktree" as its headline
+remaining item, and CFG-7's brief item 1 names `/config/deployment` explicitly among the screens
+this lease must prove live. New spec: flips `deployment.feedback_learning.enabled` (a bare boolean
+with no environment-dependent production gate, unlike `deployment.ai.provider_order` or
+`deployment.dependencies.*`), Validate, Publish, asserts `GET /api/config/runtime` reflects it, then
+publishes the revert. A preflight check asserts the live host's `environment` is not `"production"`
+before touching the field, since a future run against a production host is not where to discover
+that assumption was wrong.
+
+```
+$ npm run typecheck / npm run lint -> exit 0
+
+$ npx playwright test --project=cfg4-e2e e2e/config-deployment.spec.ts --workers=1 --reporter=list
+  1 passed (12.6s)
+
+Head revision: 187 -> 189 (two publishes, flip + revert)
+GET /api/config/runtime after: deployment.feedback_learning.enabled == true (the original value)
+```
+
+Files: `frontend/e2e/config-deployment.spec.ts`.
