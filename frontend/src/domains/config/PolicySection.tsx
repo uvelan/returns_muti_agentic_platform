@@ -783,7 +783,16 @@ function PolicyPreviewPanel({
           type="button"
           onClick={() => { preview.mutate(); }}
           disabled={preview.isPending}
-          className="flex items-center gap-1.5 rounded-lg border border-outline-control bg-surface-container-lowest px-3 py-2 text-xs font-semibold text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+          // RV round 1, F1 (BLOCKING, CFG-8 A2): `disabled:opacity-40` on
+          // `text-on-surface-variant` composited to 2.046:1 -- the same
+          // family CFG-5's F1 was blocking on and AgentsSection.tsx's Save
+          // button already carries the fix for (`disabled:bg-*`/
+          // `disabled:border-*`, no opacity). Dimmed through the
+          // background/border channel instead, so the label stays at full
+          // contrast in both states; `disabled:hover:*` re-asserts the
+          // resting colours so a disabled button never reads as interactive
+          // (CFG-5's own H1: differ by fill/border, not only cursor).
+          className="flex items-center gap-1.5 rounded-lg border border-outline-control bg-surface-container-lowest px-3 py-2 text-xs font-semibold text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:border-outline-variant disabled:bg-surface-container-low disabled:hover:border-outline-variant disabled:hover:text-on-surface-variant"
         >
           {preview.isPending ? "Evaluating..." : "Evaluate"}
         </button>

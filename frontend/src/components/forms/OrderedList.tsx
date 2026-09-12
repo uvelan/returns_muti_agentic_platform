@@ -33,6 +33,18 @@ export function OrderedList<T>({
    * (e.g. `FERGUSON_STANDARD_RETURN` pinned last in a precedence list), the
    * control itself should refuse the drag rather than let an operator drop
    * it, run Validate, and learn only from the page-level error list.
+   *
+   * RV round 1 (CFG-7), A3: this predicate is evaluated per item, not as an
+   * assertion about the LAST position -- it has no way to notice a loaded
+   * document whose matching item is not already last (a draft edited
+   * through Advanced/JSON mode, say). In that shape it freezes the matching
+   * item wherever it sits and freezes its immediate neighbour too, which
+   * reads as "stuck" rather than "pinned last". Unreachable through this
+   * typed control alone (the loaded release always validates before it
+   * reaches here), and Advanced mode remains the escape hatch either way --
+   * documented as the precondition rather than enforced, since enforcing it
+   * here would mean this generic component knowing about one caller's
+   * validation rule.
    */
   fixedTrailing?: (item: T) => boolean;
 }) {

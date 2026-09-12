@@ -254,7 +254,15 @@ describe("Overview screen -- undecided keys panel", () => {
     // test, since there is no contrast-checking utility in this repo (the
     // review's own probe used an external axe run) and a className check
     // fails loudly the moment the exact class that caused this returns.
-    it("does not fade the disabled button's text with an opacity utility", async () => {
+    // RV round 1 (CFG-7), H2: a `className` check that pins only the exact
+    // spelling that caused this defect is a proxy for the property it broke,
+    // not the property itself -- `disabled:text-outline` (the token CFG-5b's
+    // own contrast bug used elsewhere) would sail through a no-opacity-only
+    // assertion. Widened to the family: no opacity utility of any kind, AND
+    // a real non-text channel (`disabled:bg-*`/`disabled:border-*`) present,
+    // so a future edit cannot silently reintroduce the fade by moving it
+    // from `opacity` onto `text-primary/40` or a bare `disabled:text-*`.
+    it("does not fade the disabled button's text with an opacity utility, and dims it by fill/border instead", async () => {
       mocks.runtime.mockResolvedValue({
         release_id: "unknown",
         head_revision: null,
@@ -270,6 +278,8 @@ describe("Overview screen -- undecided keys panel", () => {
       const button = await screen.findByRole("button", { name: "Take packaged file" });
       expect(button).toBeDisabled();
       expect(button.className).not.toMatch(/(?:^|[\s:])opacity-\d/);
+      expect(button.className).not.toMatch(/disabled:text-\S+/);
+      expect(button.className).toMatch(/disabled:(?:bg|border)-\S+/);
     });
   });
 });

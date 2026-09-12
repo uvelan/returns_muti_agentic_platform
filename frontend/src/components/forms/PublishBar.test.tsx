@@ -47,6 +47,26 @@ describe("PublishBar", () => {
     expect(screen.getByRole("button", { name: "Publish" })).not.toHaveAttribute("aria-describedby");
   });
 
+  // RV round 1 (CFG-7), F1 (BLOCKING, carrying CFG-8 A2 / CFG-5 H1 / H2):
+  // Publish is disabled by DEFAULT (dirtyCount === 0) on every typed
+  // screen's first paint, so a contrast-breaking `disabled:opacity-40` here
+  // was the most visible instance of the family CFG-5's F1 first found.
+  // Asserted as the property family (H2), not the one spelling that caused
+  // it: no `opacity-\d` utility at all, and a real non-text channel
+  // (`disabled:bg-*`/`disabled:border-*`) actually present, so a future edit
+  // cannot silently reintroduce the fade by moving it onto `text-*` instead.
+  it("dims both disabled buttons without fading their own text (no opacity utility, real fill/border channel)", () => {
+    render(<PublishBar dirtyCount={0} onPublish={vi.fn()} onValidate={vi.fn()} />);
+    for (const button of [
+      screen.getByRole("button", { name: "Publish" }),
+      screen.getByRole("button", { name: "Validate" }),
+    ]) {
+      expect(button).toBeDisabled();
+      expect(button.className).not.toMatch(/(?:^|[\s:])opacity-\d/);
+      expect(button.className).toMatch(/disabled:(?:bg|border)-\S+/);
+    }
+  });
+
   it("offers Validate only when onValidate is given, disabled until something is staged", () => {
     const { rerender } = render(<PublishBar dirtyCount={0} onPublish={vi.fn()} />);
     expect(screen.queryByRole("button", { name: /Validate/ })).not.toBeInTheDocument();

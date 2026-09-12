@@ -5499,3 +5499,144 @@ Files: `evidence/config_audit/FINAL_REPORT.md`.
 $ python scripts/check_openapi_drift.py
 "status": "PASS", "diffs": []
 ```
+
+## CFG-7 step:14 — RV round 1 fixes
+
+RV round 1 (`.plan/reviews/CFG-7.md`, reviewed `b079a987`) returned **CHANGES_REQUIRED**: two
+blocking findings, both about the record rather than the code, plus seven advisories.
+
+**F1 (BLOCKING) — brief item 2 named four IDs; three (CFG-8 A2, CFG-5 H1, CFG-5 H2) had neither a
+fix nor a ledger line, while `drop.json` called item 2 DONE.** RV measured `PolicySection.tsx`'s
+Evaluate button (`disabled:opacity-40` on `text-on-surface-variant`) at **2.046:1** -- axe does not
+flag disabled controls (1.4.3 exemption), which is exactly why a clean sweep hid the omission.
+Fixed:
+- **CFG-8 A2** (`PolicySection.tsx`, Evaluate button): `disabled:opacity-40` replaced with the
+  non-text-channel treatment `AgentsSection.tsx`'s own Save button already carries
+  (`disabled:border-outline-variant disabled:bg-surface-container-low`, plus
+  `disabled:hover:*` re-asserting the resting colours) -- text stays at full contrast in both
+  states.
+- **CFG-5 H1** (`UndecidedKeysPanel.tsx`, "Take packaged file"): CFG-5b's own earlier fix removed
+  the opacity (contrast now 9.338:1) but left the disabled state pixel-identical to enabled except
+  for the cursor -- RV's own re-measurement confirmed this still held. Same non-text-channel
+  treatment added (`disabled:border-outline-variant disabled:bg-surface-container-low`), replacing
+  the stale `disabled:hover:border-outline-control` re-assertion with one that matches the new
+  resting state.
+- **Extended to `PublishBar.tsx`** (Validate and Publish, not named by any ID but the exact same
+  broken className string, on the ONE component every typed screen's footer shares -- Publish is
+  disabled by default, `dirtyCount === 0`, on every screen's first paint): both buttons fixed the
+  same way, Publish getting the `AgentsSection`-style primary-filled treatment
+  (`border border-transparent`, `disabled:shadow-none disabled:hover:brightness-100`).
+- **CFG-5 H2**: regression tests widened from "no `opacity-\d` utility" to the property family --
+  "no `opacity-\d` **and** a real `disabled:bg-*`/`disabled:border-*` present" -- at
+  `OverviewSection.test.tsx` (existing test widened, `disabled:text-\S+` also excluded per the
+  original H2 finding's own example), `PolicySection.test.tsx` (new: dims the pending Evaluate
+  button) and `PublishBar.test.tsx` (new: both buttons at once).
+- **Not fixed this round, recorded rather than silently dropped a second time**: the same
+  `disabled:opacity-40` string also appears in `DataSourcesSection.tsx`, `DocumentEditor.tsx`,
+  `SupportTemplateSection.tsx` and `KeyValueTable.tsx` -- none named by the four brief-item-2 IDs,
+  none flagged by axe, and a full app-wide sweep is a larger undertaking than this fix round's
+  scope. `drop.json.remaining` names it as a follow-up.
+
+**F2 (BLOCKING) — the definition-of-done item 2 verdict (step:12) and `drop.json` claimed
+`backend/config/seed/` is "not loaded by any runtime path". False, and RV is right.**
+`operations/seed_manifest.py:35` computes `SEED_MANIFEST_PATH` from
+`backend/config/seed/e2e_seed_manifest.json`; `:57` reads it **at module import**
+(`_SEED_CONFIGURATION: Final = _load_seed_configuration()`, raising `FileNotFoundError` if absent);
+`main.py:51` imports `api/order_lines.py`, which imports this module at `:95` -- the app does not
+start without that file. Verified directly against the source, not taken on RV's word.
+
+**Corrected verdict for definition-of-done item 2**, replacing step:12's line (not edited in place --
+this is the correction, per the ledger's own append-only convention): `backend/config/seed/
+e2e_seed_manifest.json` **is** runtime-loaded (at import) and satisfies item 2 on its own; it must
+not be moved or deleted without a code change. `backend/config/seed/generation.yaml`
+(`backend/scripts/generate_seed_data.py:128` only) and `backend/config/data_platform/*.yaml`
+(`data_platform/graph/sandbox_runner.py:68`'s CLI default, plus `backend/tests/**`) are genuinely
+tooling/test inputs, not runtime configuration -- item 2 is still not fully met because of these,
+plus `manifest.yaml`'s one inert entry and `dynamic_knowledge/active-schema.example.yaml` (already
+documented as such). Per RV's own recommendation: the orchestrator should decide between amending
+`CFG.brief.md` §6 item 2 to "contains only files the runtime **or its own tooling** loads, split by
+function, each named in the README" (which `backend/config/README.md:104-116` already satisfies
+today) or opening a successor lease that owns `backend/config/**` and relocates the tooling-only
+files with their loaders repointed. **Nothing was deleted or moved by this correction** -- it is a
+documentation fix, and the decision is left to the orchestrator as instructed.
+
+**Advisories taken:**
+- **A1**: `AiControlCenterPage.tsx`'s local `Switch` (~line 1691) carried the identical geometry
+  `Toggle.tsx` had before step:08 (`peer sr-only` behind two `absolute inset-0` decorative spans).
+  Not the same *defect* -- its `<label>` already wraps the graphic, so no mouse user is blocked --
+  but a direct `role=checkbox` click (a future live spec for `/ai/configuration` or
+  `/ai/providers-models`) would intercept identically. Fixed with the same two-line change:
+  `absolute inset-0 z-10 size-full appearance-none opacity-0`. No test added: the file's own test
+  suite (`AiControlCenterPage.test.tsx`) has no harness reaching `ProvidersTab`/`TasksConfigTab`
+  today (its one `describe` block covers interceptions only), and building one from scratch to
+  reach a single nested `Switch` usage is disproportionate to an advisory-level geometry fix RV
+  itself frames as "not the same defect" and lower severity than F1/F2.
+- **A2**: eight further references to `backend/config/returns/production.yaml` /
+  `backend/config/ai_gateway.yaml` in `generate_audit_artifacts.py` (the brief scoped the original
+  ask to two lines; RV found six more `feature(...)` rows plus the agent matrix) repointed at the
+  same composed-directory strings step:07 used.
+- **A3**: `OrderedList.tsx`'s `fixedTrailing` JSDoc now states the precondition RV found -- it is a
+  predicate over every item, not an assertion about the last position; unreachable through the
+  typed control (the loaded release always validates) but reachable through Advanced/JSON mode,
+  where it would render "Fixed last" mid-list. Documented rather than enforced, since enforcing it
+  here would mean this generic component knowing about one caller's validation rule.
+- **A4**: `drop.json`'s `head_sha` corrected (was self-referential at the prior drop commit;
+  now points at this step's own commit, updated in the commit that records the hash).
+- **A5**: `suite_size_floor.json`'s frontend floor corrected from 1092 to 1095 -- step:08's Toggle
+  test and this step's own two new tests had moved the real count without the floor being
+  re-staked. Comment updated to say so plainly rather than silently changing the number.
+- **A6**: noted, no action needed -- RV confirmed the two files outside the literal Owns list
+  (`backend/tests/test_configuration_api.py`, `frontend/src/main.tsx`) are exactly what items 3/4
+  demanded verbatim, and the specific instruction correctly outranked the general Owns list.
+- **A7**: `FINAL_REPORT.md` section L's "Net" line corrected -- DEF-06 was folded into "15 fixed and
+  holding" despite its own row saying "superseded"; now "14 fixed and holding ... plus 06
+  superseded" (still totals 20).
+
+**DEF-12 update (not an RV finding against this lease, but requested alongside the fixes)**: the
+orchestrator reports the Windows `scripts/reset_all.ps1` gap this lease found is now fixed on trunk
+at `18f55e09` ("reset_all.ps1: fix the backfill path (a backspace byte had replaced the
+backslash)") -- Step 6/6 "Seeding warehouse bays" already present there, a corrupted path separator
+repaired. `FINAL_REPORT.md` section L's DEF-12 row updated to cite the commit rather than "left unfixed".
+Not on this branch's own ancestry (applied directly to trunk); cited as a merge-record pointer.
+
+**Verification, re-run in full after every fix above:**
+
+```
+$ npx vitest run
+ Test Files  90 passed (90)
+      Tests  1095 passed (1095)          # was 1093 at RV round 1's own re-run; +2 (PublishBar,
+                                          #  PolicySection property-family tests)
+$ npm run typecheck   -> exit 0
+$ npm run lint        -> exit 0
+
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts --workers=1 --reporter=list
+  (disposable port, onUnhandledRequest:"error", :5173/:5174 untouched)
+141 passed          # 44/44 accessibility, 0 failed, 0 flaked -- cleaner than this lease's own
+                     # step:02/step:08 runs, matching RV's own re-run
+
+$ pytest tests -q -p no:cacheprovider --ignore=tests/configuration/test_concurrent_activation.py
+42 failed, 5394 passed, 10 skipped, 516 deselected      -- unchanged, same 42 ids
+
+$ python scripts/ci/assert_known_failures.py --suite backend --report backend/junit-backend-step14.xml
+suite size held: 455 test files/modules, 5446 test cases (floor 455 / 5446)
+5446 tests ran, 42 failed, 42 allowlisted
+only the 42 known, still-failing tests failed                            [[ exit 0 ]]
+
+$ python scripts/ci/assert_known_failures.py --suite frontend --report <frontend junit>
+suite size held: 90 test files/modules, 1095 test cases (floor 90 / 1095)
+1084 tests ran, 0 failed, 0 allowlisted
+only the 0 known, still-failing tests failed                             [[ exit 0 ]]
+
+$ python scripts/ci/test_assert_known_failures.py
+all negative controls passed                                             [[ exit 0 ]]
+
+$ python scripts/check_openapi_drift.py
+"commit": "b079a987...", "diffs": [], "status": "PASS", "exit_code": 0
+```
+
+Files: `frontend/src/domains/config/PolicySection.tsx`, `PolicySection.test.tsx`,
+`UndecidedKeysPanel.tsx`, `OverviewSection.test.tsx`, `frontend/src/domains/ai/AiControlCenterPage.tsx`,
+`frontend/src/components/forms/PublishBar.tsx`, `PublishBar.test.tsx`, `OrderedList.tsx`,
+`docs/evidence/stage4o_complete_audit/generate_audit_artifacts.py`,
+`evidence/config_audit/FINAL_REPORT.md`, `scripts/ci/suite_size_floor.json`,
+`evidence/orchestration/drops/LEASE-CFG-7/drop.json`.

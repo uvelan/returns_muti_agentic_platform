@@ -130,7 +130,12 @@
     "  list, verified by diff against this run's own JUnit report.",
     "",
     "  frontend -- `npx vitest run --reporter=junit`, from `frontend/`.",
-    "  Reported 1092 passed, 0 failed, 90 files -- the frontend allowlist is",
+    "  Reported 1092 passed at the step this comment was first written; RV",
+    "  round 1 (CFG-7) caught that this lease's own later steps (the Toggle",
+    "  regression test, then the RV-fix round's PublishBar/PolicySection",
+    "  property-family tests) had moved the real count to 1095 without the",
+    "  floor being re-staked -- re-measured and corrected here rather than",
+    "  left to drift. 0 failed, 90 files throughout; the frontend allowlist is",
     "  empty and stays empty.",
     "",
     "  Prior measurement, kept for the record rather than deleted: `python -m",
@@ -148,7 +153,7 @@
       "files": 455
     },
     "frontend": {
-      "cases": 1092,
+      "cases": 1095,
       "files": 90
     }
   }
