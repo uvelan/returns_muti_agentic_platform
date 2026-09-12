@@ -26,6 +26,8 @@ transcribed from memory. Brief: `.plan/tracks/CFG.brief.md`. Audit: `evidence/co
 | CFG-4 | feat/cfg-4-screens-a | 656ba175 | Sonnet | **MERGED** | LEASE-CFG-4 MERGED | PASS (45c14660) | merge commit on trunk |
 | CFG-5 | feat/cfg-5-screens-b | b03cbb59 | Sonnet | **MERGED** | LEASE-CFG-5 MERGED | PASS (b3d8f06e) | merge commit on trunk |
 | CFG-6 | feat/cfg-6-deployment-section | 59950920 | Opus spike → Sonnet | **MERGED** | LEASE-CFG-6 MERGED | PASS (064cb96c) | merge commit on trunk |
+| CFG-8 | feat/cfg-8-policy-screen | 35f0356c | Sonnet | **MERGED** | LEASE-CFG-8 MERGED | PASS (990b97d6) | b9390061 |
+| CFG-5b | feat/cfg-5b-agents | 94049bee | Sonnet | IN_PROGRESS | — | — | — |
 | CFG-7 | feat/cfg-7-acceptance | after CFG-5 + CFG-6 | Haiku + Sonnet + RV | NOT_STARTED | — | — | — |
 
 ## Steps
@@ -4018,7 +4020,6 @@ $ npm run typecheck && npm run lint
 Head sha: see commit. `drop.json`'s `merge_status: PENDING` -- ready for RV round 2. The live
 no-restart proof (A10) remains the orchestrator's to run after PASS.
 
-<<<<<<< HEAD
 ---
 
 ## CFG-6 accepted on the dev host: the live no-restart proof (orchestrator)
@@ -4040,7 +4041,9 @@ A provider-order change published through the API was adopted by every process c
 the API process (pid 29684) never restarted, and the revert adopted the same way. Snapshot
 `evidence/config_audit/after_cfg6/` (head 138). CFG-8 (Policy screen, user request) started on
 `feat/cfg-8-policy-screen` from `35f0356c`; CFG-5b waits for it (one backend implementer at a time).
-=======
+
+---
+
 ## CFG-8 step:00 — worktree confirmed, base verified
 
 ```
@@ -4427,4 +4430,20 @@ nothing further needs to change in the spec itself for that to happen.
 
 `drop.json`: `status` moves from `PARTIAL` to `PENDING` -- ready for RV. `head_sha` is this step's
 commit. `merge_status` stays `NOT_MERGED`, the orchestrator's to change.
->>>>>>> feat/cfg-8-policy-screen
+
+
+---
+
+## CFG-8 merged at b9390061 (orchestrator)
+
+RV PASS on `990b97d6` (no blocking; the reviewer reproduced the preview outcomes -- 10 days APPROVE with
+RESTOCKING_FEE_APPLIES, 40 days REVIEW_REQUIRED/OUTSIDE_STANDARD_RETURN_WINDOW, gate off
+SKIPPED_BY_CONFIGURATION -- and the live 30 → 45 → 30 publish loop, head 146 → 148). Advisories carried
+into CFG-7: A1 precedence not pinned and a dead inline error key (`return_eligibility_policy.precedence`
+vs the model's path `return_eligibility_policy`); A2 `disabled:opacity-40` on text at
+`PolicySection.tsx:766` (CFG-5 F1 class); A3 the preview panel sits inside the read-only fieldset, so a
+read-only operator cannot Evaluate -- move it outside; the forward note that the spec's `Decision:
+APPROVE` depends on the live `policy_evaluation.enabled: true`.
+
+Merge note: the merge commit `b9390061` carries the ledger's conflict markers (the resolver asserted on
+a missing CFG-8 table row before writing); this entry is the resolution, with the row added.

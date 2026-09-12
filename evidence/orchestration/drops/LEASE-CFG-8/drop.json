@@ -58,5 +58,6 @@
   "unfinished": [
     "The e2e spec's preview steps (Evaluate -> Decision: APPROVE) were not exercised against the live stack this session: the running backend process is pinned to trunk head (pre-CFG-8) and its own /openapi.json confirms neither new route exists there yet. Not a gap in this lease's own verification -- the preview route is proven by 13 backend pytest tests against the real evaluator and by PolicySection.test.tsx's draft-vs-loaded wiring test -- but it is real live-stack coverage this lease could not produce before merge. Will resolve itself the first time the live stack is rebuilt onto a commit containing this lease; no spec change needed."
   ],
-  "merge_status": "NOT_MERGED"
+  "merge_status": "MERGED",
+  "merged_to": "refactor/unified-return-platform (local, b9390061, not pushed)"
 }
