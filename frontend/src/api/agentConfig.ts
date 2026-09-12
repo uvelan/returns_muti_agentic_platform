@@ -3,30 +3,40 @@ import { apiClient } from "./client";
 /**
  * Per-agent configuration.
  *
- * Each agent has had its own module file under `backend/config/agents/` all
- * along, declared in the manifest -- the separation was already there and
- * nothing served it, so the console could neither show an agent's settings nor
- * change them.
+ * CFG-5b repointed this at the live `RETURN_PLATFORM.agents` section --
+ * `AgentRegistry.build()` and every agent class read only
+ * `ReturnPlatformConfiguration.agents["<id>"]`, so `manifestId` is that live
+ * key (`order_discovery`, not a manifest-module id) and `document` is exactly
+ * the small `AgentConfiguration` shape (`name`, `version`, `enabled`,
+ * `ai_assisted`, `ai_route_ref`, plus a handful of dead knobs kept only so
+ * already-published releases still parse). There is no more `moduleId`: the
+ * manifest-driven module system this used to edit is retired (D-CFG-1), and
+ * an agent has exactly one id now.
  *
- * The document is `unknown`-shaped on purpose. A module's payload differs by
- * agent and the backend validates it through the loader the platform boots
- * from; typing it here would be a second, weaker definition of valid that
- * could disagree with the real one.
+ * `document` stays `Record<string, unknown>` rather than a typed interface:
+ * the backend validates it through `AgentConfiguration`, and typing it here
+ * too would be a second, weaker definition of valid that could disagree with
+ * the real one. The typed table (`AgentsSection.tsx`) reads the handful of
+ * fields it renders defensively for that reason.
  */
 
 export type AgentSummary = {
   manifestId: string;
-  moduleId: string;
   name: string;
+  version: string;
   enabled: boolean;
-  status: string;
-  configurationVersion: string;
+  aiAssisted: boolean;
+  aiRouteRef: string | null;
+  //: Always `"RELEASE"` now -- `agents` is a required key of the release, so
+  //: there is no more a no-release state to fall back from. Kept because the
+  //: screen still shows it.
   source: string;
 };
 
 export type AgentConfiguration = {
   manifestId: string;
-  moduleId: string;
+  //: A descriptive locator (`RETURN_PLATFORM.agents.<id>`), not a filesystem
+  //: path -- there is no file behind this document any more.
   path: string;
   document: Record<string, unknown>;
   source: string;

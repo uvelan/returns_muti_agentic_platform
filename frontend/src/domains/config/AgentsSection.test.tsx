@@ -1,25 +1,31 @@
 /**
- * The agent configuration editors.
+ * The Agents screen: a typed table over the live `RETURN_PLATFORM.agents`
+ * section (CFG-5b), with the pre-CFG-5b JSON editor kept as the Advanced
+ * escape hatch.
  *
- * The risk here is not rendering: it is an editor that quietly loses or
- * mangles what an operator typed. These assert the three ways that happens --
- * an invalid JSON edit discarded on a mode switch, a nested value written to
- * the wrong place, and a rejection shown as something vaguer than what the
- * backend said.
+ * The risk is the same shape it always was for a governed edit -- a save
+ * that changes the wrong field, a rejection shown as something vaguer than
+ * what the backend said, a read-only principal who can still submit -- plus
+ * one CFG-5b-specific one: a typed field save must round-trip the agent's
+ * *whole* document, not a hand-built subset, or a dead knob a previous edit
+ * set would silently reset to its default.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AgentsSection } from "./AgentsSection";
 import { CapabilityContext } from "../../hooks/capabilityContext";
 
-const mocks = vi.hoisted(() => ({ list: vi.fn(), read: vi.fn(), save: vi.fn() }));
+const mocks = vi.hoisted(() => ({ list: vi.fn(), read: vi.fn(), save: vi.fn(), runtime: vi.fn() }));
 
 vi.mock("../../api/agentConfig", () => ({
   agentConfigApi: { list: mocks.list, read: mocks.read, save: mocks.save },
+}));
+vi.mock("../../api/configuration", () => ({
+  configApi: { runtime: mocks.runtime },
 }));
 
 function makeWrapper(canWrite: boolean) {
@@ -33,10 +39,8 @@ function makeWrapper(canWrite: boolean) {
             isLoading: false,
             isUnauthenticated: false,
             error: null,
-            can: (capability) =>
-              canWrite && capability === "governance.proposal.write",
-            canAny: (...capabilities) =>
-              canWrite && capabilities.includes("governance.proposal.write"),
+            can: (capability) => canWrite && capability === "governance.proposal.write",
+            canAny: (...capabilities) => canWrite && capabilities.includes("governance.proposal.write"),
           }}
         >
           {children}
@@ -49,297 +53,164 @@ function makeWrapper(canWrite: boolean) {
 const wrapper = makeWrapper(true);
 const readOnlyWrapper = makeWrapper(false);
 
-const DOCUMENT = {
-  module_id: "agent.order_discovery",
-  module_type: "AGENT",
-  status: "DRAFT",
-  payload: {
-    name: "Order Discovery Agent",
-    enabled: true,
-    capabilities: ["rank_candidates", "normalize_evidence"],
-    limits: { max_queries: 12 },
-  },
+const ORDER_DISCOVERY_SUMMARY = {
+  manifestId: "order_discovery",
+  name: "Order Discovery Agent",
+  version: "2.0",
+  enabled: true,
+  aiAssisted: true,
+  aiRouteRef: "ORDER_CANDIDATE_ANALYSIS_V1",
+  source: "RELEASE",
 };
 
-beforeEach(() => {
-  mocks.list.mockReset().mockResolvedValue([
-    {
-      manifestId: "agent.order_discovery",
-      moduleId: "agent.order_discovery",
-      name: "Order Discovery Agent",
-      enabled: true,
-      status: "DRAFT",
-      configurationVersion: "2.0.0",
-      source: "RELEASE",
+const ORDER_DISCOVERY_DOCUMENT = {
+  name: "Order Discovery Agent",
+  version: "2.0",
+  enabled: true,
+  ai_assisted: true,
+  ai_route_ref: "ORDER_CANDIDATE_ANALYSIS_V1",
+  // A dead knob a previous edit set to something non-default -- a typed-field
+  // save must carry this through unchanged.
+  retry_max_attempts: 7,
+};
+
+function agentDocument(manifestId: string) {
+  if (manifestId === "order_discovery") {
+    return { manifestId, path: `RETURN_PLATFORM.agents.${manifestId}`, document: ORDER_DISCOVERY_DOCUMENT, source: "RELEASE" };
+  }
+  return {
+    manifestId,
+    path: `RETURN_PLATFORM.agents.${manifestId}`,
+    document: {
+      name: "Feedback Learning Agent",
+      version: "2.0",
+      enabled: false,
+      ai_assisted: false,
+      ai_route_ref: null,
     },
-  ]);
-  mocks.read.mockReset().mockResolvedValue({
-    manifestId: "agent.order_discovery",
-    moduleId: "agent.order_discovery",
-    path: "agents/order_discovery.yaml",
-    document: DOCUMENT,
     source: "RELEASE",
-  });
+  };
+}
+
+beforeEach(() => {
+  mocks.list.mockReset().mockResolvedValue([ORDER_DISCOVERY_SUMMARY]);
+  mocks.read.mockReset().mockImplementation((manifestId: string) => Promise.resolve(agentDocument(manifestId)));
   mocks.save.mockReset().mockResolvedValue({
     proposalId: "proposal-agent-1",
-    manifestId: "agent.order_discovery",
+    manifestId: "order_discovery",
     status: "REVIEW_PENDING",
     risk: "MEDIUM",
-    affectedKeys: ["agent.order_discovery"],
+    affectedKeys: ["agent.enabled"],
     proposedBy: "operator",
     submittedAt: "2026-08-14T00:00:00Z",
   });
+  mocks.runtime.mockReset().mockResolvedValue({
+    ai_gateway_configuration: {
+      tasks: {
+        ORDER_CANDIDATE_ANALYSIS_V1: {},
+        SUPPORT_MESSAGE_CLASSIFY_V1: {},
+      },
+    },
+  });
 });
 
-describe("agent configuration", () => {
-  it("selects the first agent so the pane is never empty beside a full list", async () => {
+/**
+ * The row's accessible name includes the loading placeholder's own text
+ * ("Loading order_discovery...") until the row's document resolves, so
+ * `findByRole("row", {name: /order_discovery/})` would match too early --
+ * waiting on the loaded field itself and walking up to its `<tr>` instead.
+ */
+async function agentRow(): Promise<HTMLElement> {
+  const field = await screen.findByDisplayValue("Order Discovery Agent");
+  const row = field.closest("tr");
+  if (row === null) throw new Error("expected the agent's name field to be inside a table row");
+  return row;
+}
+
+describe("the typed table", () => {
+  it("renders one row per agent with its typed fields", async () => {
     render(<AgentsSection />, { wrapper });
-    expect(await screen.findByDisplayValue("Order Discovery Agent")).toBeInTheDocument();
-    expect(screen.getByText("agents/order_discovery.yaml")).toBeInTheDocument();
-    expect(screen.getAllByText("Active release")).toHaveLength(2);
+    const row = within(await agentRow());
+    expect(row.getByDisplayValue("Order Discovery Agent")).toBeInTheDocument();
+    expect(row.getByDisplayValue("2.0")).toBeInTheDocument();
+    expect(row.getByRole("checkbox", { name: "Enabled" })).toBeChecked();
+    expect(row.getByRole("checkbox", { name: "AI-assisted" })).toBeChecked();
+    expect(row.getByRole("combobox", { name: "AI route" })).toHaveValue("ORDER_CANDIDATE_ANALYSIS_V1");
   });
-  it("renders a genuinely read-only editor without proposal-write access", async () => {
+
+  it("lists the AI gateway tasks from the runtime snapshot as route options", async () => {
+    render(<AgentsSection />, { wrapper });
+    const select = within(await agentRow()).getByRole("combobox", { name: "AI route" });
+    const options = within(select).getAllByRole("option").map((option) => option.textContent);
+    expect(options).toEqual(["None", "ORDER_CANDIDATE_ANALYSIS_V1", "SUPPORT_MESSAGE_CLASSIFY_V1"]);
+  });
+
+  it("disables every control and states why without proposal-write access", async () => {
     render(<AgentsSection />, { wrapper: readOnlyWrapper });
-    expect(await screen.findByDisplayValue("Order Discovery Agent")).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Submit for review" })).toBeDisabled();
+    await screen.findByDisplayValue("Order Discovery Agent");
+    expect(screen.getByRole("checkbox", { name: "Enabled" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     expect(screen.getByText(/Read-only access/)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
-    expect(screen.getByLabelText("Agent configuration JSON")).toHaveAttribute("readonly");
   });
 
-  it("keeps an unsaved draft when agent switching is cancelled", async () => {
-    mocks.list.mockResolvedValue([
-      {
-        manifestId: "agent.order_discovery",
-        moduleId: "agent.order_discovery",
-        name: "Order Discovery Agent",
-        enabled: true,
-        status: "DRAFT",
-        configurationVersion: "2.0.0",
-        source: "RELEASE",
-      },
-      {
-        manifestId: "agent.second",
-        moduleId: "agent.second",
-        name: "Second Agent",
-        enabled: false,
-        status: "DRAFT",
-        configurationVersion: "1.0.0",
-        source: "PACKAGED_BASELINE",
-      },
-    ]);
-    mocks.read.mockImplementation((manifestId: string) =>
-      Promise.resolve(manifestId === "agent.second" ? {
-        manifestId,
-        moduleId: manifestId,
-        path: "agents/second.yaml",
-        source: "PACKAGED_BASELINE",
-        document: {
-          ...DOCUMENT,
-          module_id: manifestId,
-          payload: { ...DOCUMENT.payload, name: "Second Agent" },
-        },
-      } : {
-        manifestId,
-        moduleId: manifestId,
-        path: "agents/order_discovery.yaml",
-        source: "RELEASE",
-        document: DOCUMENT,
-      }),
-    );
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  it("saves the whole document with one field changed, and shows the proposal", async () => {
     render(<AgentsSection />, { wrapper });
-    const name = await screen.findByDisplayValue("Order Discovery Agent");
-    fireEvent.change(name, { target: { value: "Unsaved agent name" } });
-    fireEvent.click(screen.getByRole("button", { name: /Second Agent/ }));
+    const row = within(await agentRow());
+    const save = row.getByRole("button", { name: "Save" });
+    expect(save).toBeDisabled();
 
-    expect(confirm).toHaveBeenCalled();
-    expect(screen.getByDisplayValue("Unsaved agent name")).toBeInTheDocument();
-    expect(screen.queryByDisplayValue("Second Agent")).not.toBeInTheDocument();
-    confirm.mockRestore();
-  });
-  it("requires confirmation before Reset discards a draft", async () => {
-    const confirm = vi.spyOn(window, "confirm")
-      .mockReturnValueOnce(false)
-      .mockReturnValueOnce(true);
-    render(<AgentsSection />, { wrapper });
-    const name = await screen.findByDisplayValue("Order Discovery Agent");
-    fireEvent.change(name, { target: { value: "Unsaved agent name" } });
+    fireEvent.click(row.getByRole("checkbox", { name: "Enabled" }));
+    expect(save).toBeEnabled();
+    fireEvent.click(save);
 
-    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
-    const reset = screen.getByRole("button", { name: "Reset" });
-    fireEvent.click(reset);
-    expect(screen.getByDisplayValue("Unsaved agent name")).toBeInTheDocument();
+    await waitFor(() => { expect(mocks.save).toHaveBeenCalledTimes(1); });
+    const [manifestId, document] = mocks.save.mock.calls[0] as [string, Record<string, unknown>];
+    expect(manifestId).toBe("order_discovery");
+    // The one field changed...
+    expect(document.enabled).toBe(false);
+    // ...and every other field, including the dead knob, travelled unchanged.
+    expect(document.name).toBe("Order Discovery Agent");
+    expect(document.ai_route_ref).toBe("ORDER_CANDIDATE_ANALYSIS_V1");
+    expect(document.retry_max_attempts).toBe(7);
 
-    fireEvent.click(reset);
-    expect(screen.getByDisplayValue("Order Discovery Agent")).toBeInTheDocument();
-    expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Submit for review" })).toBeDisabled();
-    confirm.mockRestore();
-  });
-
-  it("restores the editor URL when Back or Forward discard is cancelled", async () => {
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
-    render(<AgentsSection />, { wrapper });
-    const name = await screen.findByDisplayValue("Order Discovery Agent");
-    const protectedUrl = window.location.href;
-    fireEvent.change(name, { target: { value: "Unsaved agent name" } });
-    await waitFor(() => {
-      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
-    });
-
-    window.history.pushState(null, "", "/another-workspace");
-    window.dispatchEvent(new PopStateEvent("popstate"));
-
-    expect(confirm).toHaveBeenCalled();
-    expect(window.location.href).toBe(protectedUrl);
-    expect(screen.getByDisplayValue("Unsaved agent name")).toBeInTheDocument();
-    confirm.mockRestore();
-  });
-
-
-
-  it("renders nested objects and arrays, not just the top level", async () => {
-    // These payloads nest objects inside arrays inside objects. An editor that
-    // stopped at the first level would leave most of the configuration
-    // unreachable without dropping into raw JSON.
-    render(<AgentsSection />, { wrapper });
-    expect(await screen.findByDisplayValue("rank_candidates")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("normalize_evidence")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("12")).toBeInTheDocument();
-    expect(screen.getByText("Max queries")).toBeInTheDocument();
-  });
-
-  it("writes a nested edit to that field and nothing else", async () => {
-    render(<AgentsSection />, { wrapper });
-    const field = await screen.findByDisplayValue("rank_candidates");
-    const submit = screen.getByRole("button", { name: "Submit for review" });
-    expect(submit).toBeDisabled();
-    fireEvent.change(field, { target: { value: "rank_orders" } });
-    expect(submit).toBeEnabled();
-    fireEvent.click(submit);
-
-    await waitFor(() => {
-      expect(mocks.save).toHaveBeenCalledTimes(1);
-    });
-    const [, saved] = mocks.save.mock.calls[0] as [string, typeof DOCUMENT];
-    expect(saved.payload.capabilities).toEqual(["rank_orders", "normalize_evidence"]);
-    expect(saved.payload.name).toBe("Order Discovery Agent");
-    expect(saved.module_id).toBe("agent.order_discovery");
     expect(await screen.findByRole("status")).toHaveTextContent(
       "The active configuration has not changed",
     );
     expect(screen.getByRole("link", { name: "Open Approvals" })).toHaveAttribute("href", "/approvals");
-    expect(submit).toBeDisabled();
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
-    fireEvent.change(screen.getByDisplayValue("rank_orders"), {
-      target: { value: "rank_orders_v2" },
-    });
-    expect(submit).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "Reset" }));
-    expect(screen.getByDisplayValue("rank_orders")).toBeInTheDocument();
-    expect(submit).toBeDisabled();
-
-    fireEvent.change(screen.getByDisplayValue("rank_orders"), {
-      target: { value: "rank_candidates" },
-    });
-    expect(submit).toBeDisabled();
-    expect(mocks.save).toHaveBeenCalledTimes(1);
-    confirm.mockRestore();
-
   });
 
-  it("edits the same document as JSON", async () => {
+  it("changes the AI route through the enum select", async () => {
     render(<AgentsSection />, { wrapper });
-    await screen.findByDisplayValue("Order Discovery Agent");
-    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
-
-    const editor = screen.getByLabelText("Agent configuration JSON");
-    const edited = { ...DOCUMENT, payload: { ...DOCUMENT.payload, enabled: false } };
-    fireEvent.change(editor, { target: { value: JSON.stringify(edited) } });
-    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
-
-    await waitFor(() => {
-      expect(mocks.save).toHaveBeenCalledTimes(1);
+    const row = within(await agentRow());
+    fireEvent.change(row.getByRole("combobox", { name: "AI route" }), {
+      target: { value: "SUPPORT_MESSAGE_CLASSIFY_V1" },
     });
-    const [, saved] = mocks.save.mock.calls[0] as [string, typeof DOCUMENT];
-    expect(saved.payload.enabled).toBe(false);
+    fireEvent.click(row.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => { expect(mocks.save).toHaveBeenCalledTimes(1); });
+    const [, document] = mocks.save.mock.calls[0] as [string, Record<string, unknown>];
+    expect(document.ai_route_ref).toBe("SUPPORT_MESSAGE_CLASSIFY_V1");
   });
 
-  it("preserves a JSON edit when opening synchronized split view", async () => {
+  it("clearing the AI route sends null, not an empty string", async () => {
     render(<AgentsSection />, { wrapper });
-    await screen.findByDisplayValue("Order Discovery Agent");
-    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    const row = within(await agentRow());
+    fireEvent.change(row.getByRole("combobox", { name: "AI route" }), { target: { value: "" } });
+    fireEvent.click(row.getByRole("button", { name: "Save" }));
 
-    const edited = { ...DOCUMENT, payload: { ...DOCUMENT.payload, name: "Edited in JSON" } };
-    const source = JSON.stringify(edited);
-    fireEvent.change(screen.getByLabelText("Agent configuration JSON"), {
-      target: { value: source },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Split" }));
-
-    expect(screen.getByLabelText("Agent configuration JSON")).toHaveValue(source);
-    expect(screen.getByDisplayValue("Edited in JSON")).toBeInTheDocument();
-  });
-
-  it("refuses to leave JSON mode rather than silently discarding a broken edit", async () => {
-    // The form cannot render text that is not a document. Dropping it without
-    // saying so loses work the operator can see on screen.
-    render(<AgentsSection />, { wrapper });
-    await screen.findByDisplayValue("Order Discovery Agent");
-    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
-    fireEvent.change(screen.getByLabelText("Agent configuration JSON"), {
-      target: { value: "{ not json" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Key-value" }));
-
-    expect(screen.getByRole("alert")).toBeInTheDocument();
-    // Still in JSON mode, with the text intact.
-    expect(screen.getByLabelText("Agent configuration JSON")).toHaveValue("{ not json");
-    expect(mocks.save).not.toHaveBeenCalled();
-  });
-
-  it("refuses split view while JSON is invalid", async () => {
-    render(<AgentsSection />, { wrapper });
-    await screen.findByDisplayValue("Order Discovery Agent");
-    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
-    fireEvent.change(screen.getByLabelText("Agent configuration JSON"), {
-      target: { value: "{ still not json" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Split" }));
-
-    expect(screen.getByRole("alert")).toBeInTheDocument();
-    expect(screen.getByLabelText("Agent configuration JSON")).toHaveValue("{ still not json");
-    expect(screen.getByRole("button", { name: "Split" })).toHaveAttribute("aria-pressed", "false");
-  });
-
-  it("will not save text that is not JSON", async () => {
-    render(<AgentsSection />, { wrapper });
-    await screen.findByDisplayValue("Order Discovery Agent");
-    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
-    fireEvent.change(screen.getByLabelText("Agent configuration JSON"), {
-      target: { value: "[1, 2, 3]" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
-
-    expect(screen.getByRole("alert")).toHaveTextContent("must be an object");
-    expect(mocks.save).not.toHaveBeenCalled();
+    await waitFor(() => { expect(mocks.save).toHaveBeenCalledTimes(1); });
+    const [, document] = mocks.save.mock.calls[0] as [string, Record<string, unknown>];
+    expect(document.ai_route_ref).toBeNull();
   });
 
   it("shows the backend's own reason for a rejection", async () => {
-    // The backend validates by writing the file and reloading it through the
-    // loader the platform boots from, so its message names the field. Replacing
-    // that with "invalid configuration" gives an operator nothing to correct.
-    mocks.save.mockRejectedValue(
-      new Error("Manifest module 'agent.order_discovery' declares module_id 'agent.other'"),
-    );
+    mocks.save.mockRejectedValue(new Error("order_discovery failed validation: name -- Field required"));
     render(<AgentsSection />, { wrapper });
-    const field = await screen.findByDisplayValue("Order Discovery Agent");
-    fireEvent.change(field, { target: { value: "Renamed" } });
-    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
+    const row = within(await agentRow());
+    fireEvent.click(row.getByRole("checkbox", { name: "Enabled" }));
+    fireEvent.click(row.getByRole("button", { name: "Save" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("declares module_id 'agent.other'");
+    expect(await row.findByRole("alert")).toHaveTextContent("name -- Field required");
   });
 
   it("says the list could not be loaded rather than showing no agents", async () => {
@@ -348,46 +219,65 @@ describe("agent configuration", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("not available");
   });
 
-  it("adds a typed property inside a nested child object", async () => {
+  it("says so when there are no agents, rather than an empty table", async () => {
+    mocks.list.mockResolvedValue([]);
     render(<AgentsSection />, { wrapper });
-    const keyFields = await screen.findAllByLabelText("New property key");
-    const typeFields = screen.getAllByLabelText("New property type");
-    const addButtons = screen.getAllByRole("button", { name: "Add property" });
+    expect(await screen.findByText("No agents are configured.")).toBeInTheDocument();
+  });
+});
 
-    fireEvent.change(keyFields[0], { target: { value: "query_timeout" } });
-    fireEvent.change(typeFields[0], { target: { value: "number" } });
-    fireEvent.click(addButtons[0]);
-    fireEvent.change(screen.getByDisplayValue("0"), { target: { value: "30" } });
+describe("Advanced (JSON) mode", () => {
+  it("edits the same document as JSON and submits it for review", async () => {
+    render(<AgentsSection />, { wrapper });
+    await screen.findByDisplayValue("Order Discovery Agent");
+    fireEvent.click(screen.getByRole("button", { name: "Advanced (JSON)" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "JSON" }));
+    const editor = screen.getByLabelText("Agent configuration JSON");
+    const edited = { ...ORDER_DISCOVERY_DOCUMENT, enabled: false };
+    fireEvent.change(editor, { target: { value: JSON.stringify(edited) } });
     fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
 
-    await waitFor(() => {
-      expect(mocks.save).toHaveBeenCalledTimes(1);
-    });
-    const [, saved] = mocks.save.mock.calls[0] as [
-      string,
-      typeof DOCUMENT & { payload: { limits: { query_timeout: number } } },
-    ];
-    expect(saved.payload.limits.query_timeout).toBe(30);
+    await waitFor(() => { expect(mocks.save).toHaveBeenCalledTimes(1); });
+    const [manifestId, saved] = mocks.save.mock.calls[0] as [string, typeof ORDER_DISCOVERY_DOCUMENT];
+    expect(manifestId).toBe("order_discovery");
+    expect(saved.enabled).toBe(false);
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "The active configuration has not changed",
+    );
   });
 
-  it("adds a list entry shaped like the existing ones", async () => {
-    mocks.read.mockResolvedValue({
-      manifestId: "agent.order_discovery",
-      moduleId: "agent.order_discovery",
-      path: "agents/order_discovery.yaml",
-      document: {
-        dependencies: [{ module_id: "policy.clarification", version_constraint: "^2.0" }],
+  it("switches which agent is being edited", async () => {
+    mocks.list.mockResolvedValue([
+      ORDER_DISCOVERY_SUMMARY,
+      {
+        manifestId: "feedback_learning",
+        name: "Feedback Learning Agent",
+        version: "2.0",
+        enabled: false,
+        aiAssisted: false,
+        aiRouteRef: null,
+        source: "RELEASE",
       },
-    });
+    ]);
     render(<AgentsSection />, { wrapper });
-    fireEvent.click(await screen.findByRole("button", { name: "Add" }));
-    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
+    await screen.findByDisplayValue("Order Discovery Agent");
+    fireEvent.click(screen.getByRole("button", { name: "Advanced (JSON)" }));
 
-    await waitFor(() => {
-      expect(mocks.save).toHaveBeenCalledTimes(1);
+    await screen.findByRole("combobox", { name: "Agent" });
+    fireEvent.change(screen.getByRole("combobox", { name: "Agent" }), {
+      target: { value: "feedback_learning" },
     });
-    const [, saved] = mocks.save.mock.calls[0] as [string, { dependencies: unknown[] }];
-    // The object's fields, not a bare string the operator then has to reshape.
-    expect(saved.dependencies[1]).toEqual({ module_id: "", version_constraint: "" });
+
+    expect(await screen.findByDisplayValue("Feedback Learning Agent")).toBeInTheDocument();
+  });
+
+  it("stays genuinely read-only without proposal-write access", async () => {
+    render(<AgentsSection />, { wrapper: readOnlyWrapper });
+    await screen.findByDisplayValue("Order Discovery Agent");
+    fireEvent.click(screen.getByRole("button", { name: "Advanced (JSON)" }));
+
+    expect(await screen.findByDisplayValue("Order Discovery Agent")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Submit for review" })).toBeDisabled();
   });
 });

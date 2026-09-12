@@ -4688,3 +4688,113 @@ $ python scripts/check_openapi_drift.py --write
 $ python scripts/check_openapi_drift.py
 ... status: PASS, diffs: []
 ```
+
+## CFG-5b step:05 — frontend `/config/agents` typed table
+
+Implements the brief's scope item 3 and the CFG-5 step:05 plan's item 7.
+
+`frontend/src/api/agentConfig.ts`: `AgentSummary`/`AgentConfiguration` types narrowed to match the
+new backend response (`manifestId`, `name`, `version`, `enabled`, `aiAssisted`, `aiRouteRef`,
+`source` -- no more `moduleId`; `path` is now the descriptive `RETURN_PLATFORM.agents.<id>`).
+
+`frontend/src/domains/config/AgentsSection.tsx`: rewritten. Default view is a genuine typed table
+-- one row per agent, `name`/`version` as plain text fields, `enabled`/`ai_assisted` as `Toggle`,
+`ai_route_ref` as an `EnumSelect` populated from `GET /api/config/runtime`'s
+`ai_gateway_configuration.tasks` keys (the AI gateway tasks vocabulary, not a hand-typed list). Each
+row owns its own `AgentConfigurationService.read()` fetch, its own draft and its own Save (PUT is
+per agent, not per table) -- a row's typed-field save round-trips that agent's *whole* document, so
+a dead knob a previous edit set (`retry_max_attempts`, say) travels through unchanged rather than
+being silently reset to its default by a save that only knew about five fields. The header --
+kicker, title, description, and the Advanced/Typed toggle button -- mirrors `TypedSectionScreen`'s
+own chrome exactly (same layout, same button classes) without importing the component itself:
+`TypedSectionScreen` publishes a domain patch straight onto the release
+(`POST /api/config/publish`); an agent edit stays the governance-proposal path W4.2 built (`PUT` ->
+202 -> proposal id -> `/approvals`), which is a materially different write path this screen must
+not blur. Advanced mode keeps the pre-CFG-5b master-detail JSON editor (`DocumentEditor`) verbatim
+in behaviour, now behind an agent picker rather than being the only mode.
+
+MSW: `MOCK_AGENTS`/`MOCK_AGENT_DOCUMENTS` (`mocks/handlers/canonicalHandlers.ts`) rewritten to the
+live agent ids (`order_discovery`, `feedback_learning` -- no `agent.` prefix, matching
+`backend/config/returns/agents.yaml`); the `/api/config/runtime` mock gains an
+`ai_gateway_configuration.tasks` block so the AI-route `EnumSelect` has real options to render.
+`canonicalHandlers.contract.test.ts`'s `/api/agents/:manifestId` URL updated to match.
+
+Tests: `AgentsSection.test.tsx` rewritten for the typed table (renders, read-only gating, save
+round-trips the whole document, AI-route select including the null case, backend-rejection message,
+empty/error states) plus the Advanced-mode escape hatch (edit-as-JSON, agent switching, read-only).
+`AgentsSection.a11y.test.tsx` (UIAUDIT-011's regression coverage) now opens Advanced mode first,
+since `DocumentEditor`'s dynamic field generation -- the thing that regression is about -- is no
+longer the default view.
+
+```
+$ npx vitest run src/domains/config/AgentsSection.test.tsx src/domains/config/AgentsSection.a11y.test.tsx
+Test Files  2 passed (2)
+     Tests  16 passed (16)
+
+$ npx vitest run                       # whole frontend suite
+ Test Files  89 passed (89)
+      Tests  1065 passed (1065)
+
+$ npm run typecheck
+typecheck exit: 0
+$ npm run lint
+lint exit: 0
+```
+
+`dev:mock` route sweep, `/config/agents` (the one CFG-5's own acceptance sweep found a genuine
+contrast defect on, before this lease existed):
+
+```
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g "agents"
+  3 passed -- /config/agents render, keyboard, axe (no critical/serious violation)
+```
+
+Full `dev:mock` sweep, one pre-existing failure reproduced and confirmed not a regression:
+
+```
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts
+  137 passed, 1 failed -- "/config/return-policy (+214px)" at 390px ("no route scrolls sideways"),
+  the same F10-class dev-server-settling flake CFG-5's own step:09 documented; re-run in isolation
+  passes (1/1), confirming it is not deterministic and not this lease's surface
+  (tests/canonical-routes.spec.ts, playwright.config.ts's webServer -- outside CFG-5b's Owns; not
+  /config/agents, not touched by this lease).
+```
+
+## CFG-5b step:06 — e2e: structurally blocked on the live stack pre-merge, recorded rather than faked
+
+Wrote `frontend/e2e/config-agents.spec.ts` per the brief: propose an `ai_assisted` flip on
+`order_discovery`, activate it through `POST /api/proposals/{id}/{approve,activate}` (not the
+Approvals UI), assert `GET /api/config/runtime` reflects it, then propose-and-activate the revert.
+The spec typechecks and lints clean and drives the right elements (row lookup, `Toggle`, `Save`,
+the proposal-id status text, the two `/api/proposals` calls).
+
+**Ran it once, per the rules, against a disposable `vite --port 5199` proxying to the shared
+`:8000`; it failed, for a reason specific to this lease rather than a defect in the spec or the
+screen -- recorded here rather than silently retried or skipped.** `:8000` is still serving
+pre-CFG-5b trunk: `curl http://localhost:8000/api/agents` returns the OLD manifest-module shape
+(`agent.order_discovery`, `source: "PACKAGED_BASELINE"`, no `version`/`aiAssisted`/`aiRouteRef`
+fields) -- confirmed by the screenshot at
+`test-results/config-agents-.../test-failed-1.png`, every row's typed fields blank/off because the
+old response has none of the fields this lease's table reads. Every other CFG-4/CFG-5 lease's e2e
+spec exercised backend routes that already existed on trunk before that lease started
+(`/api/config/publish`, `/api/source-bindings`, ...); CFG-5b is the first lease in this track whose
+own e2e depends on a *backend* behaviour change (`/api/agents` repointed at
+`RETURN_PLATFORM.agents`) that only this lease's own worktree carries. Activating a proposal against
+the live `:8000` right now would publish into the OLD `AGENT_MODULES` domain the old code still
+uses, not `RETURN_PLATFORM.agents` -- so even a "successful" run against the current live backend
+would prove nothing about the code this lease actually wrote. The rule against restarting `:8000`
+mid-lease is exactly what makes this untestable here: CFG-6's own ledger shows the equivalent
+live-stack proof for a backend change being run by *the orchestrator*, after merge, once the API
+process is restarted onto the new trunk -- not by the implementer beforehand. Disposable frontend
+server stopped immediately after (`taskkill`, confirmed `netstat` clear); `:5173` (200) and `:8000`
+(alive, unrestarted) re-checked after.
+
+**What this leaves proven, and what remains for the orchestrator's post-merge step:** the
+propose -> approve -> activate -> release-published -> runtime-reflects-it chain is proven at the
+backend level, in-memory, end to end
+(`tests/configuration/test_agent_configuration_releases.py::test_activating_an_agent_proposal_publishes_a_release`,
+step:01), and the screen's own request wiring is proven against the mock
+(`AgentsSection.test.tsx`'s save/proposal/link assertions, step:05). The one thing not yet proven is
+the live, no-restart, cross-process adoption CFG-6's own e2e proved for `deployment` -- this lease's
+`e2e/config-agents.spec.ts` is ready to run that proof unchanged the moment `:8000` carries this
+lease's backend.
