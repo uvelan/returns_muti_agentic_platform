@@ -432,6 +432,54 @@ async def test_an_operator_edit_survives_the_packaged_file_that_disagrees_with_i
 
 
 @pytest.mark.asyncio
+async def test_a_proposal_published_agent_edit_survives_the_packaged_file_that_disagrees_with_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CFG-5b's own bootstrap interplay proof.
+
+    An agent edit now reaches the release through
+    `bootstrap/adapters/governance_agent_configuration.py::AgentConfigurationProposalActivator`,
+    a proposal activation, not this module -- but the *carried-forward* value it
+    publishes is read back the same way any other operator edit to
+    `RETURN_PLATFORM` is: `agents` is one whole top-level key (not one of
+    `CARRY_FORWARD_SPLIT_KEYS[RETURN_PLATFORM_DOMAIN_KEY]`, which today is only
+    `("deployment",)`), so a release whose `agents` digest no longer matches the
+    packaged baseline is read as "an operator edited an agent" regardless of
+    which single agent moved, exactly the same as `support` above.
+
+    This is the proof the brief's item 4 asks for: a proposal-published
+    `agents` value survives a bootstrap run whose packaged file disagrees with
+    it, the same as any other governed `RETURN_PLATFORM` edit -- the carry
+    forward logic needed no agent-specific change to keep working once the
+    activation path started publishing into `RETURN_PLATFORM.agents` instead
+    of a sibling `AGENT_MODULES` domain.
+    """
+    packaged = load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration
+    packaged_payload = packaged.model_dump(mode="json")
+
+    edited_agent_id = next(iter(packaged_payload["agents"]))
+    proposal_activated_agents = {
+        **packaged_payload["agents"],
+        edited_agent_id: {**packaged_payload["agents"][edited_agent_id], "enabled": False},
+    }
+    edited = {**packaged_payload, "agents": proposal_activated_agents}
+    repository = _CarryForwardRepository(edited, metadata=_baseline_of(packaged_payload))
+    _install_bootstrap_doubles(monkeypatch, repository)
+
+    await bootstrap_graph_configuration.main()
+
+    published = next(iter(repository.saved.values()))[RETURN_PLATFORM_DOMAIN_KEY]
+    assert published["agents"][edited_agent_id]["enabled"] is False
+    assert packaged_payload["agents"][edited_agent_id]["enabled"] is not False
+    # Every other agent, and every other RETURN_PLATFORM key, is the packaged
+    # file's own value -- the proposal touched exactly one agent, and the
+    # carry-forward unit is the whole `agents` key, so the *whole* edited
+    # mapping (not just the one agent) is what carries forward.
+    assert published["agents"] == proposal_activated_agents
+    assert published["discovery"] == packaged_payload["discovery"]
+
+
+@pytest.mark.asyncio
 async def test_state_this_bootstrap_generated_is_not_overwritten_by_the_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
