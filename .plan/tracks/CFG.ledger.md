@@ -4017,3 +4017,25 @@ $ npm run typecheck && npm run lint
 
 Head sha: see commit. `drop.json`'s `merge_status: PENDING` -- ready for RV round 2. The live
 no-restart proof (A10) remains the orchestrator's to run after PASS.
+
+---
+
+## CFG-6 accepted on the dev host: the live no-restart proof (orchestrator)
+
+Serving worktree moved to the merge commit `35f0356c`; full stack restart (backend changed). The
+bootstrap seeded `deployment` from this host's env and published `return-platform-e10487a49e9ffa9d`
+(head 136); the six undecided keys are unchanged. Then, with no process restarted:
+```
+BEFORE: release return-platform-e10487a49e9ffa9d head 136 provider_order ['GOOGLE', 'NVIDIA'] | api listener pid(s) ['29684']
+  adoption: LIVE 136 pending []
+publish: 200 publish-9d08bead8e934a0c            (POST /api/config/publish, patch deployment.ai.provider_order reversed)
+adoption after 10s: LIVE 137 pending []
+AFTER: release publish-9d08bead8e934a0c head 137 provider_order ['NVIDIA', 'GOOGLE'] | api listener pid(s) ['29684']
+  dependencies view mentions order: yes
+revert publish: 200
+REVERTED: head 138 provider_order ['GOOGLE', 'NVIDIA'] | api listener pid(s) ['29684'] | adoption LIVE
+```
+A provider-order change published through the API was adopted by every process class within 10 s,
+the API process (pid 29684) never restarted, and the revert adopted the same way. Snapshot
+`evidence/config_audit/after_cfg6/` (head 138). CFG-8 (Policy screen, user request) started on
+`feat/cfg-8-policy-screen` from `35f0356c`; CFG-5b waits for it (one backend implementer at a time).
