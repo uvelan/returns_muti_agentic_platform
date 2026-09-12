@@ -21058,7 +21058,7 @@
         ]
       },
       "put": {
-        "description": "Propose a replacement for one agent's document.\n\n202, not 200: the platform has accepted the change for review and has not\nmade it. A rejected document still comes back as 422 carrying the loader's\nown reason -- the editor needs to know *why* it was refused, and \"invalid\nconfiguration\" gives an operator nothing to correct.",
+        "description": "Propose a replacement for one agent's document.\n\n202, not 200: the platform has accepted the change for review and has not\nmade it. A rejected document still comes back as 422 carrying\n`AgentConfiguration`'s own validation message -- the editor needs to know\n*why* it was refused, and \"invalid configuration\" gives an operator\nnothing to correct.",
         "operationId": "update_agent_configuration_api_agents__manifest_id__put",
         "parameters": [
           {

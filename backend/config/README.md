@@ -1,6 +1,6 @@
 # backend/config
 
-Canonical, manifest-driven configuration for the unified return platform (design doc §3). See
+Canonical, release-published configuration for the unified return platform (design doc §3). See
 `return_platform/configuration/README.md` for how this directory is loaded, validated, and
 resolved into a `RuntimeSnapshot`.
 
@@ -104,10 +104,13 @@ both accept a file (today's single-document shape, unchanged) or a directory; no
   directly by `Settings.system_store_manifest_path` rather than through `manifest.yaml` -- see
   above). `agents/`, `workflows/`, `sync/`, `sources/`, `mappings/`, `graph/` are gone (CFG-5b);
   see "Removed as dead" below.
-- `dynamic_knowledge/` — Dynamic Knowledge schemas. A schema here is only authoritative if a
-  `GRAPH` module in `manifest.yaml` points at it; an unreferenced file in this directory is never
-  loaded, even though the directory also holds files like `active-schema.example.yaml` that exist
-  purely as authoring references.
+- `dynamic_knowledge/` — Dynamic Knowledge schemas. The active one is read directly by
+  `Settings.dynamic_knowledge_schema_path` (default `active-schema.return-order.yaml`), the same
+  direct-loader shape `platform/system_store.yaml` uses -- **not** through `manifest.yaml`, whose
+  one `GRAPH` entry (`graph.order_discovery`) this lease deleted (CFG-5b; nothing read it, see
+  "Removed as dead" below). A file in this directory that `dynamic_knowledge_schema_path` does not
+  name is never loaded, including files like `active-schema.example.yaml` that exist purely as
+  authoring references.
 - `data_platform/` — canonical mappings, graph projection, sources, and sync-pipeline
   configuration for the data platform surfaces that have not yet migrated onto the manifest model.
 - `seed/` — fixtures for local/dev seeding, not production runtime configuration.

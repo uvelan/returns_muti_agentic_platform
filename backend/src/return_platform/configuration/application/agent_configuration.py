@@ -35,11 +35,21 @@ submitted one -- so a document that omitted a defaulted field still records a
 receipt over the same materialized shape the release will actually carry
 (the class docstring on `AgentConfiguration` explains why those fields
 default rather than disappear).
+
+**`active()` is a read path only (RV F1).** It is a closure over this
+process's own runtime snapshot, refreshed behind a debounce window and, on a
+refresh failure, kept indefinitely stale -- an honest source for `GET`/
+`list_agents`, which only ever need to answer with what this process is
+currently serving. Publishing a release from it would be a different claim
+entirely ("this is what the graph holds right now"), which it cannot make
+without asking the graph. `bootstrap/adapters/governance_agent_configuration.
+py`'s activator does exactly that: it reads the active release from
+`ConfigurationGraphRepository` directly, never through this service's
+`active()`.
 """
 
 from __future__ import annotations
 
-import copy
 import hashlib
 import json
 from collections.abc import Callable, Mapping
@@ -142,19 +152,6 @@ class AgentConfigurationService:
             document=dict(raw),
             source="RELEASE",
         )
-
-    def released_return_platform_document(self) -> dict[str, Any]:
-        """A deep copy of the whole current `RETURN_PLATFORM` document.
-
-        The activator patches exactly one `agents.<id>` entry on this and
-        publishes the result as the one domain `publish_release_with_domains`
-        overlays -- that function replaces a domain whole
-        (`merged.update({key: dict(value) ...})`), so patching one key of it
-        safely means starting from every other key unchanged. Deep-copied so
-        the activator's mutation cannot be observed by whatever this process
-        does with its own live snapshot afterwards.
-        """
-        return copy.deepcopy(dict(self._return_platform()))
 
     # --- writes -------------------------------------------------------------
 

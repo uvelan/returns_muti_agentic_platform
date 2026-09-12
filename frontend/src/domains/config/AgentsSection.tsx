@@ -223,11 +223,21 @@ function AgentRowLoaded({
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<JsonObject>(loaded);
   const [proposal, setProposal] = useState<AgentConfigurationProposal | null>(null);
+  // RV round 1, A4: the baseline `dirty` compares against. Starts as `loaded`
+  // and moves to whatever was just saved on success, so Save disables itself
+  // the moment a proposal is filed rather than staying enabled on an
+  // unchanged draft -- a second click with nothing new typed would file a
+  // second, identical proposal an approver then has to notice and reject.
+  // Moves again, away from the saved snapshot, the instant `set()` runs, so
+  // one more edit is all it takes to re-enable Save for a genuinely new
+  // change.
+  const [savedSnapshot, setSavedSnapshot] = useState<JsonObject>(loaded);
 
   const save = useMutation({
     mutationFn: () => agentConfigApi.save(manifestId, draft),
     onSuccess: async (result) => {
       setProposal(result);
+      setSavedSnapshot(draft);
       await queryClient.invalidateQueries({ queryKey: ["proposals"] });
     },
   });
@@ -240,7 +250,7 @@ function AgentRowLoaded({
 
   const editableKeys = ["name", "version", "enabled", "ai_assisted", "ai_route_ref"] as const;
   const dirty = editableKeys.some(
-    (key) => JSON.stringify(draft[key] ?? null) !== JSON.stringify(loaded[key] ?? null),
+    (key) => JSON.stringify(draft[key] ?? null) !== JSON.stringify(savedSnapshot[key] ?? null),
   );
 
   const name = asString(draft.name);
@@ -302,7 +312,13 @@ function AgentRowLoaded({
             type="button"
             onClick={() => { save.mutate(); }}
             disabled={!dirty || save.isPending}
-            className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-on-primary shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
+            // RV round 1, A1 (carrying CFG-5's own H1/H2): `disabled:opacity-40`
+            // on `bg-primary`/`text-on-primary` composited to 2.12:1 -- the same
+            // family of defect CFG-5's F1 was blocking on, and its own advisory
+            // said explicitly to carry the fix into this screen's Save button.
+            // Dimmed through a non-text channel instead, so the label itself
+            // stays high-contrast in both states.
+            className="rounded-lg border border-transparent bg-primary px-3 py-2 text-xs font-semibold text-on-primary shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:border-outline-variant disabled:bg-surface-container-low disabled:text-on-surface-variant disabled:shadow-none disabled:hover:brightness-100"
           >
             {save.isPending ? "Submitting..." : "Save"}
           </button>

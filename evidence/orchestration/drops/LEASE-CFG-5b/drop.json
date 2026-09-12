@@ -2,7 +2,22 @@
   "lease_id": "CFG-5b",
   "branch": "feat/cfg-5b-agents",
   "base_sha": "527653811db82b84732621da0baadeff4397ecb9",
-  "head_sha": "aa239a95189d7069d0abcb5e1994d42bbbf2584b",
+  "head_sha": "d9a868860063ab7ea8fbff02cd34108e7ec22edb",
+  "rv_round_1": {
+    "reviewed_head": "d9a86886",
+    "verdict": "CHANGES_REQUIRED",
+    "review_file": ".plan/reviews/CFG-5b.md",
+    "fixed": [
+      "F1 (BLOCKING): AgentConfigurationProposalActivator.activate now clones the active release's RETURN_PLATFORM document from the repository (mirroring governance_improvement.py), not from AgentConfigurationService.active() (this process's own, potentially stale, runtime snapshot). released_return_platform_document() deleted (no remaining caller). New test: test_a_concurrent_release_survives_agent_activation.",
+      "A1: Save button's disabled:opacity-40 (2.12:1) replaced with a non-text dimming channel; two tests added asserting the family, not one spelling.",
+      "A2: configuration/api/agents.py docstrings no longer cite manifest.yaml/the loader.",
+      "A3: backend/config/README.md header and dynamic_knowledge/ bullet no longer contradict the file's own 'read by nothing' state.",
+      "A4: Save re-disables itself immediately after a successful save (a savedSnapshot baseline) so a second click cannot file a duplicate proposal; new test covers it."
+    ],
+    "carried": [
+      "A5: an agent-activated release writes no CONFIGURATION_* audit record -- orchestrator's call per RV, carried to CFG-7. Fix location: a Request-free audit-write helper called from both publish_release_with_domains callers (governance_agent_configuration.py, governance_improvement.py)."
+    ]
+  },
   "rebase": {
     "from_base": "94049bee6b6432727b2139a07e6c0c235fd569fb",
     "onto": "527653811db82b84732621da0baadeff4397ecb9",
@@ -42,20 +57,21 @@
     "frontend/src/domains/config/AgentsSection.a11y.test.tsx",
     "frontend/src/mocks/handlers/canonicalHandlers.ts",
     "frontend/src/mocks/handlers/canonicalHandlers.contract.test.ts",
-    "frontend/e2e/config-agents.spec.ts"
+    "frontend/e2e/config-agents.spec.ts",
+    ".plan/reviews/CFG-5b.md"
   ],
   "tests": {
-    "pytest tests/configuration/test_agent_configuration_releases.py -q": "12 passed",
-    "pytest tests/test_graph_configuration_bootstrap.py -q": "25 passed",
-    "pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/platform -q (post-rebase, onto 52765381)": "955 passed, 35 deselected, 2 warnings in 130.68s (+13 over pre-rebase from CFG-8's own new tests)",
+    "pytest tests/configuration/test_agent_configuration_releases.py -q (post RV round 1 fix)": "12 passed",
+    "pytest tests/test_graph_configuration_bootstrap.py tests/configuration/test_agent_configuration_releases.py -q": "37 passed",
+    "pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/platform -q (post RV round 1 fix)": "955 passed, 35 deselected, 2 warnings in 129.72s",
     "pytest tests/agents/test_no_cross_agent_imports.py tests/security/test_guards_match_the_console.py tests/test_every_console_path_is_mounted.py -q": "26 passed",
     "known_test_failures.json (backend + frontend)": "empty before and after -- nine/zero known failures unchanged",
-    "ruff check (touched backend files, post-rebase)": "All checks passed!",
-    "ruff format --check (touched backend files, post-rebase)": "6 files already formatted",
-    "mypy (touched backend source files, post-rebase)": "Success: no issues found in 5 source files",
-    "python scripts/check_openapi_drift.py --write (post-rebase)": "PASS, diffs: [] -- already correct after the rebase's own textual merge",
-    "python scripts/check_openapi_drift.py (post-rebase)": "PASS, zero diffs",
-    "npx vitest run (whole frontend suite, post-rebase)": "Test Files 90 passed (90), Tests 1079 passed (1079) (+14 over pre-rebase from CFG-8's own new tests)",
+    "ruff check (touched backend files, post RV round 1 fix)": "All checks passed!",
+    "ruff format --check (touched backend files, post RV round 1 fix)": "1 file reformatted, then clean",
+    "mypy (touched backend source files, post RV round 1 fix)": "Success: no issues found in 5 source files",
+    "python scripts/check_openapi_drift.py --write (post RV round 1 fix)": "PASS -- A2's docstring edits moved the OpenAPI description fields, regenerated all 5 artifacts",
+    "python scripts/check_openapi_drift.py (post RV round 1 fix)": "PASS, zero diffs",
+    "npx vitest run (whole frontend suite, post RV round 1 fix)": "Test Files 90 passed (90), Tests 1081 passed (1081)",
     "npm run typecheck": "exit 0",
     "npm run lint": "exit 0",
     "npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g agents": "3 passed (render, keyboard, axe)",
@@ -71,7 +87,8 @@
     "7: acceptance sweep run at head, everything green except the e2e item below"
   ],
   "remaining": [
-    "6: the live e2e run cannot succeed until this branch merges and the orchestrator restarts the shared :8000 API process onto the new trunk (the same sequencing CFG-6's own live no-restart proof used) -- the spec is written and committed (frontend/e2e/config-agents.spec.ts), typechecks/lints clean, and drives the correct UI and API calls; it is blocked on the live backend still serving pre-CFG-5b code, not on anything in this lease's own worktree. See CFG.ledger.md step:06 for the full evidence (screenshot, curl output) and reasoning."
+    "6: the live e2e run cannot succeed until this branch merges and the orchestrator restarts the shared :8000 API process onto the new trunk (the same sequencing CFG-6's own live no-restart proof used) -- the spec is written and committed (frontend/e2e/config-agents.spec.ts), typechecks/lints clean, and drives the correct UI and API calls; it is blocked on the live backend still serving pre-CFG-5b code, not on anything in this lease's own worktree. See CFG.ledger.md step:06 for the full evidence (screenshot, curl output) and reasoning.",
+    "A5 (RV round 1, advisory, orchestrator's call): an agent-activated release writes no CONFIGURATION_* audit record. Carried to CFG-7 -- see rv_round_1.carried above and CFG.ledger.md step:09 for the fix location."
   ],
   "deviations": [
     "Coordinator brief scope item 1 says the activation 'reuse[s] record_configuration_audit'; that function requires a FastAPI Request and is unreachable from the activator's call context (ProposalKernel.activate, no Request in scope), and configuration/api/releases.py (where it lives) is outside this lease's Owns. The CFG-5 step:05 file-by-file plan does not call for it either. Not added; the audit-trail property W4.2 established is still asserted via the governance kernel's own audit log (unaffected by this change). See CFG.ledger.md step:01.",

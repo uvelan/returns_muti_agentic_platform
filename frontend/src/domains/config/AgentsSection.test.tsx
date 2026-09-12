@@ -153,6 +153,25 @@ describe("the typed table", () => {
     expect(screen.getByText(/Read-only access/)).toBeInTheDocument();
   });
 
+  // RV round 1, A1 (carrying CFG-5's own H1/H2, never actually applied
+  // there): a disabled Save button in its resting state (dirty is false on
+  // every row until an operator edits something) must not dim by fading its
+  // own text with an opacity utility -- `disabled:opacity-40` on
+  // `bg-primary`/`text-on-primary` composited to 2.12:1, the same shape of
+  // defect CFG-5's F1 was blocking on. Asserted as a family, not the one
+  // spelling that caused it: no `opacity-*` utility at all, and the
+  // dimming lands on the non-text channels (background, border) rather
+  // than only on `text-*`, so a future edit cannot silently reintroduce the
+  // fade by moving it from `opacity` onto `text-primary/40` instead.
+  it("dims the disabled Save button without fading its own text", async () => {
+    render(<AgentsSection />, { wrapper });
+    const save = within(await agentRow()).getByRole("button", { name: "Save" });
+    expect(save).toBeDisabled();
+    expect(save.className).not.toMatch(/(?:^|[\s:])opacity-\d/);
+    expect(save.className).toMatch(/disabled:bg-\S+/);
+    expect(save.className).toMatch(/disabled:border-\S+/);
+  });
+
   it("saves the whole document with one field changed, and shows the proposal", async () => {
     render(<AgentsSection />, { wrapper });
     const row = within(await agentRow());
@@ -177,6 +196,32 @@ describe("the typed table", () => {
       "The active configuration has not changed",
     );
     expect(screen.getByRole("link", { name: "Open Approvals" })).toHaveAttribute("href", "/approvals");
+    // RV round 1, A4: Save disables itself again immediately, before any
+    // further interaction -- a second click with nothing new typed must not
+    // file a second, identical proposal.
+    expect(save).toBeDisabled();
+  });
+
+  it("re-disables Save after a successful save, and a second click files no duplicate proposal", async () => {
+    render(<AgentsSection />, { wrapper });
+    const row = within(await agentRow());
+    const save = row.getByRole("button", { name: "Save" });
+    const enabledToggle = row.getByRole("checkbox", { name: "Enabled" });
+
+    fireEvent.click(enabledToggle);
+    fireEvent.click(save);
+    await waitFor(() => { expect(mocks.save).toHaveBeenCalledTimes(1); });
+    await screen.findByRole("status");
+    expect(save).toBeDisabled();
+
+    // A click on a disabled button fires no handler -- still exactly one call.
+    fireEvent.click(save);
+    expect(mocks.save).toHaveBeenCalledTimes(1);
+
+    // One more edit -- even flipping the same toggle back -- is a genuinely
+    // new change relative to what was just saved, and re-enables Save.
+    fireEvent.click(enabledToggle);
+    expect(save).toBeEnabled();
   });
 
   it("changes the AI route through the enum select", async () => {

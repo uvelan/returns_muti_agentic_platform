@@ -4907,3 +4907,97 @@ Nothing outside this lease's own Owns changed by the rebase; `git diff --stat 52
 matches the same file set as before rebasing, plus the regenerated receipt. Step:06's e2e finding
 (blocked on `:8000` serving pre-CFG-5b code) is unaffected by this rebase -- still true, still the
 one unfinished item.
+
+## CFG-5b step:09 — RV round 1 fixes
+
+RV verdict CHANGES_REQUIRED on `d9a86886` (`.plan/reviews/CFG-5b.md`). One blocking finding, four
+advisories to take, one advisory carried to a later lease.
+
+**F1 (BLOCKING), fixed.** `AgentConfigurationProposalActivator.activate` was cloning the whole
+`RETURN_PLATFORM` document from `AgentConfigurationService.active()` -- a closure over *this
+process's own runtime snapshot*, refreshed behind a debounce window and, on a refresh failure, kept
+indefinitely stale -- and handing that clone to `publish_release_with_domains`, which replaces the
+domain whole. RV proved with a standalone probe that a `RETURN_PLATFORM` release published by
+another process between proposal submission and activation is silently reverted by the next agent
+activation. Fixed to mirror `governance_improvement.py:160-168` (the sibling activator for the same
+domain) exactly: read the active release from `self._repository.get_active_release()` /
+`get_domain_config(active.release_id, RETURN_PLATFORM_DOMAIN_KEY)`, with the same "no active
+release" / "no domain" refusals, patch `agents[subject_id]` on *that*, and publish. `Agent
+ConfigurationService.released_return_platform_document()` deleted -- its only caller was the
+activator, and nothing else used it (`main.py`'s `active` closure stays: it is still the read path
+for `GET`/`list_agents`, which legitimately answers from this process's own snapshot -- the module
+docstring now says so explicitly, per F1's write-up).
+
+New regression test: `test_a_concurrent_release_survives_agent_activation`. The accepted suite's
+existing fixture could not fail on this bug -- `service`'s `active()` and the seeded repository both
+read the same packaged file, so the two sources always agreed. The new test deliberately disagrees:
+`service.active()` is pinned to a stale document while the repository's active release has already
+moved on to a concurrently-published one (`support.external_mirror_enabled` flipped, the same field
+RV's own probe used), and asserts the concurrent value survives activation.
+
+```
+$ pytest tests/configuration/test_agent_configuration_releases.py -q
+12 passed
+```
+
+**A1, taken.** The per-row Save button's `disabled:opacity-40` on `bg-primary`/`text-on-primary`
+composited to 2.12:1 -- the same family of defect CFG-5's own F1 was blocking on (and whose H1/H2
+advisories were "carried to CFG-5b's Agents screen work" without ever actually landing there).
+Replaced with a non-text channel (`disabled:bg-surface-container-low disabled:border-outline-variant
+disabled:text-on-surface-variant`, the same token pairing the screen's own "Read-only access" notice
+already uses). Two new tests: one asserting the family (no `opacity-\d` utility at all, and that the
+dimming lands on `bg`/`border`, not only `text`) rather than the one spelling that caused it, and one
+covering **A4** below.
+
+**A2, taken.** `configuration/api/agents.py`'s module docstring ("Agent modules are declared in
+`manifest.yaml`") and the `PUT` docstring ("carrying the loader's own reason") reworded to describe
+the actual CFG-5b state: the document is the release's `agents.<id>` entry, and the 422 carries
+`AgentConfiguration`'s own validation message.
+
+**A3, taken.** `backend/config/README.md`'s header ("manifest-driven configuration") reworded to
+"release-published configuration". The `dynamic_knowledge/` bullet rewritten: the active schema is
+read directly by `Settings.dynamic_knowledge_schema_path`, the same direct-loader shape
+`platform/system_store.yaml` uses -- not through `manifest.yaml`, whose one `GRAPH` entry
+(`graph.order_discovery`) this lease deleted.
+
+**A4, taken.** After a successful save the draft still differed from `loaded` (never refetched), so
+`dirty` stayed true and Save stayed enabled -- a second click filed a second, identical proposal.
+Fixed with a `savedSnapshot` baseline that starts as `loaded` and moves to the just-saved draft on
+success, so `dirty` (and Save) re-disable the instant a proposal is filed and re-enable on the next
+genuine edit. New test: `re-disables Save after a successful save, and a second click files no
+duplicate proposal` -- saves once, asserts Save is disabled and a second click makes no second call,
+then asserts one more edit re-enables it.
+
+**A5, carried to CFG-7 (orchestrator's call, per RV).** An agent-activated release writes no
+`CONFIGURATION_*` audit record (`GET /api/config/audit` sees nothing for `agent-config-*` releases),
+while every release published through `configuration/api/releases.py` does. Pre-existing (the
+pre-CFG-5b activator did not call it either), not a regression, and the lease's own recorded
+deviation (`record_configuration_audit` needs a `Request`; `releases.py` is outside Owns) is
+correct on its own terms. Fix location for whoever picks it up: lift the audit write out of
+`releases.py` behind a `Request`-free helper, called from both `publish_release_with_domains`
+callers (`governance_agent_configuration.py` and `governance_improvement.py`) as well as its
+existing `Request`-based call sites.
+
+Full re-run at the new head:
+
+```
+$ pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/platform -q
+955 passed, 35 deselected, 2 warnings in 129.72s
+
+$ ruff check <7 touched backend files>          -> All checks passed!
+$ ruff format --check <7 touched backend files> -> 1 file reformatted, then clean
+$ mypy <5 touched backend source files>         -> Success: no issues found in 5 source files
+
+$ python scripts/check_openapi_drift.py --write
+... status: PASS  (route docstring text changes moved the OpenAPI `description` fields -- A2's
+    edit -- regenerated all 5 artifacts)
+$ python scripts/check_openapi_drift.py
+... status: PASS, diffs: []
+
+$ npx vitest run
+ Test Files  90 passed (90)
+      Tests  1081 passed (1081)
+
+$ npm run typecheck   -> exit 0
+$ npm run lint        -> exit 0
+```

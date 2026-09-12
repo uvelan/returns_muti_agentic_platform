@@ -35,9 +35,10 @@ export interface paths {
          * @description Propose a replacement for one agent's document.
          *
          *     202, not 200: the platform has accepted the change for review and has not
-         *     made it. A rejected document still comes back as 422 carrying the loader's
-         *     own reason -- the editor needs to know *why* it was refused, and "invalid
-         *     configuration" gives an operator nothing to correct.
+         *     made it. A rejected document still comes back as 422 carrying
+         *     `AgentConfiguration`'s own validation message -- the editor needs to know
+         *     *why* it was refused, and "invalid configuration" gives an operator
+         *     nothing to correct.
          */
         put: operations["update_agent_configuration_api_agents__manifest_id__put"];
         post?: never;

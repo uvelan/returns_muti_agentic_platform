@@ -258,20 +258,6 @@ def test_an_agent_absent_from_the_release_is_not_found(
     assert service.read("not_a_real_agent") is None
 
 
-def test_the_released_document_carries_every_agent_and_every_other_key(
-    service: AgentConfigurationService,
-) -> None:
-    """`released_return_platform_document()` hands the activator the *whole*
-    domain, not just the edited agent -- publishing only the agent that
-    changed would drop `discovery`, `support`, every other section of
-    `RETURN_PLATFORM` from the next release."""
-    document = service.released_return_platform_document()
-    assert set(document["agents"]) == {item.manifestId for item in service.list_agents()}
-    assert len(document["agents"]) == 7
-    assert "discovery" in document
-    assert "support" in document
-
-
 # --- activation publishes a release ------------------------------------------
 
 
@@ -371,9 +357,7 @@ async def test_activating_an_agent_proposal_publishes_a_release(
     assert return_platform is not None
     assert return_platform["agents"][AGENT_ID]["enabled"] is False
     # Every other agent, and every other RETURN_PLATFORM key, travelled with it.
-    assert set(return_platform["agents"]) == set(
-        service.released_return_platform_document()["agents"]
-    )
+    assert set(return_platform["agents"]) == set(_return_platform_document()["agents"])
     assert return_platform["discovery"] == _return_platform_document()["discovery"]
     # The other two behaviour domains were carried forward, not dropped.
     all_domains = await repository.get_all_domain_configs(receipt.reference)
@@ -382,6 +366,106 @@ async def test_activating_an_agent_proposal_publishes_a_release(
     assert runtime.refreshes >= 1
     assert "PROPOSAL_ACTIVATED" in audit.actions()
     assert AGENTS_PATH.read_bytes() == packaged_before
+
+
+@pytest.mark.asyncio
+async def test_a_concurrent_release_survives_agent_activation(
+    repository: InMemoryConfigurationGraphRepository,
+    test_settings: Settings,
+    loaded_empty_catalog: LoadedAssetCatalog,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """RV round 1, F1 (BLOCKING): the activator must clone the repository's
+    active release, never `AgentConfigurationService.active()` -- a closure
+    over this process's own runtime snapshot, refreshed behind a debounce
+    window and kept indefinitely stale on a refresh failure
+    (`main.py`'s own `runtime_configuration_refresh_failed_using_last_good_
+    snapshot`). The other tests in this module cannot fail on this: their
+    `service` fixture and the seeded repository both read the same packaged
+    file, so the two sources always agree and a bug that clones the wrong one
+    is invisible. Here they deliberately disagree -- `service.active()` is
+    pinned to the *old* document, while the repository's active release has
+    already moved on to a concurrently-published one (`support.
+    external_mirror_enabled` flipped, the way RV's own probe demonstrated) --
+    and the assertion is that the concurrent value survives activation
+    rather than being silently reverted to what the stale snapshot held.
+    """
+
+    async def accept_receipts(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(
+        "return_platform.configuration.application.release_promotion"
+        ".verify_runtime_validation_receipts",
+        accept_receipts,
+    )
+    await _seed_active_release(repository, test_settings)
+    stale_snapshot = await repository.get_domain_config("baseline", RETURN_PLATFORM_DOMAIN_KEY)
+    assert stale_snapshot is not None
+
+    # A release published by someone else after this process's own snapshot
+    # was taken. Every other domain carries forward untouched.
+    concurrent_value = not stale_snapshot["support"]["external_mirror_enabled"]
+    concurrent_return_platform = {
+        **stale_snapshot,
+        "support": {**stale_snapshot["support"], "external_mirror_enabled": concurrent_value},
+    }
+    for domain_key, payload in (
+        (RETURN_PLATFORM_DOMAIN_KEY, concurrent_return_platform),
+        (
+            AI_GATEWAY_DOMAIN_KEY,
+            await repository.get_domain_config("baseline", AI_GATEWAY_DOMAIN_KEY),
+        ),
+        (
+            DEPENDENCY_SIMULATION_DOMAIN_KEY,
+            await repository.get_domain_config("baseline", DEPENDENCY_SIMULATION_DOMAIN_KEY),
+        ),
+    ):
+        await repository.save_draft_domain(
+            "concurrent-release", domain_key, payload, actor_id="other-operator"
+        )
+    await repository.promote_release("concurrent-release", "VALIDATED", actor_id="other-operator")
+    await repository.promote_release(
+        "concurrent-release",
+        "RELEASED",
+        actor_id="other-operator",
+        expected_head_revision=await repository.get_head_revision(),
+    )
+    active_release = await repository.get_active_release()
+    assert active_release is not None
+    assert active_release.release_id == "concurrent-release"
+
+    # This process's own service is still pinned to the pre-concurrent-release
+    # document -- the stale runtime snapshot the debounce window (or a failed
+    # refresh) would leave it holding.
+    service = AgentConfigurationService(active=lambda: stale_snapshot)
+    resources = RuntimeResources(settings=test_settings, catalog=loaded_empty_catalog)
+    resources.mongo = cast(Any, object())
+    runtime = _RecordingRuntimeActivator()
+    activator = AgentConfigurationProposalActivator(
+        agents=service,
+        repository=repository,
+        resources=resources,
+        activator=cast(Any, runtime),
+    )
+    kernel, _, _ = build_test_kernel({ProposalType.CONFIGURATION: activator})
+
+    document = _edited(service)
+    proposal = await service.propose(
+        AGENT_ID, document, kernel=kernel, actor="operator", occurred_at=NOW
+    )
+    await kernel.approve(proposal.proposal_id, actor="reviewer", occurred_at=NOW)
+    _activated, receipt = await kernel.activate(
+        proposal.proposal_id, actor="reviewer", occurred_at=NOW
+    )
+
+    published = await repository.get_domain_config(receipt.reference, RETURN_PLATFORM_DOMAIN_KEY)
+    assert published is not None
+    # The agent edit this activation was for landed...
+    assert published["agents"][AGENT_ID]["enabled"] is False
+    # ...and the concurrent release's own value survived, rather than being
+    # reverted to what this process's stale snapshot held.
+    assert published["support"]["external_mirror_enabled"] is concurrent_value
 
 
 @pytest.mark.asyncio
