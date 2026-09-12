@@ -227,7 +227,12 @@ Budget: <tokens>; stop rule: write drop.json PARTIAL at 80% and report.
 
 1. Every FINAL_REPORT §G defect is `fixed` or has a recorded decision to defer, with the ID in
    the ledger.
-2. `backend/config/` contains only files the runtime loads, split by function; the READMEs match.
+2. `backend/config/` contains only files the runtime or its own tooling loads, each named in
+   `backend/config/README.md` with its loader; runtime configuration is split by function; the READMEs
+   match. *(Amended 2026-09-12 at CFG-7 RV: `seed/e2e_seed_manifest.json` is loaded at import by
+   `operations/seed_manifest.py`, so it is runtime configuration; `seed/generation.yaml` and
+   `data_platform/*.yaml` are tooling and test inputs with loaders in `backend/scripts` and the
+   test-only mapping engine — kept, named, and left to a separate decision on the mapping engine.)*
 3. Every `RETURN_PLATFORM` section, `AI_GATEWAY` unit and `DEPENDENCY_SIMULATION` has a typed
    screen with Advanced mode, path-mapped validation, DiffPreview and audited publish; each proven
    once in the live loop with pasted evidence.
