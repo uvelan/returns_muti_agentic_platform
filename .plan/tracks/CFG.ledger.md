@@ -5184,3 +5184,17 @@ $ pytest tests/test_configuration_api.py -q
 ```
 
 Files: `backend/tests/test_configuration_api.py`.
+
+## CFG-7 step:04 — CFG-6 A11, document the whole-deployment production gate
+
+`docs/configuration/families.md`'s `deployment` section gains a paragraph, verified against the
+actual call sites rather than assumed: `_enforce_deployment_gate` (`releases.py:839` inside
+`publish_configuration`, `:1157` inside the adopt-packaged route) is called with the whole merged
+`RETURN_PLATFORM` payload's `deployment` key on *every* publish/adopt, unconditionally -- not
+gated on whether the patch itself touched `deployment`. Documents the practical consequence (a
+release already violating the gate cannot be carried forward by an edit to an unrelated section)
+and the two other places the same unconditional check runs (`main.py:555-565` at API startup,
+`runtime_loader.py:118-128` for every other worker process), plus the backstop
+(`Settings.validate_relationships`).
+
+Files: `docs/configuration/families.md`.
