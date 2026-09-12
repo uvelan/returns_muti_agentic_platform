@@ -5453,3 +5453,49 @@ artifact source". `docs/evidence/stage4o_complete_audit/generate_audit_artifacts
 step:07) is a different, generated report and was handled separately for its own stale filenames.
 
 Files: `evidence/config_audit/FINAL_REPORT.md`.
+
+## CFG-7 step:12 — definition of done (CFG.brief.md §6), checked item by item
+
+1. **Every §G defect fixed or has a recorded decision to defer, ID in the ledger.** MET.
+   `evidence/config_audit/FINAL_REPORT.md` §L (step:11); every one of the 20 ids has a final status
+   and a lease; ledger step:11 restates the net (15 fixed/holding, 1 resolved-by-design, 1
+   partial-with-new-gap, 1 unchanged-out-of-scope, 1 unresolved-for-lack-of-detail, 1 unchanged note).
+
+2. **`backend/config/` contains only files the runtime loads, split by function; READMEs match.**
+   **NOT MET**, and not this lease's to fix: `backend/config/` still holds `data_platform/` and
+   `seed/` (the directory's own README says so plainly -- "canonical mappings... for the data
+   platform surfaces that have not yet migrated onto the manifest model" and "fixtures for
+   local/dev seeding, not production runtime configuration"), plus `manifest.yaml`'s one kept
+   (already-inert) entry and `dynamic_knowledge/active-schema.example.yaml` (an authoring
+   reference, never loaded). The README is honest about all four -- "READMEs match" holds -- but
+   the directory itself is not runtime-loaded-files-only. `backend/config/**` is outside CFG-7's
+   Owns list entirely; recorded as unmet rather than silently passed.
+
+3. **Every `RETURN_PLATFORM` section, `AI_GATEWAY` unit and `DEPENDENCY_SIMULATION` has a typed
+   screen ... each proven once in the live loop.** **MOSTLY MET.** Every `RETURN_PLATFORM` section
+   and `DEPENDENCY_SIMULATION` (`/config/simulation`) proven live at step:10 (twelve specs, all
+   green, `.plan/acceptance/config-screens.md`). `AI_GATEWAY` (the per-task Configuration tab,
+   `/ai/configuration`) has typed screens with Advanced mode (already built by earlier leases) but
+   **no live publish/revert proof from this lease** -- see `config-screens.md`'s own section on
+   why (live AI-dispatch-governing state, budget did not allow safely characterising a field this
+   round). Recorded as the one gap in an otherwise-met item, not claimed complete.
+
+4. **No business value read from env at request time; env holds deployment values and bootstrap
+   defaults only.** MET, inherited from CFG-6, spot-verified this step: `grep -rln
+   "settings\.ai_provider_order\|settings\.omc_dependency_mode\|..." backend/src/` finds request-time
+   readers (`ai/routing/routes.py`, `api/ai_gateway.py`, `operations/orchestrator.py`, …), but every
+   one reads the `Settings` FIELD after `apply_deployment_configuration`/
+   `apply_graph_runtime_configuration` has hot-adopted the release's `deployment` section into it
+   at activation -- by request time the field holds the release's value, not a live env read. This
+   is CFG-6's own designed mechanism (D-CFG-4), not a gap; no CFG-7 change touches it.
+
+5. **Trunk suites fully green, OpenAPI drift check green, axe sweep clean.** MET, on this lease's
+   own head (not literally trunk until merged): `assert_known_failures.py` PASS both suites (step:06);
+   `python scripts/check_openapi_drift.py` -> `"status": "PASS", "diffs": []` (this step, re-run
+   after CFG-7's own backend test addition, no API surface touched); axe sweep zero violations
+   (step:02, re-confirmed at step:08 after the Toggle fix).
+
+```
+$ python scripts/check_openapi_drift.py
+"status": "PASS", "diffs": []
+```
