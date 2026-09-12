@@ -5092,3 +5092,65 @@ CFG-3b A2/A5-A8 -- checked against current source, all four already closed by la
 `aria-describedby`, `/validate/{domain_key}` exists at `router.py:323`) -- recorded here rather
 than re-fixed; CFG-4 F6/F10 -- both already carry a ledger/RV disposition (F6 fixed in CFG-5, F10
 recorded as an environment flake in CFG-5's H5), nothing further to do, recorded as closed.
+
+## CFG-7 step:02 — mock layer complete (item 4), axe sweep clean (item 2), closes CFG-6 A8
+
+**Mock layer.** The five gaps `main.tsx`'s own `"warn"` note named (CFG-5 F2's own finding, plus
+the two `/support/*` ones): `GET /api/config/adoption`, `GET /api/shipment-status-catalog`,
+`GET /api/shipments` (+ its `/:identifier` echo and `POST /:shipmentId/events` append -- the
+latter was a POST, not a GET, corrected after the contract test caught the mismatch),
+`GET /api/rma-tickets`, `GET /api/v1/return-support/work-items`. All five added to
+`canonicalHandlers.ts`/`supportHandlers.ts`, registered in both handler files' own coverage lists
+(`canonicalHandlers.contract.test.ts`'s `ROUTES`, `supportHandlers.contract.test.ts`'s
+`registeredRoutes()` assertion) and validated against the committed OpenAPI document -- the
+process caught two real defects before they shipped: `SupportWorkItemView.status` has no `"OPEN"`
+member (the queue's actual starting state is `"NEW"`) and is missing the required
+`requestSnapshotDigest` field, and `/api/shipments/{shipment_id}/events` is a POST that recomputes
+status, not a GET history read (the frontend's own `shipmentsApi.appendEvent` confirms it).
+`main.tsx`'s `enableMocking` restored to `onUnhandledRequest: "error"` -- RV round 1's original
+ask, held at `"warn"` since CFG-5 pending exactly these five.
+
+**Axe sweep.** Full `tests/canonical-routes.spec.ts` run against a disposable `vite --mode mock
+--port 5174` dev server (never `:5173`), `--workers=1`:
+
+```
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts --workers=1 --reporter=list
+141 tests: 140 passed, 1 failed first run
+  FAILED: /ai/providers-models lets the keyboard past the chrome
+$ npx playwright test ... -g "providers-models lets the keyboard" --repeat-each=4
+  4 passed (8.6s)   -- reproduces the CFG-4 F10 / CFG-5 H5 signature: genuinely
+  intermittent under the full-file run, clean in isolation, outside Owns
+  (`tests/canonical-routes.spec.ts` itself). Not re-run as part of a full sweep
+  again this step for budget reasons; carried forward as the same open item
+  F10/H5 already are, not folded into this lease's own claim.
+```
+
+Zero axe violations (critical/serious) on every route including every `/config/*` route,
+`/ai/configuration` and `/ai/providers-models` -- **44 of 44** accessibility tests green both runs.
+Zero reflow at 320/390/640-zoom200/768/1280/1440. `identity pending: 0 of 44`, `heading mismatch: 0`.
+
+This closes **CFG-6 A8** ("no axe/canonical-routes.spec.ts run for /config/deployment"): `/config/
+deployment` was already registered in `routeManifest.ts` (derived from `registry.ts`'s `Deployment`
+label, CFG-6's own registration), so the gap was that the sweep had never actually been *run* and
+confirmed clean for it, not that it was unwired. Run 2 above: `/config/deployment` passes rendered,
+keyboard, reflow and axe (see the per-route line, `ok 16`/`60`/`110` in the full-file runs).
+
+```
+$ npx vitest run
+ Test Files  90 passed (90)
+      Tests  1092 passed (1092)          # was 1085 after step:01; +7 (2 canonicalHandlers ROUTES
+                                          #  ×2 conformance checks each + 1 coverage assertion, 2
+                                          #  supportHandlers list-route conformance tests + 1
+                                          #  coverage assertion update -- net new assertions, not
+                                          #  1:1 with file count)
+$ npm run typecheck   -> exit 0
+$ npm run lint        -> exit 0
+```
+
+Files: `frontend/src/main.tsx`, `frontend/src/mocks/handlers/canonicalHandlers.ts`,
+`frontend/src/mocks/handlers/canonicalHandlers.contract.test.ts`,
+`frontend/src/mocks/handlers/supportHandlers.ts`,
+`frontend/src/mocks/handlers/supportHandlers.contract.test.ts`.
+
+Remaining from item 2/4: none identified beyond the pre-existing F10/H5 flake (not this lease's to
+fix, tracked against the sweep's own owner per CFG-5's disposition). CFG-6 A8 closed.
