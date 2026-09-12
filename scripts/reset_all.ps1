@@ -304,7 +304,7 @@ Step "6/6  Seeding warehouse bays for every warehouse the orders name"
 Push-Location $Backend
 try {
   $env:PYTHONPATH = Join-Path $Backend "src"
-  & $python (Join-Path $Backend "scriptsackfill_warehouse_master.py")
+  & $python (Join-Path $Backend "scripts\backfill_warehouse_master.py")
   if ($LASTEXITCODE -ne 0) { Die "Warehouse master backfill failed; the bay agent would answer WAREHOUSE_NOT_IN_GRAPH." }
   & $python (Join-Path $Backend "scripts\seed_warehouse_bay_configuration.py")
   if ($LASTEXITCODE -ne 0) { Die "Bay seeding failed; no case could reach the dock." }
