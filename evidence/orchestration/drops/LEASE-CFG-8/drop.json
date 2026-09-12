@@ -2,7 +2,7 @@
   "lease_id": "CFG-8",
   "branch": "feat/cfg-8-policy-screen",
   "base_sha": "35f0356c71b2e9035aca7667e57121eecd74c9f7",
-  "head_sha": "PENDING",
+  "head_sha": "3a66d7ca",
   "status": "PARTIAL",
   "files": [
     "backend/src/return_platform/configuration/api/policy_preview.py",
