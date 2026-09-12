@@ -100,13 +100,31 @@ env and all — until a `git revert` drops the `deployment` key from the model,
 at which point the next bootstrap run republishes without it and env is
 authoritative again (`_drop_retired_keys`; no data migration).
 
-(b) `deployment.feedback_learning.enabled` reads live off `Settings` at call
-time, but `FeedbackLearningService`/`ReturnOrchestrator` (the class that
+(b) `deployment.feedback_learning.enabled` reads live off a `SettingsSource`
+(`operations/feedback_service.py`) at call time — `resources.settings.<field>`,
+never a captured `Settings` value, because `RuntimeConfigurationActivator.refresh`
+*replaces* `resources.settings` with a new instance on every adoption rather
+than mutating it in place (RV round 1 F1 on this lease found the service had
+gotten this backwards: it held the `Settings` object itself and never saw a
+later change). `test_rebinding_resources_settings_changes_the_services_next_read`
+(`tests/operations/test_feedback_learning_settings_source.py`) proves the fix:
+rebinding a `SettingsSource`'s `.settings` changes the service's answer on its
+very next read, no reconstruction needed.
+
+That said, `FeedbackLearningService`/`ReturnOrchestrator` (the class that
 constructs it) currently has **no production construction site** in
-`backend/src` — only tests instantiate it. A future wiring site must construct
-it with the live `resources.settings` object for this hot-adopt to actually
-reach production traffic; a regression test asserts that requirement without
-itself supplying the missing site (CFG-6 scope item 6c).
+`backend/src` — only tests instantiate it, and its one construction site
+(`operations/orchestrator.py`) passes a `SettingsSnapshot` (a `SettingsSource`
+that never changes — the honest answer for a caller with no live resources
+container), not a live one. So this hot-adopt does not yet reach production
+traffic; a future wiring site must construct `ReturnOrchestrator` with the
+process's real, live resources container and thread it through to
+`FeedbackLearningService` in place of `SettingsSnapshot`.
+`test_no_module_constructs_the_guarded_classes_with_a_bare_settings_name` and
+`test_the_one_feedback_learning_service_call_site_wraps_its_settings_source`
+(same file, AST-based) pin that requirement: any call site — the current one
+or a future one — that passes a bare `settings` name instead of a wrapped or
+live source fails the build.
 
 ### Validation rules that fail closed
 

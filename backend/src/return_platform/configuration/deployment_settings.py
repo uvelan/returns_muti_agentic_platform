@@ -37,17 +37,18 @@ from return_platform.configuration.return_configuration import (
 )
 from return_platform.configuration.settings import PRODUCTION_ENVIRONMENT, Settings
 
-#: AI providers `apply_graph_runtime_configuration` can enable through the
-#: release's `runtime_integrations` section. A provider named here keeps its
-#: *availability* (credentials, and the model pool `runtime_integrations`
-#: itself sets) from that section; `deployment.ai.model_pools` fills in a
-#: model pool only for a provider NOT in this set for the release at hand
-#: (CFG-6.design.md §4 -- the one precedence rule this lease is not free to
-#: renegotiate).
 _DEPENDENCY_MODE_FIELDS = ("omc", "parcel", "freight", "lsi")
 
 
 def _governed_ai_providers(configuration: ReturnPlatformConfiguration) -> frozenset[str]:
+    """AI providers `apply_graph_runtime_configuration` can enable through the
+    release's `runtime_integrations` section. A provider named here keeps its
+    *availability* (credentials, and the model pool `runtime_integrations`
+    itself sets) from that section; `deployment.ai.model_pools` fills in a
+    model pool only for a provider NOT in this set for the release at hand
+    (CFG-6.design.md §4 -- the one precedence rule this lease is not free to
+    renegotiate).
+    """
     return frozenset(
         item.provider_key
         for item in configuration.runtime_integrations.ai_providers
@@ -237,6 +238,42 @@ def merge_deployment_defaults(
         else:
             merged[unit] = value
     return merged
+
+
+def overlay_env_deployment_defaults(
+    configuration: ReturnPlatformConfiguration,
+    settings: Settings,
+) -> ReturnPlatformConfiguration:
+    """`configuration.deployment`, with `settings`'s env-set fields overlaid.
+
+    RV round 1 F4: the version-controlled BASELINE fallback
+    (`ConfigurationSnapshotBuilder._baseline_snapshot`, taken when the graph
+    is unreachable or has no active release and `allow_baseline_fallback` is
+    set -- development only, `runtime_loader.py`/`main.py`) used to pass the
+    packaged `deployment.yaml` straight through, un-overlaid, so this host's
+    own env (`PLATFORM_AI_PROVIDER_ORDER=GOOGLE,NVIDIA`, say) was silently
+    replaced by the packaged file's default (`GOOGLE,NVIDIA,SIMULATOR`) the
+    moment a process fell onto this path -- exactly the property design §7
+    claims does NOT happen ("packaged `deployment.yaml` overlaid with env,
+    exactly today's behaviour"). This is the same overlay bootstrap seeding
+    already does (`deployment_payload_from_settings` + `merge_deployment_defaults`),
+    applied to the in-memory baseline `ReturnPlatformConfiguration` instead of
+    a packaged-file dict, so both processes' fallback path gets it too.
+
+    A no-op when `settings` set nothing this session (`deployment_payload_from_settings`
+    returns `{}`) -- the packaged default survives untouched, matching the
+    already-passing case design §7 describes.
+    """
+    env_defaults = deployment_payload_from_settings(settings)
+    if not env_defaults:
+        return configuration
+    overlaid = merge_deployment_defaults(
+        configuration.deployment.model_dump(mode="json"),
+        env_defaults,
+    )
+    return configuration.model_copy(
+        update={"deployment": DeploymentConfiguration.model_validate(overlaid)}
+    )
 
 
 @dataclass(frozen=True, slots=True)

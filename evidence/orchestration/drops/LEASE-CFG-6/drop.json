@@ -2,7 +2,7 @@
   "lease_id": "CFG-6",
   "branch": "feat/cfg-6-deployment-section",
   "base_sha": "59950920",
-  "head_sha": "3696e668",
+  "head_sha": "PENDING_COMMIT",
   "files": [
     "backend/src/return_platform/configuration/return_configuration.py",
     "backend/config/returns/deployment.yaml",
@@ -48,27 +48,37 @@
     "frontend/openapi/return-platform.openapi.json",
     "openapi.json",
     "frontend/src/api/generated/return-platform.d.ts",
-    "docs/evidence/stage4_contract_closure/openapi_drift_receipt.json"
+    "docs/evidence/stage4_contract_closure/openapi_drift_receipt.json",
+    "backend/src/return_platform/operations/orchestrator.py",
+    "backend/tests/operations/test_feedback_learning_settings_source.py"
   ],
   "tests": {
-    "pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/test_ai_gateway_routing.py tests/test_ai_gateway_policy.py tests/platform tests/test_outbox_dependency_dispatchers.py tests/test_worker_runtime_activation.py tests/test_ai_route_balancing_design.py tests/test_ai_entry_points_share_one_path.py tests/test_ai_single_dispatch_boundary.py tests/test_openapi_contract_drift.py -q": "1002 passed, 5 failed -- all 5 confirmed pre-existing on base fd2874ca (unrelated to deployment/provider order), not in known_test_failures.json",
-    "pytest tests -q (full backend suite)": "5347 passed, 42 failed, 10 skipped -- the 42 = the 5 above + 37 pre-existing failures confirmed identical on base fd2874ca by name and message; zero new failures",
-    "ruff check (25 touched backend files)": "clean",
-    "ruff format --check (same 25 files)": "clean",
-    "mypy (16 touched backend source files)": "clean",
-    "python scripts/check_openapi_drift.py": "PASS, zero diffs",
-    "npx vitest run (frontend, whole suite)": "1069 passed, 0 failed (89 files, after rebasing onto CFG-5's trunk merge)",
+    "pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/test_ai_gateway_routing.py tests/test_ai_gateway_policy.py tests/platform tests/test_outbox_dependency_dispatchers.py tests/test_worker_runtime_activation.py tests/test_ai_route_balancing_design.py tests/test_ai_entry_points_share_one_path.py tests/test_ai_single_dispatch_boundary.py tests/test_openapi_contract_drift.py tests/operations/test_feedback_learning_settings_source.py -q": "1013 passed, 5 failed -- the same five pre-existing failures every round, confirmed identical on base fd2874ca (unrelated to deployment/provider order), not in known_test_failures.json",
+    "ruff check (9 files RV round 1 touched)": "clean",
+    "ruff format --check (same files)": "clean (1 reformatted then clean)",
+    "mypy (6 touched backend source files)": "clean",
+    "python scripts/check_openapi_drift.py": "PASS, zero diffs, openapi_sha256 unchanged (no API surface moved)",
+    "npx vitest run (frontend, whole suite)": "1069 passed, 0 failed (89 files)",
     "npm run typecheck": "clean",
     "npm run lint": "clean",
     "grep -rn providerOrder backend/src frontend/src": "only retirement comments, the unrelated dependency_simulation field, and a local TS variable name in DeploymentSection.tsx -- no AI-gateway settings duplicate remains"
   },
   "remaining": [
-    "Live no-restart proof (acceptance's headline claim): deliberately not executed from this worktree -- rules forbid running launchers/bootstrap against the live stack here. Exact procedure for the orchestrator to run after RV is in the ledger's step:10 and the implementer's final report.",
-    "Scope item 6c: no code change -- ReturnOrchestrator/FeedbackLearningService has no production construction site in backend/src today (design's own finding, not something this lease introduces or can wire without inventing a call site outside its Owns list). Documented in docs/configuration/families.md footnote (b) as the requirement for whichever future lease adds one."
+    "Live no-restart proof (acceptance's headline claim): deliberately not executed from this worktree -- rules forbid running launchers/bootstrap against the live stack here. Exact procedure for the orchestrator to run after RV PASS is in the ledger's step:10/step:12 and the implementer's final reports.",
+    "A6 (RV round 1): three gate tests for the 422/RuntimeError paths not added this round -- exercised by hand in RV's own review and covered structurally at the validate_deployment_for_environment layer, but not at the HTTP/startup layer.",
+    "A7 (RV round 1): EnumSelect's disabled/disabledReason has no case in EnumSelect.test.tsx, only through DeploymentSection.test.tsx.",
+    "A8 (RV round 1): no canonical-routes.spec.ts/axe run for /config/deployment.",
+    "A11 (RV round 1): production's whole-deployment gate on every RETURN_PLATFORM publish (not just a deployment-touching one) is undocumented."
   ],
   "rebase": {
     "onto": "59950920",
     "note": "CFG-5 merged to trunk mid-lease. Rebased in place; conflicts in the step:08 frontend commit (BusinessSection.tsx deletion, ConfigurationPage.tsx/registry.ts tab wiring, canonicalHandlers.ts runtime mock) and the step:10 ledger commit, all resolved by keeping CFG-5's decisions and adding this lease's Deployment section alongside them -- see ledger step:11. One post-rebase fix outside the conflict set: SimulationSection.tsx's own RuntimeSlice-shaped adapter needed the new `environment` field too (tsc caught it, not a merge conflict)."
+  },
+  "rv_round_1": {
+    "verdict": "CHANGES_REQUIRED",
+    "reviewed_head": "e967c292",
+    "fixed": ["F1", "F2", "F3", "F4", "A1", "A2", "A3", "A4"],
+    "carried": ["A5 (resolved by A4)", "A6", "A7", "A8", "A9 (fixed in passing)", "A10", "A11"]
   },
   "merge_status": "PENDING"
 }

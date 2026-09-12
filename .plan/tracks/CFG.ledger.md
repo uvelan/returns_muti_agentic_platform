@@ -3864,3 +3864,156 @@ touched by this step; `docs/evidence/stage4_contract_closure/openapi_drift_recei
 
 Head sha: `<see commit below>`. Base sha (this step's rebase target): `59950920`. `drop.json`
 updated: `head_sha`, `base_sha: "59950920"`.
+
+## CFG-6 step:12 — RV round 1 fixes
+
+RV round 1 (`.plan/reviews/CFG-6.md` @ `e967c292`) returned CHANGES_REQUIRED: F1-F4 blocking, A1-A11
+advisory. All four blocking findings fixed at the cause with new tests; A1-A4 taken as full fixes
+per the coordinator's instruction, A5-A11 recorded below (one line each, per instruction).
+
+**F1 (BLOCKING, fixed) -- `feedback_service.py` held a captured `Settings`, never saw a rebind.**
+`RuntimeConfigurationActivator.refresh` REPLACES `resources.settings` with a new validated instance
+on every adoption (`runtime_activation.py:377-378`; `apply_deployment_configuration` always
+constructs a fresh `Settings`, never mutates one) -- the service's own comment claimed the opposite
+("reassigns... in place"). Fixed: `FeedbackLearningService.__init__` now takes a `resources:
+SettingsSource` (new structural `Protocol`, `.settings: Settings`) instead of a bare `Settings`,
+holds `self._resources`, and `_enabled` reads `self._resources.settings.feedback_learning_enabled`
+at call time. The one call site (`operations/orchestrator.py:192`) passes `SettingsSnapshot(settings)`
+-- a `SettingsSource` that never changes, the honest answer since `ReturnOrchestrator` itself has no
+live resources container (unchanged fact, design's own finding). Comment corrected to state the
+actual mechanism and why it matters.
+
+**F2 (BLOCKING, fixed) -- the regression test named in `families.md` footnote (b) did not exist.**
+Written: `tests/operations/test_feedback_learning_settings_source.py`, four tests --
+`test_rebinding_resources_settings_changes_the_services_next_read` (the behavioural proof: rebind
+`resources.settings`, assert `_enabled` changes with no reconstruction),
+`test_holding_a_bare_settings_value_would_not_see_the_change` (negative control),
+`test_no_module_constructs_the_guarded_classes_with_a_bare_settings_name` (AST guard, style of
+`tests/agents/test_no_cross_agent_imports.py`, scanning all of `backend/src` for a
+`FeedbackLearningService(...)`/`ReturnOrchestrator(...)` call passing a bare `settings` name -- the
+exact shape of the F1 bug) and `test_the_one_feedback_learning_service_call_site_wraps_its_settings_source`
+(positive: the one call site wraps in `SettingsSnapshot`). Verified BOTH have teeth: temporarily
+reverted `orchestrator.py`'s wrapper to a bare `settings` argument, reran -- 2 of 4 failed with the
+AST guard naming the exact line -- then restored. `families.md` footnote (b) rewritten to cite these
+four tests by name instead of an uncited claim.
+
+**F3 (BLOCKING, fixed) -- `test_deployment_first_publish_seeds_from_env`'s tautology.**
+`"deployment.ai" not in result.recordable_baseline or True` is always true regardless of the actual
+value; the trailing comment ("first publish: no baseline yet") was also false -- a first publish
+records all four `deployment.*` unit digests (`recordable_baseline` never leaves its initial
+`_key_digests(packaged_units)` value when there is no active release to overwrite it). Replaced with
+`assert sorted(k for k in result.recordable_baseline if k.startswith("deployment")) == [4 unit names]`.
+
+**F4 (BLOCKING, fixed) -- the `allow_baseline_fallback` path discarded env.** On this path
+(`ConfigurationSnapshotBuilder._baseline_snapshot`, graph unreachable/no release, development only)
+`runtime_loader.py`/`main.py` passed the packaged `deployment.yaml` straight through, un-overlaid --
+so this host's own `PLATFORM_AI_PROVIDER_ORDER=GOOGLE,NVIDIA` silently became the packaged file's
+`GOOGLE,NVIDIA,SIMULATOR` on that path, contradicting design §7's explicit claim ("exactly today's
+behaviour"). Fixed with a new `overlay_env_deployment_defaults(configuration, settings)`
+(`deployment_settings.py`) -- the same `deployment_payload_from_settings` + `merge_deployment_defaults`
+seam bootstrap already uses, applied to the in-memory `ReturnPlatformConfiguration` -- called in both
+`runtime_loader.py::resolve_process_configuration` and `main.py`'s startup path before
+`build_snapshot`. Safe on the normal (graph-driven) path: `build_snapshot`'s `default_configuration`
+argument is read ONLY inside `_baseline_snapshot`, never when a real active release exists (confirmed
+by reading `ConfigurationSnapshotBuilder.build_snapshot`'s own body). Four new tests in
+`test_deployment_settings.py`: the overlay wins with a differing env order, a no-op when
+`deployment_payload_from_settings` returns nothing, an end-to-end proof through the real
+`ConfigurationSnapshotBuilder.build_snapshot(allow_baseline_fallback=True)` seam, and a negative
+control (the pre-fix call -- no overlay -- reproduces exactly the bug RV found). Manually reproduced
+the bug once more against the fixed code with the overlay removed to confirm the negative control's
+premise; restored.
+
+**A1 (taken) -- rollback tests for a failure strictly AFTER promote-to-VALIDATED.** The step:03
+tests both faulted `save_draft_domain` (before either promotion, still DRAFT) -- real, but not the
+territory RV named. Two new tests: `test_publish_rolls_back_when_the_failure_is_after_promote_to_validated`
+faults the "VALIDATED" `record_configuration_audit` call directly (`releases.py:877-890`, after the
+VALIDATED promotion, before RELEASED); `test_adopt_packaged_rolls_back_when_the_failure_is_after_promote_to_validated`
+faults the shared `promote_configuration_release` primitive itself (monkeypatched to raise only on
+`target_status="RELEASED"`, since `publish_release_with_domains` runs both promotions internally
+with nothing else to intercept between them) -- both assert the release is ARCHIVED and the head
+revision is unchanged.
+
+**A2 (taken) -- cancellation could itself interrupt the archive.** `_archive_draft_on_refusal`'s own
+`except Exception:` does not catch `CancelledError` (a `BaseException`), so a cancellation arriving
+during the archive's own awaits could abort it mid-way AND replace the original refusal being
+re-raised with a fresh `CancelledError`. New `_archive_draft_on_refusal_shielded` wraps the archive in
+`asyncio.shield`, swallowing only the `CancelledError` the shield delivers back to the caller (not
+the archive itself, which keeps running to completion in the background) so the caller's bare
+`raise` still re-raises the real refusal. All four call sites (`/publish` x2, `/adopt-packaged` x2)
+now go through it. An HTTP-level cancellation test proved incompatible with Starlette's
+`BaseHTTPMiddleware` (a `CancelledError` inside the route surfaces as `RuntimeError("No response
+returned.")`, an artifact of `anyio`'s own task group, not of this code) -- tested the mechanism
+directly instead: `test_archive_draft_on_refusal_shielded_survives_the_callers_own_cancellation`
+starts the shielded archive as a task, cancels that task while a slowed `promote_release` is still
+in flight, and asserts the release is ARCHIVED anyway. Verified it fails without the shield
+(temporarily reverted, reran, restored).
+
+**A3 (taken) -- the circularity-guard test did not guard the regression.** Its own docstring conceded
+the discipline is enforced by the call sites, not the function under test. Removed
+(`test_adopt_packaged_seeds_from_bootstrap_settings_not_active_settings`) and replaced with
+`test_packaged_domain_payloads_seeds_deployment_from_the_bootstrap_snapshot_not_app_state_settings`
+in `test_configuration_api.py`, which drives the REAL call site (`_packaged_domain_payloads` via
+`POST /api/config/adopt-packaged`): `app.state.settings` is set to a value standing in for
+"already release-derived" with a third, different provider order, `app.state.packaged_deployment_defaults`
+to yet another; the published `deployment.ai.provider_order` must equal the latter. Verified it
+fails when `_packaged_domain_payloads` is temporarily changed to read `app.state.settings` instead
+(reverted after confirming).
+
+**A4 (taken) -- `OrderedList` cannot add/remove/restore a provider, but the screen's copy claimed
+"reordering and filtering the enabled set".** Chose to reword rather than extend `OrderedList`: an
+include/exclude-per-row affordance is real new capability on a primitive three other typed screens
+already share (`ReturnPolicySection`'s own `precedence` list, among others), and the `deployment`
+screen's own Advanced (JSON) editor already lets an operator add/remove/restore a provider with no
+new code -- reordering is the one thing raw JSON is worse at, which is exactly `OrderedList`'s job.
+`DeploymentSection.tsx`'s field description and module docstring now say plainly that this control
+reorders only, and name Advanced (JSON) for anything else.
+
+**Everything else, one line each per the coordinator's instruction:**
+- A5 (OrderedList only reorders) -- resolved by A4 above; the reword names the JSON editor as the
+  way to add/remove/restore, so this is no longer an open gap.
+- A6 (three gate tests for the 422/RuntimeError paths) -- not added this round; the paths are
+  exercised by hand in RV's own review (pasted output, both correct) and covered structurally by
+  `test_production_refuses_simulator_in_release_provider_order` etc. at the
+  `validate_deployment_for_environment` layer -- carried as a real gap at the HTTP/startup layer.
+- A7 (`EnumSelect`'s new `disabled`/`disabledReason` has no case in its own test file) -- carried;
+  covered today only through `DeploymentSection.test.tsx`.
+- A8 (no `canonical-routes.spec.ts`/axe run for `/config/deployment`) -- carried; the gap is recorded
+  here as this round's evidence rather than run, same as the prior round's own note on it.
+- A9 (misplaced comment block) -- fixed in passing during the F4 work: moved from `_DEPENDENCY_MODE_FIELDS`
+  to `_governed_ai_providers`'s own docstring, where it actually describes that function.
+- A10 (the live no-restart proof) -- still not run; remains the orchestrator's after this round's
+  fixes are accepted, per the lease's own rule against running launchers/bootstrap from this worktree.
+- A11 (production's whole-`deployment` gate on every RETURN_PLATFORM publish is undocumented) --
+  carried; not documented this round.
+
+**Reruns:**
+
+```
+$ pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py \
+    tests/test_ai_gateway_routing.py tests/test_ai_gateway_policy.py tests/platform \
+    tests/test_outbox_dependency_dispatchers.py tests/test_worker_runtime_activation.py \
+    tests/test_ai_route_balancing_design.py tests/test_ai_entry_points_share_one_path.py \
+    tests/test_ai_single_dispatch_boundary.py tests/test_openapi_contract_drift.py \
+    tests/operations/test_feedback_learning_settings_source.py -q
+5 failed, 1013 passed, 35 deselected
+(the same five pre-existing failures as every prior round, unchanged by name and message)
+
+$ ruff check <9 files this round touched> / ruff format --check <same>
+All checks passed! / 1 reformatted then clean (tests/test_configuration_api.py)
+
+$ mypy <6 touched backend source files>
+Success: no issues found in 6 source files
+
+$ python scripts/check_openapi_drift.py
+"diffs": [], "status": "PASS", "exit_code": 0   (openapi_sha256 unchanged -- no API surface moved)
+
+$ npx vitest run
+Test Files  89 passed (89)
+     Tests  1069 passed (1069)
+
+$ npm run typecheck && npm run lint
+(no output, exit 0 both)
+```
+
+Head sha: see commit. `drop.json`'s `merge_status: PENDING` -- ready for RV round 2. The live
+no-restart proof (A10) remains the orchestrator's to run after PASS.

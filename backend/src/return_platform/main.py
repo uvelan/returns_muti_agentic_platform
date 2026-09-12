@@ -116,6 +116,7 @@ from return_platform.configuration.application.agent_configuration import (
 from return_platform.configuration.deployment_settings import (
     DeploymentEnvironmentError,
     deployment_payload_from_settings,
+    overlay_env_deployment_defaults,
     validate_deployment_for_environment,
 )
 from return_platform.configuration.graph_repository import (
@@ -510,10 +511,18 @@ async def lifespan(
             graph_configuration_repository = InMemoryConfigurationGraphRepository()
         app.state.graph_configuration_repository = graph_configuration_repository
 
+        # RV round 1 F4: overlay the bootstrap env's `deployment` fields onto
+        # the packaged baseline before it can reach the allow_baseline_fallback
+        # path -- see `overlay_env_deployment_defaults`'s own docstring. Read
+        # only on that path (graph unreachable/no release, development only);
+        # a real active release never consults this argument.
+        default_configuration = overlay_env_deployment_defaults(
+            baseline_return_configuration.configuration, bootstrap_settings
+        )
         configuration_snapshot = await ConfigurationSnapshotBuilder(
             graph_configuration_repository
         ).build_snapshot(
-            baseline_return_configuration.configuration,
+            default_configuration,
             allow_baseline_fallback=(bootstrap_settings.environment in _DEVELOPMENT_ENVIRONMENTS),
             default_ai_gateway_configuration=(baseline_ai_gateway_configuration.configuration),
             default_dependency_simulation_configuration=(

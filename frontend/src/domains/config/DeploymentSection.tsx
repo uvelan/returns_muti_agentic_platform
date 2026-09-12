@@ -31,9 +31,16 @@ import { TypedSectionScreen } from "./TypedSectionScreen";
  * provider.
  *
  * **Production-refused options render disabled with the reason, not
- * hidden** (design §6): `SIMULATED` on a dependency mode, `SIMULATOR`/
- * `MANUAL` in provider order. An operator must be able to see a control
- * exists and why it is unavailable here -- the same property the backend's
+ * hidden** (design §6) on every `EnumSelect` here -- `SIMULATED` on a
+ * dependency mode. `SIMULATOR`/`MANUAL` in provider order get the same
+ * treatment in spirit but not the same mechanism: `OrderedList` reorders a
+ * fixed list and has no concept of a disabled row (RV round 1 A4), so a
+ * SIMULATOR/MANUAL entry already in the list is flagged inline instead
+ * (a visible badge naming the reason, not a native `disabled` state) --
+ * removing it, or adding a provider not currently listed, is an Advanced
+ * (JSON) edit, which this screen's copy says plainly. Either way an operator
+ * must be able to see a control exists and why it is unavailable, not have
+ * it silently vanish -- the same property the backend's
  * `validate_deployment_for_environment` enforces at publish, made visible
  * before a publish is even attempted. `environment` comes from
  * `GET /api/config/runtime` (added there in this lease); `null` (a payload
@@ -150,7 +157,7 @@ function DeploymentEditor({
             <FieldGroup
               kicker="AI"
               title="Provider order"
-              description="Reordering and filtering the enabled set -- the only source of provider order, and the only way to name SIMULATOR or MANUAL. A provider named here without credentials contributes no routes."
+              description="Reorders the providers already listed below -- the only source of provider order, and the only place SIMULATOR or MANUAL can be named. A provider named here without credentials contributes no routes. To add a provider not currently listed, remove one, or restore one already removed, use Advanced (JSON) above: this control only reorders the list it is given."
             >
               <OrderedList
                 label="Provider order"

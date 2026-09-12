@@ -21,7 +21,7 @@ from return_platform.configuration.return_configuration import (
     load_return_configuration,
 )
 from return_platform.configuration.settings import Settings
-from return_platform.operations.feedback_service import FeedbackLearningService
+from return_platform.operations.feedback_service import FeedbackLearningService, SettingsSnapshot
 from return_platform.operations.models import (
     AIDecision,
     AIRequestStatus,
@@ -189,9 +189,21 @@ class ReturnOrchestrator:
         # constructed by tests and repair scripts that drive a return without a
         # system store; absent one, the feedback record is prose, exactly as it
         # was before, and says so in its own `reviewStatus`.
+        #
+        # `SettingsSnapshot(settings)`, not `settings` itself (CFG-6 RV round 1
+        # F1/F2): `FeedbackLearningService` needs a `SettingsSource` -- a
+        # container whose `.settings` can be rebound -- to hot-adopt
+        # `deployment.feedback_learning.enabled`. `ReturnOrchestrator` has no
+        # such container of its own (`self._settings` here is exactly as
+        # static as the wrapped snapshot below; see design's own finding, no
+        # production construction site exists for this class in `backend/src`
+        # today), so this is a snapshot, not a live source -- the honest
+        # answer for the process that exists, not a false claim of hot-adopt.
+        # A future wiring site passes the process's real, live resources
+        # container here instead.
         self._feedback = FeedbackLearningService(
             repository.platform_client,
-            settings,
+            SettingsSnapshot(settings),
             configuration=self._return_configuration if proposal_kernel is not None else None,
             kernel=proposal_kernel,
         )

@@ -14,6 +14,7 @@ from return_platform.ai.routing.tasks import (
 )
 from return_platform.configuration.deployment_settings import (
     DeploymentEnvironmentError,
+    overlay_env_deployment_defaults,
     validate_deployment_for_environment,
 )
 from return_platform.configuration.graph_repository import (
@@ -89,9 +90,20 @@ async def resolve_process_configuration(
             raise RuntimeError("Required Neo4j dependency is unavailable") from exc
         repository = InMemoryConfigurationGraphRepository()
 
+    # RV round 1 F4: `default_configuration` is what
+    # `ConfigurationSnapshotBuilder._baseline_snapshot` uses verbatim on the
+    # allow_baseline_fallback path (graph unreachable/no release, development
+    # only) -- it is NEVER read when a real active release exists
+    # (`build_snapshot` builds `validated` from the graph's own payload in
+    # that case), so overlaying env here is safe on the normal path and fixes
+    # the fallback one: without it, this host's own env-set provider order
+    # (etc.) was silently replaced by the packaged file's default the moment
+    # a process fell onto this path -- exactly the property design §7 claims
+    # does not happen.
+    default_configuration = overlay_env_deployment_defaults(baseline.configuration, bootstrap)
     try:
         snapshot = await ConfigurationSnapshotBuilder(repository).build_snapshot(
-            baseline.configuration,
+            default_configuration,
             allow_baseline_fallback=(bootstrap.environment in _DEVELOPMENT_ENVIRONMENTS),
             default_ai_gateway_configuration=baseline_ai_gateway.configuration,
             default_dependency_simulation_configuration=(

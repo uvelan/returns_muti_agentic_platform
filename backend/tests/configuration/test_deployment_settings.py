@@ -27,8 +27,10 @@ from return_platform.configuration.deployment_settings import (
     apply_deployment_configuration,
     deployment_payload_from_settings,
     merge_deployment_defaults,
+    overlay_env_deployment_defaults,
     validate_deployment_for_environment,
 )
+from return_platform.configuration.graph_repository import InMemoryConfigurationGraphRepository
 from return_platform.configuration.return_configuration import (
     AIModelBindingConfiguration,
     AIProviderRuntimeConfiguration,
@@ -41,7 +43,10 @@ from return_platform.configuration.runtime_integrations import (
     apply_graph_runtime_configuration,
 )
 from return_platform.configuration.settings import DEFAULT_RETURN_CONFIGURATION_PATH, Settings
-from return_platform.configuration.snapshot import RETURN_PLATFORM_DOMAIN_KEY
+from return_platform.configuration.snapshot import (
+    RETURN_PLATFORM_DOMAIN_KEY,
+    ConfigurationSnapshotBuilder,
+)
 
 _PACKAGED = load_return_configuration(DEFAULT_RETURN_CONFIGURATION_PATH).configuration
 
@@ -294,9 +299,17 @@ def test_deployment_first_publish_seeds_from_env() -> None:
     )
 
     assert result.undecided[RETURN_PLATFORM_DOMAIN_KEY] == ()
-    assert (
-        "deployment.ai" not in result.recordable_baseline or True
-    )  # first publish: no baseline yet
+    # RV round 1 F3: design §3 row 1 is "env/packaged value adopted, BASELINE
+    # RECORDED" -- a first publish (no active release; `recordable_baseline`
+    # never leaves its initial `_key_digests(packaged_units)` value, since the
+    # `active_return_platform is not None` branch that would overwrite it does
+    # not run) records all four `deployment.*` unit digests, not none.
+    assert sorted(key for key in result.recordable_baseline if key.startswith("deployment")) == [
+        "deployment.ai",
+        "deployment.dependencies",
+        "deployment.feedback_learning",
+        "deployment.support_ticket",
+    ]
 
 
 def test_deployment_later_start_keeps_operator_value() -> None:
@@ -345,39 +358,17 @@ def test_deployment_later_start_adopts_changed_env() -> None:
 # --------------------------------------------------------------------------- #
 # 6. Bootstrap seeding: circularity guard
 # --------------------------------------------------------------------------- #
-
-
-def test_adopt_packaged_seeds_from_bootstrap_settings_not_active_settings() -> None:
-    """`deployment_payload_from_settings` must be called on the BOOTSTRAP
-    settings snapshot, never on a `Settings` object a release has already
-    shaped -- doing the latter would make "the packaged default" read back the
-    release's own value and every key would appear decided. This test proves
-    the function's OWN behaviour is settings-in/dict-out with no reference to
-    any release; the discipline of which settings object a caller passes is
-    enforced by `main.py` (`app.state.packaged_deployment_defaults`, snapshotted
-    before `apply_graph_runtime_configuration` first runs) and
-    `configuration/api/releases.py::_packaged_domain_payloads`, not by this
-    function -- so the regression this guards against is "a caller reads
-    `app.state.settings` here", which both of those call sites avoid.
-    """
-    bootstrap_settings = Settings(environment="development", ai_provider_order="GOOGLE,NVIDIA")
-    # A hypothetical release-derived `Settings` -- what `app.state.settings`
-    # becomes AFTER a release with a totally different provider order adopts.
-    release_derived_settings = bootstrap_settings.model_copy(
-        update={"ai_provider_order": "ANTHROPIC"}
-    )
-
-    bootstrap_payload = cast("dict[str, Any]", deployment_payload_from_settings(bootstrap_settings))
-    release_payload = cast(
-        "dict[str, Any]", deployment_payload_from_settings(release_derived_settings)
-    )
-
-    # Both report what THEIR OWN settings object says -- proving the function
-    # is a pure projection with no hidden global state -- and they disagree,
-    # which is exactly why the caller must be careful about which one it passes.
-    assert cast("dict[str, Any]", bootstrap_payload["ai"])["provider_order"] == ["GOOGLE", "NVIDIA"]
-    assert cast("dict[str, Any]", release_payload["ai"])["provider_order"] == ["ANTHROPIC"]
-    assert bootstrap_payload != release_payload
+#
+# RV round 1 A3: the real regression guard -- proving `_packaged_domain_payloads`
+# (`configuration/api/releases.py`) actually seeds `deployment` from
+# `app.state.packaged_deployment_defaults` rather than `app.state.settings` --
+# is `test_packaged_domain_payloads_seeds_deployment_from_the_bootstrap_snapshot_not_app_state_settings`
+# in `tests/test_configuration_api.py`, which drives the real call site
+# through `POST /api/config/adopt-packaged`. A prior version of this test
+# lived here and only proved `deployment_payload_from_settings` itself is a
+# pure settings-in/dict-out projection with no reference to any release --
+# true, but not a guard against the actual regression (RV: "its own docstring
+# concedes this"), so it was removed rather than kept beside the real one.
 
 
 def test_merge_deployment_defaults_only_overlays_env_set_fields() -> None:
@@ -475,3 +466,85 @@ def test_deployment_key_is_dropped_after_revert(monkeypatch: pytest.MonkeyPatch)
 
     assert "deployment" not in dropped
     assert set(dropped) == set(reverted_fields)
+
+
+# --------------------------------------------------------------------------- #
+# RV round 1 F4: the allow_baseline_fallback path must overlay env too
+# --------------------------------------------------------------------------- #
+
+
+def test_overlay_env_deployment_defaults_wins_over_the_packaged_file() -> None:
+    """A `Settings` whose provider order differs from the packaged file: the
+    env value must win in the overlaid configuration, unconditionally.
+    """
+    assert tuple(_PACKAGED.deployment.ai.provider_order) != ("GOOGLE", "NVIDIA")
+    settings = Settings(ai_provider_order="GOOGLE,NVIDIA")
+
+    overlaid = overlay_env_deployment_defaults(_PACKAGED, settings)
+
+    assert overlaid.deployment.ai.provider_order == ("GOOGLE", "NVIDIA")
+
+
+def test_overlay_env_deployment_defaults_is_a_noop_with_nothing_env_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When `deployment_payload_from_settings` has nothing to contribute (a
+    settings object that set none of the eight switches this session), the
+    packaged configuration comes back unchanged -- design §7's
+    already-passing case must stay a no-op, not merely "close to the same
+    values".
+    """
+    monkeypatch.setattr(
+        "return_platform.configuration.deployment_settings.deployment_payload_from_settings",
+        lambda _settings: {},
+    )
+
+    overlaid = overlay_env_deployment_defaults(_PACKAGED, Settings())
+
+    assert overlaid is _PACKAGED
+
+
+@pytest.mark.asyncio
+async def test_allow_baseline_fallback_snapshot_honors_the_env_provider_order() -> None:
+    """End to end, through the real seam: no active release, development, the
+    graph's own baseline-fallback path (`ConfigurationSnapshotBuilder.build_snapshot`,
+    `allow_baseline_fallback=True`) -- the env's provider order must reach the
+    resulting snapshot, not the packaged file's.
+
+    This is the exact scenario RV round 1 F4 proved broken: an env whose
+    `PLATFORM_AI_PROVIDER_ORDER` differs from the packaged default silently
+    lost to it on this path.
+    """
+    assert tuple(_PACKAGED.deployment.ai.provider_order) != ("GOOGLE", "NVIDIA")
+    settings = Settings(ai_provider_order="GOOGLE,NVIDIA")
+    repository = InMemoryConfigurationGraphRepository()
+    default_configuration = overlay_env_deployment_defaults(_PACKAGED, settings)
+
+    snapshot = await ConfigurationSnapshotBuilder(repository).build_snapshot(
+        default_configuration,
+        allow_baseline_fallback=True,
+    )
+
+    assert snapshot.source == "VERSION_CONTROLLED_BASELINE"
+    assert snapshot.configuration.deployment.ai.provider_order == ("GOOGLE", "NVIDIA")
+
+
+@pytest.mark.asyncio
+async def test_allow_baseline_fallback_without_the_fix_would_use_the_packaged_order() -> None:
+    """Negative control: proves the test above actually exercises F4, not
+    something that would pass either way -- the UN-overlaid packaged
+    configuration reaches the snapshot with the packaged file's own order.
+    """
+    settings = Settings(ai_provider_order="GOOGLE,NVIDIA")
+    repository = InMemoryConfigurationGraphRepository()
+
+    snapshot = await ConfigurationSnapshotBuilder(repository).build_snapshot(
+        _PACKAGED,  # the pre-F4 call: no overlay
+        allow_baseline_fallback=True,
+    )
+
+    assert snapshot.configuration.deployment.ai.provider_order == tuple(
+        _PACKAGED.deployment.ai.provider_order
+    )
+    assert snapshot.configuration.deployment.ai.provider_order != ("GOOGLE", "NVIDIA")
+    assert settings.ai_provider_order == "GOOGLE,NVIDIA"

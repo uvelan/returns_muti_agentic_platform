@@ -13,6 +13,7 @@ is the write.
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 import logging
@@ -944,7 +945,7 @@ async def publish_configuration(
             )
         )
     except HTTPException:
-        await _archive_draft_on_refusal(repo, release_id, user_id)
+        await _archive_draft_on_refusal_shielded(repo, release_id, user_id)
         raise
     except BaseException:
         # Any OTHER refusal -- a repository fault, a cancelled request, a
@@ -953,8 +954,11 @@ async def publish_configuration(
         # `_archive_draft_on_refusal` archives only a release still in
         # DRAFT/VALIDATED, so this is safe to run unconditionally: a refusal
         # that happened after RELEASED (inside the audit write above) finds
-        # nothing to archive and is a no-op.
-        await _archive_draft_on_refusal(repo, release_id, user_id)
+        # nothing to archive and is a no-op. Shielded (RV round 1 A2): this
+        # branch is exactly where a task cancellation lands too, and an
+        # unshielded archive could itself be cut off mid-way by a second
+        # delivery of that same cancellation.
+        await _archive_draft_on_refusal_shielded(repo, release_id, user_id)
         raise
 
     data = outcome.release.model_dump(mode="json")
@@ -1055,6 +1059,30 @@ async def _archive_draft_on_refusal(
             "configuration_release_rollback_failed release_id=%s",
             release_id,
         )
+
+
+async def _archive_draft_on_refusal_shielded(
+    repo: ConfigurationGraphRepository, release_id: str, actor_id: str
+) -> None:
+    """`_archive_draft_on_refusal`, run so a cancellation of THIS request
+    cannot stop it partway (RV round 1 A2).
+
+    Every caller is inside `except BaseException:`, which a task cancellation
+    reaches exactly like any other exception -- and `_archive_draft_on_refusal`
+    itself only catches `Exception`, not `BaseException`, so a
+    `CancelledError` arriving at one of its own `await` points used to abort
+    the archive mid-way AND replace the original refusal being re-raised with
+    a fresh `CancelledError`, silently. `asyncio.shield` runs the archive as
+    its own task, immune to OUR task's cancellation; the `CancelledError`
+    `shield` still delivers to US when our task is cancelled is swallowed
+    here (not re-raised) so the caller's own bare `raise` re-raises the
+    refusal that sent it into this `except` block in the first place, not
+    this one.
+    """
+    try:
+        await asyncio.shield(_archive_draft_on_refusal(repo, release_id, actor_id))
+    except asyncio.CancelledError:
+        pass
 
 
 class AdoptPackagedPayload(BaseModel):
@@ -1177,10 +1205,12 @@ async def adopt_packaged_release(
             details={"units": sorted(body.units), "undecided": undecided},
         )
     except ReleasePromotionError as exc:
-        await _archive_draft_on_refusal(repo, release_id, user_id)
+        await _archive_draft_on_refusal_shielded(repo, release_id, user_id)
         raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     except BaseException:
-        await _archive_draft_on_refusal(repo, release_id, user_id)
+        # Shielded (RV round 1 A2): see `_archive_draft_on_refusal_shielded`'s
+        # own docstring -- this branch is where a task cancellation lands too.
+        await _archive_draft_on_refusal_shielded(repo, release_id, user_id)
         raise
 
     data = outcome.release.model_dump(mode="json")
