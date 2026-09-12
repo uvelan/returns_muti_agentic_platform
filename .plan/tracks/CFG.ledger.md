@@ -4847,3 +4847,63 @@ trunk, the same sequencing CFG-6's own live no-restart proof used.
 
 **Unfinished, carried to the orchestrator:** the live e2e proof (step:06). Everything else the
 brief's acceptance names is green at head `d04334b8`.
+
+## CFG-5b step:08 — rebased onto trunk 52765381
+
+CFG-8 (Policy screen) merged to `refactor/unified-return-platform` while this lease was in
+progress; rebased `feat/cfg-5b-agents` onto the new trunk head `52765381` per the coordinator's
+instruction, ahead of RV.
+
+```
+$ git rebase 52765381
+```
+
+Two conflicts, both mechanical, exactly as expected:
+
+- **`.plan/tracks/CFG.ledger.md`** (step:01's commit only) -- append-only file, both sides real
+  content. Resolved by keeping CFG-8's entries (already on trunk, chronologically first) followed by
+  this lease's own step:00 entry, in order, no markers left.
+- **`docs/evidence/stage4_contract_closure/openapi_drift_receipt.json`** (step:04's commit) -- a
+  generated receipt (commit sha, timestamps); took theirs and regenerated properly below rather than
+  hand-merging.
+
+No conflict in `registry.ts`, `routeManifest.ts`, `ConfigurationPage.tsx` or `canonicalHandlers.ts`
+despite the coordinator's expectation of one there -- CFG-8's Policy screen and this lease's Agents
+screen touch disjoint sections of each of those files (this lease's Owns never named
+`ConfigurationPage.tsx`'s tab-wiring switch or `registry.ts`'s section list at all, since "Agents
+keeps its existing tab" per the CFG-5 coordinator's own note), so git's textual merge resolved both
+files cleanly with no marker ever appearing.
+
+The four OpenAPI JSON copies and the generated `.d.ts` also merged cleanly with no markers;
+regenerated anyway per the coordinator's instruction, to be certain rather than trust the textual
+merge on a generated artifact:
+
+```
+$ python scripts/check_openapi_drift.py --write
+... diffs: []                    # already correct after the rebase's own auto-merge
+$ python scripts/check_openapi_drift.py
+... status: PASS, diffs: []
+```
+
+Full verification re-run at the new head:
+
+```
+$ pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/platform -q
+955 passed, 35 deselected, 2 warnings in 130.68s   # +13 over pre-rebase (CFG-8's own new tests)
+
+$ ruff check <6 touched backend files>            -> All checks passed!
+$ ruff format --check <6 touched backend files>   -> 6 files already formatted
+$ mypy <5 touched backend source files>           -> Success: no issues found in 5 source files
+
+$ npx vitest run
+ Test Files  90 passed (90)
+      Tests  1079 passed (1079)                    # +14 over pre-rebase (CFG-8's own new tests)
+
+$ npm run typecheck   -> exit 0
+$ npm run lint        -> exit 0
+```
+
+Nothing outside this lease's own Owns changed by the rebase; `git diff --stat 52765381..HEAD`
+matches the same file set as before rebasing, plus the regenerated receipt. Step:06's e2e finding
+(blocked on `:8000` serving pre-CFG-5b code) is unaffected by this rebase -- still true, still the
+one unfinished item.

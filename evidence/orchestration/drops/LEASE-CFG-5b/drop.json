@@ -1,8 +1,18 @@
 {
   "lease_id": "CFG-5b",
   "branch": "feat/cfg-5b-agents",
-  "base_sha": "94049bee6b6432727b2139a07e6c0c235fd569fb",
-  "head_sha": "d04334b8cc92499b573a73d4d16df97f97fd44ed",
+  "base_sha": "527653811db82b84732621da0baadeff4397ecb9",
+  "head_sha": "aa239a95189d7069d0abcb5e1994d42bbbf2584b",
+  "rebase": {
+    "from_base": "94049bee6b6432727b2139a07e6c0c235fd569fb",
+    "onto": "527653811db82b84732621da0baadeff4397ecb9",
+    "reason": "CFG-8 (Policy screen) merged to trunk mid-lease",
+    "conflicts": [
+      ".plan/tracks/CFG.ledger.md (step:01's commit only) -- append-only, kept both sides in order",
+      "docs/evidence/stage4_contract_closure/openapi_drift_receipt.json (step:04's commit) -- generated receipt, regenerated fresh after the rebase rather than hand-merged"
+    ],
+    "no_conflict_despite_expectation": "registry.ts, routeManifest.ts, ConfigurationPage.tsx, canonicalHandlers.ts -- CFG-8's Policy screen and this lease's Agents screen touch disjoint sections of each; git's textual merge resolved all four cleanly with no markers. See CFG.ledger.md step:08."
+  },
   "files": [
     "backend/src/return_platform/configuration/application/agent_configuration.py",
     "backend/src/return_platform/bootstrap/adapters/governance_agent_configuration.py",
@@ -37,15 +47,15 @@
   "tests": {
     "pytest tests/configuration/test_agent_configuration_releases.py -q": "12 passed",
     "pytest tests/test_graph_configuration_bootstrap.py -q": "25 passed",
-    "pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/platform -q": "942 passed, 35 deselected, 2 warnings in 156.80s",
+    "pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/platform -q (post-rebase, onto 52765381)": "955 passed, 35 deselected, 2 warnings in 130.68s (+13 over pre-rebase from CFG-8's own new tests)",
     "pytest tests/agents/test_no_cross_agent_imports.py tests/security/test_guards_match_the_console.py tests/test_every_console_path_is_mounted.py -q": "26 passed",
     "known_test_failures.json (backend + frontend)": "empty before and after -- nine/zero known failures unchanged",
-    "ruff check (touched backend files)": "All checks passed!",
-    "ruff format --check (touched backend files)": "clean (after one auto-format pass in step:01)",
-    "mypy (touched backend source files)": "Success: no issues found in 5 source files",
-    "python scripts/check_openapi_drift.py --write": "PASS, 5 snapshots regenerated",
-    "python scripts/check_openapi_drift.py": "PASS, zero diffs",
-    "npx vitest run (whole frontend suite)": "Test Files 89 passed (89), Tests 1065 passed (1065)",
+    "ruff check (touched backend files, post-rebase)": "All checks passed!",
+    "ruff format --check (touched backend files, post-rebase)": "6 files already formatted",
+    "mypy (touched backend source files, post-rebase)": "Success: no issues found in 5 source files",
+    "python scripts/check_openapi_drift.py --write (post-rebase)": "PASS, diffs: [] -- already correct after the rebase's own textual merge",
+    "python scripts/check_openapi_drift.py (post-rebase)": "PASS, zero diffs",
+    "npx vitest run (whole frontend suite, post-rebase)": "Test Files 90 passed (90), Tests 1079 passed (1079) (+14 over pre-rebase from CFG-8's own new tests)",
     "npm run typecheck": "exit 0",
     "npm run lint": "exit 0",
     "npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g agents": "3 passed (render, keyboard, axe)",
