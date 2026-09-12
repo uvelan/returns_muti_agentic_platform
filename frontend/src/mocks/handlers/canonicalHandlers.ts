@@ -2166,6 +2166,99 @@ export const canonicalHandlers = [
     );
   }),
 
+  /**
+   * `GET /api/config/packaged/{domain_key}` -- CFG-8 item B. The packaged
+   * document for one domain, redacted, read roles -- backs "Reset to
+   * packaged default" on `/config/policy`. `RETURN_PLATFORM`'s packaged
+   * `return_eligibility_policy`/`policy_evaluation` are the same fixtures
+   * `/api/config/runtime` serves for the active release, so `dev:mock`'s
+   * release starts equal to its own packaged file (no field appears to have
+   * drifted) -- the reset link's own visibility logic is exercised by
+   * `PolicySection.test.tsx` against a release deliberately built to differ.
+   */
+  http.get("/api/config/packaged/:domainKey", async ({ params }) => {
+    await delay(80);
+    const domainKey = String(params.domainKey);
+    if (domainKey === "AI_GATEWAY" || domainKey === "DEPENDENCY_SIMULATION") {
+      return HttpResponse.json(envelope({}, "packaged-domain"));
+    }
+    if (domainKey !== "RETURN_PLATFORM") {
+      return HttpResponse.json(
+        { detail: `Domain ${domainKey} is not a configuration domain; expected one of RETURN_PLATFORM, AI_GATEWAY, DEPENDENCY_SIMULATION` },
+        { status: 404 },
+      );
+    }
+    return HttpResponse.json(
+      envelope(
+        {
+          return_policy: MOCK_RETURN_POLICY,
+          return_eligibility_policy: MOCK_RETURN_ELIGIBILITY_POLICY,
+          policy_evaluation: MOCK_POLICY_EVALUATION,
+          discovery: MOCK_DISCOVERY,
+        },
+        "packaged-domain",
+      ),
+    );
+  }),
+
+  /**
+   * `POST /api/config/policy/preview` -- CFG-8 item A. Judges the one
+   * scenario worth telling apart from every other in a mock: the window
+   * comparison against the submitted `standard_stock_return.purchase_window.days`
+   * and `sample.days_since_purchase`, and the disabled-gate answer -- the two
+   * branches `PolicySection`'s own preview panel exists to show. Not a
+   * reimplementation of `policy.evaluator`; it judges only the one axis this
+   * fixture needs to demonstrate both outcomes in `dev:mock`.
+   */
+  http.post("/api/config/policy/preview", async ({ request }) => {
+    await delay(100);
+    const body = (await request.json().catch(() => ({}))) as {
+      return_eligibility_policy?: { standard_stock_return?: { purchase_window?: { days?: number } } };
+      policy_evaluation?: { enabled?: boolean; disabled_reason?: string | null };
+      sample?: { days_since_purchase?: number };
+    };
+    const policyEvaluation = body.policy_evaluation ?? {};
+    if (policyEvaluation.enabled === false) {
+      return HttpResponse.json(
+        envelope(
+          {
+            evaluation_enabled: false,
+            decision: null,
+            route: null,
+            applied_rules: [],
+            conditions: [],
+            unanswered_checks: [],
+            reason_codes: [],
+            policy_evaluation_state: "SKIPPED_BY_CONFIGURATION",
+            policy_evaluation_skip_reason: policyEvaluation.disabled_reason ?? "UNSPECIFIED",
+          },
+          "policy-preview",
+        ),
+      );
+    }
+    const windowDays = body.return_eligibility_policy?.standard_stock_return?.purchase_window?.days ?? 30;
+    const daysSincePurchase = body.sample?.days_since_purchase ?? 10;
+    const withinWindow = daysSincePurchase <= windowDays;
+    return HttpResponse.json(
+      envelope(
+        {
+          evaluation_enabled: true,
+          decision: withinWindow ? "APPROVE" : "REVIEW_REQUIRED",
+          route: "STANDARD_RETURN",
+          applied_rules: withinWindow
+            ? ["POLICY_RELEASE_VALIDATED", "STANDARD_STOCK_ITEM", "WITHIN_30_DAYS", "RESTOCKING_FEE_APPLIES"]
+            : ["POLICY_RELEASE_VALIDATED", "STANDARD_STOCK_ITEM", "OUTSIDE_STANDARD_WINDOW"],
+          conditions: withinWindow ? ["RESTOCKING_FEE_APPLIES"] : [],
+          unanswered_checks: [],
+          reason_codes: [withinWindow ? "WITHIN_STANDARD_RETURN_WINDOW" : "OUTSIDE_STANDARD_RETURN_WINDOW"],
+          policy_evaluation_state: "EVALUATED",
+          policy_evaluation_skip_reason: null,
+        },
+        "policy-preview",
+      ),
+    );
+  }),
+
   // --- data sources (UI-02) ---------------------------------------------------
   //
   // `SourceItem` / `SourceDetail`, field for field. The previous fixture here

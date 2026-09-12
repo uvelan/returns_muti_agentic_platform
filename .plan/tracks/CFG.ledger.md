@@ -4158,3 +4158,34 @@ Both new routes confirmed present in the generated `.d.ts`
 `components["schemas"]["APIResponse_dict_str__Any__"]` (the same generic shape every other
 `dict[str, Any]`-typed config route already carries) and the request body as
 `components["schemas"]["PolicyPreviewRequest"]`.
+
+## CFG-8 step:03 — frontend client methods, MSW handlers, contract tests (item 3)
+
+`frontend/src/api/configuration.ts`: `PackagedDomain` (a bag of unknowns, same convention as
+`RuntimeSnapshot`), `PolicyPreviewSample`/`PolicyPreviewResult`, and two `configApi` methods --
+`packagedDomain(domainKey)` (a plain `GET`) and `previewPolicy({returnEligibilityPolicy,
+policyEvaluation, sample})` (camelCase in, snake_case on the wire, matching every other write
+method in this file).
+
+`frontend/src/mocks/handlers/canonicalHandlers.ts`: `GET /api/config/packaged/:domainKey` serves
+`RETURN_PLATFORM`'s packaged `return_eligibility_policy`/`policy_evaluation` from the *same*
+`MOCK_RETURN_ELIGIBILITY_POLICY`/`MOCK_POLICY_EVALUATION` fixtures `/api/config/runtime` already
+serves for the active release -- `dev:mock`'s release therefore starts equal to its own packaged
+file, matching how a real deployment usually looks; `PolicySection.test.tsx` exercises the reset
+link's own visibility logic against a release deliberately built to differ instead. `AI_GATEWAY`/
+`DEPENDENCY_SIMULATION` answer `{}` (nothing reads them yet); an unknown key 404s naming the three.
+`POST /api/config/policy/preview` judges the one axis this fixture needs to demonstrate both
+branches in `dev:mock`: the submitted window against `sample.days_since_purchase`, and the
+disabled-gate answer -- not a second implementation of the evaluator, a mock judging the one thing
+worth telling apart.
+
+`canonicalHandlers.contract.test.ts`: two `GET /packaged/:domainKey` entries (RETURN_PLATFORM,
+AI_GATEWAY) and two `POST /policy/preview` entries (enabled, disabled) added to `ROUTES` -- every
+mocked body validated against the real OpenAPI schema for that route, and coverage checked both
+directions (every handler has a table entry, every table entry has a handler).
+
+```
+$ npx vitest run src/mocks/handlers/canonicalHandlers.contract.test.ts
+Test Files  1 passed (1)
+     Tests  77 passed (77)
+```

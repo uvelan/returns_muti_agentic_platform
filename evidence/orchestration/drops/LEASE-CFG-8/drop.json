@@ -2,7 +2,7 @@
   "lease_id": "CFG-8",
   "branch": "feat/cfg-8-policy-screen",
   "base_sha": "35f0356c71b2e9035aca7667e57121eecd74c9f7",
-  "head_sha": "3a66d7ca",
+  "head_sha": "bf7cd01a",
   "status": "PARTIAL",
   "files": [
     "backend/src/return_platform/configuration/api/policy_preview.py",
@@ -14,7 +14,10 @@
     "frontend/openapi/return-platform.openapi.json",
     "openapi.json",
     "frontend/src/api/generated/return-platform.d.ts",
-    "docs/evidence/stage4_contract_closure/openapi_drift_receipt.json"
+    "docs/evidence/stage4_contract_closure/openapi_drift_receipt.json",
+    "frontend/src/api/configuration.ts",
+    "frontend/src/mocks/handlers/canonicalHandlers.ts",
+    "frontend/src/mocks/handlers/canonicalHandlers.contract.test.ts"
   ],
   "deleted_files": [],
   "acceptance": {
@@ -31,10 +34,10 @@
     "item 2: POST /api/config/policy/preview (read roles; validates return_eligibility_policy/policy_evaluation with the same models /validate uses; runs policy.evaluator.evaluate_return_eligibility against a fabricated PolicyEvaluationInput built from `sample`; disabled-gate branch answers PolicyGateState.SKIPPED_BY_CONFIGURATION, imported from the workflow rather than restated)",
     "backend tests: within-window APPROVE + restocking condition; outside-window REVIEW_REQUIRED; a stated failing fact still rejects ahead of the window; evaluation disabled -> SKIPPED_BY_CONFIGURATION with the stated reason; disabled with no reason -> 422 (PolicyEvaluationConfiguration's own rule, not reachable in the route's UNSPECIFIED fallback); an invalid return_eligibility_policy block -> 422 with field paths; an unknown checklist fact name -> 422 naming it; both routes require read roles; the preview route touches no release/repository/resources at all",
     "test_canonical_config_api.py's mutation-surface test updated: POST /api/config/policy/preview added to the fixed set, docstring extended with the same 'not a mutation, POST-shaped' reasoning /validate already carries",
-    "item 2 (cont'd): OpenAPI regen, all four JSON copies + generated .d.ts, drift check PASS"
+    "item 2 (cont'd): OpenAPI regen, all four JSON copies + generated .d.ts, drift check PASS",
+    "item 3: configuration.ts client methods (packagedDomain, previewPolicy) + MSW handlers for both new routes + canonicalHandlers.contract.test.ts entries (77 passed)"
   ],
   "remaining": [
-    "item 3: frontend client methods + MSW handlers + contract tests",
     "item 4: PolicySection.tsx blocks 1-6 + test",
     "item 5: block 7 preview panel",
     "item 6: ReturnPolicySection.tsx trimmed, registry/routeManifest, registry test",
