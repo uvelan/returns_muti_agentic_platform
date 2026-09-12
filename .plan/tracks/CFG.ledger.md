@@ -5001,3 +5001,26 @@ $ npx vitest run
 $ npm run typecheck   -> exit 0
 $ npm run lint        -> exit 0
 ```
+
+---
+
+## CFG-5b merged at 261dc3bc and accepted on the dev host (orchestrator)
+
+RV round 2 PASS on `6df39c0f` (round 1: one blocking -- activation cloned RETURN_PLATFORM from the
+process's cached snapshot and would have reverted any concurrent release; now reads the active release
+from the repository, with a test that makes the two disagree). Full restart on `261dc3bc`; bootstrap
+`READY`, head 148, six undecided keys unchanged. Live proposal path, no process restarted:
+```
+GET /api/agents -> 200 (live RETURN_PLATFORM.agents section); GET /api/agents/feedback_learning -> path RETURN_PLATFORM.agents.feedback_learning
+BEFORE head 149 version 2.0
+change: PUT /api/agents/feedback_learning 202 proposal proposal-75a82595-...; approve 200 APPROVED; activate 200 ACTIVATED
+  runtime: head 150, agents.feedback_learning.version = 2.0-liveproof
+revert: PUT 202 proposal proposal-0d740e45-...; approve 200; activate 200
+  runtime: head 151, version = 2.0
+adoption LIVE throughout
+```
+Learned on the way: the approve/activate bodies are `DecisionRequest{note?}` / `ActivationRequest{parameters?}`
+(no `reason`), and a second proposal on the same agent SUPERSEDES the earlier pending one (the first
+attempt's change proposal answered 409 "SUPERSEDED; APPROVED is not reachable" after its revert twin was
+filed) -- by design, recorded for the Agents screen's copy (CFG-7). Snapshot `evidence/config_audit/after_cfg5b/`
+(head 151). CFG-7 implementer started on `feat/cfg-7-acceptance` from `261dc3bc`.
