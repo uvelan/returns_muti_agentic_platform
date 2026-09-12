@@ -2,7 +2,7 @@
   "lease_id": "CFG-6",
   "branch": "feat/cfg-6-deployment-section",
   "base_sha": "59950920",
-  "head_sha": "PENDING_COMMIT",
+  "head_sha": "a175b6ce",
   "files": [
     "backend/src/return_platform/configuration/return_configuration.py",
     "backend/config/returns/deployment.yaml",
