@@ -4798,3 +4798,52 @@ step:01), and the screen's own request wiring is proven against the mock
 the live, no-restart, cross-process adoption CFG-6's own e2e proved for `deployment` -- this lease's
 `e2e/config-agents.spec.ts` is ready to run that proof unchanged the moment `:8000` carries this
 lease's backend.
+
+## CFG-5b step:07 — acceptance sweep
+
+```
+$ python -m pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/platform -q
+942 passed, 35 deselected, 2 warnings in 156.80s (0:02:36)
+
+$ python -m pytest tests/agents/test_no_cross_agent_imports.py tests/security/test_guards_match_the_console.py tests/test_every_console_path_is_mounted.py -q
+26 passed in 8.29s
+```
+
+Nine known-failing modules unchanged: `scripts/ci/known_test_failures.json`'s `backend`/`frontend`
+allowlists are both empty before and after this lease -- "unchanged" holds trivially (0 known
+failures, 0 observed).
+
+```
+$ ruff check <7 touched backend files>          -> All checks passed!
+$ ruff format --check <7 touched backend files> -> clean (after one auto-format pass in step:01)
+$ mypy <5 touched backend source files>         -> Success: no issues found in 5 source files
+$ python scripts/check_openapi_drift.py         -> PASS, zero diffs
+```
+
+```
+$ ls backend/config
+README.md  ai_gateway  data_assets.yaml  data_platform  dependency_simulation.yaml
+dynamic_knowledge  manifest.yaml  platform  returns  schema_registry.yaml  seed
+```
+
+No `agents/` directory; `manifest.yaml` lists only `platform.system_store` (kept per its own header
+comment; see step:02).
+
+```
+$ npx vitest run
+ Test Files  89 passed (89)
+      Tests  1065 passed (1065)
+
+$ npm run typecheck   -> exit 0
+$ npm run lint        -> exit 0
+```
+
+e2e: run once against a disposable `vite --port 5199` per the rules; blocked by the live `:8000`
+still serving pre-CFG-5b trunk (see step:06 for the full evidence and reasoning) -- not a defect in
+this lease's own code, and not something this lease can resolve without violating the
+never-restart-`:8000` rule. The spec (`frontend/e2e/config-agents.spec.ts`) is committed and ready
+for the orchestrator to run once this branch merges and the API process restarts onto the new
+trunk, the same sequencing CFG-6's own live no-restart proof used.
+
+**Unfinished, carried to the orchestrator:** the live e2e proof (step:06). Everything else the
+brief's acceptance names is green at head `d04334b8`.

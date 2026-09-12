@@ -2,7 +2,7 @@
   "lease_id": "CFG-5b",
   "branch": "feat/cfg-5b-agents",
   "base_sha": "94049bee6b6432727b2139a07e6c0c235fd569fb",
-  "head_sha": "PENDING",
+  "head_sha": "d04334b8cc92499b573a73d4d16df97f97fd44ed",
   "files": [
     "backend/src/return_platform/configuration/application/agent_configuration.py",
     "backend/src/return_platform/bootstrap/adapters/governance_agent_configuration.py",
@@ -25,32 +25,48 @@
     "frontend/openapi/return-platform.openapi.json",
     "openapi.json",
     "frontend/src/api/generated/return-platform.d.ts",
-    "docs/evidence/stage4_contract_closure/openapi_drift_receipt.json"
+    "docs/evidence/stage4_contract_closure/openapi_drift_receipt.json",
+    "frontend/src/api/agentConfig.ts",
+    "frontend/src/domains/config/AgentsSection.tsx",
+    "frontend/src/domains/config/AgentsSection.test.tsx",
+    "frontend/src/domains/config/AgentsSection.a11y.test.tsx",
+    "frontend/src/mocks/handlers/canonicalHandlers.ts",
+    "frontend/src/mocks/handlers/canonicalHandlers.contract.test.ts",
+    "frontend/e2e/config-agents.spec.ts"
   ],
   "tests": {
     "pytest tests/configuration/test_agent_configuration_releases.py -q": "12 passed",
     "pytest tests/test_graph_configuration_bootstrap.py -q": "25 passed",
-    "pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/platform -q": "942 passed, 35 deselected, 2 warnings in 124.41s",
-    "ruff check (touched backend files)": "clean",
-    "ruff format --check (touched backend files)": "clean (after one auto-format pass)",
+    "pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/platform -q": "942 passed, 35 deselected, 2 warnings in 156.80s",
+    "pytest tests/agents/test_no_cross_agent_imports.py tests/security/test_guards_match_the_console.py tests/test_every_console_path_is_mounted.py -q": "26 passed",
+    "known_test_failures.json (backend + frontend)": "empty before and after -- nine/zero known failures unchanged",
+    "ruff check (touched backend files)": "All checks passed!",
+    "ruff format --check (touched backend files)": "clean (after one auto-format pass in step:01)",
     "mypy (touched backend source files)": "Success: no issues found in 5 source files",
     "python scripts/check_openapi_drift.py --write": "PASS, 5 snapshots regenerated",
-    "python scripts/check_openapi_drift.py": "PASS, zero diffs"
+    "python scripts/check_openapi_drift.py": "PASS, zero diffs",
+    "npx vitest run (whole frontend suite)": "Test Files 89 passed (89), Tests 1065 passed (1065)",
+    "npm run typecheck": "exit 0",
+    "npm run lint": "exit 0",
+    "npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g agents": "3 passed (render, keyboard, axe)",
+    "npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts (full sweep)": "137 passed, 1 failed -- pre-existing F10-class flake on /config/return-policy at 390px, reproduced isolated-pass 1/1, not this lease's surface",
+    "npx playwright test --project=cfg4-e2e e2e/config-agents.spec.ts --workers=1 (disposable vite --port 5199 -> shared :8000)": "FAILED -- :8000 still serves pre-CFG-5b trunk (old manifest-module /api/agents shape); structural, see ledger step:06. Disposable server stopped immediately after; :5173/:8000 confirmed unrestarted."
   },
   "scope_done": [
     "1: GET/PUT /api/agents repointed at the live RETURN_PLATFORM.agents section; activation publishes a patch of agents.<id> only via a whole-document clone through publish_release_with_domains",
     "2: manifest agent copies and dead manifest entries deleted (backend/config/agents/, workflows/, sync/, sources/, mappings/, graph/); configuration/application/loader.py deleted (last consumer gone); manifest.yaml trimmed to platform.system_store; both READMEs updated",
-    "4 (bootstrap interplay)": "test added proving a proposal-published agents value survives a bootstrap run whose packaged file disagrees",
-    "OpenAPI": "regenerated (all 4 JSON snapshots + generated .d.ts) and drift check PASS"
+    "3: frontend /config/agents typed table on TypedSectionScreen's chrome, MSW handlers, tests (typed + a11y)",
+    "4: bootstrap interplay test proving a proposal-published agents value survives a bootstrap run whose packaged file disagrees",
+    "OpenAPI regenerated (all 4 JSON snapshots + generated .d.ts) and drift check PASS",
+    "7: acceptance sweep run at head, everything green except the e2e item below"
   ],
   "remaining": [
-    "3: frontend /config/agents typed table on TypedSectionScreen chrome, MSW handlers, tests",
-    "6: e2e run once (disposable dev server, reverted)",
-    "7: acceptance sweep per the brief"
+    "6: the live e2e run cannot succeed until this branch merges and the orchestrator restarts the shared :8000 API process onto the new trunk (the same sequencing CFG-6's own live no-restart proof used) -- the spec is written and committed (frontend/e2e/config-agents.spec.ts), typechecks/lints clean, and drives the correct UI and API calls; it is blocked on the live backend still serving pre-CFG-5b code, not on anything in this lease's own worktree. See CFG.ledger.md step:06 for the full evidence (screenshot, curl output) and reasoning."
   ],
   "deviations": [
     "Coordinator brief scope item 1 says the activation 'reuse[s] record_configuration_audit'; that function requires a FastAPI Request and is unreachable from the activator's call context (ProposalKernel.activate, no Request in scope), and configuration/api/releases.py (where it lives) is outside this lease's Owns. The CFG-5 step:05 file-by-file plan does not call for it either. Not added; the audit-trail property W4.2 established is still asserted via the governance kernel's own audit log (unaffected by this change). See CFG.ledger.md step:01.",
-    "test_a_credentials_block_in_an_agent_document_is_refused deleted rather than adapted: AgentConfiguration has no free-form mapping field (unlike the old AgentConfigNode.retry_policy), so extra=\"forbid\" plus fully-typed fields already refuse any document that could carry a forbidden-key-shaped block before governance's own forbidden-key policy would run -- there is no longer a document that both validates and exercises that policy in isolation. See CFG.ledger.md step:01."
+    "test_a_credentials_block_in_an_agent_document_is_refused deleted rather than adapted: AgentConfiguration has no free-form mapping field (unlike the old AgentConfigNode.retry_policy), so extra=\"forbid\" plus fully-typed fields already refuse any document that could carry a forbidden-key-shaped block before governance's own forbidden-key policy would run -- there is no longer a document that both validates and exercises that policy in isolation. See CFG.ledger.md step:01.",
+    "AgentsSection.tsx does not literally render <TypedSectionScreen>: that component publishes a domain patch straight onto the release (POST /api/config/publish), which is the wrong write path for a governed agent edit (PUT -> proposal -> /approvals). The screen mirrors its header/Advanced-toggle chrome instead. See CFG.ledger.md step:05."
   ],
-  "merge_status": "PARTIAL"
+  "merge_status": "PENDING"
 }
