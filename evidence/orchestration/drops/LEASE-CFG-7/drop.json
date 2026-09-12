@@ -2,7 +2,7 @@
   "lease_id": "CFG-7",
   "branch": "feat/cfg-7-acceptance",
   "base_sha": "261dc3bc",
-  "head_sha": "PENDING-step14-commit",
+  "head_sha": "ae10f768",
   "merge_status": "PENDING",
   "note_on_process": "This drop.json was written once at the end of the lease rather than after every step as the brief's rule 4 asks -- a process deviation, recorded rather than hidden. Every step's own evidence is in .plan/tracks/CFG.ledger.md (steps 00-14) and its own commit; nothing here is reconstructed from memory. RV round 1 (reviewed b079a987) returned CHANGES_REQUIRED: F1 (three brief-item-2 IDs -- CFG-8 A2, CFG-5 H1, CFG-5 H2 -- were dropped without a line anywhere while this file called item 2 DONE) and F2 (this file's own definition-of-done item 2 claim about backend/config/seed/ was false). Both are fixed at step:14; this file is corrected below rather than only the ledger.",
   "files": [
