@@ -113,7 +113,13 @@ both accept a file (today's single-document shape, unchanged) or a directory; no
   authoring references.
 - `data_platform/` — canonical mappings, graph projection, sources, and sync-pipeline
   configuration for the data platform surfaces that have not yet migrated onto the manifest model.
-- `seed/` — fixtures for local/dev seeding, not production runtime configuration.
+  Loader: `data_platform/graph/sandbox_runner.py` (`_DEFAULT_CONFIG_DIR = config/data_platform`,
+  the `--config-dir` default of the sandbox validation tool) and `backend/tests/**`; no request-time
+  path reads these files. `data_platform/graph/migrations/` is read by
+  `configuration/cli/apply_neo4j_migrations.py`.
+- `seed/` — local/dev seeding inputs. `e2e_seed_manifest.json` is read at import time by
+  `operations/seed_manifest.py` (so it is loaded by the running backend, not only by tooling);
+  `generation.yaml` is the `DEFAULT_CONFIG` of `backend/scripts/generate_seed_data.py`.
 - `schema_registry.yaml`, `data_assets.yaml`, `dependency_simulation.yaml` — governance and
   dependency-simulation inputs consumed directly by `Settings`, independent of the manifest.
 

@@ -388,7 +388,10 @@ function PromotionControls({ release }: { release: ConfigurationRelease }) {
             onClick={() => {
               promote.mutate(target);
             }}
-            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+            // Track close-out (RV CFG-7 N1): `disabled:opacity-40` on this filled shape measured
+            // 1.543:1, the worst disabled control in the config domain, and RELEASED is disabled
+            // on first paint (blank head revision). Dimmed via fill/border/text, no opacity.
+            className="rounded-md border border-transparent bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:border-outline-variant disabled:bg-surface-container-low disabled:text-on-surface-variant"
           >
             {target}
           </button>

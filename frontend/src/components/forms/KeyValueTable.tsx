@@ -229,7 +229,7 @@ export function KeyValueTable({
             onClick={addRow}
             disabled={newKeyTrimmed === "" || newKeyTaken || newKeyInvalid}
             title={newKeyTaken ? "That key already exists" : newKeyInvalid ? "Does not match the required pattern" : undefined}
-            className="flex items-center gap-1 rounded-lg border border-outline-control bg-surface-container-lowest px-2.5 py-2 text-[11px] font-medium text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex items-center gap-1 rounded-lg border border-outline-control bg-surface-container-lowest px-2.5 py-2 text-[11px] font-medium text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:border-outline-variant disabled:bg-surface-container-low disabled:hover:border-outline-variant disabled:hover:text-on-surface-variant"
           >
             <Plus size={12} aria-hidden="true" />
             {`Add ${keyLabel.toLowerCase()}`}

@@ -240,7 +240,7 @@ function VariantPreview({ template }: { template: JsonObject | null }) {
           onClick={() => { if (template !== null) preview.mutate(template); }}
           disabled={template === null || preview.isPending}
           title={template === null ? "The JSON in the editor does not parse yet" : undefined}
-          className="flex items-center gap-1.5 rounded-lg border border-outline-control bg-surface-container-lowest px-3 py-2 text-xs font-semibold text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex items-center gap-1.5 rounded-lg border border-outline-control bg-surface-container-lowest px-3 py-2 text-xs font-semibold text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:border-outline-variant disabled:bg-surface-container-low disabled:hover:border-outline-variant disabled:hover:text-on-surface-variant"
         >
           <Eye size={13} aria-hidden="true" />
           {preview.isPending ? "Rendering..." : "Render preview"}

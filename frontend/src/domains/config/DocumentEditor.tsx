@@ -481,7 +481,7 @@ export function DocumentEditor<TResult>({
             onDirtyChange(false);
           }}
           disabled={!canWrite || !dirty}
-          className="flex items-center gap-1.5 rounded-lg border border-outline-control bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex items-center gap-1.5 rounded-lg border border-outline-control bg-surface-container-lowest px-3 py-2 text-xs font-medium text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:border-outline-variant disabled:bg-surface-container-low disabled:hover:border-outline-variant disabled:hover:text-on-surface-variant"
         >
           <RotateCcw size={13} aria-hidden="true" />
           Reset
@@ -491,7 +491,7 @@ export function DocumentEditor<TResult>({
           onClick={onSave}
           disabled={save.isPending || !canWrite || !dirty || blockedReasons.length > 0}
           title={!canWrite ? submitTitle : blockedReasons.length > 0 ? blockedReasons[0] : undefined}
-          className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-on-primary shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-lg border border-transparent bg-primary px-4 py-2 text-xs font-semibold text-on-primary shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:border-outline-variant disabled:bg-surface-container-low disabled:text-on-surface-variant disabled:shadow-none disabled:hover:brightness-100"
         >
           {save.isPending ? submittingLabel : submitLabel}
         </button>
@@ -932,7 +932,7 @@ function NewProperty({
         onClick={addProperty}
         disabled={normalized === "" || duplicate}
         title={duplicate ? "That key already exists" : undefined}
-        className="flex items-center gap-1 rounded-lg border border-outline-control bg-surface-container-lowest px-2.5 py-2 text-[11px] font-medium text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex items-center gap-1 rounded-lg border border-outline-control bg-surface-container-lowest px-2.5 py-2 text-[11px] font-medium text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:border-outline-variant disabled:bg-surface-container-low disabled:hover:border-outline-variant disabled:hover:text-on-surface-variant"
       >
         <Plus size={12} aria-hidden="true" />
         Add property

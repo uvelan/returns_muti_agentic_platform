@@ -181,7 +181,7 @@ function BindingRow({
                     onClear();
                   }
                 }}
-                className="rounded-lg border border-outline-control bg-surface-container-lowest px-3 py-1.5 text-xs font-medium text-on-surface-variant transition hover:border-error hover:text-error disabled:opacity-40"
+                className="rounded-lg border border-outline-control bg-surface-container-lowest px-3 py-1.5 text-xs font-medium text-on-surface-variant transition hover:border-error hover:text-error disabled:cursor-not-allowed disabled:border-outline-variant disabled:bg-surface-container-low disabled:hover:border-outline-variant disabled:hover:text-on-surface-variant"
               >
                 {clearing ? "Clearing..." : "Clear"}
               </button>
@@ -270,7 +270,7 @@ function RebindForm({
         <button
           type="submit"
           disabled={rebinding}
-          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-on-primary transition disabled:opacity-40"
+          className="rounded-lg border border-transparent bg-primary px-3 py-1.5 text-xs font-medium text-on-primary transition disabled:cursor-not-allowed disabled:border-outline-variant disabled:bg-surface-container-low disabled:text-on-surface-variant disabled:shadow-none disabled:hover:brightness-100"
         >
           {rebinding ? "Rebinding..." : "Rebind"}
         </button>
@@ -679,7 +679,7 @@ function StartSyncForm({
         <button
           type="submit"
           disabled={starting}
-          className="rounded bg-primary px-3 py-1.5 text-xs text-on-primary transition disabled:opacity-40"
+          className="rounded border border-transparent bg-primary px-3 py-1.5 text-xs text-on-primary transition disabled:cursor-not-allowed disabled:border-outline-variant disabled:bg-surface-container-low disabled:text-on-surface-variant disabled:shadow-none disabled:hover:brightness-100"
         >
           {starting ? "Syncing..." : "Start sync"}
         </button>
