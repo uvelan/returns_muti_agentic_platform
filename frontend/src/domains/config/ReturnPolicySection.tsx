@@ -4,68 +4,29 @@ import { configApi } from "../../api/configuration";
 import { EnumSelect } from "../../components/forms/EnumSelect";
 import { FieldGroup } from "../../components/forms/FieldGroup";
 import { KeyValueTable, type KeyValueEntry } from "../../components/forms/KeyValueTable";
-import { NumberField } from "../../components/forms/NumberField";
-import { OrderedList } from "../../components/forms/OrderedList";
 import { TagListInput } from "../../components/forms/TagListInput";
-import { Toggle } from "../../components/forms/Toggle";
 import { useCapabilities } from "../../hooks/capabilityContext";
 import type { Json, JsonObject } from "./DocumentEditor";
-import {
-  asArray,
-  asBoolean,
-  asNumber,
-  asObject,
-  asString,
-  asStringArray,
-  sliceOf,
-} from "./jsonPath";
+import { asArray, asObject, asString, asStringArray, sliceOf } from "./jsonPath";
 import { runtimeSliceOf, type RuntimeSlice } from "./runtimeSlice";
 import { TypedSectionScreen } from "./TypedSectionScreen";
 
 /**
- * `/config/return-policy` -- what may be returned, how, and what the
- * platform decides on its own: `return_policy.return_method_derivation`,
- * `return_method_requirements`, `return_eligibility_policy`,
- * `policy_evaluation`.
+ * `/config/return-policy` -- what may be returned, and how:
+ * `return_policy.return_method_derivation` and `return_method_requirements`.
  *
- * **Coverage, deliberately partial (see `DiscoverySection`'s own note on
- * the same tradeoff).** `return_eligibility_policy` is not a flat `rules`
- * list -- the actual model (`eligibility_policy.py:402`) is seven distinct,
- * differently-shaped sub-blocks (`standard_stock_return`, `restocking_fee`,
- * `stock_classification`, `special_or_nonstock`, `outside_standard_window`,
- * `delivery_claim`, `warranty_issue`) plus a `precedence` ordering. This
- * screen renders one `FieldGroup` per block for the ones with an `EnumSelect`
- * outcome worth surfacing (`standard_stock_return`, `outside_standard_window`,
- * `stock_classification`) plus the two reason-driven blocks
- * (`delivery_claim`, `warranty_issue`) and `precedence` itself; `restocking_fee`
- * and `special_or_nonstock` render on no typed control -- Advanced mode edits
- * the same slice as JSON with nothing held back.
+ * **CFG-8 moved the eligibility and policy-evaluation groups out.**
+ * `return_eligibility_policy` and `policy_evaluation` used to render here,
+ * below these two groups; they are now `/config/policy`
+ * (`PolicySection.tsx`), a screen shaped around how an operator thinks about
+ * eligibility rather than around the two domain keys it happens to touch.
+ * This screen keeps exactly the two groups its own name still describes --
+ * how a return method is derived, and what each method requires.
  */
 
-const SECTION_KEYS = ["return_policy", "return_eligibility_policy", "policy_evaluation"] as const;
+const SECTION_KEYS = ["return_policy"] as const;
 
 const REQUIREMENT_DIMENSIONS = ["RMA", "LABEL", "TRACKING", "BOL", "PICKUP", "RETURN_LOCATION", "RECEIPT"] as const;
-
-const ELIGIBILITY_DECISIONS = [
-  { value: "APPROVE", label: "Approve" },
-  { value: "REJECT", label: "Reject" },
-  { value: "REVIEW_REQUIRED", label: "Review required" },
-];
-
-const RETURN_REASON_SUGGESTIONS = [
-  "SHIPPING_DAMAGE",
-  "SHORTAGE",
-  "SHIPMENT_ERROR",
-  "IMPROPER_DELIVERY",
-  "MANUFACTURING_DEFECT",
-  "PRODUCT_FAILURE_AFTER_INSTALLATION",
-  "COVERED_PRIVATE_LABEL_DEFECT",
-  "MANUFACTURER_WARRANTY_ISSUE",
-  "CHANGED_MIND",
-  "ORDERED_IN_ERROR",
-  "NO_LONGER_NEEDED",
-  "OTHER",
-];
 
 export function ReturnPolicySection() {
   const { can } = useCapabilities();
@@ -102,18 +63,16 @@ function ReturnPolicyEditor({
     <TypedSectionScreen
       kicker="Return policy"
       title="Return policy"
-      description="How a return method is derived, what each method requires, the rules eligibility is judged by, and whether eligibility is evaluated at all."
+      description="How a return method is derived, and what each method requires."
       active={active}
       loaded={loaded}
       canWrite={canWrite}
       canPublish={canPublish}
       jsonLabel="Return policy section JSON"
-      notObjectMessage="Each of return_policy, return_eligibility_policy and policy_evaluation must be an object."
+      notObjectMessage="return_policy must be an object."
       renderTyped={({ get, set, errorMap }) => {
         const returnPolicy = asObject(get(["return_policy"]));
         const derivation = asObject(returnPolicy.return_method_derivation);
-        const eligibility = asObject(get(["return_eligibility_policy"]));
-        const policyEvaluation = asObject(get(["policy_evaluation"]));
         const methods = asStringArray(returnPolicy.normalized_return_methods);
         const methodOptions = methods.map((method) => ({ value: method, label: method }));
 
@@ -168,115 +127,6 @@ function ReturnPolicyEditor({
               requirements={asArray(returnPolicy.return_method_requirements)}
               onChange={(next) => { set(["return_policy", "return_method_requirements"], next); }}
             />
-
-            <FieldGroup kicker="Eligibility" title="Precedence" description="Which policy wins when more than one applies. FERGUSON_STANDARD_RETURN must be last -- it is the platform's own fallback.">
-              <OrderedList
-                label="Precedence order"
-                error={errorMap.get("return_eligibility_policy.precedence")}
-                items={asStringArray(eligibility.precedence)}
-                keyOf={(value) => value}
-                onChange={(next) => { set(["return_eligibility_policy", "precedence"], next); }}
-                renderItem={(value) => <span className="font-mono text-xs">{value}</span>}
-              />
-            </FieldGroup>
-
-            <FieldGroup kicker="Eligibility" title="Standard stock return" description="The default rule: an item in policy-satisfying condition, inside the purchase window.">
-              <NumberField
-                label="Purchase window (days)"
-                value={asNumber(asObject(asObject(eligibility.standard_stock_return).purchase_window).days, 30)}
-                onChange={(next) => { set(["return_eligibility_policy", "standard_stock_return", "purchase_window", "days"], next); }}
-                min={1}
-                max={3650}
-                unit="days"
-              />
-              <EnumSelect
-                label="Purchase window basis"
-                value={asString(asObject(asObject(eligibility.standard_stock_return).purchase_window).basis, "PURCHASE_DATE")}
-                options={[
-                  { value: "PURCHASE_DATE", label: "Purchase date" },
-                  { value: "DELIVERY_DATE", label: "Delivery date" },
-                ]}
-                onChange={(next) => { set(["return_eligibility_policy", "standard_stock_return", "purchase_window", "basis"], next); }}
-              />
-              <EnumSelect
-                label="Decision when satisfied"
-                hint="The model refuses REJECT here -- a satisfied standard return is never an outright rejection."
-                value={asString(asObject(eligibility.standard_stock_return).decision_when_satisfied, "APPROVE")}
-                options={ELIGIBILITY_DECISIONS}
-                onChange={(next) => { set(["return_eligibility_policy", "standard_stock_return", "decision_when_satisfied"], next); }}
-                error={errorMap.get("return_eligibility_policy.standard_stock_return.decision_when_satisfied")}
-              />
-            </FieldGroup>
-
-            <FieldGroup kicker="Eligibility" title="Outside the standard window" description="What happens when a return is judged eligible in every way except timing.">
-              <EnumSelect
-                label="Decision"
-                hint="The model refuses APPROVE here -- outside-window is never auto-approved."
-                value={asString(asObject(eligibility.outside_standard_window).decision, "REVIEW_REQUIRED")}
-                options={ELIGIBILITY_DECISIONS}
-                onChange={(next) => { set(["return_eligibility_policy", "outside_standard_window", "decision"], next); }}
-                error={errorMap.get("return_eligibility_policy.outside_standard_window.decision")}
-              />
-            </FieldGroup>
-
-            <FieldGroup kicker="Eligibility" title="Stock classification" description="What the platform decides when it cannot tell standard stock from special order on its own.">
-              <EnumSelect
-                label="Unresolved default"
-                value={asString(asObject(eligibility.stock_classification).unresolved_default, "REVIEW_REQUIRED")}
-                options={[
-                  { value: "STANDARD_STOCK", label: "Standard stock" },
-                  { value: "SPECIAL_ORDER", label: "Special order" },
-                  { value: "REVIEW_REQUIRED", label: "Review required" },
-                ]}
-                onChange={(next) => { set(["return_eligibility_policy", "stock_classification", "unresolved_default"], next); }}
-              />
-            </FieldGroup>
-
-            <FieldGroup kicker="Eligibility" title="Delivery claim" description="Reasons treated as a delivery claim, and how long a customer has to report one.">
-              <TagListInput
-                label="Conditions"
-                hint="Which return reasons count as a delivery claim -- must not overlap with Warranty issue's reasons below."
-                values={asStringArray(asObject(eligibility.delivery_claim).conditions)}
-                onChange={(next) => { set(["return_eligibility_policy", "delivery_claim", "conditions"], next); }}
-                suggestions={RETURN_REASON_SUGGESTIONS}
-                error={errorMap.get("return_eligibility_policy.delivery_claim.conditions")}
-              />
-              <NumberField
-                label="Reporting window"
-                hint="Business days from delivery"
-                value={asNumber(asObject(asObject(eligibility.delivery_claim).reporting_window).business_days, 2)}
-                onChange={(next) => { set(["return_eligibility_policy", "delivery_claim", "reporting_window", "business_days"], next); }}
-                min={1}
-                max={365}
-                unit="business days"
-              />
-            </FieldGroup>
-
-            <FieldGroup kicker="Eligibility" title="Warranty issue" description="Reasons treated as a manufacturer warranty issue.">
-              <TagListInput
-                label="Reasons"
-                values={asStringArray(asObject(eligibility.warranty_issue).reasons)}
-                onChange={(next) => { set(["return_eligibility_policy", "warranty_issue", "reasons"], next); }}
-                suggestions={RETURN_REASON_SUGGESTIONS}
-                error={errorMap.get("return_eligibility_policy.warranty_issue.reasons")}
-              />
-            </FieldGroup>
-
-            <FieldGroup kicker="Policy evaluation" title="Policy evaluation" description="Whether eligibility is evaluated at all. Disabling it requires a reason.">
-              <Toggle
-                label="Policy evaluation enabled"
-                value={asBoolean(policyEvaluation.enabled, true)}
-                onChange={(next) => {
-                  set(["policy_evaluation", "enabled"], next);
-                  if (next) set(["policy_evaluation", "disabled_reason"], null);
-                }}
-                reasonField={{
-                  value: asString(policyEvaluation.disabled_reason),
-                  onChange: (next) => { set(["policy_evaluation", "disabled_reason"], next); },
-                  requiredWhen: "off",
-                }}
-              />
-            </FieldGroup>
           </div>
         );
       }}

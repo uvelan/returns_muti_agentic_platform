@@ -3,6 +3,12 @@
  * mapped), Publish through `POST /api/config/publish` with the merge patch
  * under the right domain and `expected_head_revision`, and the success
  * notice.
+ *
+ * CFG-8 moved the eligibility and policy-evaluation groups to
+ * `/config/policy` (`PolicySection.test.tsx`); this file keeps only what
+ * `ReturnPolicySection` still renders -- return method derivation and the
+ * requirements matrix -- and pins that the patch this screen publishes never
+ * carries `return_eligibility_policy`/`policy_evaluation`.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -34,13 +40,14 @@ function configuration() {
       return_method_requirements: [{ method: "PARCEL_RETURN", requires: ["RMA", "LABEL"] }],
       bol_tendering_instruction_types: ["CARRIER_SCHEDULED"],
     },
+    // Still present on the loaded release (CFG-8 did not touch the backend
+    // shape) but not part of this screen's own slice any more -- the reason
+    // `mocks.runtime`'s configuration below still carries these two keys is
+    // to prove the publish patch below stays scoped to `return_policy` even
+    // though they are sitting right there in the same document.
     return_eligibility_policy: {
       precedence: ["FERGUSON_STANDARD_RETURN"],
       standard_stock_return: { purchase_window: { days: 30, basis: "PURCHASE_DATE" }, decision_when_satisfied: "APPROVE" },
-      outside_standard_window: { decision: "REVIEW_REQUIRED" },
-      stock_classification: { unresolved_default: "REVIEW_REQUIRED" },
-      delivery_claim: { conditions: [], reporting_window: { business_days: 2 } },
-      warranty_issue: { reasons: [] },
     },
     policy_evaluation: { enabled: true, disabled_reason: null },
   };
@@ -94,26 +101,31 @@ describe("Return policy screen", () => {
     expect(await screen.findByRole("combobox", { name: "Default method" })).toHaveValue("PARCEL_RETURN");
   });
 
-  it("requires a reason when policy evaluation is switched off, and maps the Validate error onto it", async () => {
+  it("maps a Validate error onto the freight keywords field", async () => {
     const user = userEvent.setup();
     mocks.validateDomain.mockResolvedValue({
       valid: false,
-      errors: [{ path: "policy_evaluation.disabled_reason", message: "A reason is required.", type: "value_error" }],
+      errors: [
+        {
+          path: "return_policy.return_method_derivation.default_method",
+          message: "Not one of the normalized return methods.",
+          type: "value_error",
+        },
+      ],
     });
     render(<ReturnPolicySection />, { wrapper: Wrapper });
 
-    const toggle = await screen.findByRole("checkbox", { name: "Policy evaluation enabled" });
-    await user.click(toggle);
-    // Toggle's own reason field appears once required.
-    expect(screen.getByRole("textbox", { name: "Reason" })).toBeInTheDocument();
-
+    const select = await screen.findByRole("combobox", { name: "Default method" });
+    await user.selectOptions(select, "FREIGHT_RETURN");
     await user.click(screen.getByRole("button", { name: "Validate" }));
+
     await waitFor(() => { expect(mocks.validateDomain).toHaveBeenCalled(); });
     const [domainKey, body] = mocks.validateDomain.mock.calls[0] as [string, { patch: Record<string, unknown> }];
     expect(domainKey).toBe("RETURN_PLATFORM");
-    expect((body.patch.policy_evaluation as Record<string, unknown>).enabled).toBe(false);
+    expect(body.patch).not.toHaveProperty("return_eligibility_policy");
+    expect(body.patch).not.toHaveProperty("policy_evaluation");
 
-    expect(await screen.findAllByText("A reason is required.")).not.toHaveLength(0);
+    expect(await screen.findAllByText("Not one of the normalized return methods.")).not.toHaveLength(0);
   });
 
   it("publishes the merge patch under return_policy on RETURN_PLATFORM with the loaded head revision", async () => {
@@ -170,7 +182,6 @@ describe("Return policy screen", () => {
 
     const select = await screen.findByRole("combobox", { name: "Default method" });
     expect(select).toBeDisabled();
-    expect(screen.getByRole("checkbox", { name: "Policy evaluation enabled" })).toBeDisabled();
     expect(screen.getByText(/Read-only access\. Editing this section requires config\.release\.write\./)).toBeInTheDocument();
   });
 

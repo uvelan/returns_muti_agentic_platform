@@ -4266,3 +4266,43 @@ Test Files  1 passed (1)
 $ npm run typecheck && npm run lint
 (clean, exit 0 both)
 ```
+
+## CFG-8 step:05 — ReturnPolicySection trimmed, registry wired (item 6)
+
+`ReturnPolicySection.tsx`: `SECTION_KEYS` narrowed to `["return_policy"]`; every eligibility and
+`policy_evaluation` `FieldGroup` removed (precedence, standard stock return, outside window, stock
+classification, delivery claim, warranty issue, the policy-evaluation toggle) -- the screen now
+renders exactly the two groups its own name still describes, return method derivation and the
+requirements matrix. `ELIGIBILITY_DECISIONS`/`RETURN_REASON_SUGGESTIONS` and the now-unused
+`NumberField`/`OrderedList`/`Toggle`/`asBoolean`/`asNumber` imports removed with them.
+
+`ReturnPolicySection.test.tsx`: the eligibility-toggle test replaced with a Validate-error test on
+`return_policy.return_method_derivation.default_method` (the field this screen still owns); the
+publish test's own assertion that `policy_evaluation` never appears in the patch is unchanged and
+still the right proof, now doing double duty as the "these two keys really left" pin; the
+read-only test no longer references the deleted `Policy evaluation enabled` checkbox.
+
+`registry.ts`: `"Policy"` added to `CONFIG_SECTIONS` right after `"Return Policy"`, `ShieldCheck` (a
+lucide icon already imported for the AI domain's "Safety" section -- no new icon import) given as
+its `/config` icon. `routeManifest.ts` needed no edit: `CANONICAL_ROUTES` derives every route from
+the registry, so `/config/policy` exists the moment the section does, `identity: "implemented"` by
+default (no per-section `<h1>` requirement -- a section route renders its domain's heading, per
+`routeManifest.ts`'s own module docstring).
+
+`registry.test.ts`: one test added pinning `"Policy"` sits immediately after `"Return Policy"` in
+`/config`'s section list -- the existing tests are all structural (icon exists, slug resolves, no
+duplicate capability) and already passed with the new section with no edit at all; this one names
+the specific placement the brief asked for, which no generic test can.
+
+```
+$ npx vitest run src/domains/config/ReturnPolicySection.test.tsx src/domains/registry.test.ts
+Test Files  2 passed (2)
+     Tests  22 passed (22)
+
+$ npx vitest run   (whole frontend suite)
+Test Files  90 passed (90)
+     Tests  1083 passed (1083)
+
+$ npm run typecheck && npm run lint
+(clean, exit 0 both)
+```

@@ -163,6 +163,18 @@ describe("the domain registry", () => {
     }
   });
 
+  it("gives Configuration a Policy section next to Return Policy (CFG-8)", () => {
+    // `/config/policy` is `return_eligibility_policy` and `policy_evaluation`,
+    // moved out of `/config/return-policy` into a screen of their own -- the
+    // structural tests above already cover its slug and icon generically;
+    // this pins the one thing they cannot, that it actually landed where the
+    // brief put it rather than at the end of the rail.
+    const labels = requireDomain("/config").sections.map((section) => section.label);
+    const policyAt = labels.indexOf("Policy");
+    expect(policyAt).toBeGreaterThan(-1);
+    expect(labels[policyAt - 1]).toBe("Return Policy");
+  });
+
   it("routes every domain through a read capability, never a write one", () => {
     // Visibility must not depend on being able to change anything, or a
     // read-only auditor loses the domain entirely.
