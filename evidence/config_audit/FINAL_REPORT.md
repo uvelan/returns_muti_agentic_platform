@@ -223,3 +223,43 @@ Done in a worktree of the latest trunk with this session's fixes applied as a pa
 | Simulated bootstrap decision on latest files | AI_GATEWAY adopts `retry` and the six `tasks.ORDER_AGENT_*` units (baselines recorded, unedited); RETURN_PLATFORM keeps the same 10 undecided keys and fills the new shipment-tracking leaves; DEPENDENCY_SIMULATION unchanged; operator values (`policy_evaluation`, `support_ingress`, D-0009) untouched |
 
 Conclusion: the audit's findings, the fixes and the plan stand on the latest trunk. CFG-0 should be cut from `42b0536b` (the verification worktree at `.claude/worktrees/cfg-verify` already holds the applied patch), which also brings the bay-seeding fix (CFG-DEF-12) in for free. Part D's remark that the colour and companion-search rules "do not exist" and Part E's "6144 not found" were true on the audited branch only.
+
+## L. Final delta — every §G defect, as of CFG-7 (2026-09-12)
+
+Closing item 7 of `.plan/tracks/CFG-7.brief.md`. Read this against §G above rather than repeating
+its Root cause/fix column; only status, the lease that closed it (or left it), and the evidence
+pointer are new here. Sources: `.plan/tracks/CFG.ledger.md` (all leases), the `.plan/reviews/CFG-*.md`
+RV verdicts, and direct verification against this head (`842d107f` / `f42bf1d8`) rather than assumed
+from §G's own "fixed" column, which predates every lease from CFG-1 onward.
+
+| ID | §G status | Final status | Closed by | Evidence pointer |
+|---|---|---|---|---|
+| CFG-DEF-01 | fixed | **fixed, holds** | CFG-0 | `.plan/tracks/CFG.ledger.md` CFG-0 step:00; `scripts/run_all_host.ps1` unchanged since, no regression test needed (a launcher script, not a suite) |
+| CFG-DEF-02 | fixed | **fixed, holds** | CFG-0 | ledger CFG-0 step:01 (22 leaves adopted, 0 operator values changed, head 64→65); `test_graph_configuration_bootstrap.py` |
+| CFG-DEF-03 | fixed | **fixed, holds** | CFG-0 | ledger CFG-0 step:01; `packaged_key_digests`/`packaged_domain_key_digests` verified present on every draft since (e.g. CFG-6's own `test_deployment_key_is_dropped_after_revert`) |
+| CFG-DEF-04 | fixed | **fixed, holds** | CFG-0 | ledger CFG-0 step:01 (measured 1234→1234, UNCHANGED); carried per-unit adoption is the mechanism CFG-6's `deployment` section reuses |
+| CFG-DEF-05 | fixed | **fixed, holds** | CFG-0 | ledger CFG-0 step:01; canonical-dump storage is what every later lease's `_canonical_domain_payload` builds on |
+| CFG-DEF-06 | fixed (`BusinessSection.tsx`) | **superseded, not regressed** | CFG-4/CFG-5 | `BusinessSection.tsx` itself is deleted (CFG-5, once every section it carried had a typed screen of its own -- `registry.ts`'s own note); the 19 sections it covered are now typed screens (`/config/discovery`, `/config/return-policy`, `/config/policy`, `/config/fulfilment`, `/config/workflow`, `/config/support` ×6, `/config/integrations`, `/config/simulation`, `/config/deployment`) rather than one generic editor -- a strictly stronger answer to the same defect, not a reopening of it |
+| CFG-DEF-07 | fixed | **fixed, holds** | CFG-0 | ledger CFG-0 step:01; per-step audit trail is what CFG-3a's `publish_configuration` and CFG-7's own A6 test (`test_publish_refuses_a_production_deployment_gate_violation_with_a_named_path`) both build on |
+| CFG-DEF-08 | fixed (docs) | **fixed, holds** | CFG-0, extended by CFG-7 | both READMEs still current; CFG-7 step:07 rewrote the stale `docs/screens/configuration.md` this defect's fix did not touch |
+| CFG-DEF-09 | fixed | **fixed, holds** | CFG-0 | ledger CFG-0 step:01; `.env.example` re-verified current at CFG-7 step:07 |
+| CFG-DEF-10 | fixed | **fixed, holds** | CFG-0 | `backend/assets.yaml` remains absent; no reintroduction found |
+| CFG-DEF-11 | operator decision | **resolved, by design (mixed)** | CFG-0 (D-CFG-6) | `source_resolution`, `bay`, `discovery`, `shipment_tracking` adopted from the packaged file (ledger CFG-0 step:01, `--adopt-packaged-key`); `agents`, `clarification_policy`, `return_eligibility_policy`, `return_policy` left as the operator's own recorded values; `policy_evaluation`, `support_ingress` deliberately kept (D-0008/D-0009) -- this is D-CFG-6's own default disposition, not an oversight |
+| CFG-DEF-12 | fixed upstream | **fixed for `scripts/linux/reset_all.sh`; NOT chained in `scripts/reset_all.ps1`** | merge of `refactor/unified-return-platform` (Linux path only) | `grep -rln seed_warehouse_bay_configuration scripts/` finds only `scripts/linux/reset_all.sh` (`:205-206`); `scripts/reset_all.ps1` -- the script this dev host's own launcher family actually runs (`memory: stack-restart-and-reset-all`) -- has no such call. §K's "brings the bay-seeding fix in for free" verified true for Linux, **not verified true, and appears false, for the Windows reset path.** Not fixed by CFG-7 (outside Owns: the bootstrap/launcher scripts); flagged here rather than left implied-fixed by §K's own wording. |
+| CFG-DEF-13 | open | **fixed** | CFG-5 | `/config/source-bindings` (`DataSourcesSection.tsx`), proven live at CFG-7 step:10 (`config-source-bindings.spec.ts` -- rebinds `source_products`' cursor field, then clears the override) |
+| CFG-DEF-14 | open | **still open** | — | `platform/system_store/manifest_loader.py::_SystemStoreStructurePayload` still declares `model_config = ConfigDict(..., extra="ignore")` with no `migration_mode`/`migration_lock_required` fields -- unread exactly as §G found. Outside every lease's Owns (D-CFG-1 kept `platform/system_store` as the one live manifest entry; nobody's brief touched `manifest_loader.py` itself) |
+| CFG-DEF-15 | open | **fixed** | CFG-3a | `expected_version` on the PATCH body, 409 on mismatch (`configuration/api/releases.py:516,553-562`) |
+| CFG-DEF-16 | open | **fixed** | CFG-3a | `CONFIG_RELEASE_WRITE` capability gates create/patch (`releases.py:772,1102,1225`; `security/capabilities.py:90`) |
+| CFG-DEF-17 | open (dead code) | **fixed** | CFG-1 | no `data_console`/`data-console` path exists anywhere under `backend/src` (D-CFG-5) |
+| CFG-DEF-18 | open | **fixed** | CFG-5 | `canonicalHandlers.ts` carries `/api/agents`, `/api/schema-releases`, `/api/schema-releases/active/document`, `/{releaseId}/migration-plan`, `/{releaseId}/activate`, `/api/ai/requests/{traceId}/replay`, `/compare` -- all present and contract-tested |
+| CFG-DEF-19 | open | **not conclusively verified either way** | — | §G's exact two compared values are in the PART files this brief instructs not to read; the only "e2e-v1"/"e2e-v2" pair found from `FINAL_REPORT.md` alone is `Settings.seed_version` (`"e2e-v2"`, `settings.py:348`) against `operations/orchestrator.py:69`'s unrelated-looking `_CONFIGURATION_VERSION = "e2e-v1"` -- these may or may not be the pair §G meant. Recorded as unresolved rather than guessed closed. |
+| CFG-DEF-20 | note | **unchanged (operator hygiene, not a defect a lease fixes)** | — | live-graph housekeeping (archive stale DRAFT/VALIDATED releases); no lease brief has owned this and none should need to |
+
+**Net**: 15 of 20 fixed and holding (01–10, 13, 15–18), 1 resolved by design (11), 1 partially fixed
+with a residual platform-specific gap newly identified (12), 1 unchanged and out of every lease's
+scope (14), 1 unresolved for lack of the exact comparison (19), 1 unchanged operator note (20). No
+regression found in anything §G called fixed.
+
+Re-rendered per §7 of `CFG-7.brief.md`: this section is the audit artifact's own current-state
+delta; `docs/evidence/stage4o_complete_audit/generate_audit_artifacts.py` (CFG-7 step:07) is a
+different, generated report and was updated separately for its own two stale filenames.

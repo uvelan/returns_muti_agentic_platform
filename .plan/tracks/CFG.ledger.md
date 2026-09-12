@@ -5429,3 +5429,27 @@ Cleanup: disposable server (port 5175) stopped and confirmed down (`netstat`/`ta
 and `:8000` (the live stack) answered 200 before, during (never touched) and after this step.
 
 Files: `.plan/acceptance/config-screens.md` (new).
+
+## CFG-7 step:11 — final audit delta (item 7): FINAL_REPORT.md §L
+
+Appended §L to `evidence/config_audit/FINAL_REPORT.md`: every §G defect (CFG-DEF-01 through -20),
+its final status verified against this head rather than assumed from §G's own column (which
+predates CFG-1 onward), the lease that closed it, and an evidence pointer. Net: 15 of 20 fixed and
+holding, 1 resolved by design (DEF-11, D-CFG-6's own mixed adopt/keep decisions), 1 partially fixed
+with a residual gap newly found (DEF-12: the bay-seeding backfill is chained in
+`scripts/linux/reset_all.sh` but **not** in `scripts/reset_all.ps1`, the Windows path this dev
+host's own launcher family actually uses -- §K's "brings the bay-seeding fix in for free" verified
+true for Linux only), 1 unchanged and outside every lease's Owns (DEF-14, `manifest_loader.py`'s
+`extra="ignore"` payload model), 1 left unresolved for lack of the exact comparison the PART files
+would name and this brief instructs not to read (DEF-19), 1 unchanged operator-hygiene note
+(DEF-20). No regression found in anything §G already called fixed; DEF-06 is noted as superseded
+(the generic `BusinessSection.tsx` this defect fixed is itself now deleted, replaced by 19 typed
+screens) rather than silently dropped from the table.
+
+No separate rendering pipeline exists for this audit's `FINAL_REPORT.md` -- confirmed by grep
+(`evidence/config_audit/BRIEF.md` names none, and the directory holds no generator script); the
+markdown itself is the artifact source, so appending §L directly satisfies "re-render the report
+artifact source". `docs/evidence/stage4o_complete_audit/generate_audit_artifacts.py` (fixed at
+step:07) is a different, generated report and was handled separately for its own stale filenames.
+
+Files: `evidence/config_audit/FINAL_REPORT.md`.
