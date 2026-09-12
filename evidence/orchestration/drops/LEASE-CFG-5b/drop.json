@@ -95,5 +95,6 @@
     "test_a_credentials_block_in_an_agent_document_is_refused deleted rather than adapted: AgentConfiguration has no free-form mapping field (unlike the old AgentConfigNode.retry_policy), so extra=\"forbid\" plus fully-typed fields already refuse any document that could carry a forbidden-key-shaped block before governance's own forbidden-key policy would run -- there is no longer a document that both validates and exercises that policy in isolation. See CFG.ledger.md step:01.",
     "AgentsSection.tsx does not literally render <TypedSectionScreen>: that component publishes a domain patch straight onto the release (POST /api/config/publish), which is the wrong write path for a governed agent edit (PUT -> proposal -> /approvals). The screen mirrors its header/Advanced-toggle chrome instead. See CFG.ledger.md step:05."
   ],
-  "merge_status": "PENDING"
+  "merge_status": "MERGED",
+  "merged_to": "refactor/unified-return-platform (local, not pushed)"
 }

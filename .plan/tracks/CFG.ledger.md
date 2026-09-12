@@ -27,7 +27,7 @@ transcribed from memory. Brief: `.plan/tracks/CFG.brief.md`. Audit: `evidence/co
 | CFG-5 | feat/cfg-5-screens-b | b03cbb59 | Sonnet | **MERGED** | LEASE-CFG-5 MERGED | PASS (b3d8f06e) | merge commit on trunk |
 | CFG-6 | feat/cfg-6-deployment-section | 59950920 | Opus spike → Sonnet | **MERGED** | LEASE-CFG-6 MERGED | PASS (064cb96c) | merge commit on trunk |
 | CFG-8 | feat/cfg-8-policy-screen | 35f0356c | Sonnet | **MERGED** | LEASE-CFG-8 MERGED | PASS (990b97d6) | b9390061 |
-| CFG-5b | feat/cfg-5b-agents | 94049bee | Sonnet | IN_PROGRESS | — | — | — |
+| CFG-5b | feat/cfg-5b-agents | 52765381 | Sonnet | **MERGED** | LEASE-CFG-5b MERGED | 2 · CR → PASS (6df39c0f) | merge commit on trunk |
 | CFG-7 | feat/cfg-7-acceptance | after CFG-5 + CFG-6 | Haiku + Sonnet + RV | NOT_STARTED | — | — | — |
 
 ## Steps
