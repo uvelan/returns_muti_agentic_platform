@@ -1006,47 +1006,51 @@ const BINDINGS = [
 ];
 
 /**
- * `AgentSummary` rows -- the live `agents:` registry, as `/api/agents` serves
- * it (CFG-5). One enabled agent with an AI route, one disabled agent with
- * none, so the Agents screen's `EnumSelect` and `Toggle` columns both have
- * something to render besides the same state twice.
+ * `AgentSummary` rows -- the live `RETURN_PLATFORM.agents` section, as
+ * `application/agent_configuration.py` reads it (CFG-5b). `manifestId` is the
+ * key `AgentRegistry.build()` and every agent class actually read
+ * (`order_discovery`, not a manifest-module id like `agent.order_discovery`),
+ * matching `backend/config/returns/agents.yaml`. One enabled agent with an AI
+ * route, one disabled agent with none, so the Agents screen's `EnumSelect`
+ * and `Toggle` columns both have something to render besides the same state
+ * twice.
  */
 const MOCK_AGENTS = [
   {
-    manifestId: "order-discovery-agent",
-    moduleId: "order_discovery",
+    manifestId: "order_discovery",
     name: "Order Discovery Agent",
+    version: "2.0",
     enabled: true,
-    status: "ACTIVE",
-    configurationVersion: "3",
+    aiAssisted: true,
+    aiRouteRef: "ORDER_CANDIDATE_ANALYSIS_V1",
     source: "RELEASE",
   },
   {
-    manifestId: "return-status-agent",
-    moduleId: "return_status",
-    name: "Return Status Agent",
+    manifestId: "feedback_learning",
+    name: "Feedback Learning Agent",
+    version: "2.0",
     enabled: false,
-    status: "DISABLED",
-    configurationVersion: "1",
+    aiAssisted: false,
+    aiRouteRef: null,
     source: "RELEASE",
   },
 ];
 
 /** `AgentConfigurationView.document`, keyed by `manifestId`. */
 const MOCK_AGENT_DOCUMENTS: Record<string, Record<string, unknown>> = {
-  "order-discovery-agent": {
-    version: "3",
+  order_discovery: {
+    name: "Order Discovery Agent",
+    version: "2.0",
     enabled: true,
     ai_assisted: true,
-    ai_route_ref: "order-discovery/standard",
-    allowed_business_capabilities: ["order-discovery", "candidate-disambiguation"],
+    ai_route_ref: "ORDER_CANDIDATE_ANALYSIS_V1",
   },
-  "return-status-agent": {
-    version: "1",
+  feedback_learning: {
+    name: "Feedback Learning Agent",
+    version: "2.0",
     enabled: false,
     ai_assisted: false,
     ai_route_ref: null,
-    allowed_business_capabilities: ["return-status"],
   },
 };
 
@@ -1809,6 +1813,19 @@ export const canonicalHandlers = [
           // CFG-5's /config/simulation -- a sibling of `configuration`, not a
           // key inside it. See `MOCK_DEPENDENCY_SIMULATION`'s own note.
           dependency_simulation_configuration: MOCK_DEPENDENCY_SIMULATION,
+          // CFG-5b's /config/agents: `ai_route_ref`'s `EnumSelect` options come
+          // from the AI gateway tasks in this runtime snapshot, the same
+          // vocabulary the AI Control Center reads -- not a second, hand-typed
+          // list of task ids. Two tasks: one matching `MOCK_AGENTS[0]`'s own
+          // `aiRouteRef` (so the selected option renders as a known one, not
+          // the "not in the current schema" fallback), one unused by any mock
+          // agent (so the dropdown has more than one real choice).
+          ai_gateway_configuration: {
+            tasks: {
+              ORDER_CANDIDATE_ANALYSIS_V1: { modelPool: ["GOOGLE:gemini-2.5-flash"] },
+              SUPPORT_MESSAGE_CLASSIFY_V1: { modelPool: ["GOOGLE:gemini-2.5-flash"] },
+            },
+          },
         },
         "runtime",
       ),
@@ -2297,12 +2314,13 @@ export const canonicalHandlers = [
     return HttpResponse.json(envelope({ removed: true }, "clear-binding"));
   }),
 
-  // --- agents (CFG-5 item 1) ---------------------------------------------------
+  // --- agents (CFG-5b) ---------------------------------------------------------
   //
-  // The live `agents:` section, as `application/agent_configuration.py` reads
-  // it (D-CFG-1). `PUT` keeps the proposal path: it answers 202 with an
-  // `AgentConfigurationProposalView`, never the edited document, because the
-  // active configuration has not changed.
+  // The live `RETURN_PLATFORM.agents` section, as
+  // `application/agent_configuration.py` reads it (D-CFG-1). `PUT` keeps the
+  // proposal path: it answers 202 with an `AgentConfigurationProposalView`,
+  // never the edited document, because the active configuration has not
+  // changed.
 
   http.get("/api/agents", async () => {
     await delay(80);
@@ -2323,8 +2341,7 @@ export const canonicalHandlers = [
       envelope(
         {
           manifestId,
-          moduleId: summary.moduleId,
-          path: `agents/${summary.moduleId}.yaml`,
+          path: `RETURN_PLATFORM.agents.${manifestId}`,
           document,
           source: summary.source,
         },

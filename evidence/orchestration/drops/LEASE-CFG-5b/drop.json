@@ -1,0 +1,99 @@
+{
+  "lease_id": "CFG-5b",
+  "branch": "feat/cfg-5b-agents",
+  "base_sha": "527653811db82b84732621da0baadeff4397ecb9",
+  "head_sha": "d9a868860063ab7ea8fbff02cd34108e7ec22edb",
+  "rv_round_1": {
+    "reviewed_head": "d9a86886",
+    "verdict": "CHANGES_REQUIRED",
+    "review_file": ".plan/reviews/CFG-5b.md",
+    "fixed": [
+      "F1 (BLOCKING): AgentConfigurationProposalActivator.activate now clones the active release's RETURN_PLATFORM document from the repository (mirroring governance_improvement.py), not from AgentConfigurationService.active() (this process's own, potentially stale, runtime snapshot). released_return_platform_document() deleted (no remaining caller). New test: test_a_concurrent_release_survives_agent_activation.",
+      "A1: Save button's disabled:opacity-40 (2.12:1) replaced with a non-text dimming channel; two tests added asserting the family, not one spelling.",
+      "A2: configuration/api/agents.py docstrings no longer cite manifest.yaml/the loader.",
+      "A3: backend/config/README.md header and dynamic_knowledge/ bullet no longer contradict the file's own 'read by nothing' state.",
+      "A4: Save re-disables itself immediately after a successful save (a savedSnapshot baseline) so a second click cannot file a duplicate proposal; new test covers it."
+    ],
+    "carried": [
+      "A5: an agent-activated release writes no CONFIGURATION_* audit record -- orchestrator's call per RV, carried to CFG-7. Fix location: a Request-free audit-write helper called from both publish_release_with_domains callers (governance_agent_configuration.py, governance_improvement.py)."
+    ]
+  },
+  "rebase": {
+    "from_base": "94049bee6b6432727b2139a07e6c0c235fd569fb",
+    "onto": "527653811db82b84732621da0baadeff4397ecb9",
+    "reason": "CFG-8 (Policy screen) merged to trunk mid-lease",
+    "conflicts": [
+      ".plan/tracks/CFG.ledger.md (step:01's commit only) -- append-only, kept both sides in order",
+      "docs/evidence/stage4_contract_closure/openapi_drift_receipt.json (step:04's commit) -- generated receipt, regenerated fresh after the rebase rather than hand-merged"
+    ],
+    "no_conflict_despite_expectation": "registry.ts, routeManifest.ts, ConfigurationPage.tsx, canonicalHandlers.ts -- CFG-8's Policy screen and this lease's Agents screen touch disjoint sections of each; git's textual merge resolved all four cleanly with no markers. See CFG.ledger.md step:08."
+  },
+  "files": [
+    "backend/src/return_platform/configuration/application/agent_configuration.py",
+    "backend/src/return_platform/bootstrap/adapters/governance_agent_configuration.py",
+    "backend/src/return_platform/main.py",
+    "backend/src/return_platform/configuration/snapshot.py",
+    "backend/src/return_platform/configuration/application/loader.py",
+    "backend/tests/configuration/test_agent_configuration_releases.py",
+    "backend/tests/test_graph_configuration_bootstrap.py",
+    "backend/config/manifest.yaml",
+    "backend/config/agents/",
+    "backend/config/workflows/",
+    "backend/config/sync/",
+    "backend/config/sources/",
+    "backend/config/mappings/",
+    "backend/config/graph/",
+    "backend/config/README.md",
+    "backend/src/return_platform/configuration/README.md",
+    "openapi/return-platform.openapi.json",
+    "backend/openapi/return-platform.openapi.json",
+    "frontend/openapi/return-platform.openapi.json",
+    "openapi.json",
+    "frontend/src/api/generated/return-platform.d.ts",
+    "docs/evidence/stage4_contract_closure/openapi_drift_receipt.json",
+    "frontend/src/api/agentConfig.ts",
+    "frontend/src/domains/config/AgentsSection.tsx",
+    "frontend/src/domains/config/AgentsSection.test.tsx",
+    "frontend/src/domains/config/AgentsSection.a11y.test.tsx",
+    "frontend/src/mocks/handlers/canonicalHandlers.ts",
+    "frontend/src/mocks/handlers/canonicalHandlers.contract.test.ts",
+    "frontend/e2e/config-agents.spec.ts",
+    ".plan/reviews/CFG-5b.md"
+  ],
+  "tests": {
+    "pytest tests/configuration/test_agent_configuration_releases.py -q (post RV round 1 fix)": "12 passed",
+    "pytest tests/test_graph_configuration_bootstrap.py tests/configuration/test_agent_configuration_releases.py -q": "37 passed",
+    "pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/platform -q (post RV round 1 fix)": "955 passed, 35 deselected, 2 warnings in 129.72s",
+    "pytest tests/agents/test_no_cross_agent_imports.py tests/security/test_guards_match_the_console.py tests/test_every_console_path_is_mounted.py -q": "26 passed",
+    "known_test_failures.json (backend + frontend)": "empty before and after -- nine/zero known failures unchanged",
+    "ruff check (touched backend files, post RV round 1 fix)": "All checks passed!",
+    "ruff format --check (touched backend files, post RV round 1 fix)": "1 file reformatted, then clean",
+    "mypy (touched backend source files, post RV round 1 fix)": "Success: no issues found in 5 source files",
+    "python scripts/check_openapi_drift.py --write (post RV round 1 fix)": "PASS -- A2's docstring edits moved the OpenAPI description fields, regenerated all 5 artifacts",
+    "python scripts/check_openapi_drift.py (post RV round 1 fix)": "PASS, zero diffs",
+    "npx vitest run (whole frontend suite, post RV round 1 fix)": "Test Files 90 passed (90), Tests 1081 passed (1081)",
+    "npm run typecheck": "exit 0",
+    "npm run lint": "exit 0",
+    "npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g agents": "3 passed (render, keyboard, axe)",
+    "npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts (full sweep)": "137 passed, 1 failed -- pre-existing F10-class flake on /config/return-policy at 390px, reproduced isolated-pass 1/1, not this lease's surface",
+    "npx playwright test --project=cfg4-e2e e2e/config-agents.spec.ts --workers=1 (disposable vite --port 5199 -> shared :8000)": "FAILED -- :8000 still serves pre-CFG-5b trunk (old manifest-module /api/agents shape); structural, see ledger step:06. Disposable server stopped immediately after; :5173/:8000 confirmed unrestarted."
+  },
+  "scope_done": [
+    "1: GET/PUT /api/agents repointed at the live RETURN_PLATFORM.agents section; activation publishes a patch of agents.<id> only via a whole-document clone through publish_release_with_domains",
+    "2: manifest agent copies and dead manifest entries deleted (backend/config/agents/, workflows/, sync/, sources/, mappings/, graph/); configuration/application/loader.py deleted (last consumer gone); manifest.yaml trimmed to platform.system_store; both READMEs updated",
+    "3: frontend /config/agents typed table on TypedSectionScreen's chrome, MSW handlers, tests (typed + a11y)",
+    "4: bootstrap interplay test proving a proposal-published agents value survives a bootstrap run whose packaged file disagrees",
+    "OpenAPI regenerated (all 4 JSON snapshots + generated .d.ts) and drift check PASS",
+    "7: acceptance sweep run at head, everything green except the e2e item below"
+  ],
+  "remaining": [
+    "6: the live e2e run cannot succeed until this branch merges and the orchestrator restarts the shared :8000 API process onto the new trunk (the same sequencing CFG-6's own live no-restart proof used) -- the spec is written and committed (frontend/e2e/config-agents.spec.ts), typechecks/lints clean, and drives the correct UI and API calls; it is blocked on the live backend still serving pre-CFG-5b code, not on anything in this lease's own worktree. See CFG.ledger.md step:06 for the full evidence (screenshot, curl output) and reasoning.",
+    "A5 (RV round 1, advisory, orchestrator's call): an agent-activated release writes no CONFIGURATION_* audit record. Carried to CFG-7 -- see rv_round_1.carried above and CFG.ledger.md step:09 for the fix location."
+  ],
+  "deviations": [
+    "Coordinator brief scope item 1 says the activation 'reuse[s] record_configuration_audit'; that function requires a FastAPI Request and is unreachable from the activator's call context (ProposalKernel.activate, no Request in scope), and configuration/api/releases.py (where it lives) is outside this lease's Owns. The CFG-5 step:05 file-by-file plan does not call for it either. Not added; the audit-trail property W4.2 established is still asserted via the governance kernel's own audit log (unaffected by this change). See CFG.ledger.md step:01.",
+    "test_a_credentials_block_in_an_agent_document_is_refused deleted rather than adapted: AgentConfiguration has no free-form mapping field (unlike the old AgentConfigNode.retry_policy), so extra=\"forbid\" plus fully-typed fields already refuse any document that could carry a forbidden-key-shaped block before governance's own forbidden-key policy would run -- there is no longer a document that both validates and exercises that policy in isolation. See CFG.ledger.md step:01.",
+    "AgentsSection.tsx does not literally render <TypedSectionScreen>: that component publishes a domain patch straight onto the release (POST /api/config/publish), which is the wrong write path for a governed agent edit (PUT -> proposal -> /approvals). The screen mirrors its header/Advanced-toggle chrome instead. See CFG.ledger.md step:05."
+  ],
+  "merge_status": "PENDING"
+}

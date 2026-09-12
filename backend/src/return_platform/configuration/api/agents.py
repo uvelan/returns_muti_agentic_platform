@@ -6,9 +6,10 @@ configuration changes by a release moving along its lifecycle and a second
 write path there would be a second way to change what the platform runs.
 
 These edits are a different thing, and saying so in the path is more honest
-than bending that rule. Agent modules are declared in `manifest.yaml`; until
-W4.2 they had never been part of the graph-stored release lifecycle, so this was
-the first way to edit that store rather than a second way to edit the other one.
+than bending that rule. An agent's document is the release's `agents.<id>`
+entry (CFG-5b -- there is no more manifest or loader in between); until W4.2
+it had never been part of the graph-stored release lifecycle, so this was the
+first way to edit that store rather than a second way to edit the other one.
 
 **W4.2 closed the gap this file's own docstring named.** It used to end: "It does
 mean an agent edit takes effect without an approval step, which is a real
@@ -158,9 +159,10 @@ async def update_agent_configuration(
     """Propose a replacement for one agent's document.
 
     202, not 200: the platform has accepted the change for review and has not
-    made it. A rejected document still comes back as 422 carrying the loader's
-    own reason -- the editor needs to know *why* it was refused, and "invalid
-    configuration" gives an operator nothing to correct.
+    made it. A rejected document still comes back as 422 carrying
+    `AgentConfiguration`'s own validation message -- the editor needs to know
+    *why* it was refused, and "invalid configuration" gives an operator
+    nothing to correct.
     """
     service = _agents(request)
     if service.read(manifest_id) is None:

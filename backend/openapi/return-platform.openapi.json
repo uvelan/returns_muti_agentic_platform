@@ -4988,10 +4988,6 @@
             "title": "Manifestid",
             "type": "string"
           },
-          "moduleId": {
-            "title": "Moduleid",
-            "type": "string"
-          },
           "path": {
             "title": "Path",
             "type": "string"
@@ -5003,7 +4999,6 @@
         },
         "required": [
           "manifestId",
-          "moduleId",
           "path",
           "document",
           "source"
@@ -5298,9 +5293,20 @@
       "AgentSummary": {
         "additionalProperties": false,
         "properties": {
-          "configurationVersion": {
-            "title": "Configurationversion",
-            "type": "string"
+          "aiAssisted": {
+            "title": "Aiassisted",
+            "type": "boolean"
+          },
+          "aiRouteRef": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Airouteref"
           },
           "enabled": {
             "title": "Enabled",
@@ -5308,10 +5314,6 @@
           },
           "manifestId": {
             "title": "Manifestid",
-            "type": "string"
-          },
-          "moduleId": {
-            "title": "Moduleid",
             "type": "string"
           },
           "name": {
@@ -5322,18 +5324,18 @@
             "title": "Source",
             "type": "string"
           },
-          "status": {
-            "title": "Status",
+          "version": {
+            "title": "Version",
             "type": "string"
           }
         },
         "required": [
           "manifestId",
-          "moduleId",
           "name",
+          "version",
           "enabled",
-          "status",
-          "configurationVersion",
+          "aiAssisted",
+          "aiRouteRef",
           "source"
         ],
         "title": "AgentSummary",
@@ -21056,7 +21058,7 @@
         ]
       },
       "put": {
-        "description": "Propose a replacement for one agent's document.\n\n202, not 200: the platform has accepted the change for review and has not\nmade it. A rejected document still comes back as 422 carrying the loader's\nown reason -- the editor needs to know *why* it was refused, and \"invalid\nconfiguration\" gives an operator nothing to correct.",
+        "description": "Propose a replacement for one agent's document.\n\n202, not 200: the platform has accepted the change for review and has not\nmade it. A rejected document still comes back as 422 carrying\n`AgentConfiguration`'s own validation message -- the editor needs to know\n*why* it was refused, and \"invalid configuration\" gives an operator\nnothing to correct.",
         "operationId": "update_agent_configuration_api_agents__manifest_id__put",
         "parameters": [
           {

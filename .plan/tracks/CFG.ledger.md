@@ -4463,3 +4463,541 @@ POST /api/config/policy/preview (live policy, facts stated)    10 days -> APPROV
 POST /api/config/policy/preview (evaluation off)               -> decision None, evaluation_enabled False (SKIPPED_BY_CONFIGURATION)
 ```
 Facts are tri-state strings (`TRUE`/`FALSE`/`UNKNOWN`) keyed by the thirteen checklist names.
+
+## CFG-5b step:00 — worktree, PYTHONPATH, stale-base check
+
+```
+$ python -c "import return_platform; print(return_platform.__file__)"
+K:\Projects\Ret\returns_muti_agentic_platform\.claude\worktrees\cfg-5b\backend\src\return_platform\__init__.py
+```
+
+Confirms the venv/`.pth` trap did not fire: the import resolves inside `cfg-5b`, not MAIN.
+
+```
+$ git rev-parse HEAD
+94049bee6b6432727b2139a07e6c0c235fd569fb
+$ git rev-list --left-right --count HEAD...origin/master
+1132	0
+```
+
+Base sha `94049bee` (trunk with CFG-0..6 merged, CFG-8 started on its own branch per the brief).
+`origin/master` is strictly behind `HEAD` (0 commits on its side) -- no stale-base condition.
+
+Read `.plan/tracks/CFG-5b.brief.md`, the CFG-5 step:05 entry in `.plan/tracks/CFG.ledger.md`
+(the file-by-file plan below), and `.plan/tracks/CFG.brief.md` §1.2-1.3, then the named code:
+`configuration/api/agents.py`, `application/agent_configuration.py`, `application/loader.py`,
+`bootstrap/adapters/governance_agent_configuration.py`, `application/release_promotion.py`,
+`configuration/return_configuration.py` (`AgentConfiguration`, `ReturnPlatformConfiguration.agents`),
+`configuration/snapshot.py`, `main.py`'s agent-configuration wiring, `backend/config/manifest.yaml`
+and the packaged `returns/agents.yaml`, and the existing
+`tests/configuration/test_agent_configuration_releases.py` /
+`tests/test_graph_configuration_bootstrap.py`.
+
+**One correction to the CFG-5 step:05 plan, found while reading the actual manifest and packaged
+files side by side (not itself wrong, just not spelled out there): the manifest's 8 agent ids
+(`agent.return_session_orchestrator`, `agent.order_discovery`, `agent.order_analysis`,
+`agent.return_workflow`, `agent.return_fulfillment`, `agent.bay_allocation`, `agent.learning`,
+`agent.graph_schema_design`) are a *different vocabulary* from the live `RETURN_PLATFORM.agents`
+section's 7 keys (`order_discovery`, `order_analysis`, `return_workflow`, `return_fulfillment`,
+`bay_assignment`, `feedback_learning`, `support_response` -- confirmed against
+`agents/registry/registry.py::AgentRegistry.build` and each agent class's own
+`configuration.agents["<id>"]` read, e.g. `bay_assignment.py:39`).** The new `manifestId` a
+console operator sees and edits by is therefore the *live* key (no `agent.` prefix, no
+`bay_allocation`/`learning`/`return_session_orchestrator`/`graph_schema_design`, which do not
+exist as live agents at all), not the manifest's id. The step:05 plan's own wording ("moduleId
+collapses to the manifest id") already implies this outcome; recorded here because the two id
+sets otherwise look like they should line up and do not.
+
+## CFG-5b step:01 — repoint `/api/agents` at the live `RETURN_PLATFORM.agents` section
+
+Implements the CFG-5 step:05 plan's items 1-3, adjusted per step:00's id-vocabulary note above.
+
+`configuration/application/agent_configuration.py`: rewritten. `ConfigurationLoader`/YAML gone;
+`AgentConfigurationService(active: Callable[[], Mapping[str, Any]])` reads the whole current
+`RETURN_PLATFORM` document and slices `.agents`. `list_agents`/`read` build `AgentSummary`/
+`AgentConfigurationView` directly from `agents[<id>]`; `moduleId` is gone (`manifestId` is now the
+only id), `path` is the descriptive `RETURN_PLATFORM.agents.<id>`, `source` is always `"RELEASE"`
+(documented why: `agents` is a required key of `ReturnPlatformConfiguration`, so there is no more
+a no-release state to fall back from). `validate_candidate` is `AgentConfiguration(**document)`
+plus a SHA-256 receipt of the *canonical* `model_dump(mode="json")` -- not the submitted document --
+returned alongside the canonical form so the activator publishes the materialized shape, not
+whatever partial document was submitted. New `released_return_platform_document()` returns a deep
+copy of the whole current `RETURN_PLATFORM` document for the activator to patch one `agents.<id>`
+key on.
+
+`bootstrap/adapters/governance_agent_configuration.py`: `AgentConfigurationProposalActivator.
+activate()` now clones the whole `RETURN_PLATFORM` document via `released_return_platform_
+document()`, sets `agents[subject_id]`, and calls `publish_release_with_domains(domains=
+{RETURN_PLATFORM_DOMAIN_KEY: <patched document>}, ...)` -- one domain, the same one, patched --
+instead of publishing a sibling `AGENT_MODULES` domain built from `released_documents()`.
+
+`main.py`: `_released_agent_modules` (read `AGENT_MODULES_DOMAIN_KEY` off the snapshot) replaced by
+`_released_return_platform_document` (reads `RETURN_PLATFORM_DOMAIN_KEY`); `AgentConfigurationService`
+construction drops the `settings.configuration_directory` positional argument (there is no
+directory to load any more) and passes `active=` by keyword.
+
+`configuration/snapshot.py`: `AGENT_MODULES_DOMAIN_KEY` constant removed -- zero remaining
+references after the above (confirmed by grep before removal).
+
+**Deviation from the coordinator brief's literal wording, recorded per its own instruction to
+record the smallest deviation:** the brief's scope item 1 says the activation "reuse[s]
+`record_configuration_audit`". That function (`configuration/api/releases.py`) takes a FastAPI
+`Request` and is only callable from an HTTP handler; the activator runs from
+`ProposalKernel.activate()`, with no `Request` in scope, and `configuration/api/releases.py` is
+outside this lease's Owns. The CFG-5 step:05 plan (the file-by-file plan this lease was told to
+follow) does not call for it either -- its own concrete plan for
+`governance_agent_configuration.py` (item 2) only asks for the domain-patch change made above. The
+audit trail property W4.2 established -- "the change is in the audit trail" -- is unaffected and
+still asserted directly (`test_the_edit_reaches_the_audit_trail`,
+`test_activating_an_agent_proposal_publishes_a_release`'s `"PROPOSAL_ACTIVATED" in audit.actions()`):
+it is carried by the governance kernel's own audit log, which every proposal type already writes
+through regardless of domain. No second, `CONFIGURATION_*`-audit-stream entry is added for this
+lease; adding one would mean touching `operations/repository.py`/`configuration/api/releases.py`,
+both outside Owns.
+
+**Test rewrite, `tests/configuration/test_agent_configuration_releases.py`:** every test updated to
+the new document shape (no `module_id`/`module_type`/`payload` envelope -- the document IS the
+`AgentConfiguration` shape) and the new id (`order_discovery`, not `agent.learning`, which does not
+exist as a live agent -- see step:00). `affectedKeys` assertion changes from
+`["agent.payload.enabled"]` to `["agent.enabled"]` (no more `payload` nesting).
+`test_a_document_the_loader_refuses_is_refused_here` (module_id mismatch) has no equivalent any
+more -- there is no `module_id` field on `AgentConfiguration` -- replaced with
+`test_a_document_missing_a_required_field_is_refused_here` (a required field absent, same "the
+model is the single definition of valid" property). `test_a_credentials_block_in_an_agent_
+document_is_refused` is deleted, not replaced: it depended on `AgentConfigNode`'s free-form
+`retry_policy: Mapping[str, Any] | None` field to construct a document that passed schema
+validation while smuggling a `credentials` block past it defense-in-depth; `AgentConfiguration` has
+no such field (`extra="forbid"`, every field concretely typed), so there is no longer a document
+that both validates and carries a forbidden-key-shaped block -- the hole the test exercised is
+closed by the model itself, not by governance's forbidden-key policy, and there is no way to
+exercise that policy in isolation here any more without first bypassing `validate_candidate`, which
+would not be testing this file. `test_activation_without_an_active_release_is_refused`'s premise
+changes from "a release carrying only AGENT_MODULES, no RETURN_PLATFORM to clone from" to "no
+active release at all" -- exactly the re-justification the step:05 plan's item 5 anticipated, since
+target and dependency are now the same domain.
+
+`test_graph_configuration_bootstrap.py`, `configuration/README.md`, `backend/config/README.md`,
+`backend/config/manifest.yaml` and the manifest module deletions are step:02/step:03 below.
+
+```
+$ python -m pytest tests/configuration/test_agent_configuration_releases.py -q
+12 passed, 1 warning in 6.10s
+
+$ python -m pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/platform -q
+941 passed, 35 deselected, 2 warnings in 128.78s
+```
+
+(The second run predates step:03's new bootstrap test below; re-run with it included is pasted
+there.)
+
+```
+$ ruff check <5 touched files>
+All checks passed!
+$ ruff format --check <5 touched files>
+4 files reformatted, 1 file left unchanged   # applied; re-check below is clean
+$ mypy configuration/application/agent_configuration.py bootstrap/adapters/governance_agent_configuration.py main.py configuration/snapshot.py configuration/api/agents.py
+Success: no issues found in 5 source files
+```
+
+## CFG-5b step:02 — retire the manifest-driven module system
+
+Implements the CFG-5 step:05 plan's item 4 and the brief's scope item 2, per D-CFG-1.
+
+Deleted: `backend/config/agents/*.yaml` (8 files), `backend/config/workflows/return_session.yaml`,
+`backend/config/sync/order_partial.yaml`, `backend/config/sync/order_full.yaml`,
+`backend/config/sources/sales_inv.yaml`, `backend/config/mappings/sales_inv_order.yaml`,
+`backend/config/graph/order_discovery.yaml`, and their now-empty parent directories.
+`configuration/application/loader.py` (`ConfigurationLoader`) deleted -- the Agents editing API
+was its last consumer (confirmed by grep before deletion: zero remaining references to
+`ConfigurationLoader`/`application.loader`/`LoadedManifestModule` anywhere in `backend/src` or
+`backend/tests` after step:01's rewrite).
+
+`backend/config/manifest.yaml` trimmed to its one remaining entry, `platform.system_store` --
+kept per the CFG-5 step:05 plan's own instruction ("Keep `platform.system_store`") -- with a header
+comment recording that this entry was *already* inert before CFG-5b
+(`platform/system_store/manifest_loader.py::load_system_store_config` reads
+`Settings.system_store_manifest_path` directly, never this file) and that the whole file is
+therefore read by nothing now that its one real consumer (the loader) is gone. Not deleted outright
+because doing so decides nothing about `platform/system_store/manifest_loader.py`, which is outside
+this lease's Owns, and the brief's acceptance line ("manifest.yaml lists only what a runtime path
+loads") reads most naturally as "trim it to what a real file loads", which the one remaining entry
+still is (just not via this manifest).
+
+Re-confirmed the six non-agent entries had zero consumers before deleting their target files
+(the CFG-5 step:05 plan already recorded this grep; repeated here against the current tree):
+
+```
+$ grep -rn "workflow\.return_session\|sync\.order_\|source\.sales_inv\|mapping\.sales_inv_order\|graph\.order_discovery" backend/src backend/tests
+tests/test_mapping_contracts.py:1288:            source_id="source.sales_inv",
+```
+
+The one hit is an unrelated `SourceAssetDefinition` fixture in the data-platform mapping-contracts
+suite (a different id namespace entirely, `data_platform/mapping/`) reusing the same string as an
+arbitrary test value -- not a reader of the deleted `backend/config/sources/sales_inv.yaml` or the
+manifest entry. Confirmed by reading the test: it constructs a `SourceAssetDefinition` in-memory
+and asserts a `ValidationError` on `source_system`; no file I/O.
+
+READMEs updated: `backend/src/return_platform/configuration/README.md` (the "Precedence" section's
+manifest-modules paragraph, and the paragraph documenting `ConfigurationLoader`'s remaining
+consumer) and `backend/config/README.md` (manifest.yaml section rewritten to explain it is read by
+nothing; "Module document shape" marked historical; "Directories" list trimmed; "Adding a module"
+replaced with "Adding a business key" describing the composed-`returns/`-directory path instead;
+new "Removed as dead (CFG-5b)" entry alongside the existing CFG-1 one).
+
+```
+$ ls backend/config
+README.md  ai_gateway  data_assets.yaml  data_platform  dependency_simulation.yaml  dynamic_knowledge  manifest.yaml  platform  returns  schema_registry.yaml  seed
+```
+
+No `agents/` directory; `workflows/`, `sync/`, `sources/`, `mappings/`, `graph/` also gone.
+
+## CFG-5b step:03 — bootstrap interplay test (brief scope item 4)
+
+New test in `test_graph_configuration_bootstrap.py`:
+`test_a_proposal_published_agent_edit_survives_the_packaged_file_that_disagrees_with_it`. Mirrors
+the existing `test_an_operator_edit_survives_the_packaged_file_that_disagrees_with_it` (a `support`
+edit) at the `agents` key instead: `agents` is a whole top-level `RETURN_PLATFORM` unit, not one of
+`CARRY_FORWARD_SPLIT_KEYS[RETURN_PLATFORM_DOMAIN_KEY]` (today only `("deployment",)`), so a release
+whose `agents` digest no longer matches the packaged baseline's is read as an operator edit and
+carried forward whole -- proving a proposal-published `agents` value (one agent flipped) survives a
+bootstrap run whose packaged file disagrees with it, without any agent-specific change to the
+carry-forward logic itself (none was needed: `agents` already behaved like any other whole
+`RETURN_PLATFORM` key once the activator started publishing into it instead of a sibling
+`AGENT_MODULES` domain).
+
+```
+$ python -m pytest tests/test_graph_configuration_bootstrap.py -q
+25 passed in 12.34s
+```
+
+```
+$ python -m pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/platform -q
+942 passed, 35 deselected, 2 warnings in 124.41s (0:02:04)
+```
+
+## CFG-5b step:04 — OpenAPI regen + drift check
+
+`AgentSummary`/`AgentConfigurationView`'s field changes (no `moduleId`, camelCase `aiAssisted`/
+`aiRouteRef`/`version` added, `path` now descriptive) move the response schema, so all four
+committed JSON snapshots and the generated `.d.ts` needed regeneration.
+
+```
+$ python scripts/check_openapi_drift.py --write
+... status: PASS, diffs: [5 files regenerated]
+
+$ python scripts/check_openapi_drift.py
+... status: PASS, diffs: []
+```
+
+## CFG-5b step:05 — frontend `/config/agents` typed table
+
+Implements the brief's scope item 3 and the CFG-5 step:05 plan's item 7.
+
+`frontend/src/api/agentConfig.ts`: `AgentSummary`/`AgentConfiguration` types narrowed to match the
+new backend response (`manifestId`, `name`, `version`, `enabled`, `aiAssisted`, `aiRouteRef`,
+`source` -- no more `moduleId`; `path` is now the descriptive `RETURN_PLATFORM.agents.<id>`).
+
+`frontend/src/domains/config/AgentsSection.tsx`: rewritten. Default view is a genuine typed table
+-- one row per agent, `name`/`version` as plain text fields, `enabled`/`ai_assisted` as `Toggle`,
+`ai_route_ref` as an `EnumSelect` populated from `GET /api/config/runtime`'s
+`ai_gateway_configuration.tasks` keys (the AI gateway tasks vocabulary, not a hand-typed list). Each
+row owns its own `AgentConfigurationService.read()` fetch, its own draft and its own Save (PUT is
+per agent, not per table) -- a row's typed-field save round-trips that agent's *whole* document, so
+a dead knob a previous edit set (`retry_max_attempts`, say) travels through unchanged rather than
+being silently reset to its default by a save that only knew about five fields. The header --
+kicker, title, description, and the Advanced/Typed toggle button -- mirrors `TypedSectionScreen`'s
+own chrome exactly (same layout, same button classes) without importing the component itself:
+`TypedSectionScreen` publishes a domain patch straight onto the release
+(`POST /api/config/publish`); an agent edit stays the governance-proposal path W4.2 built (`PUT` ->
+202 -> proposal id -> `/approvals`), which is a materially different write path this screen must
+not blur. Advanced mode keeps the pre-CFG-5b master-detail JSON editor (`DocumentEditor`) verbatim
+in behaviour, now behind an agent picker rather than being the only mode.
+
+MSW: `MOCK_AGENTS`/`MOCK_AGENT_DOCUMENTS` (`mocks/handlers/canonicalHandlers.ts`) rewritten to the
+live agent ids (`order_discovery`, `feedback_learning` -- no `agent.` prefix, matching
+`backend/config/returns/agents.yaml`); the `/api/config/runtime` mock gains an
+`ai_gateway_configuration.tasks` block so the AI-route `EnumSelect` has real options to render.
+`canonicalHandlers.contract.test.ts`'s `/api/agents/:manifestId` URL updated to match.
+
+Tests: `AgentsSection.test.tsx` rewritten for the typed table (renders, read-only gating, save
+round-trips the whole document, AI-route select including the null case, backend-rejection message,
+empty/error states) plus the Advanced-mode escape hatch (edit-as-JSON, agent switching, read-only).
+`AgentsSection.a11y.test.tsx` (UIAUDIT-011's regression coverage) now opens Advanced mode first,
+since `DocumentEditor`'s dynamic field generation -- the thing that regression is about -- is no
+longer the default view.
+
+```
+$ npx vitest run src/domains/config/AgentsSection.test.tsx src/domains/config/AgentsSection.a11y.test.tsx
+Test Files  2 passed (2)
+     Tests  16 passed (16)
+
+$ npx vitest run                       # whole frontend suite
+ Test Files  89 passed (89)
+      Tests  1065 passed (1065)
+
+$ npm run typecheck
+typecheck exit: 0
+$ npm run lint
+lint exit: 0
+```
+
+`dev:mock` route sweep, `/config/agents` (the one CFG-5's own acceptance sweep found a genuine
+contrast defect on, before this lease existed):
+
+```
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g "agents"
+  3 passed -- /config/agents render, keyboard, axe (no critical/serious violation)
+```
+
+Full `dev:mock` sweep, one pre-existing failure reproduced and confirmed not a regression:
+
+```
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts
+  137 passed, 1 failed -- "/config/return-policy (+214px)" at 390px ("no route scrolls sideways"),
+  the same F10-class dev-server-settling flake CFG-5's own step:09 documented; re-run in isolation
+  passes (1/1), confirming it is not deterministic and not this lease's surface
+  (tests/canonical-routes.spec.ts, playwright.config.ts's webServer -- outside CFG-5b's Owns; not
+  /config/agents, not touched by this lease).
+```
+
+## CFG-5b step:06 — e2e: structurally blocked on the live stack pre-merge, recorded rather than faked
+
+Wrote `frontend/e2e/config-agents.spec.ts` per the brief: propose an `ai_assisted` flip on
+`order_discovery`, activate it through `POST /api/proposals/{id}/{approve,activate}` (not the
+Approvals UI), assert `GET /api/config/runtime` reflects it, then propose-and-activate the revert.
+The spec typechecks and lints clean and drives the right elements (row lookup, `Toggle`, `Save`,
+the proposal-id status text, the two `/api/proposals` calls).
+
+**Ran it once, per the rules, against a disposable `vite --port 5199` proxying to the shared
+`:8000`; it failed, for a reason specific to this lease rather than a defect in the spec or the
+screen -- recorded here rather than silently retried or skipped.** `:8000` is still serving
+pre-CFG-5b trunk: `curl http://localhost:8000/api/agents` returns the OLD manifest-module shape
+(`agent.order_discovery`, `source: "PACKAGED_BASELINE"`, no `version`/`aiAssisted`/`aiRouteRef`
+fields) -- confirmed by the screenshot at
+`test-results/config-agents-.../test-failed-1.png`, every row's typed fields blank/off because the
+old response has none of the fields this lease's table reads. Every other CFG-4/CFG-5 lease's e2e
+spec exercised backend routes that already existed on trunk before that lease started
+(`/api/config/publish`, `/api/source-bindings`, ...); CFG-5b is the first lease in this track whose
+own e2e depends on a *backend* behaviour change (`/api/agents` repointed at
+`RETURN_PLATFORM.agents`) that only this lease's own worktree carries. Activating a proposal against
+the live `:8000` right now would publish into the OLD `AGENT_MODULES` domain the old code still
+uses, not `RETURN_PLATFORM.agents` -- so even a "successful" run against the current live backend
+would prove nothing about the code this lease actually wrote. The rule against restarting `:8000`
+mid-lease is exactly what makes this untestable here: CFG-6's own ledger shows the equivalent
+live-stack proof for a backend change being run by *the orchestrator*, after merge, once the API
+process is restarted onto the new trunk -- not by the implementer beforehand. Disposable frontend
+server stopped immediately after (`taskkill`, confirmed `netstat` clear); `:5173` (200) and `:8000`
+(alive, unrestarted) re-checked after.
+
+**What this leaves proven, and what remains for the orchestrator's post-merge step:** the
+propose -> approve -> activate -> release-published -> runtime-reflects-it chain is proven at the
+backend level, in-memory, end to end
+(`tests/configuration/test_agent_configuration_releases.py::test_activating_an_agent_proposal_publishes_a_release`,
+step:01), and the screen's own request wiring is proven against the mock
+(`AgentsSection.test.tsx`'s save/proposal/link assertions, step:05). The one thing not yet proven is
+the live, no-restart, cross-process adoption CFG-6's own e2e proved for `deployment` -- this lease's
+`e2e/config-agents.spec.ts` is ready to run that proof unchanged the moment `:8000` carries this
+lease's backend.
+
+## CFG-5b step:07 — acceptance sweep
+
+```
+$ python -m pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/platform -q
+942 passed, 35 deselected, 2 warnings in 156.80s (0:02:36)
+
+$ python -m pytest tests/agents/test_no_cross_agent_imports.py tests/security/test_guards_match_the_console.py tests/test_every_console_path_is_mounted.py -q
+26 passed in 8.29s
+```
+
+Nine known-failing modules unchanged: `scripts/ci/known_test_failures.json`'s `backend`/`frontend`
+allowlists are both empty before and after this lease -- "unchanged" holds trivially (0 known
+failures, 0 observed).
+
+```
+$ ruff check <7 touched backend files>          -> All checks passed!
+$ ruff format --check <7 touched backend files> -> clean (after one auto-format pass in step:01)
+$ mypy <5 touched backend source files>         -> Success: no issues found in 5 source files
+$ python scripts/check_openapi_drift.py         -> PASS, zero diffs
+```
+
+```
+$ ls backend/config
+README.md  ai_gateway  data_assets.yaml  data_platform  dependency_simulation.yaml
+dynamic_knowledge  manifest.yaml  platform  returns  schema_registry.yaml  seed
+```
+
+No `agents/` directory; `manifest.yaml` lists only `platform.system_store` (kept per its own header
+comment; see step:02).
+
+```
+$ npx vitest run
+ Test Files  89 passed (89)
+      Tests  1065 passed (1065)
+
+$ npm run typecheck   -> exit 0
+$ npm run lint        -> exit 0
+```
+
+e2e: run once against a disposable `vite --port 5199` per the rules; blocked by the live `:8000`
+still serving pre-CFG-5b trunk (see step:06 for the full evidence and reasoning) -- not a defect in
+this lease's own code, and not something this lease can resolve without violating the
+never-restart-`:8000` rule. The spec (`frontend/e2e/config-agents.spec.ts`) is committed and ready
+for the orchestrator to run once this branch merges and the API process restarts onto the new
+trunk, the same sequencing CFG-6's own live no-restart proof used.
+
+**Unfinished, carried to the orchestrator:** the live e2e proof (step:06). Everything else the
+brief's acceptance names is green at head `d04334b8`.
+
+## CFG-5b step:08 — rebased onto trunk 52765381
+
+CFG-8 (Policy screen) merged to `refactor/unified-return-platform` while this lease was in
+progress; rebased `feat/cfg-5b-agents` onto the new trunk head `52765381` per the coordinator's
+instruction, ahead of RV.
+
+```
+$ git rebase 52765381
+```
+
+Two conflicts, both mechanical, exactly as expected:
+
+- **`.plan/tracks/CFG.ledger.md`** (step:01's commit only) -- append-only file, both sides real
+  content. Resolved by keeping CFG-8's entries (already on trunk, chronologically first) followed by
+  this lease's own step:00 entry, in order, no markers left.
+- **`docs/evidence/stage4_contract_closure/openapi_drift_receipt.json`** (step:04's commit) -- a
+  generated receipt (commit sha, timestamps); took theirs and regenerated properly below rather than
+  hand-merging.
+
+No conflict in `registry.ts`, `routeManifest.ts`, `ConfigurationPage.tsx` or `canonicalHandlers.ts`
+despite the coordinator's expectation of one there -- CFG-8's Policy screen and this lease's Agents
+screen touch disjoint sections of each of those files (this lease's Owns never named
+`ConfigurationPage.tsx`'s tab-wiring switch or `registry.ts`'s section list at all, since "Agents
+keeps its existing tab" per the CFG-5 coordinator's own note), so git's textual merge resolved both
+files cleanly with no marker ever appearing.
+
+The four OpenAPI JSON copies and the generated `.d.ts` also merged cleanly with no markers;
+regenerated anyway per the coordinator's instruction, to be certain rather than trust the textual
+merge on a generated artifact:
+
+```
+$ python scripts/check_openapi_drift.py --write
+... diffs: []                    # already correct after the rebase's own auto-merge
+$ python scripts/check_openapi_drift.py
+... status: PASS, diffs: []
+```
+
+Full verification re-run at the new head:
+
+```
+$ pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/platform -q
+955 passed, 35 deselected, 2 warnings in 130.68s   # +13 over pre-rebase (CFG-8's own new tests)
+
+$ ruff check <6 touched backend files>            -> All checks passed!
+$ ruff format --check <6 touched backend files>   -> 6 files already formatted
+$ mypy <5 touched backend source files>           -> Success: no issues found in 5 source files
+
+$ npx vitest run
+ Test Files  90 passed (90)
+      Tests  1079 passed (1079)                    # +14 over pre-rebase (CFG-8's own new tests)
+
+$ npm run typecheck   -> exit 0
+$ npm run lint        -> exit 0
+```
+
+Nothing outside this lease's own Owns changed by the rebase; `git diff --stat 52765381..HEAD`
+matches the same file set as before rebasing, plus the regenerated receipt. Step:06's e2e finding
+(blocked on `:8000` serving pre-CFG-5b code) is unaffected by this rebase -- still true, still the
+one unfinished item.
+
+## CFG-5b step:09 — RV round 1 fixes
+
+RV verdict CHANGES_REQUIRED on `d9a86886` (`.plan/reviews/CFG-5b.md`). One blocking finding, four
+advisories to take, one advisory carried to a later lease.
+
+**F1 (BLOCKING), fixed.** `AgentConfigurationProposalActivator.activate` was cloning the whole
+`RETURN_PLATFORM` document from `AgentConfigurationService.active()` -- a closure over *this
+process's own runtime snapshot*, refreshed behind a debounce window and, on a refresh failure, kept
+indefinitely stale -- and handing that clone to `publish_release_with_domains`, which replaces the
+domain whole. RV proved with a standalone probe that a `RETURN_PLATFORM` release published by
+another process between proposal submission and activation is silently reverted by the next agent
+activation. Fixed to mirror `governance_improvement.py:160-168` (the sibling activator for the same
+domain) exactly: read the active release from `self._repository.get_active_release()` /
+`get_domain_config(active.release_id, RETURN_PLATFORM_DOMAIN_KEY)`, with the same "no active
+release" / "no domain" refusals, patch `agents[subject_id]` on *that*, and publish. `Agent
+ConfigurationService.released_return_platform_document()` deleted -- its only caller was the
+activator, and nothing else used it (`main.py`'s `active` closure stays: it is still the read path
+for `GET`/`list_agents`, which legitimately answers from this process's own snapshot -- the module
+docstring now says so explicitly, per F1's write-up).
+
+New regression test: `test_a_concurrent_release_survives_agent_activation`. The accepted suite's
+existing fixture could not fail on this bug -- `service`'s `active()` and the seeded repository both
+read the same packaged file, so the two sources always agreed. The new test deliberately disagrees:
+`service.active()` is pinned to a stale document while the repository's active release has already
+moved on to a concurrently-published one (`support.external_mirror_enabled` flipped, the same field
+RV's own probe used), and asserts the concurrent value survives activation.
+
+```
+$ pytest tests/configuration/test_agent_configuration_releases.py -q
+12 passed
+```
+
+**A1, taken.** The per-row Save button's `disabled:opacity-40` on `bg-primary`/`text-on-primary`
+composited to 2.12:1 -- the same family of defect CFG-5's own F1 was blocking on (and whose H1/H2
+advisories were "carried to CFG-5b's Agents screen work" without ever actually landing there).
+Replaced with a non-text channel (`disabled:bg-surface-container-low disabled:border-outline-variant
+disabled:text-on-surface-variant`, the same token pairing the screen's own "Read-only access" notice
+already uses). Two new tests: one asserting the family (no `opacity-\d` utility at all, and that the
+dimming lands on `bg`/`border`, not only `text`) rather than the one spelling that caused it, and one
+covering **A4** below.
+
+**A2, taken.** `configuration/api/agents.py`'s module docstring ("Agent modules are declared in
+`manifest.yaml`") and the `PUT` docstring ("carrying the loader's own reason") reworded to describe
+the actual CFG-5b state: the document is the release's `agents.<id>` entry, and the 422 carries
+`AgentConfiguration`'s own validation message.
+
+**A3, taken.** `backend/config/README.md`'s header ("manifest-driven configuration") reworded to
+"release-published configuration". The `dynamic_knowledge/` bullet rewritten: the active schema is
+read directly by `Settings.dynamic_knowledge_schema_path`, the same direct-loader shape
+`platform/system_store.yaml` uses -- not through `manifest.yaml`, whose one `GRAPH` entry
+(`graph.order_discovery`) this lease deleted.
+
+**A4, taken.** After a successful save the draft still differed from `loaded` (never refetched), so
+`dirty` stayed true and Save stayed enabled -- a second click filed a second, identical proposal.
+Fixed with a `savedSnapshot` baseline that starts as `loaded` and moves to the just-saved draft on
+success, so `dirty` (and Save) re-disable the instant a proposal is filed and re-enable on the next
+genuine edit. New test: `re-disables Save after a successful save, and a second click files no
+duplicate proposal` -- saves once, asserts Save is disabled and a second click makes no second call,
+then asserts one more edit re-enables it.
+
+**A5, carried to CFG-7 (orchestrator's call, per RV).** An agent-activated release writes no
+`CONFIGURATION_*` audit record (`GET /api/config/audit` sees nothing for `agent-config-*` releases),
+while every release published through `configuration/api/releases.py` does. Pre-existing (the
+pre-CFG-5b activator did not call it either), not a regression, and the lease's own recorded
+deviation (`record_configuration_audit` needs a `Request`; `releases.py` is outside Owns) is
+correct on its own terms. Fix location for whoever picks it up: lift the audit write out of
+`releases.py` behind a `Request`-free helper, called from both `publish_release_with_domains`
+callers (`governance_agent_configuration.py` and `governance_improvement.py`) as well as its
+existing `Request`-based call sites.
+
+Full re-run at the new head:
+
+```
+$ pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/platform -q
+955 passed, 35 deselected, 2 warnings in 129.72s
+
+$ ruff check <7 touched backend files>          -> All checks passed!
+$ ruff format --check <7 touched backend files> -> 1 file reformatted, then clean
+$ mypy <5 touched backend source files>         -> Success: no issues found in 5 source files
+
+$ python scripts/check_openapi_drift.py --write
+... status: PASS  (route docstring text changes moved the OpenAPI `description` fields -- A2's
+    edit -- regenerated all 5 artifacts)
+$ python scripts/check_openapi_drift.py
+... status: PASS, diffs: []
+
+$ npx vitest run
+ Test Files  90 passed (90)
+      Tests  1081 passed (1081)
+
+$ npm run typecheck   -> exit 0
+$ npm run lint        -> exit 0
+```

@@ -1,30 +1,40 @@
 /**
  * UIAUDIT-011 -- "14 agent labels", and why the number moved around.
  *
- * It was never fourteen source lines. `AgentsSection` renders the agent
- * document recursively: the human-readable field name comes from the *parent*
- * object, because the name comes from the key and the key is the parent's to
- * know, while the input is rendered by the child. So every scalar leaf produced
- * one visually-labelled, programmatically-unlabelled control, and the count was
- * whatever the selected agent's document happened to contain -- fourteen for
- * `bay_allocation`, twenty-four for `order_discovery`.
+ * It was never fourteen source lines. `DocumentEditor` renders a JSON
+ * document recursively: the human-readable field name comes from the
+ * *parent* object, because the name comes from the key and the key is the
+ * parent's to know, while the input is rendered by the child. So every
+ * scalar leaf produced one visually-labelled, programmatically-unlabelled
+ * control, and the count was whatever the selected agent's document happened
+ * to contain -- fourteen for `bay_allocation`, twenty-four for
+ * `order_discovery`.
  *
- * That is why these tests assert the relationship rather than a count: a
- * document with more fields must not be able to reintroduce the defect.
+ * CFG-5b's typed table is the default view now, and its controls (`Toggle`,
+ * `EnumSelect`, labelled text inputs) are already proven accessible
+ * elsewhere -- this file's own regression is specifically about
+ * `DocumentEditor`'s dynamic field generation, which still exists as the
+ * Advanced escape hatch, so these tests open it first.
+ *
+ * These assert the relationship rather than a count: a document with more
+ * fields must not be able to reintroduce the defect.
  */
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AgentsSection } from "./AgentsSection";
 import { CapabilityContext } from "../../hooks/capabilityContext";
 
-const mocks = vi.hoisted(() => ({ list: vi.fn(), read: vi.fn(), save: vi.fn() }));
+const mocks = vi.hoisted(() => ({ list: vi.fn(), read: vi.fn(), save: vi.fn(), runtime: vi.fn() }));
 
 vi.mock("../../api/agentConfig", () => ({
   agentConfigApi: { list: mocks.list, read: mocks.read, save: mocks.save },
+}));
+vi.mock("../../api/configuration", () => ({
+  configApi: { runtime: mocks.runtime },
 }));
 
 function Wrapper({ children }: { children: ReactNode }) {
@@ -49,42 +59,46 @@ function Wrapper({ children }: { children: ReactNode }) {
 
 /** Deliberately mixed: a string, a number, a boolean and a nested object. */
 const DOCUMENT = {
-  module_id: "agent.bay_allocation",
-  module_type: "AGENT",
-  payload: {
-    name: "Bay Allocation Agent",
-    enabled: true,
-    max_bays: 12,
-    limits: { max_queries: 8, strict_mode: false },
-  },
+  name: "Bay Allocation Agent",
+  version: "2.0",
+  enabled: true,
+  ai_assisted: true,
+  max_bays: 12,
+  limits: { max_queries: 8, strict_mode: false },
 };
 
 beforeEach(() => {
   mocks.list.mockReset().mockResolvedValue([
     {
-      manifestId: "agent.bay_allocation",
-      moduleId: "agent.bay_allocation",
+      manifestId: "bay_assignment",
       name: "Bay Allocation Agent",
+      version: "2.0",
       enabled: true,
-      status: "DRAFT",
-      configurationVersion: "2.0.0",
+      aiAssisted: true,
+      aiRouteRef: null,
       source: "RELEASE",
     },
   ]);
   mocks.read.mockReset().mockResolvedValue({
-    manifestId: "agent.bay_allocation",
-    moduleId: "agent.bay_allocation",
-    path: "agents/bay_allocation.yaml",
+    manifestId: "bay_assignment",
+    path: "RETURN_PLATFORM.agents.bay_assignment",
     document: DOCUMENT,
     source: "RELEASE",
   });
   mocks.save.mockReset();
+  mocks.runtime.mockReset().mockResolvedValue({ ai_gateway_configuration: { tasks: {} } });
 });
 
-describe("every editable field says what it is", () => {
+async function openAdvancedMode() {
+  render(<AgentsSection />, { wrapper: Wrapper });
+  await screen.findByDisplayValue("Bay Allocation Agent");
+  fireEvent.click(screen.getByRole("button", { name: "Advanced (JSON)" }));
+  await screen.findByDisplayValue("Bay Allocation Agent");
+}
+
+describe("every editable field in Advanced mode says what it is", () => {
   it("leaves no control without an accessible name", async () => {
-    render(<AgentsSection />, { wrapper: Wrapper });
-    await screen.findByDisplayValue("Bay Allocation Agent");
+    await openAdvancedMode();
 
     const unnamed = screen
       .getAllByRole("textbox")
@@ -106,8 +120,8 @@ describe("every editable field says what it is", () => {
   });
 
   it("names the string field after its key, not after its value", async () => {
-    render(<AgentsSection />, { wrapper: Wrapper });
-    const field = await screen.findByDisplayValue("Bay Allocation Agent");
+    await openAdvancedMode();
+    const field = screen.getByDisplayValue("Bay Allocation Agent");
 
     const labelledBy = field.getAttribute("aria-labelledby");
     expect(labelledBy).not.toBeNull();
@@ -118,8 +132,7 @@ describe("every editable field says what it is", () => {
     // The checkbox sat inside a `<label>` whose text was `{value ? "Yes" : "No"}`,
     // so its accessible name described its own state and never the field. On a
     // document with several booleans every one of them announced as "Yes".
-    render(<AgentsSection />, { wrapper: Wrapper });
-    await screen.findByDisplayValue("Bay Allocation Agent");
+    await openAdvancedMode();
 
     const checkboxes = screen.getAllByRole("checkbox");
     expect(checkboxes.length).toBeGreaterThan(0);
@@ -136,8 +149,7 @@ describe("every editable field says what it is", () => {
     // `useId` is per-`ObjectNode`, and the key is appended -- so two objects
     // holding the same key still produce two ids. A single shared id would make
     // every field announce as the first one.
-    render(<AgentsSection />, { wrapper: Wrapper });
-    await screen.findByDisplayValue("Bay Allocation Agent");
+    await openAdvancedMode();
 
     const ids = screen
       .getAllByRole("textbox")
