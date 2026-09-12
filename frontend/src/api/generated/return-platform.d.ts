@@ -5765,8 +5765,6 @@ export interface components {
             };
             /** Manifestid */
             manifestId: string;
-            /** Moduleid */
-            moduleId: string;
             /** Path */
             path: string;
             /** Source */
@@ -5879,20 +5877,20 @@ export interface components {
         };
         /** AgentSummary */
         AgentSummary: {
-            /** Configurationversion */
-            configurationVersion: string;
+            /** Aiassisted */
+            aiAssisted: boolean;
+            /** Airouteref */
+            aiRouteRef: string | null;
             /** Enabled */
             enabled: boolean;
             /** Manifestid */
             manifestId: string;
-            /** Moduleid */
-            moduleId: string;
             /** Name */
             name: string;
             /** Source */
             source: string;
-            /** Status */
-            status: string;
+            /** Version */
+            version: string;
         };
         /** AgentTurnRequest */
         AgentTurnRequest: {
