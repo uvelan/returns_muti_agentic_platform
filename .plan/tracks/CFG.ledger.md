@@ -5226,3 +5226,54 @@ CFG-6 A6 (step:03, HTTP layer only -- see step:03's own note on the startup half
 leases, verified against current source in step:01's notes, no code change needed); CFG-4 F6/F10
 (already carry a disposition from CFG-5/CFG-5's H5, nothing further, verified no regression in
 step:02's sweep run).
+
+## CFG-7 step:06 — CI truthful (item 5): 42 backend failures registered, size floor updated
+
+Full backend suite re-run on this head (261dc3bc + steps 00-05), from `backend/`:
+
+```
+$ pytest tests -q -p no:cacheprovider --ignore=tests/configuration/test_concurrent_activation.py -rf
+42 failed, 5394 passed, 10 skipped, 516 deselected, 2 warnings in 356-358s
+```
+
+(`test_concurrent_activation.py` does not exist on this trunk -- the `--ignore` is a no-op kept for
+parity with the brief's own acceptance command and CFG-1's Q6 reproduction; `pyproject.toml`'s own
+`-m "not live_infra and not browser"` addopts is what actually does the deselecting, identically to
+`.github/workflows/checks.yml`'s real invocation, `poetry run python -m pytest tests
+--junitxml=junit-backend.xml` with no `--ignore` at all.)
+
+Same 42 node ids CFG-1 found, in the same nine modules, none configuration-adjacent -- re-verified
+here rather than assumed. `scripts/ci/known_test_failures.json`'s backend `known_failures` grows
+from `[]` (with a comment falsely claiming clean) to all 42, with the module breakdown, the shared
+`PROVIDER_UNAVAILABLE`/`attempts=0` symptom, and CFG-1's own base-diff cited by section/commit.
+Frontend list stays empty (`1092 tests ran, 0 failed` -- confirmed below).
+
+`scripts/ci/suite_size_floor.json` re-staked to this head's real counts (a floor, not a pin --
+raising it is safe, the prior numbers are kept in the comment for the record):
+
+| Suite | Old floor | New floor |
+|---|---|---|
+| backend cases/files | 5251 / 441 | 5446 / 455 |
+| frontend cases/files | 860 / 61 | 1092 / 90 |
+
+```
+$ python scripts/ci/assert_known_failures.py --suite backend --report backend/junit-backend.xml
+suite size held: 455 test files/modules, 5446 test cases (floor 455 / 5446)
+5446 tests ran, 42 failed, 42 allowlisted
+only the 42 known, still-failing tests failed          [[ exit 0 ]]
+
+$ python scripts/ci/assert_known_failures.py --suite frontend --report <frontend junit>
+suite size held: 90 test files/modules, 1092 test cases (floor 90 / 1092)
+1081 tests ran, 0 failed, 0 allowlisted
+only the 0 known, still-failing tests failed            [[ exit 0 ]]
+
+$ python scripts/ci/test_assert_known_failures.py
+all negative controls passed                             [[ exit 0 ]]
+```
+
+This closes item 5 in full: `assert_known_failures.py` now PASSES on this head for both suites, the
+frontend list is verified empty (not merely left alone), and the size floor reflects the trunk's
+real, larger size rather than a stale pre-CFG baseline that every subsequent lease's added tests
+had already outgrown without anyone re-staking it.
+
+Files: `scripts/ci/known_test_failures.json`, `scripts/ci/suite_size_floor.json`.

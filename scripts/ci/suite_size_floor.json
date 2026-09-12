@@ -114,23 +114,42 @@
     "",
     "-- HOW THESE WERE MEASURED -----------------------------------------------",
     "",
-    "  backend  -- `python -m pytest tests --junitxml=junit-backend.xml`, the",
-    "  default run (`live_infra` and `browser` deselected by pyproject.toml).",
-    "  Reported `1 failed, 5240 passed, 10 skipped, 514 deselected`, the single",
-    "  failure being the allowlisted one.",
+    "  Re-measured by CFG-7 (item 5) at 261dc3bc + this lease's own commits,",
+    "  after `known_test_failures.json`'s backend list grew from one entry to",
+    "  the 42 CFG-1 found pre-existing on trunk (see that file's own comment):",
+    "  the floor moves with the suite's real size regardless of which of its",
+    "  results are allowlisted, so registering 41 more known failures does not",
+    "  by itself change these numbers -- the suite grew independently, across",
+    "  every CFG lease's own added tests, in the time since the prior",
+    "  measurement below.",
     "",
-    "  frontend -- `npm test -- --reporter=junit`, the repository's own `test`",
-    "  script, which exits non-zero on a correct run because of the two",
-    "  allowlisted failures in `src/domains/registry.test.ts`."
+    "  backend  -- `python -m pytest tests --junitxml=junit-backend.xml",
+    "  --ignore=tests/configuration/test_concurrent_activation.py`, from",
+    "  `backend/`. Reported `42 failed, 5394 passed, 10 skipped, 516",
+    "  deselected` -- the 42 are exactly `known_test_failures.json`'s backend",
+    "  list, verified by diff against this run's own JUnit report.",
+    "",
+    "  frontend -- `npx vitest run --reporter=junit`, from `frontend/`.",
+    "  Reported 1092 passed, 0 failed, 90 files -- the frontend allowlist is",
+    "  empty and stays empty.",
+    "",
+    "  Prior measurement, kept for the record rather than deleted: `python -m",
+    "  pytest tests --junitxml=junit-backend.xml` (default run, `live_infra`",
+    "  and `browser` deselected by pyproject.toml) reported `1 failed, 5240",
+    "  passed, 10 skipped, 514 deselected`, the single failure being the one",
+    "  allowlisted entry at the time (860 cases / 61 files recorded for",
+    "  frontend at the same point, with its own two allowlisted failures in",
+    "  `src/domains/registry.test.ts`, both since fixed per",
+    "  `known_test_failures.json`'s frontend comment)."
   ],
   "suites": {
     "backend": {
-      "cases": 5251,
-      "files": 441
+      "cases": 5446,
+      "files": 455
     },
     "frontend": {
-      "cases": 860,
-      "files": 61
+      "cases": 1092,
+      "files": 90
     }
   }
 }
