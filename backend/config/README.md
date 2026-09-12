@@ -4,38 +4,46 @@ Canonical, manifest-driven configuration for the unified return platform (design
 `return_platform/configuration/README.md` for how this directory is loaded, validated, and
 resolved into a `RuntimeSnapshot`.
 
-## manifest.yaml
+## manifest.yaml (CFG-5b: read by nothing)
 
-The single authoritative index. `schema_version` must be one of
-`configuration/application/loader.py::SUPPORTED_MANIFEST_SCHEMA_VERSIONS` (currently `"2.0"`
-only); anything else fails startup rather than silently loading as the current version.
-`release_id` and `status` (`DRAFT`/`VALIDATED`/`APPROVED`/`ACTIVE`/`SUPERSEDED`) describe the
-manifest's own release. `modules` maps every manifest ID to a `path` relative to this directory —
-**a YAML file under this tree that is not listed here is never loaded**, regardless of its
-contents; there is no directory globbing anywhere in the loader.
+`configuration/application/loader.py::ConfigurationLoader` -- the only thing that ever read this
+file -- is deleted as of CFG-5b. The Agents editing API was its last consumer: agent modules used
+to live under `agents/`, one file per manifest entry, edited through the loader; CFG-5's own
+research (`.plan/tracks/CFG.ledger.md` step:05) traced every runtime consumer of that system and
+found none outside the editing API itself -- `AgentRegistry.build()` and every agent class read
+only the live `RETURN_PLATFORM.agents["<id>"]` section (`returns/agents.yaml`, composed into the
+release), never a manifest module. `workflow.return_session`, `sync.order_partial`,
+`sync.order_full`, `source.sales_inv`, `mapping.sales_inv_order` and `graph.order_discovery` were
+already loaded by nothing at all before CFG-5b (CFG-5's grep found zero consumers), and are deleted
+with their target files (`workflows/`, `sync/`, `sources/`, `mappings/sales_inv_order.yaml`,
+`graph/order_discovery.yaml`).
 
-## Module document shape
+`manifest.yaml` itself is kept, trimmed to its one remaining entry
+(`platform.system_store`), rather than deleted outright -- see the file's own header comment for
+why: that entry was *already* inert before CFG-5b (`platform/system_store/manifest_loader.py`
+reads `platform/system_store.yaml` directly through `Settings.system_store_manifest_path`, never
+through this manifest), so keeping or deleting the file decides nothing about any live code path
+either way, and deleting `platform/system_store/manifest_loader.py` itself is outside this lease.
 
-Every file referenced from `manifest.yaml` is a module document with these top-level keys:
+## Module document shape (historical -- no live loader reads this shape any more)
+
+Before CFG-5b, every file referenced from `manifest.yaml` was a module document with these
+top-level keys, enforced by the now-deleted `ConfigurationLoader`:
 
 | Key | Required | Meaning |
 |---|---|---|
-| `module_id` | yes | Must equal the manifest key that references this file. |
-| `module_type` | yes | Must match the manifest key's prefix (`agent.*` → `AGENT`, `policy.*` → `POLICY`, `workflow.*` → `WORKFLOW`, `sync.*` → `SYNC`, `source.*` → `SOURCE`, `mapping.*` → `MAPPING`, `graph.*` → `GRAPH`, `platform.*` → `PLATFORM`, `integration.*` → `INTEGRATION`). |
-| `schema_version` | no | Version of this module's own payload shape. |
-| `configuration_version` | no | Version of this module's configuration content. |
-| `owner` | no | Team or system responsible for this module. |
+| `module_id` | yes | Had to equal the manifest key that referenced the file. |
+| `module_type` | yes | Had to match the manifest key's prefix (`agent.*` → `AGENT`, `policy.*` → `POLICY`, `workflow.*` → `WORKFLOW`, `sync.*` → `SYNC`, `source.*` → `SOURCE`, `mapping.*` → `MAPPING`, `graph.*` → `GRAPH`, `platform.*` → `PLATFORM`, `integration.*` → `INTEGRATION`). |
+| `schema_version` | no | Version of the module's own payload shape. |
+| `configuration_version` | no | Version of the module's configuration content. |
+| `owner` | no | Team or system responsible for the module. |
 | `status` | no | Free-text lifecycle status for the module document itself. |
-| `dependencies` | no | List of `{module_id, version_constraint}`, for documentation purposes only — `ConfigurationLoader` (the only loader left; see below) does not resolve or validate this field. |
+| `dependencies` | no | List of `{module_id, version_constraint}`, documentation only -- never resolved or validated by any loader. |
 | `payload` | module-type-dependent | Module-specific content. |
 
-Which directory holds which `module_type` (`AGENT` → `agents/`, `WORKFLOW` → `workflows/`,
-`SOURCE` → `sources/`, `GRAPH` → `graph/`/`dynamic_knowledge/`, `MAPPING` → `mappings/`,
-`SYNC` → `sync/`, `PLATFORM` → `platform/`) is enforced structurally by `ConfigurationLoader`
-(manifest ID prefix must match the document's `module_type`). Routing a loaded module's `payload`
-into a canonical per-domain model (`AgentsConfig`, `SourcesConfig`, `GraphConfig`, …) was
-`application/compatibility.py::LegacyCompatibilityAdapter`'s job; that translation path was
-retired in CFG-1 (see below) because no process ever constructed it.
+Routing a loaded module's `payload` into a canonical per-domain model (`AgentsConfig`,
+`SourcesConfig`, `GraphConfig`, …) was `application/compatibility.py::LegacyCompatibilityAdapter`'s
+job; that translation path was retired in CFG-1 (see below) because no process ever constructed it.
 
 ## What actually runs (audited 2026-09-11)
 
@@ -92,8 +100,10 @@ both accept a file (today's single-document shape, unchanged) or a directory; no
 
 ## Directories
 
-- `agents/`, `workflows/`, `sync/`, `sources/`, `mappings/`, `graph/`, `platform/` —
-  one file per manifest entry, named after the module.
+- `platform/` — one file per manifest entry, named after the module (`system_store.yaml`, read
+  directly by `Settings.system_store_manifest_path` rather than through `manifest.yaml` -- see
+  above). `agents/`, `workflows/`, `sync/`, `sources/`, `mappings/`, `graph/` are gone (CFG-5b);
+  see "Removed as dead" below.
 - `dynamic_knowledge/` — Dynamic Knowledge schemas. A schema here is only authoritative if a
   `GRAPH` module in `manifest.yaml` points at it; an unreferenced file in this directory is never
   loaded, even though the directory also holds files like `active-schema.example.yaml` that exist
@@ -104,21 +114,30 @@ both accept a file (today's single-document shape, unchanged) or a directory; no
 - `schema_registry.yaml`, `data_assets.yaml`, `dependency_simulation.yaml` — governance and
   dependency-simulation inputs consumed directly by `Settings`, independent of the manifest.
 
-## Adding a module
+## Adding a business key
 
-1. Write the module document under the directory matching its type, with `module_id` equal to the
-   manifest key you intend to use and `module_type` matching that key's prefix.
-2. Add the manifest entry in `manifest.yaml` pointing at the file's path (relative to this
-   directory).
-3. If the module depends on another, list it under `dependencies` for documentation purposes --
-   nothing validates it at load time (see `return_platform/configuration/README.md`).
-4. Run the configuration test suite (`backend/tests/configuration/`) against the real files in
-   this directory.
+There is no longer a manifest module system to add an entry to (see above). A new
+`RETURN_PLATFORM`-level key (an agent included) is a new key of the composed `returns/` directory
+-- add or extend the relevant part file, update `returns/index.yaml` if it is a new part, add the
+model field on `ReturnPlatformConfiguration` (`configuration/return_configuration.py`), and run the
+configuration test suite (`backend/tests/configuration/`) against the real files in this directory.
 
-## Removed as dead (CFG-1)
+## Removed as dead
 
-`policies/` (four files), `live_validation/data_assets.sampling.yaml`,
+**CFG-1:** `policies/` (four files), `live_validation/data_assets.sampling.yaml`,
 `dynamic_knowledge/internal_manifests/` (four files) and `reasoning.yaml` were named by the target
 design but had zero readers in `backend/src`. They were deleted in CFG-1 (decision D-CFG-1); the
 rule each one described, and where the equivalent live rule is (or that none exists), is recorded
 in `docs/configuration/DEFERRED_DESIGN.md`.
+
+**CFG-5b (D-CFG-1):** the manifest-driven module system -- `configuration/application/loader.py`
+(`ConfigurationLoader`), `agents/` (8 files), `workflows/return_session.yaml`,
+`sync/order_partial.yaml`, `sync/order_full.yaml`, `sources/sales_inv.yaml`,
+`mappings/sales_inv_order.yaml`, `graph/order_discovery.yaml`. The Agents editing API
+(`configuration/api/agents.py`) was the loader's only remaining consumer, and it now reads and
+writes the live `RETURN_PLATFORM.agents` section directly; the six non-agent entries were already
+loaded by nothing -- confirmed by grep and recorded by the CFG-5 implementer
+(`.plan/tracks/CFG.ledger.md`, step:05: "`AgentConfigurationService._packaged()` filters to
+`module_type == "AGENT"` only, and nothing else reads the manifest"), re-confirmed here (`grep
+-rn "workflow.return_session\|sync\.order_\|source\.sales_inv\|mapping\.sales_inv_order\|graph\.order_discovery" backend/src backend/tests` -- zero hits) before deletion. `manifest.yaml` is
+kept, trimmed to its one remaining (already-inert) entry -- see the file's own header comment.

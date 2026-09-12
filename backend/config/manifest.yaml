@@ -1,38 +1,19 @@
 schema_version: "2.0"
 release_id: returns-platform-v2-baseline
-# The packaged baseline is what every process boots from, so it is a release and
-# not a draft. It said DRAFT while the runtime loaded it regardless, which meant
-# the one field that could have distinguished "finished" from "someone is still
-# editing this" carried no weight anywhere.
+# CFG-5b: `configuration/application/loader.py` (`ConfigurationLoader`) was
+# deleted -- the agent modules below were its last consumer, and nothing else
+# in `backend/src` or `backend/tests` ever instantiated it (CFG-5's own
+# research, `.plan/tracks/CFG.ledger.md`, step:05). This file is therefore
+# read by nothing any more: `platform.system_store` below was ALREADY not
+# loaded through this manifest before CFG-5b -- `platform/system_store/
+# manifest_loader.py::load_system_store_config` reads
+# `Settings.system_store_manifest_path` (`backend/config/platform/
+# system_store.yaml`) directly, never this file (see `configuration/
+# README.md`, "Precedence"). Kept as a historical index of that one entry
+# rather than deleted outright, since deleting it decides nothing about
+# `platform/system_store/manifest_loader.py` itself, which is outside this
+# lease's Owns.
 status: ACTIVE
 modules:
-  agent.return_session_orchestrator:
-    path: agents/return_session_orchestrator.yaml
-  agent.order_discovery:
-    path: agents/order_discovery.yaml
-  agent.order_analysis:
-    path: agents/order_analysis.yaml
-  agent.return_workflow:
-    path: agents/return_workflow.yaml
-  agent.return_fulfillment:
-    path: agents/return_fulfillment.yaml
-  agent.bay_allocation:
-    path: agents/bay_allocation.yaml
-  agent.learning:
-    path: agents/learning.yaml
-  agent.graph_schema_design:
-    path: agents/graph_schema_design.yaml
-  workflow.return_session:
-    path: workflows/return_session.yaml
-  sync.order_partial:
-    path: sync/order_partial.yaml
-  sync.order_full:
-    path: sync/order_full.yaml
-  source.sales_inv:
-    path: sources/sales_inv.yaml
-  mapping.sales_inv_order:
-    path: mappings/sales_inv_order.yaml
-  graph.order_discovery:
-    path: graph/order_discovery.yaml
   platform.system_store:
     path: platform/system_store.yaml

@@ -30,18 +30,23 @@ fallback when no release exists (development only); once a release exists the
 graph wins and editing a packaged file changes nothing running until the
 bootstrap carries the change forward. `Settings` (environment) supplies only
 deployment values -- hosts, credentials, provider order and model pools, feature
-switches read at process start -- and never overrides a release domain. The
-manifest modules under `config/agents/`, `workflows/`, `sync/`,
-`sources/`, `mappings/`, `graph/` are read structurally by the Agents editing
-API and by nothing at runtime; `platform/system_store.yaml` is read by its own
-loader in `platform/system_store/manifest_loader.py`. (The
-`loader.py` → `compatibility.py` → `RuntimeSnapshot` → `precedence.py`
-manifest-translation path this paragraph used to describe as "test-only,
-exercised only by `tests/configuration/`" was retired in CFG-1 --
+switches read at process start -- and never overrides a release domain.
+`platform/system_store.yaml` is read by its own loader in
+`platform/system_store/manifest_loader.py`, driven by its own
+`Settings.system_store_manifest_path` -- never through `backend/config/
+manifest.yaml`. (The `loader.py` → `compatibility.py` → `RuntimeSnapshot` →
+`precedence.py` manifest-translation path this paragraph used to describe as
+"test-only, exercised only by `tests/configuration/`" was retired in CFG-1 --
 `compatibility.py`, `precedence.py`, `adapters.py` and `validator.py` are
 gone, since nothing outside their own tests constructed them.
-`loader.py`/`ConfigurationLoader` stays because the Agents editing API still
-uses it directly.)
+**CFG-5b retired `application/loader.py`/`ConfigurationLoader` itself.** The
+Agents editing API was its last consumer -- an agent's document is now read
+and validated directly against `AgentConfiguration`
+(`configuration/return_configuration.py`), off the live
+`RETURN_PLATFORM.agents` section of the active release, the same as every
+other business key. `backend/config/manifest.yaml` and the manifest modules
+that used to live under `config/agents/`, `workflows/`, `sync/`, `sources/`,
+`mappings/`, `graph/` are gone with it -- see `backend/config/README.md`.)
 
 **Carry-forward.** The bootstrap decides, per top-level key of `RETURN_PLATFORM`
 and per unit of the other two domains (one AI task, one simulated dependency),
@@ -63,13 +68,14 @@ live carry-forward path above, not by a separate evaluator — `application/prec
 implemented this rule only for the retired manifest-translation path below, was retired in CFG-1
 along with it.
 
-`backend/config/manifest.yaml` is authoritative for which YAML files under `backend/config/` are
-active configuration — `application/loader.py::ConfigurationLoader` never globs a directory to
-discover files; see `backend/config/README.md` for the full manifest and module-document rules.
-`ConfigurationLoader` stays because the Agents editing API (`application/agent_configuration.py`)
-uses it directly to load agent module documents. Its former consumer for a full canonical
-`RuntimeSnapshot` -- `application/compatibility.py::LegacyCompatibilityAdapter`, plus the semantic
-checks in `application/validator.py::ConfigurationValidator` (dependency-graph acyclicity, reverse
+`backend/config/manifest.yaml` is read by nothing as of CFG-5b -- see `backend/config/README.md`
+for what it still records and why it was not deleted outright. `application/loader.py::
+ConfigurationLoader`, which never globbed a directory to discover files, is deleted along with its
+last consumer, the Agents editing API (`application/agent_configuration.py`), which now reads and
+validates an agent's document directly off the live `RETURN_PLATFORM.agents` section against
+`AgentConfiguration`. Its other former consumer for a full canonical `RuntimeSnapshot` --
+`application/compatibility.py::LegacyCompatibilityAdapter`, plus the semantic checks in
+`application/validator.py::ConfigurationValidator` (dependency-graph acyclicity, reverse
 completeness, AI route/task/provider refs, etc.) -- was exercised only by
 `tests/configuration/test_canonical_application.py`, which no process ever constructed; both were
 retired in CFG-1.
