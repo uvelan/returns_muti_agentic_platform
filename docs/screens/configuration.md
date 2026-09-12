@@ -1,8 +1,12 @@
 # Configuration
 
 **Route** `/config` · **Capability** `config.runtime.read` ·
-**Components** `frontend/src/domains/config/ConfigurationPage.tsx`,
-`AgentsSection.tsx`, `JsonView.tsx`
+**Components** `frontend/src/domains/config/ConfigurationPage.tsx` (the shared
+chrome), `TypedSectionScreen.tsx` (the typed-form/Advanced-JSON toggle every
+section below rides), one `*Section.tsx` per row of the table, the shared
+primitives in `frontend/src/components/forms/*`, and `DocumentEditor.tsx` (the
+Advanced/JSON mode, kept as the escape hatch for a shape the typed form does
+not cover — never the default any more).
 
 ## Purpose
 
@@ -10,22 +14,60 @@ Change how the platform behaves, and release the change safely.
 
 ## Sections
 
-`/config/{slug}`, from `CONFIG_SECTIONS`:
+`/config/{slug}`, from `CONFIG_SECTIONS` (`frontend/src/domains/registry.ts`) —
+this is the CFG-4/5/6/8 typed-screen set, current as of CFG-7; there is no
+longer a single generic "Business" tab (retired by CFG-5 once every section it
+carried had a typed screen of its own):
 
-| Section | Shows |
-|---|---|
-| Overview | The active release, head revision, checksum, source |
-| Agents | Per-agent configuration — `AgentsSection` |
-| Runtime | The resolved runtime configuration this process is serving |
-| Releases | Release history, diff, promote |
-| Integrations | Integration topics and their authorities |
-| Business | Return policy, business calendars, timings |
-| Modules | Registered module descriptors and their state |
-| Security | Capability and role configuration |
-| Audit | Who changed what, and when |
+| Section | Slug | Shows |
+|---|---|---|
+| Overview | `overview` | The active release, head revision, checksum, source, adoption status, and the **undecided-keys panel** (below) |
+| Agents | `agents` | The live `agents:` block as a typed table (enabled, AI-assisted, route ref); the proposal path is shown inline |
+| Support | `support` | Six tabs over six keys: Template (with preview), Gate, Ingress, Resolver, Context assembly, Queues |
+| Discovery | `discovery` | Identification fields, aliases, source paths, clarification policy, selection vocabulary |
+| Return Policy | `return-policy` | Return method derivation, ship-via map, requirements matrix |
+| Policy | `policy` | Eligibility: the policy-evaluation switch, defaults for all products, exceptions, precedence, and a decision preview (`POST /api/config/policy/preview` against the **draft**, never a real case) |
+| Fulfilment | `fulfilment` | Shipment status ladder, bay rules, order-management rules |
+| Deployment | `deployment` | The env→release business switches (below) |
+| Workflow | `workflow` | Stage sequence and SLAs, waits/timeouts, business calendars, housekeeping |
+| Runtime | `runtime` | The resolved runtime configuration this process is serving |
+| Releases | `releases` | Release history, diff, promote |
+| Integrations | `integrations` | Integration topics and their authorities, copilot settings, fabrication-guard switches |
+| Simulation | `simulation` | `DEPENDENCY_SIMULATION`: enabled, banner, AI narration, dependencies table |
+| Source Bindings | `source-bindings` | Source-binding overrides and the sync trigger/run history (moved here from `/sync` by CFG-5; `/sync` still redirects) |
+| Modules | `modules` | Registered module descriptors and their state |
+| Security | `security` | Capability and role configuration |
+| Audit | `audit` | Who changed what, and when |
 
-**"Data Sources" is deliberately absent** from this list and is its own domain.
+**"Data Sources" is deliberately absent** from this list and is its own domain
+(the Graph Schema Analyzer's connections, not this domain's Source Bindings).
 See [`data-sources.md`](data-sources.md).
+
+## The `deployment` section (D-CFG-4, CFG-6)
+
+Eight business switches that used to live only in `.env`/compose now live in
+the release, at `deployment`, hot-adopted like everything else in this table:
+AI provider order, per-provider model pools, the two GOOGLE extras, the four
+dependency-simulation modes, feedback learning, and the support-ticket
+mode/base URL. Every option production refuses to run (`SIMULATOR`/`MANUAL` in
+provider order, a `SIMULATED` dependency mode) renders **disabled with the
+reason on the option**, not hidden — and the same refusal is enforced on
+**every** `RETURN_PLATFORM` publish or adopt-packaged call, not only one that
+touches `deployment` itself, plus again at process startup. Full detail,
+including the env-as-bootstrap-default rule and the `runtime_integrations`
+precedence: [`../configuration/families.md`](../configuration/families.md).
+
+## Undecided keys and `--adopt-packaged-key`
+
+The bootstrap decides, per top-level `RETURN_PLATFORM` key and per unit of the
+other two domains, whether a value in the active release was an operator's
+edit or merely predates a change to the packaged file. A key it cannot decide
+is **undecided**: named in a `packaged_configuration_not_adopted` warning, and
+listed on the Overview section with a per-key **"Take packaged file"** action
+that calls `POST /api/config/adopt-packaged` for that one unit — the UI path
+onto the same per-unit adoption the bootstrap's own `--adopt-packaged-key` CLI
+flag performs. Detail: `return_platform/configuration/README.md`
+("Carry-forward").
 
 ## Key/value ↔ raw JSON consistency
 
@@ -105,6 +147,19 @@ read capability that makes the domain visible.
 | `GET` | `/api/agents`, `/api/agents/{manifest_id}` |
 | `PUT` | `/api/agents/{manifest_id}` |
 | `GET` | `/api/principal` |
+| `POST` | `/api/config/validate/{domain_key}` — path-mapped validation errors, used by every typed screen's Validate action (CFG-3a) |
+| `POST` | `/api/config/publish` — open-from-active, patch, VALIDATED, RELEASED in one call, `expected_head_revision`-locked (CFG-3a); the pipeline every typed screen's Publish action drives |
+| `POST` | `/api/config/adopt-packaged` — per-unit undecided-key adoption (Overview's "Take packaged file", and the bootstrap's `--adopt-packaged-key`) |
+| `GET` | `/api/config/packaged/{domain_key}` — the packaged baseline, for "Reset to packaged default" links |
+| `GET` | `/api/config/packaged-drift` |
+| `POST` | `/api/config/policy/preview` — evaluates a sample against the **draft**, never a real case (Policy section) |
+
+Every other typed section (Discovery, Return Policy, Fulfilment, Deployment,
+Workflow, Support, Integrations, Simulation, Source Bindings) rides the same
+three routes above (`validate`, `publish`, its own `runtime` slice) rather than
+a section-specific endpoint; see each section's own `*Section.tsx` for the
+`domainKey`/patch paths it edits, or the committed OpenAPI document for the
+full route list.
 
 ## Live-state behaviour
 
@@ -156,10 +211,10 @@ This screen *is* the configuration surface, so its dependencies are structural:
 
 | Dependency | Effect |
 |---|---|
-| `RETURN_PLATFORM` domain | Agents, discovery, workflow, policy, integrations, calendars |
+| `RETURN_PLATFORM` domain | Agents, discovery, workflow, policy, integrations, calendars, and (CFG-6) `deployment` — the business switches, editable at `/config/deployment` |
 | `AI_GATEWAY` domain | Prompts, providers, limits, retries, breakers |
 | `DEPENDENCY_SIMULATION` domain | Simulator contracts and behaviour |
-| Deployment wiring, DB schema, graph migrations | **Not editable here** — they are infrastructure contracts, version-controlled, not agent behaviour |
+| Infrastructure deployment wiring (hosts, ports, compose/k8s), DB schema, graph migrations | **Not editable here** — version-controlled infrastructure contracts, not business behaviour. Do not confuse with the release's own `deployment` section above, which CFG-6 moved out of `.env` precisely so it *would* be editable here. |
 
 Production and staging **fail closed** when `AI_GATEWAY` or
 `DEPENDENCY_SIMULATION` is absent from the active release.

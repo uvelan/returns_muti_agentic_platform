@@ -261,9 +261,13 @@ api_matrix = [
 configuration_matrix = [
     {"Configuration": path, "Consumed by": symbol, "Validation": validation, "Snapshot/digest": digest, "Classification": status, "Gap": gap}
     for path, symbol, validation, digest, status, gap in [
-        ("backend/config/returns/production.yaml", "load_return_configuration; agents; services", "Strict Pydantic", "Persisted return_configuration_snapshots", SOURCE, "Graph freshness and full heavy-equipment policy missing."),
+        # CFG-2 split both single files into directories composed by
+        # `composition.py::compose_configuration_document` from an
+        # `index.yaml` (`backend/config/README.md`, "Composed directories");
+        # `production.yaml` and `ai_gateway.yaml` no longer exist on disk.
+        ("backend/config/returns/ (index.yaml + parts)", "load_return_configuration; agents; services", "Strict Pydantic", "Persisted return_configuration_snapshots", SOURCE, "Graph freshness and full heavy-equipment policy missing."),
         ("backend/config/dependency_simulation.yaml", "DependencySimulationService", "Strict Pydantic + required dependencies", "SHA logged", PARTIAL, "OMC SET_RETURN_METHOD absent; parcel milestones differ."),
-        ("backend/config/ai_gateway.yaml", "AIGatewayService/AIRoutePool", "Strict task/limit config", "SHA logged", SOURCE, "Task/session/user limits not modeled."),
+        ("backend/config/ai_gateway/ (index.yaml + tasks/)", "AIGatewayService/AIRoutePool", "Strict task/limit config", "SHA logged", SOURCE, "Task/session/user limits not modeled."),
         ("backend/src/return_platform/configuration/settings.py", "Application startup", "Pydantic validators and production simulation guard", "Indirect environment snapshot", SOURCE, "Legacy single key/model fields coexist with list path."),
         ("compose.yaml", "Compose topology", "docker compose config", "Image/source state only", PARTIAL, "Single configurable SQL credential spans platform tables and potential generic write service."),
     ]

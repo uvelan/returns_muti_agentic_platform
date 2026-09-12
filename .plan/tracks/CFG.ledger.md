@@ -5277,3 +5277,44 @@ real, larger size rather than a stale pre-CFG baseline that every subsequent lea
 had already outgrown without anyone re-staking it.
 
 Files: `scripts/ci/known_test_failures.json`, `scripts/ci/suite_size_floor.json`.
+
+## CFG-7 step:07 — docs (item 6)
+
+`docs/screens/configuration.md` was the most stale surface: it predated CFG-4/5/6/8 entirely --
+the "Sections" table still listed a generic `Business` tab (retired by CFG-5), named no typed
+screen (`/config/discovery`, `/config/return-policy`, `/config/policy`, `/config/fulfilment`,
+`/config/deployment`, `/config/workflow`, `/config/support`'s six tabs, `/config/simulation`,
+`/config/source-bindings`), and its "Configuration dependencies" table flatly said "Deployment
+wiring ... Not editable here", which CFG-6 made false for the release's own `deployment` section.
+Rewritten: the Sections table now matches `CONFIG_SECTIONS` (`frontend/src/domains/registry.ts`)
+exactly, slug included; new "The `deployment` section" and "Undecided keys and
+`--adopt-packaged-key`" subsections (pointing at `families.md` and the backend README for detail
+rather than duplicating it); the dependencies table corrected to distinguish the release's
+`deployment` (editable here, CFG-6) from infrastructure deployment wiring (not editable, unchanged);
+"Backend APIs consumed" gains the CFG-3a pipeline (`validate/{domain_key}`, `publish`,
+`adopt-packaged`, `packaged/{domain_key}`, `packaged-drift`) and `policy/preview`, with a note that
+every other typed section rides the same three routes rather than a section-specific one --
+documenting all seventeen sections' full API surfaces individually was judged out of this step's
+proportion (a multi-hour undertaking on its own) against items 1 and 7 still open; the OpenAPI
+document is named as the complete reference instead.
+
+`docs/README.md`'s Configuration section gains a link to `configuration/DEFERRED_DESIGN.md`
+(D-CFG-1's rule-by-rule record, previously linked from nowhere in `docs/`) and a pointer to the two
+module READMEs as the authority on the packaged directory layout, rather than leaving this file as
+the only place the split-directory shape was described.
+
+`docs/evidence/stage4o_complete_audit/generate_audit_artifacts.py:262,264` (the audit's own
+`configuration_matrix`) named `backend/config/returns/production.yaml` and
+`backend/config/ai_gateway.yaml` -- both deleted by CFG-2's directory split. Repointed at
+`backend/config/returns/ (index.yaml + parts)` and `backend/config/ai_gateway/ (index.yaml +
+tasks/)`, with a comment naming the split and its own README section.
+
+Verified already current, no change needed: `backend/config/README.md` and
+`backend/src/return_platform/configuration/README.md` already document the split directories
+(CFG-2's "Composed directories" section), the three release domains, the `deployment` section and
+`--adopt-packaged-key`/carry-forward workflow -- all added by the leases that did that work.
+`.env.example` already carries a CFG-6 comment on every one of the eight migrated switches naming
+`/config/deployment` as authoritative once a release exists.
+
+Files: `docs/screens/configuration.md`, `docs/README.md`,
+`docs/evidence/stage4o_complete_audit/generate_audit_artifacts.py`.
