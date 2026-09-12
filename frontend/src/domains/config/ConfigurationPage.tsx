@@ -16,6 +16,7 @@ import { DiscoverySection } from "./DiscoverySection";
 import { FulfilmentSection } from "./FulfilmentSection";
 import { IntegrationsSection } from "./IntegrationsSection";
 import { OverviewSection } from "./OverviewSection";
+import { PolicySection } from "./PolicySection";
 import { ReturnPolicySection } from "./ReturnPolicySection";
 import { SimulationSection } from "./SimulationSection";
 import { SupportSection } from "./SupportSection";
@@ -147,6 +148,8 @@ function TabBody({ tab, canReadReleases }: { tab: Tab; canReadReleases: boolean 
       return <DiscoverySection />;
     case "Return Policy":
       return <ReturnPolicySection />;
+    case "Policy":
+      return <PolicySection />;
     case "Fulfilment":
       return <FulfilmentSection />;
     case "Deployment":

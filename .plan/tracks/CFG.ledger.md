@@ -4189,3 +4189,80 @@ $ npx vitest run src/mocks/handlers/canonicalHandlers.contract.test.ts
 Test Files  1 passed (1)
      Tests  77 passed (77)
 ```
+
+## CFG-8 step:04 — PolicySection.tsx, blocks 1-7 (items 4 and 5, one file)
+
+Built as one component file rather than two commits: block 7 (the preview panel) reads `draft`
+from the same `renderTyped` closure blocks 1-6 already destructure, and splitting the file
+mid-write would have meant either a temporary unused prop or a second pass through every block
+above it to wire the panel in. `PolicySection.tsx` (new) + `PolicySection.test.tsx` (new, 9
+tests), `ConfigurationPage.tsx` wired (`case "Policy": return <PolicySection />;`).
+
+**Block 1**, policy evaluation: `Toggle` bound to `policy_evaluation.enabled`, reason required off
+(the existing `Toggle`/`reasonField` mechanism, unchanged). The two sentences use the corrected
+copy from step:00 -- on: "Every return is judged..."; off: "...carries `policy_evaluation_state =
+SKIPPED_BY_CONFIGURATION`, with the stated reason attached as `policy_evaluation_skip_reason`."
+
+**Block 2**, defaults for all products: `NumberField` (days, `min={1}` from
+`PurchaseWindowConfiguration`'s own `ge=1` -- the brief's draft text said "min 0", the model says
+1, the model wins), `EnumSelect` basis, decision-when-satisfied (`APPROVE` forbidden hint carried
+from `ReturnPolicySection`'s own wording), `unstated_condition_facts` (hint states both branches'
+actual consequence, including that `NOT_EVALUATED` carries `CONDITION_FACTS_NOT_EVALUATED` -- the
+one place that rule name *does* belong on this screen), `conditions` (`TagListInput` with
+`PolicyCondition`'s four values as `suggestions` -- `TagListInput` has no strict-enum mode, so
+"limited to the model's enum" is enforced the same way `ReturnPolicySection`'s reason/warranty tag
+lists already enforce it: suggested here, refused server-side on `/validate`/`/publish` if wrong).
+Each of the five fields gets a "Reset to packaged default" link, visible only when the current
+value differs from `GET /api/config/packaged/RETURN_PLATFORM`'s own value (a `useQuery` inside
+`PolicyEditor`, independent of the loaded/draft state).
+
+**Block 3**, what the item must be: `Toggle` rows for the five condition facts and eight
+prohibited-state facts (`StandardStockRequirements.condition`/`.prohibited_states`, every hint
+naming the field's *actual* meaning -- a prohibited-state field is "the value this fact must hold",
+not a forbid switch, so a prohibited toggle turned on reads "required to be true -- unusual" rather
+than implying the opposite of what the model does), plus `seller_stocked`/`special_order` flags.
+
+**Block 4**, outside the window (`EnumSelect`, REJECT/REVIEW_REQUIRED only -- `OutsideStandardWindowConfiguration`
+forbids APPROVE) and restocking fee: `applies_by_default`/`seller_can_waive` `Toggle`s,
+`amount_source` as an `OrderedList` (reorder only, matching `OrderedList`'s own capability and
+`ReturnPolicySection`'s `precedence` precedent -- no add/remove control exists on this primitive),
+`percentage`/`amount` as read-only "not published by Ferguson" text (the model types both `None`),
+`seller_schedule` as a `KeyValueTable` -- `valueKind="string"` throughout with the numeric
+`default_rate_basis_points` converted at the read/write boundary rather than stored as a raw
+number in an entry `ValueControl`'s string branch would otherwise render as `""` (a real bug in an
+early draft, fixed before this commit).
+
+**Block 5**, exceptions: `stock_classification` (`unresolved_default` `EnumSelect`, three
+`TagListInput`s), `special_or_nonstock` (new to a typed screen -- `ReturnPolicySection` rendered no
+control for it; `buyer_fee_acceptance_required` `Toggle`, the five `SpecialOrderDecisions`
+`EnumSelect`s, and a note that `manufacturer_acceptance_required` cannot be disabled), then
+`delivery_claim`/`warranty_issue` moved from `ReturnPolicySection` unchanged in behaviour.
+
+**Block 6**, precedence: the same `OrderedList` `ReturnPolicySection` rendered, moved here with its
+description carried over ("FERGUSON_STANDARD_RETURN is the platform's own fallback and must be
+last").
+
+**Block 7**, preview: a local form (days since purchase, stock classification, the same thirteen
+checklist names as tri-state radio groups, an optional reason), an `Evaluate` button calling
+`configApi.previewPolicy` with `draft.return_eligibility_policy`/`draft.policy_evaluation` (the
+**draft**, read directly off `renderTyped`'s own `draft` prop -- never `loaded`), rendering
+decision/route/conditions/applied rules/unanswered checks, or the disabled-gate state when
+`evaluation_enabled` is false.
+
+`PolicySection.test.tsx` (9 tests): loads the slice; toggling evaluation off requires a reason and
+shows the corrected copy, Validate maps a 422 onto `policy_evaluation.enabled`; editing the return
+window produces a patch under `standard_stock_return.purchase_window.days`; "Reset to packaged
+default" sets 30/PURCHASE_DATE back and the patch empties (`DiffPreview`'s own "Nothing changed");
+Evaluate sends the **draft's** edited value (45), not the loaded one (30) -- the one assertion the
+brief specifically calls out; Publish disabled without `config.release.promote`; every typed field
+disabled and the read-only notice shown without `config.release.write`; a refused Publish shows the
+error and keeps the draft; a 422 from Validate maps onto the return-window field.
+
+```
+$ npx vitest run src/domains/config/PolicySection.test.tsx
+Test Files  1 passed (1)
+     Tests  9 passed (9)
+
+$ npm run typecheck && npm run lint
+(clean, exit 0 both)
+```
