@@ -5154,3 +5154,33 @@ Files: `frontend/src/main.tsx`, `frontend/src/mocks/handlers/canonicalHandlers.t
 
 Remaining from item 2/4: none identified beyond the pre-existing F10/H5 flake (not this lease's to
 fix, tracked against the sweep's own owner per CFG-5's disposition). CFG-6 A8 closed.
+
+## CFG-7 step:03 — CFG-6 A6, HTTP-layer test for the production deployment gate's 422
+
+`_enforce_deployment_gate` (`releases.py:438-455`) had model-layer coverage only
+(`tests/configuration/test_deployment_settings.py`'s `validate_deployment_for_environment` tests).
+New test `test_publish_refuses_a_production_deployment_gate_violation_with_a_named_path` in
+`test_configuration_api.py`: mutates `configuration_client`'s `app.state.settings` to
+`environment="production"` via `model_copy` (no need to satisfy every other production-only field
+-- the gate only reads `.environment`), posts `/api/config/publish` with a patch setting
+`deployment.ai.provider_order` to include `SIMULATOR`, and asserts a 422 whose `detail` names
+`deployment.ai.provider_order` with the exact refusal message, plus that no release survives
+(`ARCHIVED` only, same assertion shape as the neighbouring
+`test_publish_refuses_an_invalid_patch_and_leaves_nothing_behind`).
+
+The startup-refusal half of A6 (`main.py:555-565`, `runtime_loader.py:118-128`) is **not** covered
+by an HTTP/process-level test this step: both are inline `try`/`except` blocks inside a real
+Neo4j-driver-opening startup function (`resolve_process_configuration`,
+`create_app`'s lifespan), not an isolated unit -- reaching them without live infra means either
+mocking `Neo4jConfigurationGraphRepository`/`AsyncGraphDatabase.driver` end to end or refactoring
+the inline block into its own testable function, either of which is a larger change than an
+ADVISORY carries and was not this step's highest-value use of the remaining budget against items 1,
+5 and 6 still open. Carried forward with this reason, same disposition pattern CFG-6's own
+`drop.json.remaining` used for it.
+
+```
+$ pytest tests/test_configuration_api.py -q
+44 passed
+```
+
+Files: `backend/tests/test_configuration_api.py`.
