@@ -39,6 +39,7 @@ export function TypedSectionScreen({
   jsonLabel,
   notObjectMessage,
   renderTyped,
+  renderOutsideFieldset,
 }: {
   kicker: string;
   title: string;
@@ -52,6 +53,22 @@ export function TypedSectionScreen({
   jsonLabel: string;
   notObjectMessage: string;
   renderTyped: (context: {
+    draft: JsonObject;
+    get: (path: readonly (string | number)[]) => Json;
+    set: (path: readonly (string | number)[], value: Json) => void;
+    errorMap: ReadonlyMap<string, string>;
+  }) => ReactNode;
+  /**
+   * CFG-7 A3 (carried from CFG-8): content that reads the same draft/errors
+   * but must stay reachable when `canWrite` is false -- a preview/evaluate
+   * action writes nothing into the draft, so gating it behind the write
+   * `<fieldset disabled>` below withholds a read-only capability
+   * (`config.runtime.read`) from exactly the principal the route was scoped
+   * to allow (`router.py`: "an operator previewing a draft they have not
+   * published yet must not need the write capability a publish would").
+   * Rendered as a sibling of the fieldset, never inside it.
+   */
+  renderOutsideFieldset?: (context: {
     draft: JsonObject;
     get: (path: readonly (string | number)[]) => Json;
     set: (path: readonly (string | number)[], value: Json) => void;
@@ -249,6 +266,9 @@ export function TypedSectionScreen({
           <fieldset disabled={!canWrite} className="flex flex-col gap-4 disabled:opacity-75">
             {renderTyped({ draft, get, set, errorMap })}
           </fieldset>
+          {renderOutsideFieldset !== undefined
+            ? renderOutsideFieldset({ draft, get, set, errorMap })
+            : null}
           <ValidationErrors errors={errors} title="Validation results" />
           <DiffPreview before={loaded} after={draft} title={`${title} changes`} />
           <PublishBar

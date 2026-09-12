@@ -1686,9 +1686,20 @@ function Switch({
   return (
     <label className="inline-flex cursor-pointer items-center gap-2">
       <span className="relative inline-flex h-5 w-9 shrink-0">
+        {/*
+          RV round 1 (CFG-7), A1: the same geometry `Toggle.tsx` carried
+          before step:08 -- `sr-only`'s clip box is pulled outside the switch
+          by its own negative margin, so nothing at the switch's drawn
+          position ever hits the input; here the `<label>` already wraps the
+          graphic (so no mouse user is blocked, unlike the `Toggle.tsx`
+          defect), but a direct click/`role=checkbox` locator -- e.g. a
+          future live spec for /ai/configuration or /ai/providers-models --
+          would intercept identically. Same fix: sized and positioned to
+          exactly cover the switch, hit-testable where it is drawn.
+        */}
         <input
           type="checkbox"
-          className="peer sr-only"
+          className="peer absolute inset-0 z-10 m-0 size-full cursor-pointer appearance-none opacity-0"
           checked={checked}
           onChange={(event) => { onChange(event.target.checked); }}
           aria-label={label}

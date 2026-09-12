@@ -3187,4 +3187,167 @@ export const canonicalHandlers = [
       ),
     );
   }),
+
+  // --- CFG-7 item 4: routes the "warn" onUnhandledRequest setting surfaced,
+  // now handled so the sweep can go back to "error" -----------------------
+
+  // `configApi.adoption()` -- `/config/overview`'s adoption panel. LIVE with
+  // nothing pending, so the panel's steady state renders in `dev:mock`
+  // rather than its "waiting on N process classes" one.
+  http.get("/api/config/adoption", async () => {
+    await delay(60);
+    return HttpResponse.json(
+      envelope(
+        {
+          status: "LIVE",
+          activated_release_id: "rel-mock-1",
+          activated_head_revision: 41,
+          pending_process_classes: [],
+          process_classes: [
+            {
+              process_class: "api",
+              required: true,
+              adopted: true,
+              live_instances: 1,
+              adopted_instances: 1,
+              instances: [
+                {
+                  process_class: "api",
+                  instance_id: "api-mock-1",
+                  release_id: "rel-mock-1",
+                  head_revision: 41,
+                  adopted_at: new Date().toISOString(),
+                  reported_at: new Date().toISOString(),
+                  source: "POLL",
+                },
+              ],
+            },
+          ],
+          evaluated_at: new Date().toISOString(),
+        },
+        "config-adoption",
+      ),
+    );
+  }),
+
+  // `shipmentsApi.catalog()`/`.list()` -- the Shipment Status Console
+  // (`ShipmentConsolePage.tsx`). One status per ladder position, one document
+  // referencing it, so the console's table and its status-driven chip/colour
+  // rendering both have something real to show.
+  http.get("/api/shipment-status-catalog", async () => {
+    await delay(60);
+    return HttpResponse.json(
+      envelope(
+        {
+          statuses: [
+            {
+              code: "LABEL_CREATED",
+              label: "Label created",
+              ladder: "PARCEL",
+              ordinal: 1,
+              terminal: false,
+              exception_state: false,
+              color_token: "info",
+              allowed_next: ["IN_TRANSIT"],
+            },
+            {
+              code: "IN_TRANSIT",
+              label: "In transit",
+              ladder: "PARCEL",
+              ordinal: 2,
+              terminal: false,
+              exception_state: false,
+              color_token: "info",
+              allowed_next: ["DELIVERED", "EXCEPTION"],
+            },
+            {
+              code: "DELIVERED",
+              label: "Delivered",
+              ladder: "PARCEL",
+              ordinal: 3,
+              terminal: true,
+              exception_state: false,
+              color_token: "success",
+              allowed_next: [],
+            },
+            {
+              code: "EXCEPTION",
+              label: "Exception",
+              ladder: "PARCEL",
+              ordinal: 4,
+              terminal: false,
+              exception_state: true,
+              color_token: "error",
+              allowed_next: ["IN_TRANSIT"],
+            },
+          ],
+          initialStatusParcel: "LABEL_CREATED",
+          initialStatusFreight: "LABEL_CREATED",
+          freightMethods: ["LTL", "FTL"],
+        },
+        "shipment-status-catalog",
+      ),
+    );
+  }),
+  http.get("/api/shipments", async () => {
+    await delay(60);
+    return HttpResponse.json(
+      envelope(
+        [
+          {
+            shipment_id: "SHP-MOCK-1",
+            identifier: "SHP-MOCK-1",
+            status: "IN_TRANSIT",
+            method: "PARCEL",
+            carrier: "UPS",
+            tracking_number: "1Z-MOCK-0001",
+            created_at: "2026-08-14T10:20:00Z",
+            updated_at: "2026-08-14T12:00:00Z",
+          },
+        ],
+        "shipments",
+      ),
+    );
+  }),
+  http.get("/api/shipments/:identifier", async ({ params }) => {
+    await delay(60);
+    return HttpResponse.json(
+      envelope(
+        {
+          shipment_id: params.identifier,
+          identifier: params.identifier,
+          status: "IN_TRANSIT",
+          method: "PARCEL",
+          carrier: "UPS",
+          tracking_number: "1Z-MOCK-0001",
+          created_at: "2026-08-14T10:20:00Z",
+          updated_at: "2026-08-14T12:00:00Z",
+        },
+        "shipment",
+      ),
+    );
+  }),
+  // `shipmentsApi.appendEvent` -- a POST, not a GET: it appends one status
+  // event and the current status is recomputed, never a history read.
+  // Mirrors `/api/shipments/:identifier`'s echo shape with the requested
+  // status applied.
+  http.post("/api/shipments/:shipmentId/events", async ({ params, request }) => {
+    await delay(60);
+    const body = (await request.json().catch(() => ({}))) as { status?: string };
+    return HttpResponse.json(
+      envelope(
+        {
+          shipment_id: params.shipmentId,
+          identifier: params.shipmentId,
+          status: body.status ?? "IN_TRANSIT",
+          method: "PARCEL",
+          carrier: "UPS",
+          tracking_number: "1Z-MOCK-0001",
+          created_at: "2026-08-14T10:20:00Z",
+          updated_at: new Date().toISOString(),
+        },
+        "shipment-event-appended",
+      ),
+    );
+  }),
 ];

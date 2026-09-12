@@ -397,6 +397,9 @@ function SyncPanel() {
       <div className="grid grid-cols-1 gap-3 rounded-lg border border-outline-variant/70 bg-surface-container-low p-3 sm:grid-cols-2 lg:grid-cols-5">
         <SummaryFact label="Latest status" value={runs.isPending ? null : (newest?.status ?? "None yet")} />
         <SummaryFact label="Mode" value={newest?.mode ?? null} />
+        {/* CFG-5 H4: FULL and INCREMENTAL both complete green, so a run that
+            is quietly rescanning production every tick is invisible without
+            this field -- Records is the one signal that distinguishes them. */}
         <SummaryFact label="Records" value={newest?.recordScope ?? null} />
         <SummaryFact label="Started" value={newest?.startedAt !== undefined ? formatTimestamp(newest.startedAt) : null} />
         <SummaryFact label="Runs listed" value={runs.isPending ? null : String((runs.data ?? []).length)} />

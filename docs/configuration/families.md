@@ -100,6 +100,27 @@ env and all — until a `git revert` drops the `deployment` key from the model,
 at which point the next bootstrap run republishes without it and env is
 authoritative again (`_drop_retired_keys`; no data migration).
 
+**The production gate runs on every `RETURN_PLATFORM` publish, not only one
+that touches `deployment` (CFG-6 A11).** `_enforce_deployment_gate`
+(`configuration/api/releases.py:438-455`) reads the *whole* merged
+`deployment` payload — the patch's own value where the publish changed it,
+otherwise whatever the resulting document already carries — and calls
+`validate_deployment_for_environment` against it unconditionally, for both
+`POST /api/config/publish` and `POST /api/config/adopt-packaged`. A publish
+that edits `return_policy` and never mentions `deployment` at all is refused
+with a 422 at `deployment.ai.provider_order` (say) if the document it would
+produce still names `SIMULATOR` there in production, exactly as a publish
+that changed that field directly would be. The same unconditional check runs
+again at process startup for every worker resolving the active release
+(`main.py:555-565`, `configuration/runtime_loader.py:118-128`) and remains
+the backstop even if the publish-time gate were ever bypassed
+(`Settings.validate_relationships`, `settings.py:936-955`). Practically: a
+release that already violates the gate cannot be published forward by an
+edit to an unrelated section — the offending `deployment` value has to be
+fixed in the same publish, or the production gate is *why* an operator
+cannot "just change the return window" on a release production was already
+refusing to run.
+
 (b) `deployment.feedback_learning.enabled` reads live off a `SettingsSource`
 (`operations/feedback_service.py`) at call time — `resources.settings.<field>`,
 never a captured `Settings` value, because `RuntimeConfigurationActivator.refresh`

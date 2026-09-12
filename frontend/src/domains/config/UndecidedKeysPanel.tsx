@@ -185,7 +185,16 @@ export function UndecidedKeysPanel({ headRevision }: { headRevision: number | nu
                   // the hover colour (`disabled:hover:*` re-asserts the resting
                   // colours so a disabled button never reads as interactive),
                   // not via a contrast-breaking opacity trick.
-                  className="shrink-0 rounded-lg border border-outline-control bg-surface-container-lowest px-3 py-1.5 text-xs font-medium text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:hover:border-outline-control disabled:hover:text-on-surface-variant"
+                  //
+                  // RV round 1 (CFG-7), H1: removing the opacity utility left
+                  // this button pixel-identical to its own enabled state in
+                  // colour, background AND border -- the only visible signal
+                  // left was the cursor, which a touch user never sees and a
+                  // glance never catches. `disabled:border-outline-variant`
+                  // and `disabled:bg-surface-container-low` restore a real,
+                  // non-text visual difference without touching the
+                  // foreground the contrast floor is computed against.
+                  className="shrink-0 rounded-lg border border-outline-control bg-surface-container-lowest px-3 py-1.5 text-xs font-medium text-on-surface-variant transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:border-outline-variant disabled:bg-surface-container-low disabled:hover:border-outline-variant disabled:hover:text-on-surface-variant"
                 >
                   {adopt.isPending && pendingUnit === id ? "Adopting..." : "Take packaged file"}
                 </button>

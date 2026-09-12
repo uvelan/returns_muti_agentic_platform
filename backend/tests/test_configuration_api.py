@@ -848,6 +848,45 @@ def test_publish_refuses_an_invalid_patch_and_leaves_nothing_behind(
     assert statuses <= {"ARCHIVED"}, statuses
 
 
+def test_publish_refuses_a_production_deployment_gate_violation_with_a_named_path(
+    configuration_client: TestClient,
+) -> None:
+    """CFG-6 A6: `_enforce_deployment_gate` (`releases.py:438-455`), exercised
+    at the HTTP layer for the first time -- previously only
+    `validate_deployment_for_environment` itself had a test, at the model
+    layer (`tests/configuration/test_deployment_settings.py`). Mutating
+    `app.state.settings.environment` to `"production"` is enough to reach the
+    gate: `_enforce_deployment_gate` only reads that one field, and does not
+    re-run `Settings.validate_relationships` (which stays the backstop,
+    covered separately).
+    """
+    client = configuration_client
+    client.app.state.settings = client.app.state.settings.model_copy(
+        update={"environment": "production"}
+    )
+
+    response = client.post(
+        "/api/config/publish",
+        json={
+            "release_id": "publish-deployment-gate",
+            "domain_key": "RETURN_PLATFORM",
+            "patch": {"deployment": {"ai": {"provider_order": ["GOOGLE", "SIMULATOR"]}}},
+            "expected_head_revision": 0,
+        },
+    )
+    assert response.status_code == 422, response.text
+    detail = response.json()["detail"]
+    assert any(
+        item["path"] == "deployment.ai.provider_order"
+        and "SIMULATOR cannot be configured in production" in item["message"]
+        for item in detail
+    ), detail
+
+    releases = client.get("/api/config/releases").json()["data"]
+    statuses = {release["status"] for release in releases}
+    assert statuses <= {"ARCHIVED"}, statuses
+
+
 def test_publish_refuses_a_stale_head_and_leaves_nothing_behind(
     configuration_client: TestClient,
 ) -> None:

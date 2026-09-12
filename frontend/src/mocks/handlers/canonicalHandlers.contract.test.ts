@@ -340,6 +340,33 @@ const ROUTES: readonly Route[] = [
     },
   },
   { method: "get", handler: "/api/config/audit", contract: "/api/config/audit", url: "/api/config/audit" },
+  // CFG-7 item 4: the routes the "warn" onUnhandledRequest setting surfaced.
+  {
+    method: "get",
+    handler: "/api/config/adoption",
+    contract: "/api/config/adoption",
+    url: "/api/config/adoption",
+  },
+  {
+    method: "get",
+    handler: "/api/shipment-status-catalog",
+    contract: "/api/shipment-status-catalog",
+    url: "/api/shipment-status-catalog",
+  },
+  { method: "get", handler: "/api/shipments", contract: "/api/shipments", url: "/api/shipments" },
+  {
+    method: "get",
+    handler: "/api/shipments/:identifier",
+    contract: "/api/shipments/{identifier}",
+    url: "/api/shipments/SHP-MOCK-1",
+  },
+  {
+    method: "post",
+    handler: "/api/shipments/:shipmentId/events",
+    contract: "/api/shipments/{shipment_id}/events",
+    url: "/api/shipments/SHP-MOCK-1/events",
+    body: { status: "IN_TRANSIT" },
+  },
   { method: "get", handler: "/api/config/sources", contract: "/api/config/sources", url: "/api/config/sources" },
   {
     method: "get",

@@ -28,7 +28,7 @@ transcribed from memory. Brief: `.plan/tracks/CFG.brief.md`. Audit: `evidence/co
 | CFG-6 | feat/cfg-6-deployment-section | 59950920 | Opus spike → Sonnet | **MERGED** | LEASE-CFG-6 MERGED | PASS (064cb96c) | merge commit on trunk |
 | CFG-8 | feat/cfg-8-policy-screen | 35f0356c | Sonnet | **MERGED** | LEASE-CFG-8 MERGED | PASS (990b97d6) | b9390061 |
 | CFG-5b | feat/cfg-5b-agents | 52765381 | Sonnet | **MERGED** | LEASE-CFG-5b MERGED | 2 · CR → PASS (6df39c0f) | merge commit on trunk |
-| CFG-7 | feat/cfg-7-acceptance | after CFG-5 + CFG-6 | Haiku + Sonnet + RV | NOT_STARTED | — | — | — |
+| CFG-7 | feat/cfg-7-acceptance | 261dc3bc | Sonnet + Haiku | **MERGED** | LEASE-CFG-7 MERGED | 2 · CR → PASS (b8ba94b6) | merge commit on trunk |
 
 ## Steps
 
@@ -5024,3 +5024,644 @@ Learned on the way: the approve/activate bodies are `DecisionRequest{note?}` / `
 attempt's change proposal answered 409 "SUPERSEDED; APPROVED is not reachable" after its revert twin was
 filed) -- by design, recorded for the Agents screen's copy (CFG-7). Snapshot `evidence/config_audit/after_cfg5b/`
 (head 151). CFG-7 implementer started on `feat/cfg-7-acceptance` from `261dc3bc`.
+
+---
+
+## CFG-7 step:00 — worktree, PYTHONPATH, stale-base check
+
+```
+$ python -c "import return_platform; print(return_platform.__file__)"
+K:\Projects\Ret\returns_muti_agentic_platform\.claude\worktrees\cfg-7\backend\src\return_platform\__init__.py
+```
+Resolves inside `.claude/worktrees/cfg-7` -- not MAIN's checkout.
+
+```
+$ git rev-parse HEAD
+261dc3bc5f9876e5522653799c84c17aa5222410
+```
+Base sha `261dc3bc` -- trunk after CFG-5b merged (`(CFG) merge record: CFG-5b on trunk`), matches
+the brief. Branch `feat/cfg-7-acceptance`. `evidence/orchestration/` was untracked at session start
+per the memory note; `evidence/orchestration/drops/LEASE-CFG-7/` created this lease.
+
+## CFG-7 step:01 — carried advisories, batch 1: CFG-8 A1/A3 + forward note, CFG-5 H4, CFG-6 A7
+
+Four independent, small fixes landed together because they touch adjacent frontend files and each
+is a single carried advisory closed with a test, per the brief's item-3 priority.
+
+**CFG-8 A1** (`PolicySection.tsx:640-647`) -- `FERGUSON_STANDARD_RETURN` was a free `OrderedList`
+row; the backend's `mode="after"` model validator on `ReturnEligibilityPolicy`
+(`backend/src/return_platform/policy/eligibility_policy.py:431-444`) reports the refusal at the
+parent path `return_eligibility_policy`, not `…precedence`, so the inline error slot could never
+fill. Fixed at both ends:
+- `OrderedList` (`frontend/src/components/forms/OrderedList.tsx`) gains an optional
+  `fixedTrailing: (item) => boolean` prop: a matching row renders with no drag handle and no
+  up/down buttons ("Fixed last" label instead), and `moveAt`/`dropAt` both refuse to move anything
+  into or out of its slot. Tests: `OrderedList.test.tsx` `describe("fixedTrailing", …)` -- two new
+  tests (no move controls on the fixed row; the item above it cannot move past it).
+- `PolicySection.tsx`'s precedence `OrderedList` passes
+  `fixedTrailing={(value) => value === "FERGUSON_STANDARD_RETURN"}` and reads
+  `errorMap.get("…precedence") ?? errorMap.get("return_eligibility_policy")` so whichever path the
+  backend actually used lands on the control the operator just dragged.
+
+**CFG-8 A3** (`PolicySection.tsx:651` inside `TypedSectionScreen.tsx:249`) -- the preview panel
+(Block 7, `PolicyPreviewPanel`) was rendered inside `<fieldset disabled={!canWrite}>`, withholding
+Evaluate (writes nothing, scoped to `config.runtime.read` per `router.py:78-81`) from a read-only
+operator. Fixed by giving `TypedSectionScreen` a new optional `renderOutsideFieldset` render-prop,
+called with the same `{draft, get, set, errorMap}` context but rendered as a sibling *after* the
+fieldset closes, never inside it. `PolicySection.tsx` moves `PolicyPreviewPanel` into that slot.
+New test: `PolicySection.test.tsx` "keeps Evaluate enabled for a read-only operator who lacks
+config.release.write" -- `grants = ["config.runtime.read"]`, asserts the return-window field is
+disabled and Evaluate is enabled.
+
+**Forward note** (`config-policy.spec.ts`) -- the live e2e's `"Decision: APPROVE"` assertion
+implicitly depends on the live release's `policy_evaluation.enabled` being `true` (D-CFG-6 left it
+an undecided key, resolved "no" for *adoption*, not pinned `true` in the release). Added an
+explicit precondition: a `GET /api/config/runtime` before driving the UI, asserting
+`policy_evaluation.enabled === true` with a message naming why, so a future failure here reads as
+"the release changed" rather than a confusing preview-decision mismatch. Not run against the live
+stack in this step (see step:0x's acceptance pass); reviewed for correctness against the current
+spec structure only.
+
+**CFG-5 H4** (`DataSourcesSection.tsx:400`) -- the restored-rationale sweep (F4) missed the
+fifteenth of fifteen comments: `SummaryFact label="Records"` carried no reason for why the field is
+on the summary. One line restored above it, verbatim to the old `RailFact`'s wording per the
+review.
+
+**CFG-6 A7** (`EnumSelect.tsx`) -- `disabled`/`disabledReason` was exercised only through
+`DeploymentSection.test.tsx`. Added a unit test directly to `EnumSelect.test.tsx`: a disabled
+option renders with its reason both in the visible label and the `title` attribute, is `disabled`,
+and the select itself still lists it (CFG-6's own guarantee: visible-with-reason, not removed).
+
+```
+$ npx vitest run
+ Test Files  90 passed (90)
+      Tests  1085 passed (1085)          # was 1081 at CFG-6's head; +4 (EnumSelect, PolicySection,
+                                          #  2x OrderedList fixedTrailing)
+
+$ npm run typecheck   -> exit 0
+$ npm run lint        -> exit 0
+```
+
+Files: `frontend/src/domains/config/PolicySection.tsx`,
+`frontend/src/domains/config/PolicySection.test.tsx`,
+`frontend/src/domains/config/TypedSectionScreen.tsx`,
+`frontend/src/domains/config/DataSourcesSection.tsx`,
+`frontend/src/components/forms/OrderedList.tsx`, `frontend/src/components/forms/OrderedList.test.tsx`,
+`frontend/src/components/forms/EnumSelect.test.tsx`, `frontend/e2e/config-policy.spec.ts`.
+
+Remaining from item 3 after this step: CFG-6 A6 (HTTP-layer 422/startup tests), A8 (axe/
+canonical-routes for `/config/deployment`), A11 (document the whole-deployment gate); CFG-5b A5
+(agent-activated release audit gap, orchestrator already deferred this one explicitly to CFG-7);
+CFG-3b A2/A5-A8 -- checked against current source, all four already closed by later leases
+(`KeyValueTable.tsx`/`OrderedList.tsx` both take `error`, `PublishBar.tsx` wires
+`aria-describedby`, `/validate/{domain_key}` exists at `router.py:323`) -- recorded here rather
+than re-fixed; CFG-4 F6/F10 -- both already carry a ledger/RV disposition (F6 fixed in CFG-5, F10
+recorded as an environment flake in CFG-5's H5), nothing further to do, recorded as closed.
+
+## CFG-7 step:02 — mock layer complete (item 4), axe sweep clean (item 2), closes CFG-6 A8
+
+**Mock layer.** The five gaps `main.tsx`'s own `"warn"` note named (CFG-5 F2's own finding, plus
+the two `/support/*` ones): `GET /api/config/adoption`, `GET /api/shipment-status-catalog`,
+`GET /api/shipments` (+ its `/:identifier` echo and `POST /:shipmentId/events` append -- the
+latter was a POST, not a GET, corrected after the contract test caught the mismatch),
+`GET /api/rma-tickets`, `GET /api/v1/return-support/work-items`. All five added to
+`canonicalHandlers.ts`/`supportHandlers.ts`, registered in both handler files' own coverage lists
+(`canonicalHandlers.contract.test.ts`'s `ROUTES`, `supportHandlers.contract.test.ts`'s
+`registeredRoutes()` assertion) and validated against the committed OpenAPI document -- the
+process caught two real defects before they shipped: `SupportWorkItemView.status` has no `"OPEN"`
+member (the queue's actual starting state is `"NEW"`) and is missing the required
+`requestSnapshotDigest` field, and `/api/shipments/{shipment_id}/events` is a POST that recomputes
+status, not a GET history read (the frontend's own `shipmentsApi.appendEvent` confirms it).
+`main.tsx`'s `enableMocking` restored to `onUnhandledRequest: "error"` -- RV round 1's original
+ask, held at `"warn"` since CFG-5 pending exactly these five.
+
+**Axe sweep.** Full `tests/canonical-routes.spec.ts` run against a disposable `vite --mode mock
+--port 5174` dev server (never `:5173`), `--workers=1`:
+
+```
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts --workers=1 --reporter=list
+141 tests: 140 passed, 1 failed first run
+  FAILED: /ai/providers-models lets the keyboard past the chrome
+$ npx playwright test ... -g "providers-models lets the keyboard" --repeat-each=4
+  4 passed (8.6s)   -- reproduces the CFG-4 F10 / CFG-5 H5 signature: genuinely
+  intermittent under the full-file run, clean in isolation, outside Owns
+  (`tests/canonical-routes.spec.ts` itself). Not re-run as part of a full sweep
+  again this step for budget reasons; carried forward as the same open item
+  F10/H5 already are, not folded into this lease's own claim.
+```
+
+Zero axe violations (critical/serious) on every route including every `/config/*` route,
+`/ai/configuration` and `/ai/providers-models` -- **44 of 44** accessibility tests green both runs.
+Zero reflow at 320/390/640-zoom200/768/1280/1440. `identity pending: 0 of 44`, `heading mismatch: 0`.
+
+This closes **CFG-6 A8** ("no axe/canonical-routes.spec.ts run for /config/deployment"): `/config/
+deployment` was already registered in `routeManifest.ts` (derived from `registry.ts`'s `Deployment`
+label, CFG-6's own registration), so the gap was that the sweep had never actually been *run* and
+confirmed clean for it, not that it was unwired. Run 2 above: `/config/deployment` passes rendered,
+keyboard, reflow and axe (see the per-route line, `ok 16`/`60`/`110` in the full-file runs).
+
+```
+$ npx vitest run
+ Test Files  90 passed (90)
+      Tests  1092 passed (1092)          # was 1085 after step:01; +7 (2 canonicalHandlers ROUTES
+                                          #  ×2 conformance checks each + 1 coverage assertion, 2
+                                          #  supportHandlers list-route conformance tests + 1
+                                          #  coverage assertion update -- net new assertions, not
+                                          #  1:1 with file count)
+$ npm run typecheck   -> exit 0
+$ npm run lint        -> exit 0
+```
+
+Files: `frontend/src/main.tsx`, `frontend/src/mocks/handlers/canonicalHandlers.ts`,
+`frontend/src/mocks/handlers/canonicalHandlers.contract.test.ts`,
+`frontend/src/mocks/handlers/supportHandlers.ts`,
+`frontend/src/mocks/handlers/supportHandlers.contract.test.ts`.
+
+Remaining from item 2/4: none identified beyond the pre-existing F10/H5 flake (not this lease's to
+fix, tracked against the sweep's own owner per CFG-5's disposition). CFG-6 A8 closed.
+
+## CFG-7 step:03 — CFG-6 A6, HTTP-layer test for the production deployment gate's 422
+
+`_enforce_deployment_gate` (`releases.py:438-455`) had model-layer coverage only
+(`tests/configuration/test_deployment_settings.py`'s `validate_deployment_for_environment` tests).
+New test `test_publish_refuses_a_production_deployment_gate_violation_with_a_named_path` in
+`test_configuration_api.py`: mutates `configuration_client`'s `app.state.settings` to
+`environment="production"` via `model_copy` (no need to satisfy every other production-only field
+-- the gate only reads `.environment`), posts `/api/config/publish` with a patch setting
+`deployment.ai.provider_order` to include `SIMULATOR`, and asserts a 422 whose `detail` names
+`deployment.ai.provider_order` with the exact refusal message, plus that no release survives
+(`ARCHIVED` only, same assertion shape as the neighbouring
+`test_publish_refuses_an_invalid_patch_and_leaves_nothing_behind`).
+
+The startup-refusal half of A6 (`main.py:555-565`, `runtime_loader.py:118-128`) is **not** covered
+by an HTTP/process-level test this step: both are inline `try`/`except` blocks inside a real
+Neo4j-driver-opening startup function (`resolve_process_configuration`,
+`create_app`'s lifespan), not an isolated unit -- reaching them without live infra means either
+mocking `Neo4jConfigurationGraphRepository`/`AsyncGraphDatabase.driver` end to end or refactoring
+the inline block into its own testable function, either of which is a larger change than an
+ADVISORY carries and was not this step's highest-value use of the remaining budget against items 1,
+5 and 6 still open. Carried forward with this reason, same disposition pattern CFG-6's own
+`drop.json.remaining` used for it.
+
+```
+$ pytest tests/test_configuration_api.py -q
+44 passed
+```
+
+Files: `backend/tests/test_configuration_api.py`.
+
+## CFG-7 step:04 — CFG-6 A11, document the whole-deployment production gate
+
+`docs/configuration/families.md`'s `deployment` section gains a paragraph, verified against the
+actual call sites rather than assumed: `_enforce_deployment_gate` (`releases.py:839` inside
+`publish_configuration`, `:1157` inside the adopt-packaged route) is called with the whole merged
+`RETURN_PLATFORM` payload's `deployment` key on *every* publish/adopt, unconditionally -- not
+gated on whether the patch itself touched `deployment`. Documents the practical consequence (a
+release already violating the gate cannot be carried forward by an edit to an unrelated section)
+and the two other places the same unconditional check runs (`main.py:555-565` at API startup,
+`runtime_loader.py:118-128` for every other worker process), plus the backstop
+(`Settings.validate_relationships`).
+
+Files: `docs/configuration/families.md`.
+
+## CFG-7 step:05 — CFG-5b A5, deferred (ledger reason, not a fix) -- closes item 3
+
+**CFG-5b A5** (an agent-activated release writes no `CONFIGURATION_*` audit record) is not fixed
+in this lease. The fix location CFG-5b's own review named is `record_configuration_audit`
+(`configuration/api/releases.py:263-`) needing a `Request`-free path, called from both
+`publish_release_with_domains` callers (`bootstrap/adapters/governance_agent_configuration.py`,
+`bootstrap/adapters/governance_improvement.py`) plus a change to
+`operations/repository.py::resolve_operational_repository` (which the audit helper calls, and
+which takes a `Request` for its own reasons) -- three files, none of which CFG-7's brief permits:
+`configuration/api/releases.py` is named explicitly under "Must not touch: … the release API", and
+`operations/repository.py`/the two bootstrap adapters are production backend code outside the
+narrow exception ("except a fix a named pre-existing failure requires" -- A5 is an audit-trail gap,
+not one of the 42 registered pre-existing failures item 5 covers).
+
+Per item 3's own instruction ("each closed with a test or a ledger reason"), A5 is closed here with
+the reason above rather than a fix that would require exceeding Owns. Fix location restated for
+whoever next holds the release API: lift the audit write out of `record_configuration_audit`'s
+`Request`-coupled body into a helper taking `OperationalRepository` directly, keep the existing
+`Request`-based call sites working through a thin wrapper, and call the new helper from both
+`publish_release_with_domains` callers.
+
+This closes item 3 (carried advisories): CFG-8 A1/A3 + forward note (step:01), CFG-5 H4 (step:01),
+CFG-6 A6 (step:03, HTTP layer only -- see step:03's own note on the startup half), A7 (step:01), A8
+(step:02), A11 (step:04); CFG-5b A5 (this step, deferred); CFG-3b A2/A5-A8 (already closed by later
+leases, verified against current source in step:01's notes, no code change needed); CFG-4 F6/F10
+(already carry a disposition from CFG-5/CFG-5's H5, nothing further, verified no regression in
+step:02's sweep run).
+
+## CFG-7 step:06 — CI truthful (item 5): 42 backend failures registered, size floor updated
+
+Full backend suite re-run on this head (261dc3bc + steps 00-05), from `backend/`:
+
+```
+$ pytest tests -q -p no:cacheprovider --ignore=tests/configuration/test_concurrent_activation.py -rf
+42 failed, 5394 passed, 10 skipped, 516 deselected, 2 warnings in 356-358s
+```
+
+(`test_concurrent_activation.py` does not exist on this trunk -- the `--ignore` is a no-op kept for
+parity with the brief's own acceptance command and CFG-1's Q6 reproduction; `pyproject.toml`'s own
+`-m "not live_infra and not browser"` addopts is what actually does the deselecting, identically to
+`.github/workflows/checks.yml`'s real invocation, `poetry run python -m pytest tests
+--junitxml=junit-backend.xml` with no `--ignore` at all.)
+
+Same 42 node ids CFG-1 found, in the same nine modules, none configuration-adjacent -- re-verified
+here rather than assumed. `scripts/ci/known_test_failures.json`'s backend `known_failures` grows
+from `[]` (with a comment falsely claiming clean) to all 42, with the module breakdown, the shared
+`PROVIDER_UNAVAILABLE`/`attempts=0` symptom, and CFG-1's own base-diff cited by section/commit.
+Frontend list stays empty (`1092 tests ran, 0 failed` -- confirmed below).
+
+`scripts/ci/suite_size_floor.json` re-staked to this head's real counts (a floor, not a pin --
+raising it is safe, the prior numbers are kept in the comment for the record):
+
+| Suite | Old floor | New floor |
+|---|---|---|
+| backend cases/files | 5251 / 441 | 5446 / 455 |
+| frontend cases/files | 860 / 61 | 1092 / 90 |
+
+```
+$ python scripts/ci/assert_known_failures.py --suite backend --report backend/junit-backend.xml
+suite size held: 455 test files/modules, 5446 test cases (floor 455 / 5446)
+5446 tests ran, 42 failed, 42 allowlisted
+only the 42 known, still-failing tests failed          [[ exit 0 ]]
+
+$ python scripts/ci/assert_known_failures.py --suite frontend --report <frontend junit>
+suite size held: 90 test files/modules, 1092 test cases (floor 90 / 1092)
+1081 tests ran, 0 failed, 0 allowlisted
+only the 0 known, still-failing tests failed            [[ exit 0 ]]
+
+$ python scripts/ci/test_assert_known_failures.py
+all negative controls passed                             [[ exit 0 ]]
+```
+
+This closes item 5 in full: `assert_known_failures.py` now PASSES on this head for both suites, the
+frontend list is verified empty (not merely left alone), and the size floor reflects the trunk's
+real, larger size rather than a stale pre-CFG baseline that every subsequent lease's added tests
+had already outgrown without anyone re-staking it.
+
+Files: `scripts/ci/known_test_failures.json`, `scripts/ci/suite_size_floor.json`.
+
+## CFG-7 step:07 — docs (item 6)
+
+`docs/screens/configuration.md` was the most stale surface: it predated CFG-4/5/6/8 entirely --
+the "Sections" table still listed a generic `Business` tab (retired by CFG-5), named no typed
+screen (`/config/discovery`, `/config/return-policy`, `/config/policy`, `/config/fulfilment`,
+`/config/deployment`, `/config/workflow`, `/config/support`'s six tabs, `/config/simulation`,
+`/config/source-bindings`), and its "Configuration dependencies" table flatly said "Deployment
+wiring ... Not editable here", which CFG-6 made false for the release's own `deployment` section.
+Rewritten: the Sections table now matches `CONFIG_SECTIONS` (`frontend/src/domains/registry.ts`)
+exactly, slug included; new "The `deployment` section" and "Undecided keys and
+`--adopt-packaged-key`" subsections (pointing at `families.md` and the backend README for detail
+rather than duplicating it); the dependencies table corrected to distinguish the release's
+`deployment` (editable here, CFG-6) from infrastructure deployment wiring (not editable, unchanged);
+"Backend APIs consumed" gains the CFG-3a pipeline (`validate/{domain_key}`, `publish`,
+`adopt-packaged`, `packaged/{domain_key}`, `packaged-drift`) and `policy/preview`, with a note that
+every other typed section rides the same three routes rather than a section-specific one --
+documenting all seventeen sections' full API surfaces individually was judged out of this step's
+proportion (a multi-hour undertaking on its own) against items 1 and 7 still open; the OpenAPI
+document is named as the complete reference instead.
+
+`docs/README.md`'s Configuration section gains a link to `configuration/DEFERRED_DESIGN.md`
+(D-CFG-1's rule-by-rule record, previously linked from nowhere in `docs/`) and a pointer to the two
+module READMEs as the authority on the packaged directory layout, rather than leaving this file as
+the only place the split-directory shape was described.
+
+`docs/evidence/stage4o_complete_audit/generate_audit_artifacts.py:262,264` (the audit's own
+`configuration_matrix`) named `backend/config/returns/production.yaml` and
+`backend/config/ai_gateway.yaml` -- both deleted by CFG-2's directory split. Repointed at
+`backend/config/returns/ (index.yaml + parts)` and `backend/config/ai_gateway/ (index.yaml +
+tasks/)`, with a comment naming the split and its own README section.
+
+Verified already current, no change needed: `backend/config/README.md` and
+`backend/src/return_platform/configuration/README.md` already document the split directories
+(CFG-2's "Composed directories" section), the three release domains, the `deployment` section and
+`--adopt-packaged-key`/carry-forward workflow -- all added by the leases that did that work.
+`.env.example` already carries a CFG-6 comment on every one of the eight migrated switches naming
+`/config/deployment` as authoritative once a release exists.
+
+Files: `docs/screens/configuration.md`, `docs/README.md`,
+`docs/evidence/stage4o_complete_audit/generate_audit_artifacts.py`.
+
+## CFG-7 step:08 — hardening: Toggle's switch graphic was unclickable (found by item 1)
+
+Running the live acceptance loop's `/config/agents` spec against the real Chromium browser (not
+jsdom) surfaced a real interaction defect the shared `Toggle` component (`components/forms/*`)
+carried into every screen that uses it (Policy's evaluation switch, Integrations, Agents'
+Enabled/AI-assisted columns, Deployment, …): `Toggle.tsx`'s input used Tailwind's `sr-only`
+(`clip: rect(0,0,0,0)`, `margin: -1px`) to hide it behind a decorative switch graphic. That clips
+the input's own painted/hit-testable box to nothing at a sub-pixel position pulled outside the
+switch by the negative margin, so a direct click at the switch's own visible position -- a real
+mouse, or Playwright's `role=checkbox` locator -- never lands on the input at all; only the
+browser's native label-forwarding (clicking the adjoining TEXT, the one thing wrapped in
+`<label>`) worked. `config-agents.spec.ts`'s live run against the real backend
+(`E2E_REAL_BASE_URL`, disposable port 5175) reproduced this deterministically, twice, both times
+timing out on `locator.click` with "`<span class="relative inline-flex h-5 w-9 shrink-0">` …
+intercepts pointer events".
+
+Fixed in two parts: (1) the whole switch graphic, not just the text, is now inside the `<label>`,
+so a real click on the visible switch forwards to the input via native label semantics; (2) the
+input itself changed from `sr-only` to `absolute inset-0 opacity-0` -- sized and positioned to
+exactly cover the switch and directly hit-testable at the position it is drawn, rather than clipped
+to a sub-pixel box a real click could never land inside. `opacity-0` hides it visually without
+removing it from hit-testing or the accessibility tree, unlike `sr-only`'s clip trick.
+
+New regression test `Toggle.test.tsx`: "toggles when the switch graphic itself is clicked, not only
+the text" -- clicks the `aria-hidden` decorative span directly and asserts `onChange` fires. Noted
+in the test's own comment that jsdom cannot reproduce the real pointer-interception failure mode
+(no real layout/hit-testing engine), so this pins the fix's mechanism (label-forwarding) rather
+than the original symptom; the live e2e re-run below is what actually proves the real-browser case.
+
+```
+$ npx playwright test --project=cfg4-e2e e2e/config-agents.spec.ts --workers=1 --reporter=list
+  (before fix)  1 failed -- locator.click timeout, same interception, twice
+  (after fix)   1 passed (16.9s)
+
+$ npx vitest run
+ Test Files  90 passed (90)
+      Tests  1093 passed (1093)          # was 1092; +1 (the new Toggle test)
+$ npm run typecheck / npm run lint -> exit 0
+
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g accessibility --workers=1
+  44 passed -- zero axe violations, unchanged by this fix
+```
+
+No new palette, font or dependency (existing Tailwind utilities only). Files:
+`frontend/src/components/forms/Toggle.tsx`, `frontend/src/components/forms/Toggle.test.tsx`.
+
+## CFG-7 step:09 — new live e2e spec: /config/deployment (item 1, closes CFG-6's carried proof)
+
+`frontend/e2e/config-deployment.spec.ts` did not exist before this lease -- CFG-6's own drop.json
+listed "Live no-restart proof ... deliberately not executed from this worktree" as its headline
+remaining item, and CFG-7's brief item 1 names `/config/deployment` explicitly among the screens
+this lease must prove live. New spec: flips `deployment.feedback_learning.enabled` (a bare boolean
+with no environment-dependent production gate, unlike `deployment.ai.provider_order` or
+`deployment.dependencies.*`), Validate, Publish, asserts `GET /api/config/runtime` reflects it, then
+publishes the revert. A preflight check asserts the live host's `environment` is not `"production"`
+before touching the field, since a future run against a production host is not where to discover
+that assumption was wrong.
+
+```
+$ npm run typecheck / npm run lint -> exit 0
+
+$ npx playwright test --project=cfg4-e2e e2e/config-deployment.spec.ts --workers=1 --reporter=list
+  1 passed (12.6s)
+
+Head revision: 187 -> 189 (two publishes, flip + revert)
+GET /api/config/runtime after: deployment.feedback_learning.enabled == true (the original value)
+```
+
+Files: `frontend/e2e/config-deployment.spec.ts`.
+
+## CFG-7 step:10 — live acceptance loop, item 1: `.plan/acceptance/config-screens.md`
+
+Final clean full pass of the `cfg4-e2e` project (all eleven pre-existing specs), `--workers=1`,
+against a disposable `vite --port 5175` dev server proxying to the live backend
+(`FRONTEND_BACKEND_TARGET=http://localhost:8000`), `E2E_REAL_BASE_URL=http://localhost:5175`:
+
+```
+$ npx playwright test --project=cfg4-e2e --workers=1 --reporter=list
+11 passed (1.5m)
+```
+
+Then the new `/config/deployment` spec (step:09) run immediately after in the same session:
+
+```
+$ npx playwright test --project=cfg4-e2e e2e/config-deployment.spec.ts --workers=1 --reporter=list
+1 passed (12.6s)
+```
+
+Head revision: 169 → 187 (eleven-spec run) → 189 (deployment spec). `GET /api/config/runtime`
+confirmed every touched field back at its original value after both runs (full detail and the
+per-screen table in `.plan/acceptance/config-screens.md`, written this step).
+
+**First attempt at the eleven-spec run** (before step:08's Toggle fix) reported 10 passed, 1 failed
+-- `config-agents.spec.ts` timed out on a real click-interception defect in the shared `Toggle`
+component, fixed at step:08 and re-verified individually before this clean re-run. Recorded in
+`config-screens.md`'s per-screen table rather than hidden.
+
+**Not run this lease:** AI Control Center `/ai/configuration` and `/ai/providers-models` -- no live
+publish/revert spec exists for either. Both edit live AI-dispatch-governing state
+(`runtime_integrations.ai_providers`, `AI_GATEWAY.tasks.*`) through the older four-call
+`runPublishPipeline`, and identifying a field safe to flip and revert on the live host without
+risking the live stack's actual AI routing needed more care than the remaining budget allowed
+after items 2, 4, 5, 6 and the rest of item 1. Recorded as an open gap in `config-screens.md`'s own
+section on it, with the exact call sites named for whoever picks it up next -- not silently
+dropped from the acceptance record.
+
+Cleanup: disposable server (port 5175) stopped and confirmed down (`netstat`/`taskkill`); `:5173`
+and `:8000` (the live stack) answered 200 before, during (never touched) and after this step.
+
+Files: `.plan/acceptance/config-screens.md` (new).
+
+## CFG-7 step:11 — final audit delta (item 7): FINAL_REPORT.md §L
+
+Appended §L to `evidence/config_audit/FINAL_REPORT.md`: every §G defect (CFG-DEF-01 through -20),
+its final status verified against this head rather than assumed from §G's own column (which
+predates CFG-1 onward), the lease that closed it, and an evidence pointer. Net: 15 of 20 fixed and
+holding, 1 resolved by design (DEF-11, D-CFG-6's own mixed adopt/keep decisions), 1 partially fixed
+with a residual gap newly found (DEF-12: the bay-seeding backfill is chained in
+`scripts/linux/reset_all.sh` but **not** in `scripts/reset_all.ps1`, the Windows path this dev
+host's own launcher family actually uses -- §K's "brings the bay-seeding fix in for free" verified
+true for Linux only), 1 unchanged and outside every lease's Owns (DEF-14, `manifest_loader.py`'s
+`extra="ignore"` payload model), 1 left unresolved for lack of the exact comparison the PART files
+would name and this brief instructs not to read (DEF-19), 1 unchanged operator-hygiene note
+(DEF-20). No regression found in anything §G already called fixed; DEF-06 is noted as superseded
+(the generic `BusinessSection.tsx` this defect fixed is itself now deleted, replaced by 19 typed
+screens) rather than silently dropped from the table.
+
+No separate rendering pipeline exists for this audit's `FINAL_REPORT.md` -- confirmed by grep
+(`evidence/config_audit/BRIEF.md` names none, and the directory holds no generator script); the
+markdown itself is the artifact source, so appending §L directly satisfies "re-render the report
+artifact source". `docs/evidence/stage4o_complete_audit/generate_audit_artifacts.py` (fixed at
+step:07) is a different, generated report and was handled separately for its own stale filenames.
+
+Files: `evidence/config_audit/FINAL_REPORT.md`.
+
+## CFG-7 step:12 — definition of done (CFG.brief.md §6), checked item by item
+
+1. **Every §G defect fixed or has a recorded decision to defer, ID in the ledger.** MET.
+   `evidence/config_audit/FINAL_REPORT.md` §L (step:11); every one of the 20 ids has a final status
+   and a lease; ledger step:11 restates the net (15 fixed/holding, 1 resolved-by-design, 1
+   partial-with-new-gap, 1 unchanged-out-of-scope, 1 unresolved-for-lack-of-detail, 1 unchanged note).
+
+2. **`backend/config/` contains only files the runtime loads, split by function; READMEs match.**
+   **NOT MET**, and not this lease's to fix: `backend/config/` still holds `data_platform/` and
+   `seed/` (the directory's own README says so plainly -- "canonical mappings... for the data
+   platform surfaces that have not yet migrated onto the manifest model" and "fixtures for
+   local/dev seeding, not production runtime configuration"), plus `manifest.yaml`'s one kept
+   (already-inert) entry and `dynamic_knowledge/active-schema.example.yaml` (an authoring
+   reference, never loaded). The README is honest about all four -- "READMEs match" holds -- but
+   the directory itself is not runtime-loaded-files-only. `backend/config/**` is outside CFG-7's
+   Owns list entirely; recorded as unmet rather than silently passed.
+
+3. **Every `RETURN_PLATFORM` section, `AI_GATEWAY` unit and `DEPENDENCY_SIMULATION` has a typed
+   screen ... each proven once in the live loop.** **MOSTLY MET.** Every `RETURN_PLATFORM` section
+   and `DEPENDENCY_SIMULATION` (`/config/simulation`) proven live at step:10 (twelve specs, all
+   green, `.plan/acceptance/config-screens.md`). `AI_GATEWAY` (the per-task Configuration tab,
+   `/ai/configuration`) has typed screens with Advanced mode (already built by earlier leases) but
+   **no live publish/revert proof from this lease** -- see `config-screens.md`'s own section on
+   why (live AI-dispatch-governing state, budget did not allow safely characterising a field this
+   round). Recorded as the one gap in an otherwise-met item, not claimed complete.
+
+4. **No business value read from env at request time; env holds deployment values and bootstrap
+   defaults only.** MET, inherited from CFG-6, spot-verified this step: `grep -rln
+   "settings\.ai_provider_order\|settings\.omc_dependency_mode\|..." backend/src/` finds request-time
+   readers (`ai/routing/routes.py`, `api/ai_gateway.py`, `operations/orchestrator.py`, …), but every
+   one reads the `Settings` FIELD after `apply_deployment_configuration`/
+   `apply_graph_runtime_configuration` has hot-adopted the release's `deployment` section into it
+   at activation -- by request time the field holds the release's value, not a live env read. This
+   is CFG-6's own designed mechanism (D-CFG-4), not a gap; no CFG-7 change touches it.
+
+5. **Trunk suites fully green, OpenAPI drift check green, axe sweep clean.** MET, on this lease's
+   own head (not literally trunk until merged): `assert_known_failures.py` PASS both suites (step:06);
+   `python scripts/check_openapi_drift.py` -> `"status": "PASS", "diffs": []` (this step, re-run
+   after CFG-7's own backend test addition, no API surface touched); axe sweep zero violations
+   (step:02, re-confirmed at step:08 after the Toggle fix).
+
+```
+$ python scripts/check_openapi_drift.py
+"status": "PASS", "diffs": []
+```
+
+## CFG-7 step:14 — RV round 1 fixes
+
+RV round 1 (`.plan/reviews/CFG-7.md`, reviewed `b079a987`) returned **CHANGES_REQUIRED**: two
+blocking findings, both about the record rather than the code, plus seven advisories.
+
+**F1 (BLOCKING) — brief item 2 named four IDs; three (CFG-8 A2, CFG-5 H1, CFG-5 H2) had neither a
+fix nor a ledger line, while `drop.json` called item 2 DONE.** RV measured `PolicySection.tsx`'s
+Evaluate button (`disabled:opacity-40` on `text-on-surface-variant`) at **2.046:1** -- axe does not
+flag disabled controls (1.4.3 exemption), which is exactly why a clean sweep hid the omission.
+Fixed:
+- **CFG-8 A2** (`PolicySection.tsx`, Evaluate button): `disabled:opacity-40` replaced with the
+  non-text-channel treatment `AgentsSection.tsx`'s own Save button already carries
+  (`disabled:border-outline-variant disabled:bg-surface-container-low`, plus
+  `disabled:hover:*` re-asserting the resting colours) -- text stays at full contrast in both
+  states.
+- **CFG-5 H1** (`UndecidedKeysPanel.tsx`, "Take packaged file"): CFG-5b's own earlier fix removed
+  the opacity (contrast now 9.338:1) but left the disabled state pixel-identical to enabled except
+  for the cursor -- RV's own re-measurement confirmed this still held. Same non-text-channel
+  treatment added (`disabled:border-outline-variant disabled:bg-surface-container-low`), replacing
+  the stale `disabled:hover:border-outline-control` re-assertion with one that matches the new
+  resting state.
+- **Extended to `PublishBar.tsx`** (Validate and Publish, not named by any ID but the exact same
+  broken className string, on the ONE component every typed screen's footer shares -- Publish is
+  disabled by default, `dirtyCount === 0`, on every screen's first paint): both buttons fixed the
+  same way, Publish getting the `AgentsSection`-style primary-filled treatment
+  (`border border-transparent`, `disabled:shadow-none disabled:hover:brightness-100`).
+- **CFG-5 H2**: regression tests widened from "no `opacity-\d` utility" to the property family --
+  "no `opacity-\d` **and** a real `disabled:bg-*`/`disabled:border-*` present" -- at
+  `OverviewSection.test.tsx` (existing test widened, `disabled:text-\S+` also excluded per the
+  original H2 finding's own example), `PolicySection.test.tsx` (new: dims the pending Evaluate
+  button) and `PublishBar.test.tsx` (new: both buttons at once).
+- **Not fixed this round, recorded rather than silently dropped a second time**: the same
+  `disabled:opacity-40` string also appears in `DataSourcesSection.tsx`, `DocumentEditor.tsx`,
+  `SupportTemplateSection.tsx` and `KeyValueTable.tsx` -- none named by the four brief-item-2 IDs,
+  none flagged by axe, and a full app-wide sweep is a larger undertaking than this fix round's
+  scope. `drop.json.remaining` names it as a follow-up.
+
+**F2 (BLOCKING) — the definition-of-done item 2 verdict (step:12) and `drop.json` claimed
+`backend/config/seed/` is "not loaded by any runtime path". False, and RV is right.**
+`operations/seed_manifest.py:35` computes `SEED_MANIFEST_PATH` from
+`backend/config/seed/e2e_seed_manifest.json`; `:57` reads it **at module import**
+(`_SEED_CONFIGURATION: Final = _load_seed_configuration()`, raising `FileNotFoundError` if absent);
+`main.py:51` imports `api/order_lines.py`, which imports this module at `:95` -- the app does not
+start without that file. Verified directly against the source, not taken on RV's word.
+
+**Corrected verdict for definition-of-done item 2**, replacing step:12's line (not edited in place --
+this is the correction, per the ledger's own append-only convention): `backend/config/seed/
+e2e_seed_manifest.json` **is** runtime-loaded (at import) and satisfies item 2 on its own; it must
+not be moved or deleted without a code change. `backend/config/seed/generation.yaml`
+(`backend/scripts/generate_seed_data.py:128` only) and `backend/config/data_platform/*.yaml`
+(`data_platform/graph/sandbox_runner.py:68`'s CLI default, plus `backend/tests/**`) are genuinely
+tooling/test inputs, not runtime configuration -- item 2 is still not fully met because of these,
+plus `manifest.yaml`'s one inert entry and `dynamic_knowledge/active-schema.example.yaml` (already
+documented as such). Per RV's own recommendation: the orchestrator should decide between amending
+`CFG.brief.md` §6 item 2 to "contains only files the runtime **or its own tooling** loads, split by
+function, each named in the README" (which `backend/config/README.md:104-116` already satisfies
+today) or opening a successor lease that owns `backend/config/**` and relocates the tooling-only
+files with their loaders repointed. **Nothing was deleted or moved by this correction** -- it is a
+documentation fix, and the decision is left to the orchestrator as instructed.
+
+**Advisories taken:**
+- **A1**: `AiControlCenterPage.tsx`'s local `Switch` (~line 1691) carried the identical geometry
+  `Toggle.tsx` had before step:08 (`peer sr-only` behind two `absolute inset-0` decorative spans).
+  Not the same *defect* -- its `<label>` already wraps the graphic, so no mouse user is blocked --
+  but a direct `role=checkbox` click (a future live spec for `/ai/configuration` or
+  `/ai/providers-models`) would intercept identically. Fixed with the same two-line change:
+  `absolute inset-0 z-10 size-full appearance-none opacity-0`. No test added: the file's own test
+  suite (`AiControlCenterPage.test.tsx`) has no harness reaching `ProvidersTab`/`TasksConfigTab`
+  today (its one `describe` block covers interceptions only), and building one from scratch to
+  reach a single nested `Switch` usage is disproportionate to an advisory-level geometry fix RV
+  itself frames as "not the same defect" and lower severity than F1/F2.
+- **A2**: eight further references to `backend/config/returns/production.yaml` /
+  `backend/config/ai_gateway.yaml` in `generate_audit_artifacts.py` (the brief scoped the original
+  ask to two lines; RV found six more `feature(...)` rows plus the agent matrix) repointed at the
+  same composed-directory strings step:07 used.
+- **A3**: `OrderedList.tsx`'s `fixedTrailing` JSDoc now states the precondition RV found -- it is a
+  predicate over every item, not an assertion about the last position; unreachable through the
+  typed control (the loaded release always validates) but reachable through Advanced/JSON mode,
+  where it would render "Fixed last" mid-list. Documented rather than enforced, since enforcing it
+  here would mean this generic component knowing about one caller's validation rule.
+- **A4**: `drop.json`'s `head_sha` corrected (was self-referential at the prior drop commit;
+  now points at this step's own commit, updated in the commit that records the hash).
+- **A5**: `suite_size_floor.json`'s frontend floor corrected from 1092 to 1095 -- step:08's Toggle
+  test and this step's own two new tests had moved the real count without the floor being
+  re-staked. Comment updated to say so plainly rather than silently changing the number.
+- **A6**: noted, no action needed -- RV confirmed the two files outside the literal Owns list
+  (`backend/tests/test_configuration_api.py`, `frontend/src/main.tsx`) are exactly what items 3/4
+  demanded verbatim, and the specific instruction correctly outranked the general Owns list.
+- **A7**: `FINAL_REPORT.md` section L's "Net" line corrected -- DEF-06 was folded into "15 fixed and
+  holding" despite its own row saying "superseded"; now "14 fixed and holding ... plus 06
+  superseded" (still totals 20).
+
+**DEF-12 update (not an RV finding against this lease, but requested alongside the fixes)**: the
+orchestrator reports the Windows `scripts/reset_all.ps1` gap this lease found is now fixed on trunk
+at `18f55e09` ("reset_all.ps1: fix the backfill path (a backspace byte had replaced the
+backslash)") -- Step 6/6 "Seeding warehouse bays" already present there, a corrupted path separator
+repaired. `FINAL_REPORT.md` section L's DEF-12 row updated to cite the commit rather than "left unfixed".
+Not on this branch's own ancestry (applied directly to trunk); cited as a merge-record pointer.
+
+**Verification, re-run in full after every fix above:**
+
+```
+$ npx vitest run
+ Test Files  90 passed (90)
+      Tests  1095 passed (1095)          # was 1093 at RV round 1's own re-run; +2 (PublishBar,
+                                          #  PolicySection property-family tests)
+$ npm run typecheck   -> exit 0
+$ npm run lint        -> exit 0
+
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts --workers=1 --reporter=list
+  (disposable port, onUnhandledRequest:"error", :5173/:5174 untouched)
+141 passed          # 44/44 accessibility, 0 failed, 0 flaked -- cleaner than this lease's own
+                     # step:02/step:08 runs, matching RV's own re-run
+
+$ pytest tests -q -p no:cacheprovider --ignore=tests/configuration/test_concurrent_activation.py
+42 failed, 5394 passed, 10 skipped, 516 deselected      -- unchanged, same 42 ids
+
+$ python scripts/ci/assert_known_failures.py --suite backend --report backend/junit-backend-step14.xml
+suite size held: 455 test files/modules, 5446 test cases (floor 455 / 5446)
+5446 tests ran, 42 failed, 42 allowlisted
+only the 42 known, still-failing tests failed                            [[ exit 0 ]]
+
+$ python scripts/ci/assert_known_failures.py --suite frontend --report <frontend junit>
+suite size held: 90 test files/modules, 1095 test cases (floor 90 / 1095)
+1084 tests ran, 0 failed, 0 allowlisted
+only the 0 known, still-failing tests failed                             [[ exit 0 ]]
+
+$ python scripts/ci/test_assert_known_failures.py
+all negative controls passed                                             [[ exit 0 ]]
+
+$ python scripts/check_openapi_drift.py
+"commit": "b079a987...", "diffs": [], "status": "PASS", "exit_code": 0
+```
+
+Files: `frontend/src/domains/config/PolicySection.tsx`, `PolicySection.test.tsx`,
+`UndecidedKeysPanel.tsx`, `OverviewSection.test.tsx`, `frontend/src/domains/ai/AiControlCenterPage.tsx`,
+`frontend/src/components/forms/PublishBar.tsx`, `PublishBar.test.tsx`, `OrderedList.tsx`,
+`docs/evidence/stage4o_complete_audit/generate_audit_artifacts.py`,
+`evidence/config_audit/FINAL_REPORT.md`, `scripts/ci/suite_size_floor.json`,
+`evidence/orchestration/drops/LEASE-CFG-7/drop.json`.

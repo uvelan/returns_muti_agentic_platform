@@ -87,14 +87,21 @@ async function enableMocking() {
   // MSW v2's actual default is `"warn"`
   // (`node_modules/msw/lib/core/utils/request/onUnhandledRequest.js`), and
   // `"warn"` both bypasses the request *and* reports it, through
-  // `console.warn` rather than `console.error`. That is the option that
-  // answers the original objection with nothing given up:
-  // `tests/canonical-routes.spec.ts` only fails a route on `console.error`
-  // or a 4xx/5xx response, so `"warn"` fails no route (`"error"`'s own
-  // problem) while still surfacing exactly the kind of gap the `/support`
-  // routes above turned out to have -- which `"bypass"`, by construction,
-  // can never report at all.
-  return worker.start({ onUnhandledRequest: "warn" });
+  // `console.warn` rather than `console.error`. That was the option that
+  // answered the original objection with nothing given up while the five
+  // gaps below were still open: `tests/canonical-routes.spec.ts` only fails
+  // a route on `console.error` or a 4xx/5xx response, so `"warn"` failed no
+  // route (`"error"`'s own problem at the time) while still surfacing
+  // exactly this kind of gap.
+  //
+  // CFG-7 item 4: the mock layer is now complete -- `canonicalHandlers.ts`
+  // gained `/api/config/adoption`, `/api/shipment-status-catalog` and
+  // `/api/shipments` (plus its `/:identifier` and `/events` siblings),
+  // `supportHandlers.ts` gained `GET /api/rma-tickets` and
+  // `GET /api/v1/return-support/work-items` -- every route the "warn" sweep
+  // ever reported. Restored to `"error"`, the strict setting RV round 1
+  // actually wanted, now that there is nothing left for it to break.
+  return worker.start({ onUnhandledRequest: "error" });
 }
 
 /**

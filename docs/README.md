@@ -59,6 +59,19 @@ rollback implications, adopted-release readback.
 [`CONFIGURATION_RELEASE_LIFECYCLE_DECISION.md`](CONFIGURATION_RELEASE_LIFECYCLE_DECISION.md)
 — the decision record behind the lifecycle.
 
+[`configuration/DEFERRED_DESIGN.md`](configuration/DEFERRED_DESIGN.md) — the rule
+each never-wired file named before CFG-1 deleted it (D-CFG-1: `policies/*.yaml`,
+`live_validation/`, `internal_manifests/`, `data_platform/*.yaml`, `reasoning.yaml`
+and its loader, the manifest `agents/` copies), and where the equivalent live rule
+is, or that none exists.
+
+`backend/config/README.md` and `backend/src/return_platform/configuration/README.md`
+(linked again below, under "Module-local documentation") are the authority on the
+packaged directory layout (`returns/`, `ai_gateway/`, split by business function
+since CFG-2) and how it composes into the three release domains
+(`RETURN_PLATFORM`, `AI_GATEWAY`, `DEPENDENCY_SIMULATION`) — read those, not this
+file, for "which file loads what".
+
 ## Optimization
 
 [`optimization/`](optimization/README.md) — each optimization with its problem, scale

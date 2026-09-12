@@ -254,6 +254,34 @@ describe("Policy screen", () => {
     expect(await screen.findByText("Decision: APPROVE")).toBeInTheDocument();
   });
 
+  // RV round 1 (CFG-7), F1 (BLOCKING, CFG-8 A2) / H2: Evaluate disables
+  // itself while its own preview request is pending, and that resting
+  // state used `disabled:opacity-40` on `text-on-surface-variant` --
+  // composited to 2.046:1, the same family CFG-5's F1 first found. Asserted
+  // as the property family, on this screen specifically (the brief's own
+  // named instance), not the one class-string spelling that caused it.
+  it("dims the pending Evaluate button without fading its own text", async () => {
+    const user = userEvent.setup();
+    let resolvePreview: (() => void) | undefined;
+    mocks.previewPolicy.mockReset().mockReturnValue(
+      new Promise((resolve) => {
+        resolvePreview = () => { resolve({ decision: "APPROVE", reasons: [], factsUsed: {} }); };
+      }),
+    );
+    render(<PolicySection />, { wrapper: Wrapper });
+
+    await screen.findByRole("spinbutton", { name: "Return window" });
+    const evaluate = screen.getByRole("button", { name: "Evaluate" });
+    await user.click(evaluate);
+
+    expect(evaluate).toBeDisabled();
+    expect(evaluate.className).not.toMatch(/(?:^|[\s:])opacity-\d/);
+    expect(evaluate.className).toMatch(/disabled:(?:bg|border)-\S+/);
+
+    resolvePreview?.();
+    await waitFor(() => { expect(evaluate).toBeEnabled(); });
+  });
+
   it("disables Publish when config.release.promote is missing", async () => {
     grants = ["config.runtime.read", "config.release.write"];
     render(<PolicySection />, { wrapper: Wrapper });
@@ -270,6 +298,23 @@ describe("Policy screen", () => {
     expect(screen.getByRole("checkbox", { name: "Policy evaluation enabled" })).toBeDisabled();
     expect(screen.getByText(/Read-only access\. Editing this section requires config\.release\.write\./)).toBeInTheDocument();
   });
+
+  it(
+    // CFG-8 A3: Evaluate writes nothing into the draft and the route is
+    // scoped to `config.runtime.read` alone -- it must stay reachable for a
+    // principal who has only that, even though every typed field is
+    // disabled by the write fieldset right next to it.
+    "keeps Evaluate enabled for a read-only operator who lacks config.release.write",
+    async () => {
+      grants = ["config.runtime.read"];
+      render(<PolicySection />, { wrapper: Wrapper });
+
+      const window = await screen.findByRole("spinbutton", { name: "Return window" });
+      expect(window).toBeDisabled();
+      const evaluate = screen.getByRole("button", { name: "Evaluate" });
+      expect(evaluate).toBeEnabled();
+    },
+  );
 
   it("shows the error and keeps the draft when Publish is refused", async () => {
     const user = userEvent.setup();

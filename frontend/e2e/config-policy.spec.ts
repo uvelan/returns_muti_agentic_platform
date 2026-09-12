@@ -52,6 +52,7 @@ type RuntimeBody = {
       return_eligibility_policy: {
         standard_stock_return: { purchase_window: { days: number } };
       };
+      policy_evaluation: { enabled: boolean };
     };
   };
 };
@@ -59,6 +60,21 @@ type RuntimeBody = {
 test.describe("Policy -- real stack", () => {
   test("widens the return window, publishes, previews inside it, then reverts", async ({ page }) => {
     requireRealStack();
+
+    // CFG-8 forward note: "Decision: APPROVE" below is the preview endpoint's
+    // answer to the sample facts *and* `policy_evaluation.enabled` -- if the
+    // live release ever ships that flag `false` (D-CFG-6 left it an
+    // undecided key, resolved "no" for adoption but not pinned true here),
+    // the model skips evaluation and the decision this spec asserts would
+    // never be reachable regardless of the window or the facts below. Assert
+    // the precondition explicitly so a failure here reads as "the release
+    // changed" rather than a confusing preview-decision mismatch.
+    const preflight = await page.request.get("/api/config/runtime");
+    const preflightBody = (await preflight.json()) as RuntimeBody;
+    expect(
+      preflightBody.data.configuration.policy_evaluation.enabled,
+      "policy_evaluation.enabled must be true on the live release for this spec's preview decision to be meaningful",
+    ).toBe(true);
 
     await page.goto("/config/policy");
     const window_ = page.getByRole("spinbutton", { name: "Return window" });

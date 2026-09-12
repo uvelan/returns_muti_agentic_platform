@@ -270,4 +270,70 @@ export const supportHandlers = [
       );
     },
   ),
+
+  // CFG-7 item 4: the two `/support/*` routes the "warn" onUnhandledRequest
+  // setting surfaced (`main.tsx`'s own note) -- `/support/work-queue` and
+  // `/support/rma-tickets` rendered against nothing, which is why neither
+  // failed the sweep, only warned. One list item each, so both routes have a
+  // real row to render in `dev:mock` rather than only their empty state.
+  http.get("/api/v1/return-support/work-items", async () => {
+    await delay(60);
+    return HttpResponse.json(
+      envelope(
+        [
+          {
+            id: WORK_ITEM_ID,
+            sessionId: "session-mock-2026",
+            caseId: CASE_ID,
+            threadId: "thread-mock-2026",
+            // One of `SupportWorkItemStatus`'s published members -- "OPEN" was
+            // never one of them; "NEW" is the queue's actual starting state.
+            status: "NEW",
+            priority: "NORMAL",
+            queue: "GENERAL",
+            subject: "Return status question",
+            assignedTo: null,
+            returnReference: null,
+            shippingInstructionReference: null,
+            // Required by `SupportWorkItemView` (`additionalProperties: false`
+            // means an omission here is a 200 the real server never sends).
+            requestSnapshotDigest: "digest-mock-2026",
+            slaDueAt: new Date(Date.now() + 24 * 60 * 60_000).toISOString(),
+            version: 1,
+            createdAt: "2026-08-14T10:20:00Z",
+            updatedAt: "2026-08-14T10:20:00Z",
+          },
+        ],
+        "support-work-items",
+      ),
+    );
+  }),
+  http.get("/api/rma-tickets", async () => {
+    await delay(60);
+    return HttpResponse.json(
+      envelope(
+        [
+          {
+            ticketId: "rma-mock-1",
+            sessionId: "session-mock-2026",
+            status: "SUBMITTED",
+            returnReference: null,
+            externalReference: null,
+            orderReference: "ORD-MOCK-1",
+            customerReference: null,
+            associateId: null,
+            recommendedReturnMethod: null,
+            supportDraft: null,
+            missingFields: [],
+            photoEvidenceRequired: false,
+            items: [],
+            tracking: [],
+            createdAt: "2026-08-14T10:20:00Z",
+            updatedAt: "2026-08-14T10:20:00Z",
+          },
+        ],
+        "rma-tickets",
+      ),
+    );
+  }),
 ];

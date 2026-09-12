@@ -65,7 +65,17 @@ describe("the ingress mock against the published contract", () => {
     // associate-facing `add_message`. A handler on the frozen path would mock a
     // route the console must never call.
     expect(responseSchema(document, "post", CONTRACT_PATH, "202")).not.toBeNull();
-    expect(registeredRoutes()).toEqual([`post ${HANDLER_PATH}`]);
+    // CFG-7 item 4: the two GET list routes the "warn" onUnhandledRequest
+    // setting surfaced (`main.tsx`'s own note) -- named explicitly here
+    // rather than filtered out, for the same reason this file names the one
+    // POST route: an unwatched addition is how the mocks drifted before.
+    expect([...registeredRoutes()].sort()).toEqual(
+      [
+        `post ${HANDLER_PATH}`,
+        "get /api/v1/return-support/work-items",
+        "get /api/rma-tickets",
+      ].sort(),
+    );
     expect(HANDLER_PATH.replace(":workItemId", "{work_item_id}")).toBe(CONTRACT_PATH);
     // The frozen path is still claimed by the associate-facing endpoint that was
     // already there. Asserted **by name**, because a `not.toBeNull()` on the new
@@ -195,5 +205,30 @@ describe("the contributed sections the panel composes", () => {
     // Stateful on purpose: a handler that answered identically forever would
     // let a console ship that never redraws.
     expect((after?.payload.total as number)).toBe(2);
+  });
+});
+
+describe("CFG-7 item 4: the two list routes the 'warn' sweep surfaced", () => {
+  it("GET /api/v1/return-support/work-items answers a body the contract accepts", async () => {
+    const response = await fetch("/api/v1/return-support/work-items");
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as unknown;
+    const schema = responseSchema(
+      document,
+      "get",
+      "/api/v1/return-support/work-items",
+      "200",
+    );
+    expect(schema, "GET /api/v1/return-support/work-items declares no 200 body").not.toBeNull();
+    expect(describeViolations(validateAgainstSchema(body, schema ?? {}, document))).toBe("");
+  });
+
+  it("GET /api/rma-tickets answers a body the contract accepts", async () => {
+    const response = await fetch("/api/rma-tickets");
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as unknown;
+    const schema = responseSchema(document, "get", "/api/rma-tickets", "200");
+    expect(schema, "GET /api/rma-tickets declares no 200 body").not.toBeNull();
+    expect(describeViolations(validateAgainstSchema(body, schema ?? {}, document))).toBe("");
   });
 });

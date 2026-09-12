@@ -15,6 +15,29 @@ describe("Toggle", () => {
     expect(onChange).toHaveBeenCalledWith(true);
   });
 
+  it(
+    // CFG-7, found running the item-1 live acceptance loop against
+    // /config/agents: a real (Playwright) click on the visible switch
+    // graphic hit the decorative `aria-hidden` span, which used to sit
+    // outside the `<label>` -- only the text after it was wrapped. jsdom's
+    // click simulation does not model pointer-event interception the way a
+    // real browser does, so this test cannot reproduce THAT failure mode
+    // directly, but it does pin the fix's actual mechanism: the switch
+    // graphic must be a `<label>` descendant so a browser forwards its
+    // click to the input regardless of what visually overlaps what.
+    "toggles when the switch graphic itself is clicked, not only the text",
+    async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      const { container } = render(<Toggle label="Enabled" value={false} onChange={onChange} />);
+      const graphic = container.querySelector('span[aria-hidden="true"]');
+      expect(graphic).not.toBeNull();
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      await user.click(graphic!);
+      expect(onChange).toHaveBeenCalledWith(true);
+    },
+  );
+
   it("is keyboard operable via Space", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
