@@ -5665,3 +5665,27 @@ Files: `frontend/src/domains/config/PolicySection.tsx`, `PolicySection.test.tsx`
 `docs/evidence/stage4o_complete_audit/generate_audit_artifacts.py`,
 `evidence/config_audit/FINAL_REPORT.md`, `scripts/ci/suite_size_floor.json`,
 `evidence/orchestration/drops/LEASE-CFG-7/drop.json`.
+
+---
+
+## Track close-out — 2026-09-12 (orchestrator)
+
+**Trunk** `refactor/unified-return-platform` at `K:/Projects/Ret/rmap-merge`: CFG-7 merged at `d509a2b3` (RV PASS `b8ba94b6`, round 2), close-out commit `bd75d0ef` (RV CFG-7 advisories N1–N4). Local only; **not pushed** (158 commits ahead of `origin/refactor/unified-return-platform`).
+
+**Close-out commit `bd75d0ef`** — N1: `disabled:opacity-40` removed from every config-domain control the RV listed plus the one it found missing (`ConfigurationPage.tsx` promote buttons, RV-measured 1.543:1); DataSourcesSection ×3, DocumentEditor ×3, SupportTemplateSection, KeyValueTable now dim by fill/border/text. `vitest run src/domains/config src/components/forms` → 32 files, 253/253; eslint on the five files → exit 0. Left open, recorded in `LEASE-CFG-7/drop.json.remaining[3]`: icon-only `opacity-30` at `OrderedList.tsx:111,120`, `KeyValueTable.tsx:183,192` (WCAG 1.4.11 exempts disabled non-text); instances outside the config domain untouched. N2: drop.json canonical-routes entry reworded (44/44 axe every run; 320px reflow = known F10/H5 flake, ~1-in-4, three routes observed). N3: FINAL_REPORT §L DEF-12 credits `a90a7a57` (Step 6/6 added), `18f55e09` (separator repair). N4: `backend/config/README.md` names the loaders of `data_platform/` (`sandbox_runner.py` `_DEFAULT_CONFIG_DIR`, `backend/tests/**`, migrations via `apply_neo4j_migrations.py`) and `seed/` (`operations/seed_manifest.py` at import time, `generate_seed_data.py` `DEFAULT_CONFIG`) — all four loader paths verified on trunk before writing.
+
+**Live proof at `bd75d0ef`** (cfg-verify detached at `bd75d0ef`, `run_all_host.ps1 -NoSupervise`, 12:1x IST): launcher `graph_configuration_release=publish-211a7d88350945f4`, `graph_configuration_status=UNCHANGED` (undecided keys still `agents,clarification_policy,policy_evaluation,return_eligibility_policy,return_policy,support_ingress` — user's decision); `GET /api/config/adoption` → `LIVE`, head **195**, `pending_process_classes: []`; `GET /api/config/runtime` → `policy_evaluation.enabled=true`, `return_eligibility_policy.standard_stock_return.purchase_window.days=30`, 7 agents; `:5173/config/policy` → 200; `packaged-drift` → 200.
+
+**Definition of done (`CFG.brief.md` §6, amended `342e5e78`) — final**
+
+| # | Item | Verdict | Evidence |
+|---|---|---|---|
+| 1 | Every §G defect fixed or deferred with the ID in the ledger | **Met** | FINAL_REPORT §L, 20/20 with lease + pointer; DEF-12 closed on both paths (`a90a7a57`, `18f55e09`) |
+| 2 | `backend/config/` holds only files the runtime or its own tooling loads, each named in the README with its loader; split by function; READMEs match | **Met** (as of `bd75d0ef`) | RV round 2 found exactly two bullets without a loader (N4); closed in the close-out commit. Documented inert entries: `manifest.yaml`'s `platform.system_store` companion note and `dynamic_knowledge/active-schema.example.yaml` |
+| 3 | Every section/unit has a typed screen, each proven once live | **Mostly met** | 12 live specs in one pass (CFG-7); `config-policy` re-run by RV at `b8ba94b6`; the AI Control Center's two AI_GATEWAY screens still lack live publish/revert specs (`drop.json.remaining[0]`) |
+| 4 | No business value read from env at request time | **Met** | CFG-6 hot-adopt (heads 136–138 proof); `deployment` in CARRY_FORWARD_SPLIT_KEYS |
+| 5 | Suites green, drift green, axe clean | **Met** | 1095/1095 vitest, typecheck, lint, both `assert_known_failures` exit 0 (42 backend ids allowlisted, frontend list empty), drift `diffs: []`, axe 44/44 zero violations; 320 reflow flake recorded (N2) |
+
+**Deferred, recorded with reasons (not silently dropped):** AI Control Center live e2e specs (`remaining[0]`); CFG-6 A6 startup-refusal process-level test (`remaining[1]`); CFG-5b A5 agent-activated release writes no CONFIGURATION_* audit record (`remaining[2]`); `data_platform/*.yaml` mapping-engine ownership decision (§6 amendment keeps them as tooling-loaded, now documented with loader); CFG-DEF-19 `seed_version` default (`remaining[5]`).
+
+**User-owned:** decide `agents` and `clarification_policy` (`--adopt-packaged-key` or keep); push the trunk; fix `K:\Projects\Ret\rmap-merge\.env` Neo4j port (7687 → 17687) if that checkout is ever used to serve; discard stale uncommitted audit edits on `feat/acc-frontend` in the main tree. Track CFG is closed from the orchestrator's side.
