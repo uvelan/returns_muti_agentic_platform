@@ -25,14 +25,14 @@ logger = logging.getLogger("return_platform.configuration.snapshot")
 RETURN_PLATFORM_DOMAIN_KEY = "RETURN_PLATFORM"
 AI_GATEWAY_DOMAIN_KEY = "AI_GATEWAY"
 DEPENDENCY_SIMULATION_DOMAIN_KEY = "DEPENDENCY_SIMULATION"
-#: Per-agent module documents, as `manifest.yaml` declares them (W4.2).
-#:
-#: Deliberately **not** in the required-domain set. The three above are behaviour
-#: domains every release must carry; this one is present only once an agent has
-#: been edited through a release, and a deployment that has never edited one
-#: reads the packaged files as its baseline. Requiring it would make every
-#: release cut before W4.2 unpublishable.
-AGENT_MODULES_DOMAIN_KEY = "AGENT_MODULES"
+# `AGENT_MODULES_DOMAIN_KEY` ("AGENT_MODULES", W4.2) is retired as of CFG-5b:
+# an agent edit now publishes a patch of `RETURN_PLATFORM.agents.<id>`
+# (`bootstrap/adapters/governance_agent_configuration.py`) rather than a
+# second, sibling domain built from the manifest-driven module system CFG-5b
+# also deleted (`backend/config/agents/*.yaml`, `configuration/application/
+# loader.py`). A release published before CFG-5b may still carry a stored
+# `AGENT_MODULES` domain in Mongo; nothing reads it any more, and it is
+# harmless leftover data rather than a live domain.
 _ACTIVE_RELEASE_STATUSES = frozenset({"RELEASED"})
 
 

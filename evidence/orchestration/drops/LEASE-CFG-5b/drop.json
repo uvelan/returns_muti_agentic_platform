@@ -1,0 +1,56 @@
+{
+  "lease_id": "CFG-5b",
+  "branch": "feat/cfg-5b-agents",
+  "base_sha": "94049bee6b6432727b2139a07e6c0c235fd569fb",
+  "head_sha": "PENDING",
+  "files": [
+    "backend/src/return_platform/configuration/application/agent_configuration.py",
+    "backend/src/return_platform/bootstrap/adapters/governance_agent_configuration.py",
+    "backend/src/return_platform/main.py",
+    "backend/src/return_platform/configuration/snapshot.py",
+    "backend/src/return_platform/configuration/application/loader.py",
+    "backend/tests/configuration/test_agent_configuration_releases.py",
+    "backend/tests/test_graph_configuration_bootstrap.py",
+    "backend/config/manifest.yaml",
+    "backend/config/agents/",
+    "backend/config/workflows/",
+    "backend/config/sync/",
+    "backend/config/sources/",
+    "backend/config/mappings/",
+    "backend/config/graph/",
+    "backend/config/README.md",
+    "backend/src/return_platform/configuration/README.md",
+    "openapi/return-platform.openapi.json",
+    "backend/openapi/return-platform.openapi.json",
+    "frontend/openapi/return-platform.openapi.json",
+    "openapi.json",
+    "frontend/src/api/generated/return-platform.d.ts",
+    "docs/evidence/stage4_contract_closure/openapi_drift_receipt.json"
+  ],
+  "tests": {
+    "pytest tests/configuration/test_agent_configuration_releases.py -q": "12 passed",
+    "pytest tests/test_graph_configuration_bootstrap.py -q": "25 passed",
+    "pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/platform -q": "942 passed, 35 deselected, 2 warnings in 124.41s",
+    "ruff check (touched backend files)": "clean",
+    "ruff format --check (touched backend files)": "clean (after one auto-format pass)",
+    "mypy (touched backend source files)": "Success: no issues found in 5 source files",
+    "python scripts/check_openapi_drift.py --write": "PASS, 5 snapshots regenerated",
+    "python scripts/check_openapi_drift.py": "PASS, zero diffs"
+  },
+  "scope_done": [
+    "1: GET/PUT /api/agents repointed at the live RETURN_PLATFORM.agents section; activation publishes a patch of agents.<id> only via a whole-document clone through publish_release_with_domains",
+    "2: manifest agent copies and dead manifest entries deleted (backend/config/agents/, workflows/, sync/, sources/, mappings/, graph/); configuration/application/loader.py deleted (last consumer gone); manifest.yaml trimmed to platform.system_store; both READMEs updated",
+    "4 (bootstrap interplay)": "test added proving a proposal-published agents value survives a bootstrap run whose packaged file disagrees",
+    "OpenAPI": "regenerated (all 4 JSON snapshots + generated .d.ts) and drift check PASS"
+  ],
+  "remaining": [
+    "3: frontend /config/agents typed table on TypedSectionScreen chrome, MSW handlers, tests",
+    "6: e2e run once (disposable dev server, reverted)",
+    "7: acceptance sweep per the brief"
+  ],
+  "deviations": [
+    "Coordinator brief scope item 1 says the activation 'reuse[s] record_configuration_audit'; that function requires a FastAPI Request and is unreachable from the activator's call context (ProposalKernel.activate, no Request in scope), and configuration/api/releases.py (where it lives) is outside this lease's Owns. The CFG-5 step:05 file-by-file plan does not call for it either. Not added; the audit-trail property W4.2 established is still asserted via the governance kernel's own audit log (unaffected by this change). See CFG.ledger.md step:01.",
+    "test_a_credentials_block_in_an_agent_document_is_refused deleted rather than adapted: AgentConfiguration has no free-form mapping field (unlike the old AgentConfigNode.retry_policy), so extra=\"forbid\" plus fully-typed fields already refuse any document that could carry a forbidden-key-shaped block before governance's own forbidden-key policy would run -- there is no longer a document that both validates and exercises that policy in isolation. See CFG.ledger.md step:01."
+  ],
+  "merge_status": "PARTIAL"
+}

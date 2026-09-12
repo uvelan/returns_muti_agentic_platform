@@ -4463,3 +4463,228 @@ POST /api/config/policy/preview (live policy, facts stated)    10 days -> APPROV
 POST /api/config/policy/preview (evaluation off)               -> decision None, evaluation_enabled False (SKIPPED_BY_CONFIGURATION)
 ```
 Facts are tri-state strings (`TRUE`/`FALSE`/`UNKNOWN`) keyed by the thirteen checklist names.
+
+## CFG-5b step:00 — worktree, PYTHONPATH, stale-base check
+
+```
+$ python -c "import return_platform; print(return_platform.__file__)"
+K:\Projects\Ret\returns_muti_agentic_platform\.claude\worktrees\cfg-5b\backend\src\return_platform\__init__.py
+```
+
+Confirms the venv/`.pth` trap did not fire: the import resolves inside `cfg-5b`, not MAIN.
+
+```
+$ git rev-parse HEAD
+94049bee6b6432727b2139a07e6c0c235fd569fb
+$ git rev-list --left-right --count HEAD...origin/master
+1132	0
+```
+
+Base sha `94049bee` (trunk with CFG-0..6 merged, CFG-8 started on its own branch per the brief).
+`origin/master` is strictly behind `HEAD` (0 commits on its side) -- no stale-base condition.
+
+Read `.plan/tracks/CFG-5b.brief.md`, the CFG-5 step:05 entry in `.plan/tracks/CFG.ledger.md`
+(the file-by-file plan below), and `.plan/tracks/CFG.brief.md` §1.2-1.3, then the named code:
+`configuration/api/agents.py`, `application/agent_configuration.py`, `application/loader.py`,
+`bootstrap/adapters/governance_agent_configuration.py`, `application/release_promotion.py`,
+`configuration/return_configuration.py` (`AgentConfiguration`, `ReturnPlatformConfiguration.agents`),
+`configuration/snapshot.py`, `main.py`'s agent-configuration wiring, `backend/config/manifest.yaml`
+and the packaged `returns/agents.yaml`, and the existing
+`tests/configuration/test_agent_configuration_releases.py` /
+`tests/test_graph_configuration_bootstrap.py`.
+
+**One correction to the CFG-5 step:05 plan, found while reading the actual manifest and packaged
+files side by side (not itself wrong, just not spelled out there): the manifest's 8 agent ids
+(`agent.return_session_orchestrator`, `agent.order_discovery`, `agent.order_analysis`,
+`agent.return_workflow`, `agent.return_fulfillment`, `agent.bay_allocation`, `agent.learning`,
+`agent.graph_schema_design`) are a *different vocabulary* from the live `RETURN_PLATFORM.agents`
+section's 7 keys (`order_discovery`, `order_analysis`, `return_workflow`, `return_fulfillment`,
+`bay_assignment`, `feedback_learning`, `support_response` -- confirmed against
+`agents/registry/registry.py::AgentRegistry.build` and each agent class's own
+`configuration.agents["<id>"]` read, e.g. `bay_assignment.py:39`).** The new `manifestId` a
+console operator sees and edits by is therefore the *live* key (no `agent.` prefix, no
+`bay_allocation`/`learning`/`return_session_orchestrator`/`graph_schema_design`, which do not
+exist as live agents at all), not the manifest's id. The step:05 plan's own wording ("moduleId
+collapses to the manifest id") already implies this outcome; recorded here because the two id
+sets otherwise look like they should line up and do not.
+
+## CFG-5b step:01 — repoint `/api/agents` at the live `RETURN_PLATFORM.agents` section
+
+Implements the CFG-5 step:05 plan's items 1-3, adjusted per step:00's id-vocabulary note above.
+
+`configuration/application/agent_configuration.py`: rewritten. `ConfigurationLoader`/YAML gone;
+`AgentConfigurationService(active: Callable[[], Mapping[str, Any]])` reads the whole current
+`RETURN_PLATFORM` document and slices `.agents`. `list_agents`/`read` build `AgentSummary`/
+`AgentConfigurationView` directly from `agents[<id>]`; `moduleId` is gone (`manifestId` is now the
+only id), `path` is the descriptive `RETURN_PLATFORM.agents.<id>`, `source` is always `"RELEASE"`
+(documented why: `agents` is a required key of `ReturnPlatformConfiguration`, so there is no more
+a no-release state to fall back from). `validate_candidate` is `AgentConfiguration(**document)`
+plus a SHA-256 receipt of the *canonical* `model_dump(mode="json")` -- not the submitted document --
+returned alongside the canonical form so the activator publishes the materialized shape, not
+whatever partial document was submitted. New `released_return_platform_document()` returns a deep
+copy of the whole current `RETURN_PLATFORM` document for the activator to patch one `agents.<id>`
+key on.
+
+`bootstrap/adapters/governance_agent_configuration.py`: `AgentConfigurationProposalActivator.
+activate()` now clones the whole `RETURN_PLATFORM` document via `released_return_platform_
+document()`, sets `agents[subject_id]`, and calls `publish_release_with_domains(domains=
+{RETURN_PLATFORM_DOMAIN_KEY: <patched document>}, ...)` -- one domain, the same one, patched --
+instead of publishing a sibling `AGENT_MODULES` domain built from `released_documents()`.
+
+`main.py`: `_released_agent_modules` (read `AGENT_MODULES_DOMAIN_KEY` off the snapshot) replaced by
+`_released_return_platform_document` (reads `RETURN_PLATFORM_DOMAIN_KEY`); `AgentConfigurationService`
+construction drops the `settings.configuration_directory` positional argument (there is no
+directory to load any more) and passes `active=` by keyword.
+
+`configuration/snapshot.py`: `AGENT_MODULES_DOMAIN_KEY` constant removed -- zero remaining
+references after the above (confirmed by grep before removal).
+
+**Deviation from the coordinator brief's literal wording, recorded per its own instruction to
+record the smallest deviation:** the brief's scope item 1 says the activation "reuse[s]
+`record_configuration_audit`". That function (`configuration/api/releases.py`) takes a FastAPI
+`Request` and is only callable from an HTTP handler; the activator runs from
+`ProposalKernel.activate()`, with no `Request` in scope, and `configuration/api/releases.py` is
+outside this lease's Owns. The CFG-5 step:05 plan (the file-by-file plan this lease was told to
+follow) does not call for it either -- its own concrete plan for
+`governance_agent_configuration.py` (item 2) only asks for the domain-patch change made above. The
+audit trail property W4.2 established -- "the change is in the audit trail" -- is unaffected and
+still asserted directly (`test_the_edit_reaches_the_audit_trail`,
+`test_activating_an_agent_proposal_publishes_a_release`'s `"PROPOSAL_ACTIVATED" in audit.actions()`):
+it is carried by the governance kernel's own audit log, which every proposal type already writes
+through regardless of domain. No second, `CONFIGURATION_*`-audit-stream entry is added for this
+lease; adding one would mean touching `operations/repository.py`/`configuration/api/releases.py`,
+both outside Owns.
+
+**Test rewrite, `tests/configuration/test_agent_configuration_releases.py`:** every test updated to
+the new document shape (no `module_id`/`module_type`/`payload` envelope -- the document IS the
+`AgentConfiguration` shape) and the new id (`order_discovery`, not `agent.learning`, which does not
+exist as a live agent -- see step:00). `affectedKeys` assertion changes from
+`["agent.payload.enabled"]` to `["agent.enabled"]` (no more `payload` nesting).
+`test_a_document_the_loader_refuses_is_refused_here` (module_id mismatch) has no equivalent any
+more -- there is no `module_id` field on `AgentConfiguration` -- replaced with
+`test_a_document_missing_a_required_field_is_refused_here` (a required field absent, same "the
+model is the single definition of valid" property). `test_a_credentials_block_in_an_agent_
+document_is_refused` is deleted, not replaced: it depended on `AgentConfigNode`'s free-form
+`retry_policy: Mapping[str, Any] | None` field to construct a document that passed schema
+validation while smuggling a `credentials` block past it defense-in-depth; `AgentConfiguration` has
+no such field (`extra="forbid"`, every field concretely typed), so there is no longer a document
+that both validates and carries a forbidden-key-shaped block -- the hole the test exercised is
+closed by the model itself, not by governance's forbidden-key policy, and there is no way to
+exercise that policy in isolation here any more without first bypassing `validate_candidate`, which
+would not be testing this file. `test_activation_without_an_active_release_is_refused`'s premise
+changes from "a release carrying only AGENT_MODULES, no RETURN_PLATFORM to clone from" to "no
+active release at all" -- exactly the re-justification the step:05 plan's item 5 anticipated, since
+target and dependency are now the same domain.
+
+`test_graph_configuration_bootstrap.py`, `configuration/README.md`, `backend/config/README.md`,
+`backend/config/manifest.yaml` and the manifest module deletions are step:02/step:03 below.
+
+```
+$ python -m pytest tests/configuration/test_agent_configuration_releases.py -q
+12 passed, 1 warning in 6.10s
+
+$ python -m pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/platform -q
+941 passed, 35 deselected, 2 warnings in 128.78s
+```
+
+(The second run predates step:03's new bootstrap test below; re-run with it included is pasted
+there.)
+
+```
+$ ruff check <5 touched files>
+All checks passed!
+$ ruff format --check <5 touched files>
+4 files reformatted, 1 file left unchanged   # applied; re-check below is clean
+$ mypy configuration/application/agent_configuration.py bootstrap/adapters/governance_agent_configuration.py main.py configuration/snapshot.py configuration/api/agents.py
+Success: no issues found in 5 source files
+```
+
+## CFG-5b step:02 — retire the manifest-driven module system
+
+Implements the CFG-5 step:05 plan's item 4 and the brief's scope item 2, per D-CFG-1.
+
+Deleted: `backend/config/agents/*.yaml` (8 files), `backend/config/workflows/return_session.yaml`,
+`backend/config/sync/order_partial.yaml`, `backend/config/sync/order_full.yaml`,
+`backend/config/sources/sales_inv.yaml`, `backend/config/mappings/sales_inv_order.yaml`,
+`backend/config/graph/order_discovery.yaml`, and their now-empty parent directories.
+`configuration/application/loader.py` (`ConfigurationLoader`) deleted -- the Agents editing API
+was its last consumer (confirmed by grep before deletion: zero remaining references to
+`ConfigurationLoader`/`application.loader`/`LoadedManifestModule` anywhere in `backend/src` or
+`backend/tests` after step:01's rewrite).
+
+`backend/config/manifest.yaml` trimmed to its one remaining entry, `platform.system_store` --
+kept per the CFG-5 step:05 plan's own instruction ("Keep `platform.system_store`") -- with a header
+comment recording that this entry was *already* inert before CFG-5b
+(`platform/system_store/manifest_loader.py::load_system_store_config` reads
+`Settings.system_store_manifest_path` directly, never this file) and that the whole file is
+therefore read by nothing now that its one real consumer (the loader) is gone. Not deleted outright
+because doing so decides nothing about `platform/system_store/manifest_loader.py`, which is outside
+this lease's Owns, and the brief's acceptance line ("manifest.yaml lists only what a runtime path
+loads") reads most naturally as "trim it to what a real file loads", which the one remaining entry
+still is (just not via this manifest).
+
+Re-confirmed the six non-agent entries had zero consumers before deleting their target files
+(the CFG-5 step:05 plan already recorded this grep; repeated here against the current tree):
+
+```
+$ grep -rn "workflow\.return_session\|sync\.order_\|source\.sales_inv\|mapping\.sales_inv_order\|graph\.order_discovery" backend/src backend/tests
+tests/test_mapping_contracts.py:1288:            source_id="source.sales_inv",
+```
+
+The one hit is an unrelated `SourceAssetDefinition` fixture in the data-platform mapping-contracts
+suite (a different id namespace entirely, `data_platform/mapping/`) reusing the same string as an
+arbitrary test value -- not a reader of the deleted `backend/config/sources/sales_inv.yaml` or the
+manifest entry. Confirmed by reading the test: it constructs a `SourceAssetDefinition` in-memory
+and asserts a `ValidationError` on `source_system`; no file I/O.
+
+READMEs updated: `backend/src/return_platform/configuration/README.md` (the "Precedence" section's
+manifest-modules paragraph, and the paragraph documenting `ConfigurationLoader`'s remaining
+consumer) and `backend/config/README.md` (manifest.yaml section rewritten to explain it is read by
+nothing; "Module document shape" marked historical; "Directories" list trimmed; "Adding a module"
+replaced with "Adding a business key" describing the composed-`returns/`-directory path instead;
+new "Removed as dead (CFG-5b)" entry alongside the existing CFG-1 one).
+
+```
+$ ls backend/config
+README.md  ai_gateway  data_assets.yaml  data_platform  dependency_simulation.yaml  dynamic_knowledge  manifest.yaml  platform  returns  schema_registry.yaml  seed
+```
+
+No `agents/` directory; `workflows/`, `sync/`, `sources/`, `mappings/`, `graph/` also gone.
+
+## CFG-5b step:03 — bootstrap interplay test (brief scope item 4)
+
+New test in `test_graph_configuration_bootstrap.py`:
+`test_a_proposal_published_agent_edit_survives_the_packaged_file_that_disagrees_with_it`. Mirrors
+the existing `test_an_operator_edit_survives_the_packaged_file_that_disagrees_with_it` (a `support`
+edit) at the `agents` key instead: `agents` is a whole top-level `RETURN_PLATFORM` unit, not one of
+`CARRY_FORWARD_SPLIT_KEYS[RETURN_PLATFORM_DOMAIN_KEY]` (today only `("deployment",)`), so a release
+whose `agents` digest no longer matches the packaged baseline's is read as an operator edit and
+carried forward whole -- proving a proposal-published `agents` value (one agent flipped) survives a
+bootstrap run whose packaged file disagrees with it, without any agent-specific change to the
+carry-forward logic itself (none was needed: `agents` already behaved like any other whole
+`RETURN_PLATFORM` key once the activator started publishing into it instead of a sibling
+`AGENT_MODULES` domain).
+
+```
+$ python -m pytest tests/test_graph_configuration_bootstrap.py -q
+25 passed in 12.34s
+```
+
+```
+$ python -m pytest tests/configuration tests/api tests/test_configuration_api.py tests/test_graph_configuration_bootstrap.py tests/platform -q
+942 passed, 35 deselected, 2 warnings in 124.41s (0:02:04)
+```
+
+## CFG-5b step:04 — OpenAPI regen + drift check
+
+`AgentSummary`/`AgentConfigurationView`'s field changes (no `moduleId`, camelCase `aiAssisted`/
+`aiRouteRef`/`version` added, `path` now descriptive) move the response schema, so all four
+committed JSON snapshots and the generated `.d.ts` needed regeneration.
+
+```
+$ python scripts/check_openapi_drift.py --write
+... status: PASS, diffs: [5 files regenerated]
+
+$ python scripts/check_openapi_drift.py
+... status: PASS, diffs: []
+```

@@ -145,7 +145,7 @@ from return_platform.configuration.runtime_integrations import (
 )
 from return_platform.configuration.settings import Settings
 from return_platform.configuration.snapshot import (
-    AGENT_MODULES_DOMAIN_KEY,
+    RETURN_PLATFORM_DOMAIN_KEY,
     ConfigurationSnapshotBuilder,
 )
 from return_platform.data_governance import load_asset_catalog
@@ -585,32 +585,26 @@ async def lifespan(
         resources.settings = settings
         app.state.settings = settings
 
-        # Each agent's own module document, editable through /api/agents.
-        # Reads and proposals both go through the loader the platform boots
-        # from, so the console cannot accept a document the platform would
-        # refuse.
+        # Each agent's own live document, editable through /api/agents. Reads
+        # and proposals both go through the same `AgentConfiguration` model
+        # the release validator already enforces, so the console cannot
+        # accept a document the platform would refuse.
         #
-        # The overlay is read through a closure rather than passed as a value:
-        # this service is built once at startup and the active release moves
-        # underneath it every time one is published, so a snapshot captured here
-        # would keep serving the configuration that was live at boot.
-        def _released_agent_modules() -> Mapping[str, Any]:
+        # The document is read through a closure rather than passed as a
+        # value: this service is built once at startup and the active
+        # release moves underneath it every time one is published, so a
+        # snapshot captured here would keep serving the configuration that
+        # was live at boot.
+        def _released_return_platform_document() -> Mapping[str, Any]:
             snapshot = getattr(app.state, "return_configuration_snapshot", None)
             payloads = getattr(snapshot, "domain_payloads", None)
-            modules = payloads.get(AGENT_MODULES_DOMAIN_KEY) if isinstance(payloads, dict) else None
-            return modules if isinstance(modules, Mapping) else {}
+            document = (
+                payloads.get(RETURN_PLATFORM_DOMAIN_KEY) if isinstance(payloads, dict) else None
+            )
+            return document if isinstance(document, Mapping) else {}
 
-        # `settings.configuration_directory`, not `BACKEND_ROOT / "config"`.
-        # `BACKEND_ROOT` is `parents[3]` of the settings module, which is the
-        # backend root from a source checkout and `/usr/local/lib/python3.13`
-        # inside the image -- the runtime stage copies `config` and `scripts`
-        # but not `src`, so `return_platform` imports from site-packages. The
-        # seven single-file defaults are each overridden by a `PLATFORM_*_PATH`
-        # env var and so never noticed; this one was not a setting at all, so
-        # the Configuration screen's Agents section answered 500 in every
-        # container while every test -- which runs from the checkout -- passed.
         app.state.agent_configuration = AgentConfigurationService(
-            settings.configuration_directory, overlay=_released_agent_modules
+            active=_released_return_platform_document
         )
 
         await _initialize_mongodb(
