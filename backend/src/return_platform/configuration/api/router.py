@@ -84,6 +84,7 @@ from return_platform.configuration.process_adoption import (
     MongoProcessAdoptionStore,
     evaluate_release_adoption,
 )
+from return_platform.configuration.settings import Settings
 from return_platform.security import capabilities
 from return_platform.security.authorization import (
     require_capability,
@@ -124,7 +125,16 @@ async def get_runtime_configuration(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Runtime configuration is not loaded",
         )
-    return _ok(request, snapshot.model_dump(mode="json"))
+    payload = snapshot.model_dump(mode="json")
+    # CFG-6: `/config/deployment` needs to know which options production
+    # refuses (rendered disabled with the reason, not hidden) before an
+    # operator ever tries to publish one. `app.state.settings.environment` is
+    # this process's own environment -- the same value every production gate
+    # in this lease checks against.
+    settings = getattr(request.app.state, "settings", None)
+    if isinstance(settings, Settings):
+        payload["environment"] = settings.environment
+    return _ok(request, payload)
 
 
 @router.get("/adoption", response_model=APIResponse[dict[str, Any]])

@@ -13,6 +13,7 @@ import asyncio
 import logging
 import socket
 import uuid
+from typing import cast
 
 import httpx
 from pymongo import AsyncMongoClient
@@ -20,7 +21,10 @@ from temporalio.client import Client
 
 from return_platform.ai.gateway.final_dispatch import ALLOW_ALL
 from return_platform.bootstrap.system_store import bootstrap_system_store
-from return_platform.configuration.runtime_activation import build_worker_runtime_activation
+from return_platform.configuration.runtime_activation import (
+    ActivationContext,
+    build_worker_runtime_activation,
+)
 from return_platform.configuration.runtime_integrations import verify_runtime_validation_receipts
 from return_platform.configuration.runtime_loader import (
     ResolvedProcessConfiguration,
@@ -53,6 +57,116 @@ from return_platform.workflows.return_case_recovery import build_case_recovery_s
 logger = logging.getLogger("return_platform.workers.integration_outbox")
 
 _PROCESS_CLASS = "integration-outbox-worker"
+
+#: The outbox topics whose dispatcher depends on a `deployment`-governed
+#: switch (CFG-6 scope item 6a): `support_ticket_mode`/`support_ticket_base_url`
+#: for the first, `omc_dependency_mode`/`freight_dependency_mode` for the
+#: other two. Every other topic this worker serves has no such switch and is
+#: never rebuilt.
+_DEPENDENCY_TOPICS = frozenset(
+    {"return-support.ticket.create", "omc.return.create", "carrier.return.book"}
+)
+
+
+def _dependency_topic_dispatchers(
+    settings: Settings,
+    *,
+    simulation_service: DependencySimulationService,
+    http_client: httpx.AsyncClient,
+) -> dict[str, TopicDispatcher]:
+    """The dispatcher table for `_DEPENDENCY_TOPICS`, from live settings.
+
+    Extracted so `run()`'s initial build and `_DependencyDispatcherParticipant`'s
+    rebuild on every release change are the same code -- two copies of this
+    conditional logic is exactly how they would drift into different answers
+    for the same `Settings`.
+    """
+    dispatchers: dict[str, TopicDispatcher] = {}
+    if (
+        settings.support_ticket_mode == "INTERNAL_WITH_EXTERNAL_MIRROR"
+        and settings.support_ticket_base_url is not None
+    ):
+        dispatchers["return-support.ticket.create"] = HttpTicketDispatcher(
+            settings,
+            http_client,
+        )
+    if settings.omc_dependency_mode == "SIMULATED":
+        dispatchers["omc.return.create"] = SimulationTopicDispatcher(
+            simulation_service, DependencyKind.OMC, "CREATE_RMA"
+        )
+    elif settings.omc_command_base_url is not None:
+        dispatchers["omc.return.create"] = HttpJsonDispatcher(
+            base_url=settings.omc_command_base_url,
+            resource_path="commands/returns",
+            client=http_client,
+            timeout_seconds=settings.operation_timeout_seconds,
+            api_key=(
+                settings.omc_command_api_key.get_secret_value()
+                if settings.omc_command_api_key is not None
+                else None
+            ),
+        )
+    if settings.freight_dependency_mode == "SIMULATED":
+        dispatchers["carrier.return.book"] = SimulationTopicDispatcher(
+            simulation_service, DependencyKind.FREIGHT, "CONFIRM_BOOKING"
+        )
+    elif settings.carrier_booking_base_url is not None:
+        dispatchers["carrier.return.book"] = HttpJsonDispatcher(
+            base_url=settings.carrier_booking_base_url,
+            resource_path="return-bookings",
+            client=http_client,
+            timeout_seconds=settings.operation_timeout_seconds,
+            api_key=(
+                settings.carrier_booking_api_key.get_secret_value()
+                if settings.carrier_booking_api_key is not None
+                else None
+            ),
+        )
+    return dispatchers
+
+
+class _DependencyDispatcherParticipant:
+    """Rebuilds `_DEPENDENCY_TOPICS` behind the activation boundary (CFG-6 6a).
+
+    `prepare` does the only fallible-looking work (constructing dispatcher
+    objects -- in practice infallible, but done here rather than in `publish`
+    per the `ActivationParticipant` contract: nothing swaps until every
+    participant in this poll has prepared successfully). `publish` is the
+    assignment, via `IntegrationOutboxDispatcher.replace_dispatchers`.
+
+    Never returns `None`: unlike a participant with its own activation
+    pointer, this one has nothing to compare against and simply recomputes on
+    every poll, including the polls where the release did not move -- cheap
+    (no I/O; `SimulationTopicDispatcher`/`HttpJsonDispatcher`/
+    `HttpTicketDispatcher` construction is synchronous) and correctness over
+    micro-optimizing a poll that already runs every 5 seconds.
+    """
+
+    def __init__(
+        self,
+        worker: IntegrationOutboxDispatcher,
+        *,
+        static_dispatchers: dict[str, TopicDispatcher],
+        simulation_service: DependencySimulationService,
+        http_client: httpx.AsyncClient,
+    ) -> None:
+        self._worker = worker
+        self._static_dispatchers = static_dispatchers
+        self._simulation_service = simulation_service
+        self._http_client = http_client
+
+    async def prepare(self, context: ActivationContext) -> object | None:
+        return {
+            **self._static_dispatchers,
+            **_dependency_topic_dispatchers(
+                context.settings,
+                simulation_service=self._simulation_service,
+                http_client=self._http_client,
+            ),
+        }
+
+    def publish(self, prepared: object) -> None:
+        self._worker.replace_dispatchers(cast("dict[str, TopicDispatcher]", prepared))
 
 
 async def run() -> None:
@@ -130,46 +244,6 @@ async def run() -> None:
             ),
         )
         dispatchers[classify_topic] = classify_dispatcher
-        if (
-            settings.support_ticket_mode == "INTERNAL_WITH_EXTERNAL_MIRROR"
-            and settings.support_ticket_base_url is not None
-        ):
-            dispatchers["return-support.ticket.create"] = HttpTicketDispatcher(
-                settings,
-                http_client,
-            )
-        if settings.omc_dependency_mode == "SIMULATED":
-            dispatchers["omc.return.create"] = SimulationTopicDispatcher(
-                simulation_service, DependencyKind.OMC, "CREATE_RMA"
-            )
-        elif settings.omc_command_base_url is not None:
-            dispatchers["omc.return.create"] = HttpJsonDispatcher(
-                base_url=settings.omc_command_base_url,
-                resource_path="commands/returns",
-                client=http_client,
-                timeout_seconds=settings.operation_timeout_seconds,
-                api_key=(
-                    settings.omc_command_api_key.get_secret_value()
-                    if settings.omc_command_api_key is not None
-                    else None
-                ),
-            )
-        if settings.freight_dependency_mode == "SIMULATED":
-            dispatchers["carrier.return.book"] = SimulationTopicDispatcher(
-                simulation_service, DependencyKind.FREIGHT, "CONFIRM_BOOKING"
-            )
-        elif settings.carrier_booking_base_url is not None:
-            dispatchers["carrier.return.book"] = HttpJsonDispatcher(
-                base_url=settings.carrier_booking_base_url,
-                resource_path="return-bookings",
-                client=http_client,
-                timeout_seconds=settings.operation_timeout_seconds,
-                api_key=(
-                    settings.carrier_booking_api_key.get_secret_value()
-                    if settings.carrier_booking_api_key is not None
-                    else None
-                ),
-            )
         if settings.customer_notification_base_url is not None:
             dispatchers["customer.return.notify"] = HttpJsonDispatcher(
                 base_url=settings.customer_notification_base_url,
@@ -182,12 +256,42 @@ async def run() -> None:
                     else None
                 ),
             )
+        # The three topics `deployment.support_ticket`/`deployment.dependencies`
+        # govern (CFG-6 scope item 6a) -- built once here for the worker's
+        # initial table and rebuilt by `_DependencyDispatcherParticipant` on
+        # every release change, from the same function, so the two can never
+        # drift into different answers for the same settings.
+        dispatchers.update(
+            _dependency_topic_dispatchers(
+                settings,
+                simulation_service=simulation_service,
+                http_client=http_client,
+            )
+        )
         worker = IntegrationOutboxDispatcher(client, settings, dispatchers)
+        # Everything else in `dispatchers` at this point (the Temporal signal
+        # topics, Support classification, customer notification) has no
+        # release-governed switch behind it and is never rebuilt; only the
+        # three dependency topics above are recomputed on activation and
+        # merged back over this static base (`_DependencyDispatcherParticipant.prepare`).
+        static_dispatchers = {
+            topic: dispatcher
+            for topic, dispatcher in dispatchers.items()
+            if topic not in _DEPENDENCY_TOPICS
+        }
         activation = await build_worker_runtime_activation(
             runtime=runtime,
             process_class=_PROCESS_CLASS,
             instance_id=f"{socket.gethostname()}-{uuid.uuid4().hex[:8]}",
             mongo=client,
+            participants=(
+                _DependencyDispatcherParticipant(
+                    worker,
+                    static_dispatchers=static_dispatchers,
+                    simulation_service=simulation_service,
+                    http_client=http_client,
+                ),
+            ),
         )
         activation_tasks = activation.start()
         # Phase 10. The dispatcher above *produces* dead letters; nothing

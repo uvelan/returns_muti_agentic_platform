@@ -509,6 +509,17 @@ class IntegrationOutboxDispatcher:
         self._worker_id = worker_id or f"outbox-{uuid.uuid4()}"
         self._dispatchers = dispatchers
 
+    def replace_dispatchers(self, dispatchers: dict[str, TopicDispatcher]) -> None:
+        """Swap the live dispatcher table. Assignment only, no fallible work.
+
+        CFG-6 scope item 6a: the seam an `ActivationParticipant` publishes
+        through so a release change to `deployment.support_ticket`/
+        `deployment.dependencies` reaches this worker's next `claim()` without
+        a restart, the same activation boundary the AI route pool already
+        uses (`runtime_activation.py`).
+        """
+        self._dispatchers = dispatchers
+
     async def ensure_indexes(self) -> None:
         """The union, not this worker's own subset.
 

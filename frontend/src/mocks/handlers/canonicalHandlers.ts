@@ -657,6 +657,25 @@ const MOCK_OMC = {
   rga_is_customer_return: true,
 };
 
+// CFG-6: `/config/deployment` -- the env-held business switches, now released.
+// GOOGLE's pool is deliberately empty here: it stands in for a provider
+// `runtime_integrations` governs, which the screen renders read-only.
+const MOCK_DEPLOYMENT = {
+  ai: {
+    provider_order: ["GOOGLE", "NVIDIA", "SIMULATOR"],
+    model_pools: {
+      NVIDIA: {
+        lightweight: ["openai/gpt-oss-20b"],
+        standard: ["nvidia/nemotron-3-super-120b-a12b"],
+      },
+    },
+    google: { thinking_budget: 2048, response_schema: false },
+  },
+  dependencies: { omc: "SIMULATED", parcel: "SIMULATED", freight: "SIMULATED", lsi: "SIMULATED" },
+  feedback_learning: { enabled: true },
+  support_ticket: { mode: "INTERNAL", base_url: null },
+};
+
 /**
  * `workflow`/`return_case`/`business_calendars`/`housekeeping`, as CFG-5's
  * `/config/workflow` reads them. `workflow` mirrors `WorkflowConfiguration`
@@ -1746,9 +1765,19 @@ export const canonicalHandlers = [
           checksum_sha256: "9f2c1a",
           source: "GRAPH",
           head_revision: 41,
+          // CFG-6: what `/config/deployment` renders disabled-with-reason
+          // against -- "development" allows every option.
+          environment: "development",
           configuration: {
             integrations: MOCK_INTEGRATIONS,
             copilot: MOCK_COPILOT,
+            // CFG-6's /config/deployment. GOOGLE stands in for a provider
+            // `runtime_integrations` governs, which the screen renders
+            // read-only.
+            deployment: MOCK_DEPLOYMENT,
+            runtime_integrations: {
+              ai_providers: [{ provider_key: "GOOGLE", enabled: true }],
+            },
             // A template small enough to read and real enough to preview: one
             // default variant with one bound field. `dev:mock` shows the
             // Support Template tab with something in it rather than the

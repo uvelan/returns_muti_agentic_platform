@@ -4472,21 +4472,28 @@ export interface components {
          * @enum {string}
          */
         AIDecision: "APPROVE" | "REJECT" | "REVIEW_REQUIRED" | "WAITING_SUPPORT" | "WAITING_EXTERNAL";
-        /** AIGatewaySettingsUpdate */
+        /**
+         * AIGatewaySettingsUpdate
+         * @description `PUT /api/ai/settings` -- `interceptMode` only (CFG-6).
+         *
+         *     `providerOrder` was retired: `deployment.ai.provider_order`
+         *     (`configuration/return_configuration.py`) is now the only source of AI
+         *     provider order, published and hot-adopted through the release like every
+         *     other `deployment` field, at `/config/deployment`. This document's own
+         *     production SIMULATOR check moved with it to
+         *     `deployment_settings.validate_deployment_for_environment`, run at the
+         *     publish/adopt-packaged boundary.
+         */
         AIGatewaySettingsUpdate: {
             /** Expectedversion */
             expectedVersion: number;
             /** Interceptmode */
             interceptMode: boolean;
-            /** Providerorder */
-            providerOrder: string[];
         };
         /** AIGatewaySettingsView */
         AIGatewaySettingsView: {
             /** Interceptmode */
             interceptMode: boolean;
-            /** Providerorder */
-            providerOrder: string[];
             /**
              * Updatedat
              * Format: date-time

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from typing import Any, cast
 
 import pytest
@@ -15,6 +16,7 @@ from return_platform.configuration.api.releases import (
 )
 from return_platform.configuration.api.router import router
 from return_platform.configuration.cli import bootstrap_graph_configuration
+from return_platform.configuration.deployment_settings import deployment_payload_from_settings
 from return_platform.configuration.graph_repository import (
     InMemoryConfigurationGraphRepository,
 )
@@ -46,6 +48,18 @@ def configuration_client(
     app = FastAPI()
     app.include_router(router)
     app.state.settings = test_settings
+    # CFG-6: mirrors `main.py`'s wiring, but deliberately `{}` here rather than
+    # `deployment_payload_from_settings(test_settings)` -- most of this
+    # fixture's tests build their "active release" by cloning
+    # `app.state.return_configuration` (the RAW packaged baseline, exactly
+    # like `_active_or_baseline_domains` does when there is no active release)
+    # and would otherwise see an incidental `deployment.ai` divergence from
+    # `test_settings`'s own env-derived model pools -- noise unrelated to
+    # whatever carry-forward behaviour each test actually exercises.
+    # `test_adopt_packaged_api_matches_a_cli_run` (the one test that needs the
+    # real overlay, to compare against a real CLI run on the same settings)
+    # sets this attribute itself before calling the route.
+    app.state.packaged_deployment_defaults = {}
     app.state.graph_configuration_repository = InMemoryConfigurationGraphRepository()
     app.state.return_configuration = load_return_configuration(
         test_settings.return_configuration_path
@@ -855,6 +869,237 @@ def test_publish_refuses_a_stale_head_and_leaves_nothing_behind(
     assert statuses <= {"ARCHIVED"}, statuses
 
 
+def test_publish_rolls_back_on_any_refusal_not_only_release_promotion_error(
+    configuration_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """RV CFG-3a F5 / CFG-6.design.md §8 (brief item 10).
+
+    A non-`ReleasePromotionError`, non-`HTTPException` failure inside the
+    guarded block -- here, a repository fault while cloning the SECOND domain
+    of the new draft, well before either promotion -- must still archive the
+    draft `/publish` already created the RETURN_PLATFORM domain for. Before
+    this lease's `except BaseException` clause, only `HTTPException` was
+    caught here and a raw exception from the repository propagated with the
+    half-created DRAFT left behind.
+    """
+    client = configuration_client
+    repo = client.app.state.graph_configuration_repository
+    original_save = repo.save_draft_domain
+
+    async def failing_save(
+        release_id: str, domain_key: str, payload: dict[str, Any], *, actor_id: str
+    ) -> None:
+        if release_id == "publish-any-refusal" and domain_key == "AI_GATEWAY":
+            raise RuntimeError("graph fault while cloning the active release")
+        return await original_save(release_id, domain_key, payload, actor_id=actor_id)
+
+    monkeypatch.setattr(repo, "save_draft_domain", failing_save)
+
+    with pytest.raises(RuntimeError, match="graph fault while cloning the active release"):
+        client.post(
+            "/api/config/publish",
+            json={
+                "release_id": "publish-any-refusal",
+                "domain_key": "RETURN_PLATFORM",
+                "patch": {},
+                "expected_head_revision": 0,
+            },
+        )
+
+    releases = client.get("/api/config/releases").json()["data"]
+    published = [r for r in releases if r["releaseId"] == "publish-any-refusal"]
+    assert published, "the release this call created must still be visible, archived"
+    assert published[0]["status"] == "ARCHIVED"
+
+
+def test_adopt_packaged_rolls_back_on_any_refusal_not_only_release_promotion_error(
+    configuration_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same widened guard, for `/adopt-packaged` (`releases.py:1032-1064`).
+
+    The fault lands inside `publish_release_with_domains`'s own clone loop --
+    before either promotion runs -- so the release this call creates is still
+    DRAFT when the raw exception propagates, and must be archived rather than
+    left behind.
+    """
+    client = configuration_client
+    _release_with_an_edited_discovery(client, "adopt-any-refusal-base")
+
+    repo = client.app.state.graph_configuration_repository
+    original_save = repo.save_draft_domain
+
+    async def failing_save(
+        release_id: str, domain_key: str, payload: dict[str, Any], *, actor_id: str
+    ) -> None:
+        if release_id.startswith("adopt-packaged-") and domain_key == "AI_GATEWAY":
+            raise RuntimeError("graph fault while cloning the active release")
+        return await original_save(release_id, domain_key, payload, actor_id=actor_id)
+
+    monkeypatch.setattr(repo, "save_draft_domain", failing_save)
+
+    with pytest.raises(RuntimeError, match="graph fault while cloning the active release"):
+        client.post(
+            "/api/config/adopt-packaged",
+            json={"units": ["discovery"], "expected_head_revision": 1},
+        )
+
+    releases = client.get("/api/config/releases").json()["data"]
+    created = [r for r in releases if r["releaseId"].startswith("adopt-packaged-")]
+    assert created, "the release adopt-packaged created must still be visible, archived"
+    assert all(r["status"] == "ARCHIVED" for r in created)
+
+
+def test_publish_rolls_back_when_the_failure_is_after_promote_to_validated(
+    configuration_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """RV round 1 A1: the other half of the `except BaseException` widening --
+    a failure at the "VALIDATED" audit write, i.e. AFTER
+    `promote_configuration_release(target_status="VALIDATED", ...)` already
+    succeeded (`releases.py:877-890`) and BEFORE the RELEASED promotion ever
+    runs. The head must stay untouched (nothing was ever promoted to
+    RELEASED) and the VALIDATED node must be archived, not left behind.
+    """
+    client = configuration_client
+    initial_head = client.get("/api/config/runtime")
+    initial_head_revision = (
+        initial_head.json()["data"]["head_revision"] if initial_head.status_code == 200 else None
+    )
+
+    async def failing_record_audit(_request: Request, **entry: Any) -> str:
+        if (
+            entry.get("action") == "CONFIGURATION_RELEASE_PROMOTED"
+            and entry.get("details", {}).get("status") == "VALIDATED"
+        ):
+            raise RuntimeError("audit store unavailable after promote-to-VALIDATED")
+        return "audit-ok"
+
+    monkeypatch.setattr(
+        "return_platform.configuration.api.releases.record_configuration_audit",
+        failing_record_audit,
+    )
+
+    with pytest.raises(RuntimeError, match="audit store unavailable after promote-to-VALIDATED"):
+        client.post(
+            "/api/config/publish",
+            json={
+                "release_id": "publish-after-validated",
+                "domain_key": "RETURN_PLATFORM",
+                "patch": {},
+                "expected_head_revision": 0,
+            },
+        )
+
+    releases = client.get("/api/config/releases").json()["data"]
+    published = [r for r in releases if r["releaseId"] == "publish-after-validated"]
+    assert published, "the release this call created must still be visible, archived"
+    assert published[0]["status"] == "ARCHIVED"
+
+    after = client.get("/api/config/runtime")
+    after_head_revision = (
+        after.json()["data"]["head_revision"] if after.status_code == 200 else None
+    )
+    assert after_head_revision == initial_head_revision, "the head must be untouched"
+
+
+def test_adopt_packaged_rolls_back_when_the_failure_is_after_promote_to_validated(
+    configuration_client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same case for `/adopt-packaged`. `publish_release_with_domains`
+    (`release_promotion.py`) runs VALIDATED-then-RELEASED internally with no
+    intervening metadata/audit write of its own to fault -- so the fault is
+    injected into the shared `promote_configuration_release` primitive
+    itself, raising only on the SECOND call (`target_status="RELEASED"`),
+    which leaves the release genuinely sitting in VALIDATED when the
+    exception reaches `adopt_packaged_release`'s guarded block.
+    """
+    client = configuration_client
+    _release_with_an_edited_discovery(client, "adopt-after-validated-base")
+    initial_head = client.get("/api/config/runtime").json()["data"]["head_revision"]
+
+    import return_platform.configuration.application.release_promotion as release_promotion_module
+
+    original_promote = release_promotion_module.promote_configuration_release
+    calls: list[str] = []
+
+    async def failing_promote(*args: Any, **kwargs: Any) -> Any:
+        calls.append(kwargs.get("target_status", ""))
+        if kwargs.get("target_status") == "RELEASED":
+            raise RuntimeError("graph fault promoting VALIDATED to RELEASED")
+        return await original_promote(*args, **kwargs)
+
+    monkeypatch.setattr(release_promotion_module, "promote_configuration_release", failing_promote)
+
+    with pytest.raises(RuntimeError, match="graph fault promoting VALIDATED to RELEASED"):
+        client.post(
+            "/api/config/adopt-packaged",
+            json={"units": ["discovery"], "expected_head_revision": 1},
+        )
+
+    assert calls == ["VALIDATED", "RELEASED"], "the fault must land after VALIDATED succeeded"
+
+    releases = client.get("/api/config/releases").json()["data"]
+    created = [r for r in releases if r["releaseId"].startswith("adopt-packaged-")]
+    assert created, "the release adopt-packaged created must still be visible, archived"
+    assert all(r["status"] == "ARCHIVED" for r in created)
+
+    after_head = client.get("/api/config/runtime").json()["data"]["head_revision"]
+    assert after_head == initial_head, "the head must be untouched"
+
+
+@pytest.mark.asyncio
+async def test_archive_draft_on_refusal_shielded_survives_the_callers_own_cancellation() -> None:
+    """RV round 1 A2, at the mechanism rather than through the ASGI stack --
+    Starlette's `BaseHTTPMiddleware` (this fixture's `attach_principal`) runs
+    the route inside its own `anyio` task group, and a real `CancelledError`
+    raised inside the route there surfaces as `RuntimeError("No response
+    returned.")` rather than the original exception, which would make an
+    HTTP-level test assert Starlette's behaviour, not this handler's.
+
+    `asyncio.CancelledError` is a `BaseException`, not an `Exception`;
+    `_archive_draft_on_refusal`'s own `except Exception:` does not catch it,
+    so an unshielded archive call could be cut off by a second delivery of
+    the same cancellation, losing the archive along with the original
+    refusal. This drives `_archive_draft_on_refusal_shielded` directly: start
+    it as a task, cancel that task while the (slowed-down) archive is still
+    in flight, and assert the release is ARCHIVED anyway -- the shielded
+    inner task keeps running to completion regardless of the outer
+    cancellation.
+    """
+    from return_platform.configuration.api.releases import _archive_draft_on_refusal_shielded
+
+    repo = InMemoryConfigurationGraphRepository()
+    await repo.save_draft_domain(
+        "release-under-cancellation", "RETURN_PLATFORM", {}, actor_id="test"
+    )
+    original_promote = repo.promote_release
+
+    async def slow_promote(*args: Any, **kwargs: Any) -> Any:
+        await asyncio.sleep(0.05)
+        return await original_promote(*args, **kwargs)
+
+    repo.promote_release = slow_promote  # type: ignore[method-assign]
+
+    task = asyncio.create_task(
+        _archive_draft_on_refusal_shielded(repo, "release-under-cancellation", "test")
+    )
+    await asyncio.sleep(0.01)  # let it reach the slowed `promote_release` await
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+    # `shield`'s inner task keeps running in the background once the OUTER
+    # task (awaited above) is cancelled -- nothing here awaits it directly,
+    # so give the event loop enough time to actually finish it before
+    # asserting (the slowed `promote_release` still has ~40ms left at the
+    # point of cancellation above).
+    await asyncio.sleep(0.1)
+
+    archived = await repo.get_release("release-under-cancellation")
+    assert archived is not None
+    assert archived.status == "ARCHIVED", (
+        "the shielded archive must complete even though the calling task was cancelled"
+    )
+
+
 def test_publish_needs_the_release_write_capability() -> None:
     from return_platform.security import roles as r
     from return_platform.security.capabilities import CONFIG_RELEASE_WRITE, capabilities_for_roles
@@ -1063,6 +1308,52 @@ def test_packaged_drift_with_no_active_release_shows_nothing_undecided_or_adopte
     assert data["RETURN_PLATFORM"]["would_adopt"] == []
 
 
+def test_packaged_domain_payloads_seeds_deployment_from_the_bootstrap_snapshot_not_app_state_settings(
+    configuration_client: TestClient,
+) -> None:
+    """RV round 1 A3, at the real call site (`_packaged_domain_payloads`,
+    `configuration/api/releases.py`) `GET /api/config/packaged-drift` and
+    `POST /api/config/adopt-packaged` both go through.
+
+    `app.state.settings` is set here to a value standing in for "already
+    release-derived" (a totally different provider order than either the
+    packaged file or the bootstrap snapshot), and
+    `app.state.packaged_deployment_defaults` to a THIRD, distinct value
+    standing in for the real bootstrap snapshot. If `_packaged_domain_payloads`
+    ever read `app.state.settings` for this instead of
+    `packaged_deployment_defaults`, the published `deployment.ai.provider_order`
+    below would be `ANTHROPIC` (or the packaged file's own default); it must
+    be `GOOGLE,NVIDIA` -- `packaged_deployment_defaults`'s value -- instead.
+    """
+    client = configuration_client
+    _release_with_an_edited_discovery(client, "circularity-guard-base")
+
+    # Stands in for "a release has already adopted and app.state.settings is
+    # now release-derived" -- must NOT influence the packaged side of the
+    # merge below.
+    client.app.state.settings = client.app.state.settings.model_copy(
+        update={"ai_provider_order": "ANTHROPIC"}
+    )
+    # Stands in for the real bootstrap snapshot main.py takes BEFORE a
+    # release ever touches `app.state.settings` (see that module's own
+    # comment on `app.state.packaged_deployment_defaults`).
+    client.app.state.packaged_deployment_defaults = {"ai": {"provider_order": ["GOOGLE", "NVIDIA"]}}
+
+    response = client.post(
+        "/api/config/adopt-packaged",
+        json={"units": ["deployment.ai"], "expected_head_revision": 1},
+    )
+    assert response.status_code == 200, response.text
+
+    published_order = response.json()["data"]["domains"]["RETURN_PLATFORM"]["deployment"]["ai"][
+        "provider_order"
+    ]
+    assert published_order == ["GOOGLE", "NVIDIA"], (
+        "the packaged side of the merge must come from packaged_deployment_defaults "
+        "(the bootstrap snapshot), never from app.state.settings"
+    )
+
+
 @pytest.mark.asyncio
 async def test_adopt_packaged_api_matches_a_cli_run(
     configuration_client: TestClient,
@@ -1138,6 +1429,11 @@ async def test_adopt_packaged_api_matches_a_cli_run(
 
     # --- API side: the identical starting state, through the route ---
     client = configuration_client
+    # The one test in this file that needs the real env overlay -- both sides
+    # must seed `deployment` from the SAME `test_settings` for the comparison
+    # below to mean anything (`configuration_client`'s own default is `{}`;
+    # see that fixture's docstring).
+    client.app.state.packaged_deployment_defaults = deployment_payload_from_settings(test_settings)
     api_repo = client.app.state.graph_configuration_repository
     await _seed(api_repo)
 

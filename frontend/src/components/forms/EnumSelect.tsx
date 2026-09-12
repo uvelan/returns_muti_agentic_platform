@@ -2,7 +2,19 @@ import { useId } from "react";
 
 import { Field } from "./Field";
 
-export type EnumOption = { value: string; label: string };
+export type EnumOption = {
+  value: string;
+  label: string;
+  /**
+   * CFG-6: an option this environment cannot actually use (`SIMULATOR` in
+   * production, say) renders disabled with the reason ON the option, not
+   * hidden or silently removed -- an operator must be able to see it exists
+   * and why it is unavailable, not just find it missing. Optional and
+   * additive: every existing caller renders exactly as before.
+   */
+  disabled?: boolean;
+  disabledReason?: string;
+};
 
 /**
  * A dropdown over the model's enum -- with one guarantee an ordinary
@@ -55,7 +67,16 @@ export function EnumSelect({
           className="premium-field text-sm"
         >
           {items.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
+            <option
+              key={option.value}
+              value={option.value}
+              disabled={option.disabled}
+              title={option.disabled === true ? option.disabledReason : undefined}
+            >
+              {option.disabled === true && option.disabledReason !== undefined
+                ? `${option.label} (${option.disabledReason})`
+                : option.label}
+            </option>
           ))}
         </select>
       )}

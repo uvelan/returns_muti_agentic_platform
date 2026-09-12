@@ -197,14 +197,14 @@ async def update_settings(
     payload: AIGatewaySettingsUpdate,
     actor_id: str = Depends(require_write_roles),
 ) -> APIResponse[AIGatewaySettingsView]:
-    settings = request.app.state.settings
-    if settings.environment == "production" and "SIMULATOR" in payload.providerOrder:
-        raise HTTPException(status_code=422, detail="SIMULATOR is forbidden in production")
+    # CFG-6: the production SIMULATOR check moved with `providerOrder` to
+    # `deployment_settings.validate_deployment_for_environment`, run at the
+    # `/config` publish/adopt-packaged boundary -- provider order is no longer
+    # a field this endpoint accepts.
     repository = resolve_operational_repository(request)
     try:
         data = await repository.update_ai_settings(
             intercept_mode=payload.interceptMode,
-            provider_order=payload.providerOrder,
             expected_version=payload.expectedVersion,
             actor_id=actor_id,
         )
@@ -359,9 +359,13 @@ async def intercept(
                 },
                 expected_version=payload.expectedVersion,
             )
-            gateway_settings = await repository.get_ai_settings()
+            # CFG-6: provider order reads `settings.ai_provider_order` (the
+            # release's `deployment.ai.provider_order`), not the retired
+            # `AIGatewaySettingsView.providerOrder`.
+            settings = request.app.state.settings
             force_provider = next(
-                (p for p in gateway_settings.providerOrder if p != "SIMULATOR"), "SIMULATOR"
+                (p for p in settings.ai_provider_order.split(",") if p != "SIMULATOR"),
+                "SIMULATOR",
             )
             evaluation = await _gateway(request, repository).evaluate(
                 session_id=trace.sessionId,

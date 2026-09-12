@@ -10,3 +10,4 @@ parts:
   - support.yaml
   - fulfilment.yaml
   - integrations.yaml
+  - deployment.yaml

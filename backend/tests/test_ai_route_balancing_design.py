@@ -23,6 +23,7 @@ from return_platform.configuration.return_configuration import (
     AIProviderRuntimeConfiguration,
     AIValidatedRouteConfiguration,
     CredentialBindingConfiguration,
+    DeploymentConfiguration,
 )
 from return_platform.configuration.runtime_integrations import (
     apply_graph_runtime_configuration,
@@ -276,7 +277,12 @@ def test_graph_runtime_emits_pair_specific_route_bindings(
         runtime_integrations=SimpleNamespace(
             ai_providers=(provider,),
             data_sources=(),
-        )
+        ),
+        # CFG-6: `apply_graph_runtime_configuration` always overlays `deployment`
+        # too (`apply_deployment_configuration`); GOOGLE is already in its
+        # default `provider_order`, so this default section changes nothing
+        # this test asserts on.
+        deployment=DeploymentConfiguration(),
     )
 
     updated = apply_graph_runtime_configuration(

@@ -71,9 +71,10 @@ class MemoryGatewayRepository:
         return updated
 
     async def get_ai_settings(self) -> AIGatewaySettingsView:
+        # CFG-6: `providerOrder` is retired from this document; provider order
+        # comes from `settings.ai_provider_order` (`deployment.ai.provider_order`).
         return AIGatewaySettingsView(
             interceptMode=False,
-            providerOrder=["GOOGLE", "NVIDIA", "SIMULATOR"],
             version=0,
             updatedAt=datetime.now(UTC),
             updatedBy="test",

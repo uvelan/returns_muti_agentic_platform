@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import SecretStr
 from pymongo import AsyncMongoClient
 
+from return_platform.configuration.deployment_settings import apply_deployment_configuration
 from return_platform.configuration.return_configuration import ReturnPlatformConfiguration
 from return_platform.configuration.settings import Settings
 from return_platform.secrets.vault import parse_secret_reference
@@ -197,9 +198,19 @@ def apply_graph_runtime_configuration(
 
     updates["ai_validated_route_bindings"] = tuple(validated_route_bindings)
 
-    if not updates:
-        return settings
-    return Settings.model_validate(settings.model_dump(mode="python") | updates)
+    settings_after_runtime_integrations = (
+        settings
+        if not updates
+        else Settings.model_validate(settings.model_dump(mode="python") | updates)
+    )
+    # CFG-6: `deployment` is applied unconditionally, even when
+    # `runtime_integrations` made no change above -- it is now the only source
+    # of provider order and of the four dependency modes, and a release with
+    # an empty `runtime_integrations` section still has an opinion about both.
+    # This is the one place a release becomes `Settings`; see
+    # `deployment_settings.apply_deployment_configuration`'s own docstring for
+    # the precedence rule this call enforces.
+    return apply_deployment_configuration(settings_after_runtime_integrations, configuration)
 
 
 def required_validation_receipts(

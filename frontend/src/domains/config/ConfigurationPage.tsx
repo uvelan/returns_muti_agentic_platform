@@ -11,6 +11,7 @@ import {
 import { useCapabilities } from "../../hooks/capabilityContext";
 import { AgentsSection } from "./AgentsSection";
 import { DataSourcesSection } from "./DataSourcesSection";
+import { DeploymentSection } from "./DeploymentSection";
 import { DiscoverySection } from "./DiscoverySection";
 import { FulfilmentSection } from "./FulfilmentSection";
 import { IntegrationsSection } from "./IntegrationsSection";
@@ -148,6 +149,8 @@ function TabBody({ tab, canReadReleases }: { tab: Tab; canReadReleases: boolean 
       return <ReturnPolicySection />;
     case "Fulfilment":
       return <FulfilmentSection />;
+    case "Deployment":
+      return <DeploymentSection />;
     case "Workflow":
       return <WorkflowSection />;
     case "Integrations":

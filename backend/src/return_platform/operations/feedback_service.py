@@ -19,8 +19,9 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 from pymongo import AsyncMongoClient
@@ -37,6 +38,45 @@ from return_platform.platform.governance.kernel import ProposalKernel
 from return_platform.platform.governance.proposal import ProposalType
 
 logger = logging.getLogger("return_platform.operations.feedback")
+
+
+@runtime_checkable
+class SettingsSource(Protocol):
+    """Structural: anything exposing a live, reassignable `.settings`.
+
+    `RuntimeResources` (`resources.py`), `ActivationResources` and
+    `ProcessRuntimeState` (`runtime_activation.py`) all satisfy this today.
+    `FeedbackLearningService` reads `resources.settings.<field>` at call
+    time -- never captures the `Settings` value itself -- because
+    `RuntimeConfigurationActivator.refresh` REPLACES `.settings` with a new
+    validated instance on every adoption (`runtime_activation.py:377-378`;
+    `apply_deployment_configuration` always constructs a fresh one,
+    `deployment_settings.py:105`). A field holding the `Settings` object
+    itself would keep reading the value from the moment it was captured,
+    forever -- CFG-6 RV round 1 F1: `feedback_learning_enabled` never
+    hot-adopted despite the comment here claiming it did, because
+    `resources.settings` is rebound, not mutated in place.
+    """
+
+    settings: Settings
+
+
+@dataclass(slots=True)
+class SettingsSnapshot:
+    """A `SettingsSource` that never changes -- for a caller with no live
+    resources container to hold instead.
+
+    Today that is every `FeedbackLearningService`/`ReturnOrchestrator`
+    construction site: `ReturnOrchestrator` has no production construction
+    site in `backend/src` at all (design's own finding, CFG-6.design.md §1),
+    so wrapping its `settings` parameter here does not itself make
+    `feedback_learning_enabled` hot-adopt -- it makes the SERVICE correct so
+    that a future wiring site can make it hot-adopt, by constructing
+    `ReturnOrchestrator` with the process's real, live resources container
+    and passing THAT (not a `SettingsSnapshot`) through to this service.
+    """
+
+    settings: Settings
 
 
 class FeedbackLearningView(BaseModel):
@@ -67,7 +107,7 @@ class FeedbackLearningService:
     def __init__(
         self,
         client: AsyncMongoClient[dict[str, object]],
-        settings: Settings,
+        resources: SettingsSource,
         *,
         configuration: ReturnPlatformConfiguration | None = None,
         kernel: ProposalKernel | None = None,
@@ -80,18 +120,39 @@ class FeedbackLearningService:
         the other is a wiring mistake and is refused rather than silently
         degrading to prose -- that degradation is invisible, and "the proposals
         stopped appearing" is not a thing anyone notices.
+
+        `resources` (CFG-6 RV round 1 F1) is a `SettingsSource`, not a bare
+        `Settings` -- see that Protocol's own docstring for why a captured
+        `Settings` cannot hot-adopt `deployment.feedback_learning.enabled`.
+        The Mongo database name is read once, at construction, because a
+        process never moves databases mid-run (`mongo_database` is one of
+        `runtime_activation.py`'s `_RESTART_REQUIRED_SETTINGS`) -- only
+        `feedback_learning_enabled` needs the live read.
         """
         if (configuration is None) != (kernel is None):
             raise ValueError(
                 "FeedbackLearningService needs both the active configuration and the proposal "
                 "kernel to emit improvements, or neither."
             )
-        self._db = client[settings.mongo_database]
+        self._db = client[resources.settings.mongo_database]
         self._records = self._db["feedback_learning_records"]
         self._graph_runs = self._db["graph_sync_runs"]
-        self._enabled = settings.feedback_learning_enabled
+        # CFG-6 RV round 1 F1: `resources` is held, not `resources.settings` --
+        # `RuntimeConfigurationActivator.refresh` REPLACES `resources.settings`
+        # with a new validated `Settings` on every adoption
+        # (`runtime_activation.py:377-378`); it does not mutate the object in
+        # place. Reading `self._resources.settings.<field>` on every call, as
+        # `_enabled` below does, is what makes `deployment.feedback_learning`
+        # hot-adopt for a caller that holds the live container -- holding
+        # `resources.settings` itself would keep reading the value captured
+        # at construction, forever, whatever `resources` later becomes.
+        self._resources = resources
         self._configuration = configuration
         self._kernel = kernel
+
+    @property
+    def _enabled(self) -> bool:
+        return self._resources.settings.feedback_learning_enabled
 
     async def ensure_indexes(self) -> None:
         await self._records.create_index("sessionId", unique=True)

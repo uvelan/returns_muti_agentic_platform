@@ -1757,6 +1757,126 @@ class RuntimeIntegrationsConfiguration(StrictConfigModel):
         return self
 
 
+_DEPLOYMENT_PROVIDER_NAMES = frozenset(
+    {"GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC", "OLLAMA", "SIMULATOR", "MANUAL"}
+)
+
+
+class DeploymentModelPoolConfiguration(StrictConfigModel):
+    """One provider's lightweight/standard model list, released rather than env-held.
+
+    Optional per provider (`DeploymentAIConfiguration.model_pools` need not name
+    every provider): a provider this deployment does not list here keeps
+    whatever `apply_deployment_configuration` finds already on `Settings` --
+    the bootstrap/env default, or the value `runtime_integrations` set for a
+    provider it governs (CFG-6.design.md §4).
+    """
+
+    lightweight: tuple[NonBlank, ...] = ()
+    standard: tuple[NonBlank, ...] = ()
+
+
+class DeploymentGoogleConfiguration(StrictConfigModel):
+    """The two GOOGLE-specific knobs `apply_deployment_configuration` always owns."""
+
+    thinking_budget: int | None = Field(default=2048, ge=0, le=24576)
+    response_schema: bool = False
+
+
+class DeploymentAIConfiguration(StrictConfigModel):
+    """Order, per-provider model pools and the GOOGLE extras -- design §2, §4.
+
+    `provider_order` is the ONLY source of provider order and of `SIMULATOR`/
+    `MANUAL`: `runtime_integrations` cannot express either (D-CFG-4,
+    CFG-6.design.md §4). Defaulted to today's env default
+    (`Settings.ai_provider_order`'s own default) so a release cut before this
+    section existed still loads and behaves exactly as it did under the env.
+    """
+
+    provider_order: tuple[NonBlank, ...] = ("GOOGLE", "NVIDIA", "SIMULATOR")
+    model_pools: dict[
+        Literal["GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC", "OLLAMA"],
+        DeploymentModelPoolConfiguration,
+    ] = Field(default_factory=dict)
+    google: DeploymentGoogleConfiguration = Field(default_factory=DeploymentGoogleConfiguration)
+
+    @model_validator(mode="after")
+    def validate_provider_order(self) -> DeploymentAIConfiguration:
+        # Lifted, environment-independent half of `Settings.validate_provider_order`
+        # (settings.py:831) -- allowed names, uniqueness, the bare-`NONE` escape
+        # hatch. The environment-dependent half (no SIMULATOR/MANUAL in
+        # production) is `validate_deployment_for_environment` in
+        # `deployment_settings.py`, run at the publish/startup boundary, not here.
+        if tuple(self.provider_order) == ("NONE",):
+            return self
+        if not self.provider_order or len(set(self.provider_order)) != len(self.provider_order):
+            raise ValueError("deployment.ai.provider_order must name each provider at most once")
+        unknown = sorted(set(self.provider_order) - _DEPLOYMENT_PROVIDER_NAMES)
+        if unknown:
+            raise ValueError(f"deployment.ai.provider_order names unknown providers: {unknown}")
+        return self
+
+
+class DeploymentDependenciesConfiguration(StrictConfigModel):
+    """The four dependency-simulation modes, released rather than env-held."""
+
+    omc: Literal["REAL", "SIMULATED", "MANUAL", "BLOCKED"] = "SIMULATED"
+    parcel: Literal["REAL", "SIMULATED", "MANUAL", "BLOCKED"] = "SIMULATED"
+    freight: Literal["REAL", "SIMULATED", "MANUAL", "BLOCKED"] = "SIMULATED"
+    lsi: Literal["REAL", "SIMULATED", "MANUAL", "BLOCKED"] = "SIMULATED"
+
+
+class DeploymentFeedbackLearningConfiguration(StrictConfigModel):
+    enabled: bool = True
+
+
+class DeploymentSupportTicketConfiguration(StrictConfigModel):
+    """`support_ticket_mode`/`base_url`, released. The API key stays env/Vault."""
+
+    mode: Literal["INTERNAL", "INTERNAL_WITH_EXTERNAL_MIRROR", "EXTERNAL_AUTHORITY"] = "INTERNAL"
+    base_url: NonBlank | None = None
+
+    @model_validator(mode="after")
+    def validate_base_url_required(self) -> DeploymentSupportTicketConfiguration:
+        # Lifted, environment-independent rule from `Settings.validate_relationships`
+        # (settings.py:956-959).
+        if (
+            self.mode in {"INTERNAL_WITH_EXTERNAL_MIRROR", "EXTERNAL_AUTHORITY"}
+            and self.base_url is None
+        ):
+            raise ValueError(
+                "deployment.support_ticket.base_url is required when mode is "
+                "INTERNAL_WITH_EXTERNAL_MIRROR or EXTERNAL_AUTHORITY"
+            )
+        return self
+
+
+class DeploymentConfiguration(StrictConfigModel):
+    """The env-held business switches (D-CFG-4), released and hot-adopted.
+
+    Added to `ReturnPlatformConfiguration` **with a default** so a release cut
+    before this section existed still loads -- the same precedent as
+    `copilot`/`policy_evaluation`. Model validators here carry only the
+    environment-*independent* rules; the production gate
+    (`validate_deployment_for_environment`) lives in `deployment_settings.py`
+    and runs at the publish/startup boundary, never here -- a `Settings`
+    object is not available to a model validator, and a release destined for
+    staging must still be able to load and be *inspected* even when it would
+    be refused for production (CFG-6.design.md §2).
+    """
+
+    ai: DeploymentAIConfiguration = Field(default_factory=DeploymentAIConfiguration)
+    dependencies: DeploymentDependenciesConfiguration = Field(
+        default_factory=DeploymentDependenciesConfiguration
+    )
+    feedback_learning: DeploymentFeedbackLearningConfiguration = Field(
+        default_factory=DeploymentFeedbackLearningConfiguration
+    )
+    support_ticket: DeploymentSupportTicketConfiguration = Field(
+        default_factory=DeploymentSupportTicketConfiguration
+    )
+
+
 class ReturnPlatformConfiguration(StrictConfigModel):
     schema_version: NonBlank
     assumption_set_version: NonBlank
@@ -1846,6 +1966,14 @@ class ReturnPlatformConfiguration(StrictConfigModel):
     support_resolver: SupportResolverConfiguration = Field(
         default_factory=SupportResolverConfiguration
     )
+    #: The env-held business switches (D-CFG-4): AI provider order and model
+    #: pools, dependency-simulation modes, feedback learning, support ticket
+    #: mode. Defaulted so a release cut before this block still loads --
+    #: `apply_deployment_configuration` (`configuration/deployment_settings.py`)
+    #: overlays it onto `Settings` inside `apply_graph_runtime_configuration`,
+    #: hot-adopted on every `RuntimeConfigurationActivator.refresh` like the
+    #: rest of `runtime_integrations` (CFG-6.design.md).
+    deployment: DeploymentConfiguration = Field(default_factory=DeploymentConfiguration)
 
     @model_validator(mode="after")
     def validate_required_agents(self) -> ReturnPlatformConfiguration:

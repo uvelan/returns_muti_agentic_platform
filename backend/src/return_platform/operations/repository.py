@@ -2115,14 +2115,19 @@ class OperationalRepository(CaseRepository):
         return self._support_view(updated)
 
     async def get_ai_settings(self) -> AIGatewaySettingsView:
+        # CFG-6: `providerOrder` is retired from this document -- provider
+        # order comes from `settings.ai_provider_order` (release-derived via
+        # `deployment.ai.provider_order`) everywhere this view is read
+        # (`api/dependencies.py`'s health cards, `api/ai_gateway.py`'s resume
+        # force-provider selection). The `["NONE"]` migration branch that used
+        # to reconcile a stored `providerOrder` against the runtime env value
+        # is gone with the field it migrated.
         document = await self.ai_settings.find_one({"_id": "global"})
-        runtime_provider_order = self._settings.ai_provider_order.split(",")
         if document is None:
             now = utc_now()
             document = {
                 "_id": "global",
                 "interceptMode": self._settings.ai_interception_default,
-                "providerOrder": runtime_provider_order,
                 "version": 0,
                 "updatedAt": now,
                 "updatedBy": "system",
@@ -2132,30 +2137,14 @@ class OperationalRepository(CaseRepository):
             except DuplicateKeyError:
                 document = await self.ai_settings.find_one({"_id": "global"})
                 assert document is not None
-        elif document.get("providerOrder") == ["NONE"] and runtime_provider_order != ["NONE"]:
-            migrated = await self.ai_settings.find_one_and_update(
-                {"_id": "global", "providerOrder": ["NONE"]},
-                {
-                    "$set": {
-                        "providerOrder": runtime_provider_order,
-                        "updatedAt": utc_now(),
-                        "updatedBy": "runtime-configuration-migration",
-                    },
-                    "$inc": {"version": 1},
-                },
-                return_document=ReturnDocument.AFTER,
-            )
-            if migrated is not None:
-                document = migrated
         return AIGatewaySettingsView.model_validate(
-            {key: value for key, value in document.items() if key != "_id"}
+            {key: value for key, value in document.items() if key not in {"_id", "providerOrder"}}
         )
 
     async def update_ai_settings(
         self,
         *,
         intercept_mode: bool,
-        provider_order: list[str],
         expected_version: int,
         actor_id: str,
     ) -> AIGatewaySettingsView:
@@ -2164,7 +2153,6 @@ class OperationalRepository(CaseRepository):
             {
                 "$set": {
                     "interceptMode": intercept_mode,
-                    "providerOrder": provider_order,
                     "updatedAt": utc_now(),
                     "updatedBy": actor_id,
                 },
@@ -2174,8 +2162,11 @@ class OperationalRepository(CaseRepository):
         )
         if document is None:
             raise ConcurrencyConflictError("global")
+        # A document from before CFG-6 keeps its stored `providerOrder`
+        # harmlessly (design §5) -- filtered out here rather than unset, since
+        # nothing reads it any more either way.
         return AIGatewaySettingsView.model_validate(
-            {key: value for key, value in document.items() if key != "_id"}
+            {key: value for key, value in document.items() if key not in {"_id", "providerOrder"}}
         )
 
     async def append_audit(

@@ -560,27 +560,25 @@ class AISimulatorRequest(MutableContract):
 
 class AIGatewaySettingsView(MutableContract):
     interceptMode: bool
-    providerOrder: list[str]
     version: int = Field(ge=0)
     updatedAt: datetime
     updatedBy: str
 
 
 class AIGatewaySettingsUpdate(MutableContract):
-    interceptMode: bool
-    providerOrder: list[str] = Field(min_length=1, max_length=6)
-    expectedVersion: int = Field(ge=0)
+    """`PUT /api/ai/settings` -- `interceptMode` only (CFG-6).
 
-    @field_validator("providerOrder")
-    @classmethod
-    def validate_provider_order(cls, value: list[str]) -> list[str]:
-        allowed = {"GOOGLE", "NVIDIA", "OPENAI", "ANTHROPIC", "OLLAMA", "SIMULATOR"}
-        normalized = [provider.strip().upper() for provider in value]
-        if len(set(normalized)) != len(normalized) or any(
-            provider not in allowed for provider in normalized
-        ):
-            raise ValueError("providerOrder is invalid")
-        return normalized
+    `providerOrder` was retired: `deployment.ai.provider_order`
+    (`configuration/return_configuration.py`) is now the only source of AI
+    provider order, published and hot-adopted through the release like every
+    other `deployment` field, at `/config/deployment`. This document's own
+    production SIMULATOR check moved with it to
+    `deployment_settings.validate_deployment_for_environment`, run at the
+    publish/adopt-packaged boundary.
+    """
+
+    interceptMode: bool
+    expectedVersion: int = Field(ge=0)
 
 
 class SeedStatusView(MutableContract):

@@ -86,7 +86,14 @@ PACKAGED_DOMAIN_KEY_DIGESTS = "packaged_domain_key_digests"
 #: holding every simulated system. Deciding those whole would let one edited
 #: task freeze the file's changes to every other task, so each entry is its own
 #: unit: `tasks.RETURN_STATUS_SUMMARY_V1`, `dependencies.OMC`.
+#: CFG-6: `deployment` joins the split keys for `RETURN_PLATFORM` too, so an
+#: operator's edit to `deployment.ai` (through `/config/deployment`) does not
+#: freeze a packaged change to `deployment.dependencies` out of every future
+#: publish -- the same reasoning as `tasks`/`dependencies` above, applied to
+#: the one RETURN_PLATFORM key with more than one independently-edited unit
+#: inside it. Every other RETURN_PLATFORM key stays a single unit, unchanged.
 CARRY_FORWARD_SPLIT_KEYS: dict[str, tuple[str, ...]] = {
+    RETURN_PLATFORM_DOMAIN_KEY: ("deployment",),
     AI_GATEWAY_DOMAIN_KEY: ("tasks",),
     DEPENDENCY_SIMULATION_DOMAIN_KEY: ("dependencies",),
 }
@@ -361,12 +368,14 @@ def adopt_packaged_configuration(
     """
     release_label = release_id if release_id is not None else "<none>"
     packaged_payload = dict(packaged_return_platform)
-    recordable_baseline: dict[str, str] = _key_digests(packaged_payload)
+    return_platform_split_keys = CARRY_FORWARD_SPLIT_KEYS[RETURN_PLATFORM_DOMAIN_KEY]
+    packaged_units = _units(packaged_payload, return_platform_split_keys)
+    recordable_baseline: dict[str, str] = _key_digests(packaged_units)
     adopt_requests = _adopt_requests(adopt_packaged_keys)
     adopted_keys = set(adopt_requests.get(RETURN_PLATFORM_DOMAIN_KEY, ()))
     if adopt_packaged:
-        adopted_keys.update(packaged_payload)
-    unknown_keys = sorted(adopted_keys - set(packaged_payload))
+        adopted_keys.update(packaged_units)
+    unknown_keys = sorted(adopted_keys - set(packaged_units))
     if unknown_keys:
         raise ValueError(
             f"adopt-packaged-key names units {RETURN_PLATFORM_DOMAIN_KEY} does not have: "
@@ -379,13 +388,14 @@ def adopt_packaged_configuration(
 
     if active_return_platform is not None:
         baseline = active_metadata.get(PACKAGED_KEY_DIGESTS)
-        merged_payload, unadopted, recordable_baseline = _carry_forward(
-            packaged_payload, dict(active_return_platform), baseline
+        active_units = _units(dict(active_return_platform), return_platform_split_keys)
+        merged_units, unadopted, recordable_baseline = _carry_forward(
+            packaged_units, active_units, baseline
         )
-        packaged_digests = _key_digests(packaged_payload)
+        packaged_unit_digests = _key_digests(packaged_units)
         for key in adopted_keys:
-            merged_payload[key] = packaged_payload[key]
-            recordable_baseline[key] = packaged_digests[key]
+            merged_units[key] = packaged_units[key]
+            recordable_baseline[key] = packaged_unit_digests[key]
         unadopted = tuple(key for key in unadopted if key not in adopted_keys)
         undecided[RETURN_PLATFORM_DOMAIN_KEY] = unadopted
         if unadopted and log:
@@ -402,6 +412,7 @@ def adopt_packaged_configuration(
                 RETURN_PLATFORM_DOMAIN_KEY,
                 ",".join(unadopted),
             )
+        merged_payload = _assemble(merged_units, return_platform_split_keys)
         merged_payload = _drop_retired_keys(merged_payload)
         try:
             existing_configuration = ReturnPlatformConfiguration.model_validate(merged_payload)
@@ -618,17 +629,30 @@ def summarize_packaged_drift(
 
     drift: dict[str, DomainDrift] = {}
 
-    active_rp = dict(active_return_platform or {})
-    merged_rp = result.merged_domains.get(RETURN_PLATFORM_DOMAIN_KEY)
+    # CFG-6: routed through `_units`/`CARRY_FORWARD_SPLIT_KEYS` exactly like the
+    # domain loop below, now that RETURN_PLATFORM has a split key of its own
+    # (`deployment`) -- a dotted unit name (`deployment.ai`) in `undecided`
+    # must be looked up the same way, or `filled_leaves`/`would_adopt` silently
+    # go empty for it (`packaged_return_platform.get("deployment.ai")` is
+    # `None`; the key exists only as `packaged_return_platform["deployment"]`).
+    return_platform_split_keys = CARRY_FORWARD_SPLIT_KEYS[RETURN_PLATFORM_DOMAIN_KEY]
+    packaged_rp_units = _units(packaged_return_platform, return_platform_split_keys)
+    active_rp_units = _units(dict(active_return_platform or {}), return_platform_split_keys)
+    merged_rp_domain = result.merged_domains.get(RETURN_PLATFORM_DOMAIN_KEY)
+    merged_rp_units = (
+        _units(merged_rp_domain, return_platform_split_keys)
+        if merged_rp_domain is not None
+        else None
+    )
     undecided_rp = frozenset(result.undecided.get(RETURN_PLATFORM_DOMAIN_KEY, ()))
     filled_rp: list[str] = []
-    for key in sorted(undecided_rp):
+    for unit in sorted(undecided_rp):
         filled_rp.extend(
-            _added_leaf_paths(packaged_return_platform.get(key), active_rp.get(key), key)
+            _added_leaf_paths(packaged_rp_units.get(unit), active_rp_units.get(unit), unit)
         )
     drift[RETURN_PLATFORM_DOMAIN_KEY] = DomainDrift(
         undecided=result.undecided.get(RETURN_PLATFORM_DOMAIN_KEY, ()),
-        would_adopt=_would_adopt(packaged_return_platform, active_rp, merged_rp),
+        would_adopt=_would_adopt(packaged_rp_units, active_rp_units, merged_rp_units),
         filled_leaves=tuple(filled_rp),
     )
 

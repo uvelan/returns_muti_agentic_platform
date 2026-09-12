@@ -278,9 +278,10 @@ class _Repository:
         return updated
 
     async def get_ai_settings(self) -> AIGatewaySettingsView:
+        # CFG-6: `providerOrder` is retired; provider order reads
+        # `settings.ai_provider_order` (`deployment.ai.provider_order`).
         return AIGatewaySettingsView(
             interceptMode=self.intercept,
-            providerOrder=["GOOGLE", "NVIDIA", "SIMULATOR"],
             version=0,
             updatedAt=datetime.now(UTC),
             updatedBy="test",
