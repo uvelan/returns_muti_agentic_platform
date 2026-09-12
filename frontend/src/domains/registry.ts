@@ -186,6 +186,12 @@ export const CONFIG_SECTIONS = [
   // this wave) is gone outright now that CFG-5 gave the last of them one.
   "Discovery",
   "Return Policy",
+  // CFG-8: one switch, defaults for all products, exceptions and a decision
+  // preview -- `return_eligibility_policy` and `policy_evaluation`, moved out
+  // of "Return Policy" (which keeps return method derivation and
+  // requirements) into a screen shaped around how an operator thinks about
+  // eligibility rather than around the two domain keys it happens to touch.
+  "Policy",
   "Fulfilment",
   // CFG-6 (D-CFG-4): the env-held business switches, released -- the last of
   // the wave-A-style typed sections, placed beside the other three rather
@@ -284,6 +290,7 @@ export const DOMAINS: readonly DomainDefinition[] = [
       Support: Mail,
       Discovery: Search,
       "Return Policy": Gavel,
+      Policy: ShieldCheck,
       Fulfilment: Warehouse,
       Deployment: SlidersHorizontal,
       Workflow,

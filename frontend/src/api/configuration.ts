@@ -158,6 +158,47 @@ export type PackagedDriftDomain = {
 export type PackagedDrift = Readonly<Record<string, PackagedDriftDomain>>;
 
 /**
+ * `GET /api/config/packaged/{domain_key}` -- the composed packaged document
+ * for one domain, redacted, read roles. Backs "Reset to packaged default" on
+ * the Policy screen and is reusable by any screen that needs the same
+ * comparison; the shape is whatever that domain's packaged file carries, so
+ * it stays a bag of unknowns the same way `RuntimeSnapshot` does.
+ */
+export type PackagedDomain = Readonly<Record<string, unknown>>;
+
+/**
+ * `POST /api/config/policy/preview`'s `sample` -- a fabricated case, never a
+ * real one. `facts` keys are the "What the item must be" checklist names
+ * (`new`, `suitable_for_resale`, ..., `damaged`); a name left out is `"UNKNOWN"`
+ * ("not stated"), matching the checklist's own tri-state default.
+ */
+export type PolicyPreviewSample = {
+  readonly daysSincePurchase?: number;
+  readonly stockClassification?: "STANDARD_STOCK" | "SPECIAL_ORDER" | "UNRESOLVED";
+  readonly facts?: Readonly<Record<string, "TRUE" | "FALSE" | "UNKNOWN">>;
+  readonly reason?: string | null;
+};
+
+/**
+ * `POST /api/config/policy/preview`'s response. `decision`/`route` are both
+ * `null` exactly when `evaluation_enabled` is false (the gate did not run) --
+ * `route` is also `null` for an ordinary `STANDARD_RETURN` decision only when
+ * the gate is off, never otherwise, mirroring `PolicyOutcome`'s own
+ * `route == STANDARD_RETURN -> decision required` rule on the backend.
+ */
+export type PolicyPreviewResult = {
+  readonly evaluation_enabled: boolean;
+  readonly decision: "APPROVE" | "REJECT" | "REVIEW_REQUIRED" | null;
+  readonly route: "STANDARD_RETURN" | "WARRANTY" | "DELIVERY_CLAIM" | null;
+  readonly applied_rules: readonly string[];
+  readonly conditions: readonly string[];
+  readonly unanswered_checks: readonly string[];
+  readonly reason_codes: readonly string[];
+  readonly policy_evaluation_state: string;
+  readonly policy_evaluation_skip_reason: string | null;
+};
+
+/**
  * `ACTIVATED != LIVE` -- contract C5, as one answer an operator can act on.
  *
  * Promoting a release moves the graph pointer and nothing else. The API
@@ -356,4 +397,39 @@ export const configApi = {
 
   /** The Overview screen's undecided-keys panel: `{undecided, would_adopt, filled_leaves}` per domain. */
   packagedDrift: () => unwrap<PackagedDrift>("/api/config/packaged-drift"),
+
+  /**
+   * The composed packaged document for one domain (`RETURN_PLATFORM`,
+   * `AI_GATEWAY`, `DEPENDENCY_SIMULATION`), redacted, read roles. "Reset to
+   * packaged default" reads a field out of this rather than re-deriving it.
+   */
+  packagedDomain: (domainKey: string) =>
+    unwrap<PackagedDomain>(`/api/config/packaged/${encodeURIComponent(domainKey)}`),
+
+  /**
+   * Evaluate a fabricated sample against a **draft** policy -- the values in
+   * the editor, not the loaded document, and never a real case or the graph.
+   * Read roles: nothing is stored, so this is safe on every "Evaluate" click.
+   */
+  previewPolicy: (body: {
+    returnEligibilityPolicy: Readonly<Record<string, unknown>>;
+    policyEvaluation: Readonly<Record<string, unknown>>;
+    sample?: PolicyPreviewSample;
+  }) =>
+    unwrap<PolicyPreviewResult>("/api/config/policy/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        return_eligibility_policy: body.returnEligibilityPolicy,
+        policy_evaluation: body.policyEvaluation,
+        sample: body.sample === undefined
+          ? undefined
+          : {
+              days_since_purchase: body.sample.daysSincePurchase,
+              stock_classification: body.sample.stockClassification,
+              facts: body.sample.facts,
+              reason: body.sample.reason,
+            },
+      }),
+    }),
 };

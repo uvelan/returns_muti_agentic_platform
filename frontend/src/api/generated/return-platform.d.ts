@@ -947,6 +947,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/config/packaged/{domain_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Packaged Domain
+         * @description The composed packaged document for one domain, redacted.
+         *
+         *     404s naming the three valid domain keys through the same
+         *     `_console_domain_model` `/validate/{domain_key}` uses, so an unknown key
+         *     reads identically on both routes.
+         */
+        get: operations["get_packaged_domain_api_config_packaged__domain_key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/config/policy/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Policy Preview
+         * @description Decide a fabricated sample against a **draft** policy, never a real case.
+         *
+         *     `evaluate_policy_preview` validates `return_eligibility_policy` and
+         *     `policy_evaluation` with the same models `/validate/{domain_key}` uses, and
+         *     when they parse, runs `policy.evaluator.evaluate_return_eligibility` --
+         *     the workflow's own evaluator -- against the submitted `sample`. See
+         *     `configuration/api/policy_preview.py` for why the disabled-gate answer is
+         *     imported from the workflow rather than restated here.
+         */
+        post: operations["policy_preview_api_config_policy_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/config/publish": {
         parameters: {
             query?: never;
@@ -8422,6 +8473,44 @@ export interface components {
             signalDelivered: boolean;
         };
         /**
+         * PolicyPreviewRequest
+         * @description `POST /api/config/policy/preview`'s body (brief item A).
+         */
+        PolicyPreviewRequest: {
+            /** Policy Evaluation */
+            policy_evaluation: {
+                [key: string]: unknown;
+            };
+            /** Return Eligibility Policy */
+            return_eligibility_policy: {
+                [key: string]: unknown;
+            };
+            sample?: components["schemas"]["PolicyPreviewSample"];
+        };
+        /**
+         * PolicyPreviewSample
+         * @description The preview form's fabricated case (brief item 7), never a real one.
+         */
+        PolicyPreviewSample: {
+            /**
+             * Days Since Purchase
+             * @default 10
+             */
+            days_since_purchase: number;
+            /** Facts */
+            facts?: {
+                [key: string]: string;
+            };
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Stock Classification
+             * @default STANDARD_STOCK
+             * @enum {string}
+             */
+            stock_classification: "STANDARD_STOCK" | "SPECIAL_ORDER" | "UNRESOLVED";
+        };
+        /**
          * PolicyReasonCode
          * @description Why the evaluation reached the answer it did.
          * @enum {string}
@@ -12898,6 +12987,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIResponse_dict_str__dict_str__list_str____"];
+                };
+            };
+        };
+    };
+    get_packaged_domain_api_config_packaged__domain_key__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                domain_key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    policy_preview_api_config_policy_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PolicyPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIResponse_dict_str__Any__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

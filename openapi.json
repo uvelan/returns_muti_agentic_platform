@@ -11824,6 +11824,74 @@
         "title": "PolicyOverrideResult",
         "type": "object"
       },
+      "PolicyPreviewRequest": {
+        "additionalProperties": false,
+        "description": "`POST /api/config/policy/preview`'s body (brief item A).",
+        "properties": {
+          "policy_evaluation": {
+            "additionalProperties": true,
+            "title": "Policy Evaluation",
+            "type": "object"
+          },
+          "return_eligibility_policy": {
+            "additionalProperties": true,
+            "title": "Return Eligibility Policy",
+            "type": "object"
+          },
+          "sample": {
+            "$ref": "#/components/schemas/PolicyPreviewSample"
+          }
+        },
+        "required": [
+          "return_eligibility_policy",
+          "policy_evaluation"
+        ],
+        "title": "PolicyPreviewRequest",
+        "type": "object"
+      },
+      "PolicyPreviewSample": {
+        "additionalProperties": false,
+        "description": "The preview form's fabricated case (brief item 7), never a real one.",
+        "properties": {
+          "days_since_purchase": {
+            "default": 10,
+            "maximum": 36500.0,
+            "minimum": 0.0,
+            "title": "Days Since Purchase",
+            "type": "integer"
+          },
+          "facts": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Facts",
+            "type": "object"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "stock_classification": {
+            "default": "STANDARD_STOCK",
+            "enum": [
+              "STANDARD_STOCK",
+              "SPECIAL_ORDER",
+              "UNRESOLVED"
+            ],
+            "title": "Stock Classification",
+            "type": "string"
+          }
+        },
+        "title": "PolicyPreviewSample",
+        "type": "object"
+      },
       "PolicyReasonCode": {
         "description": "Why the evaluation reached the answer it did.",
         "enum": [
@@ -22297,6 +22365,91 @@
           }
         },
         "summary": "Packaged Drift",
+        "tags": [
+          "Configuration"
+        ]
+      }
+    },
+    "/api/config/packaged/{domain_key}": {
+      "get": {
+        "description": "The composed packaged document for one domain, redacted.\n\n404s naming the three valid domain keys through the same\n`_console_domain_model` `/validate/{domain_key}` uses, so an unknown key\nreads identically on both routes.",
+        "operationId": "get_packaged_domain_api_config_packaged__domain_key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "domain_key",
+            "required": true,
+            "schema": {
+              "title": "Domain Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Packaged Domain",
+        "tags": [
+          "Configuration"
+        ]
+      }
+    },
+    "/api/config/policy/preview": {
+      "post": {
+        "description": "Decide a fabricated sample against a **draft** policy, never a real case.\n\n`evaluate_policy_preview` validates `return_eligibility_policy` and\n`policy_evaluation` with the same models `/validate/{domain_key}` uses, and\nwhen they parse, runs `policy.evaluator.evaluate_return_eligibility` --\nthe workflow's own evaluator -- against the submitted `sample`. See\n`configuration/api/policy_preview.py` for why the disabled-gate answer is\nimported from the workflow rather than restated here.",
+        "operationId": "policy_preview_api_config_policy_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIResponse_dict_str__Any__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Policy Preview",
         "tags": [
           "Configuration"
         ]

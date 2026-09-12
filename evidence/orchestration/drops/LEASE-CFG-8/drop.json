@@ -1,0 +1,62 @@
+{
+  "lease_id": "CFG-8",
+  "branch": "feat/cfg-8-policy-screen",
+  "base_sha": "35f0356c71b2e9035aca7667e57121eecd74c9f7",
+  "head_sha": "f8c0b6ab",
+  "status": "PENDING",
+  "files": [
+    "backend/src/return_platform/configuration/api/policy_preview.py",
+    "backend/src/return_platform/configuration/api/router.py",
+    "backend/tests/api/test_policy_preview.py",
+    "backend/tests/configuration/test_canonical_config_api.py",
+    "openapi/return-platform.openapi.json",
+    "backend/openapi/return-platform.openapi.json",
+    "frontend/openapi/return-platform.openapi.json",
+    "openapi.json",
+    "frontend/src/api/generated/return-platform.d.ts",
+    "docs/evidence/stage4_contract_closure/openapi_drift_receipt.json",
+    "frontend/src/api/configuration.ts",
+    "frontend/src/mocks/handlers/canonicalHandlers.ts",
+    "frontend/src/mocks/handlers/canonicalHandlers.contract.test.ts",
+    "frontend/src/domains/config/PolicySection.tsx",
+    "frontend/src/domains/config/PolicySection.test.tsx",
+    "frontend/src/domains/config/ConfigurationPage.tsx",
+    "frontend/src/domains/config/ReturnPolicySection.tsx",
+    "frontend/src/domains/config/ReturnPolicySection.test.tsx",
+    "frontend/src/domains/registry.ts",
+    "frontend/src/domains/registry.test.ts",
+    "frontend/e2e/config-policy.spec.ts"
+  ],
+  "deleted_files": [],
+  "acceptance": {
+    "backend pytest tests/api/test_policy_preview.py -q": "13 passed",
+    "backend pytest tests/api tests/configuration -q": "695 passed, 6 deselected (final rerun, step:07)",
+    "ruff check (touched backend files)": "All checks passed!",
+    "mypy (touched backend files)": "Success: no issues found in 2 source files",
+    "python scripts/check_openapi_drift.py --write": "5 DRIFT entries (expected -- new routes), status PASS",
+    "python scripts/check_openapi_drift.py": "diffs: [], status PASS, exit 0 (final rerun, step:07)",
+    "npx vitest run": "90 files, 1083 passed, 0 failed (final rerun, step:07)",
+    "npm run typecheck": "clean, exit 0",
+    "npm run lint": "clean, exit 0",
+    "E2E_REAL_BASE_URL=http://localhost:5195 npx playwright test --project=cfg4-e2e e2e/config-policy.spec.ts --workers=1": "1 passed (window edit/Validate/Publish/revert path; preview block temporarily commented out for this specific run only -- see item 7 note -- file restored to its full committed form afterward, diff-confirmed identical)"
+  },
+  "done": [
+    "step:00 base check",
+    "item 1: GET /api/config/packaged/{domain_key} (read roles, redacted, reuses releases.py's _packaged_domain_payloads/_domain_model)",
+    "item 2: POST /api/config/policy/preview (read roles; validates return_eligibility_policy/policy_evaluation with the same models /validate uses; runs policy.evaluator.evaluate_return_eligibility against a fabricated PolicyEvaluationInput built from `sample`; disabled-gate branch answers PolicyGateState.SKIPPED_BY_CONFIGURATION, imported from the workflow rather than restated)",
+    "backend tests: within-window APPROVE + restocking condition; outside-window REVIEW_REQUIRED; a stated failing fact still rejects ahead of the window; evaluation disabled -> SKIPPED_BY_CONFIGURATION with the stated reason; disabled with no reason -> 422 (PolicyEvaluationConfiguration's own rule, not reachable in the route's UNSPECIFIED fallback); an invalid return_eligibility_policy block -> 422 with field paths; an unknown checklist fact name -> 422 naming it; both routes require read roles; the preview route touches no release/repository/resources at all",
+    "test_canonical_config_api.py's mutation-surface test updated: POST /api/config/policy/preview added to the fixed set, docstring extended with the same 'not a mutation, POST-shaped' reasoning /validate already carries",
+    "item 2 (cont'd): OpenAPI regen, all four JSON copies + generated .d.ts, drift check PASS",
+    "item 3: configuration.ts client methods (packagedDomain, previewPolicy) + MSW handlers for both new routes + canonicalHandlers.contract.test.ts entries (77 passed)",
+    "items 4+5: PolicySection.tsx, blocks 1-7 (one file -- block 7 reads the same renderTyped closure as blocks 1-6), + PolicySection.test.tsx (9 passed), ConfigurationPage.tsx wired",
+    "item 6: ReturnPolicySection.tsx trimmed to return_policy only, ReturnPolicySection.test.tsx updated, registry.ts +Policy section/icon, registry.test.ts +1 placement test, routeManifest.ts needed no edit (derives from registry)",
+    "item 7: e2e config-policy.spec.ts written and run once against the live stack via a disposable vite --port 5195; window edit/Validate/Publish/revert verified passing end to end (twice, fixing two Playwright locator substring-match bugs along the way, each accidental publish reverted by hand immediately); the preview assertions could not be exercised live because the running backend process is still on trunk head (pre-CFG-8) and 404s both new routes -- confirmed via its own /openapi.json -- so the reduced (preview-commented) form was run for the live proof and the file was restored to its full, committed form (diff-confirmed identical) with the preview path proven instead by test_policy_preview.py + PolicySection.test.tsx; :5173/:8000 never restarted, live release confirmed byte-identical to its pre-run value afterward",
+    "item 8: final acceptance sweep, all green -- see acceptance block above"
+  ],
+  "remaining": [],
+  "out_of_scope_flagged": [],
+  "unfinished": [
+    "The e2e spec's preview steps (Evaluate -> Decision: APPROVE) were not exercised against the live stack this session: the running backend process is pinned to trunk head (pre-CFG-8) and its own /openapi.json confirms neither new route exists there yet. Not a gap in this lease's own verification -- the preview route is proven by 13 backend pytest tests against the real evaluator and by PolicySection.test.tsx's draft-vs-loaded wiring test -- but it is real live-stack coverage this lease could not produce before merge. Will resolve itself the first time the live stack is rebuilt onto a commit containing this lease; no spec change needed."
+  ],
+  "merge_status": "NOT_MERGED"
+}

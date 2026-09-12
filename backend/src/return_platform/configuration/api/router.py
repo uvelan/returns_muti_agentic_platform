@@ -36,6 +36,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from return_platform.configuration.api.audit import MAX_ACTIONS, AuditLog
 from return_platform.configuration.api.audit import get_audit_log as console_get_audit_log
 from return_platform.configuration.api.audit import list_audit_logs as console_list_audit_logs
+from return_platform.configuration.api.policy_preview import (
+    PolicyPreviewError,
+    PolicyPreviewRequest,
+    evaluate_policy_preview,
+)
 from return_platform.configuration.api.releases import (
     AdoptPackagedPayload,
     ConfigurationReleaseDetailView,
@@ -46,6 +51,12 @@ from return_platform.configuration.api.releases import (
     PublishConfigurationPayload,
     ValidateDomainPayload,
     resolve_configuration_repository,
+)
+from return_platform.configuration.api.releases import (
+    _domain_model as _console_domain_model,
+)
+from return_platform.configuration.api.releases import (
+    _packaged_domain_payloads as _console_packaged_domain_payloads,
 )
 from return_platform.configuration.api.releases import (
     adopt_packaged_release as console_adopt_packaged_release,
@@ -85,6 +96,7 @@ from return_platform.configuration.process_adoption import (
     evaluate_release_adoption,
 )
 from return_platform.configuration.settings import Settings
+from return_platform.configuration.snapshot import RETURN_PLATFORM_DOMAIN_KEY
 from return_platform.security import capabilities
 from return_platform.security.authorization import (
     require_capability,
@@ -395,6 +407,69 @@ async def packaged_drift(
     """
     response = await console_get_packaged_drift(request, _user_id)
     return _ok(request, response.data)
+
+
+# --- packaged, for one domain ------------------------------------------------
+#
+# CFG-8 item B. `_console_packaged_domain_payloads` is the exact read
+# `/adopt-packaged` and `/packaged-drift` already use to answer "what does the
+# packaged file say" -- this exposes it for one domain, read-only, so the
+# Policy screen's "Reset to packaged default" (and any future screen that
+# wants the same thing) can compare a draft against the packaged value without
+# a second implementation of "what is packaged". Read roles, not
+# `config.release.write`: nothing here is the decision to adopt, only a read
+# an operator needs before making one.
+
+
+@router.get("/packaged/{domain_key}", response_model=APIResponse[dict[str, Any]])
+async def get_packaged_domain(
+    domain_key: str,
+    request: Request,
+    _user_id: str = Depends(require_read_roles),
+) -> APIResponse[Any]:
+    """The composed packaged document for one domain, redacted.
+
+    404s naming the three valid domain keys through the same
+    `_console_domain_model` `/validate/{domain_key}` uses, so an unknown key
+    reads identically on both routes.
+    """
+    _console_domain_model(domain_key)
+    packaged_return_platform, packaged_domains = _console_packaged_domain_payloads(request)
+    packaged = (
+        packaged_return_platform
+        if domain_key == RETURN_PLATFORM_DOMAIN_KEY
+        else packaged_domains[domain_key]
+    )
+    return _ok(request, packaged)
+
+
+# --- policy preview -----------------------------------------------------------
+#
+# CFG-8 item A. Read roles, not write: nothing is stored, exactly like
+# `/validate/{domain_key}` -- an operator previewing a draft they have not
+# published yet must not need the write capability a publish would.
+
+
+@router.post("/policy/preview", response_model=APIResponse[dict[str, Any]])
+async def policy_preview(
+    body: PolicyPreviewRequest,
+    request: Request,
+    _user_id: str = Depends(require_read_roles),
+) -> APIResponse[Any]:
+    """Decide a fabricated sample against a **draft** policy, never a real case.
+
+    `evaluate_policy_preview` validates `return_eligibility_policy` and
+    `policy_evaluation` with the same models `/validate/{domain_key}` uses, and
+    when they parse, runs `policy.evaluator.evaluate_return_eligibility` --
+    the workflow's own evaluator -- against the submitted `sample`. See
+    `configuration/api/policy_preview.py` for why the disabled-gate answer is
+    imported from the workflow rather than restated here.
+    """
+    try:
+        result = evaluate_policy_preview(body)
+    except PolicyPreviewError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors) from exc
+    return _ok(request, result)
 
 
 # --- promotion ---------------------------------------------------------------

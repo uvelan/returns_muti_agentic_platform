@@ -2,18 +2,24 @@
   "stage": "4E",
   "gate": "openapi_drift",
   "mode": "write",
-  "commit": "1d2884e78ea0363a0fd0bf28b2ac40133777ccf2",
+  "commit": "35f0356c71b2e9035aca7667e57121eecd74c9f7",
   "environment": "local-contract-validation",
-  "started_at": "2026-09-11T23:53:23.060709+00:00",
-  "finished_at": "2026-09-11T23:53:28.519001+00:00",
-  "openapi_sha256": "87c50bc48522e25761a537ed8079088e546861fd23439a618101fab84eb26ada",
+  "started_at": "2026-09-12T01:10:08.373051+00:00",
+  "finished_at": "2026-09-12T01:10:14.073706+00:00",
+  "openapi_sha256": "a929336825b477eaab076741c3cf11f02c7f11c0db10996c11c33028ae2727a9",
   "snapshots": [
     "openapi/return-platform.openapi.json",
     "backend/openapi/return-platform.openapi.json",
     "frontend/openapi/return-platform.openapi.json",
     "openapi.json"
   ],
-  "diffs": [],
+  "diffs": [
+    "DRIFT: openapi/return-platform.openapi.json",
+    "DRIFT: backend/openapi/return-platform.openapi.json",
+    "DRIFT: frontend/openapi/return-platform.openapi.json",
+    "DRIFT: openapi.json",
+    "DRIFT: frontend/src/api/generated/return-platform.d.ts"
+  ],
   "status": "PASS",
   "exit_code": 0
 }

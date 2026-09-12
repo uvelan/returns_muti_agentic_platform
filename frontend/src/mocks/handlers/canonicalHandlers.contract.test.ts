@@ -303,6 +303,42 @@ const ROUTES: readonly Route[] = [
     contract: "/api/config/packaged-drift",
     url: "/api/config/packaged-drift",
   },
+  // --- CFG-8: packaged/{domain_key}, policy/preview -------------------------
+  {
+    method: "get",
+    handler: "/api/config/packaged/:domainKey",
+    contract: "/api/config/packaged/{domain_key}",
+    url: "/api/config/packaged/RETURN_PLATFORM",
+  },
+  {
+    method: "get",
+    handler: "/api/config/packaged/:domainKey",
+    contract: "/api/config/packaged/{domain_key}",
+    url: "/api/config/packaged/AI_GATEWAY",
+  },
+  {
+    method: "post",
+    handler: "/api/config/policy/preview",
+    contract: "/api/config/policy/preview",
+    url: "/api/config/policy/preview",
+    body: {
+      return_eligibility_policy: { standard_stock_return: { purchase_window: { days: 30 } } },
+      policy_evaluation: { enabled: true },
+      sample: { days_since_purchase: 10 },
+    },
+  },
+  {
+    method: "post",
+    handler: "/api/config/policy/preview",
+    contract: "/api/config/policy/preview",
+    url: "/api/config/policy/preview",
+    // The one other shape the mock actually judges: the gate switched off.
+    body: {
+      return_eligibility_policy: { standard_stock_return: { purchase_window: { days: 30 } } },
+      policy_evaluation: { enabled: false, disabled_reason: "rollout paused" },
+      sample: {},
+    },
+  },
   { method: "get", handler: "/api/config/audit", contract: "/api/config/audit", url: "/api/config/audit" },
   { method: "get", handler: "/api/config/sources", contract: "/api/config/sources", url: "/api/config/sources" },
   {
