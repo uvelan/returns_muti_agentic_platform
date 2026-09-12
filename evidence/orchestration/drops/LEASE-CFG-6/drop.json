@@ -77,8 +77,26 @@
   "rv_round_1": {
     "verdict": "CHANGES_REQUIRED",
     "reviewed_head": "e967c292",
-    "fixed": ["F1", "F2", "F3", "F4", "A1", "A2", "A3", "A4"],
-    "carried": ["A5 (resolved by A4)", "A6", "A7", "A8", "A9 (fixed in passing)", "A10", "A11"]
+    "fixed": [
+      "F1",
+      "F2",
+      "F3",
+      "F4",
+      "A1",
+      "A2",
+      "A3",
+      "A4"
+    ],
+    "carried": [
+      "A5 (resolved by A4)",
+      "A6",
+      "A7",
+      "A8",
+      "A9 (fixed in passing)",
+      "A10",
+      "A11"
+    ]
   },
-  "merge_status": "PENDING"
+  "merge_status": "MERGED",
+  "merged_to": "refactor/unified-return-platform (local, not pushed)"
 }
