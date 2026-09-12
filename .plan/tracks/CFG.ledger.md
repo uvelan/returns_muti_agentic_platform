@@ -5318,3 +5318,49 @@ Verified already current, no change needed: `backend/config/README.md` and
 
 Files: `docs/screens/configuration.md`, `docs/README.md`,
 `docs/evidence/stage4o_complete_audit/generate_audit_artifacts.py`.
+
+## CFG-7 step:08 — hardening: Toggle's switch graphic was unclickable (found by item 1)
+
+Running the live acceptance loop's `/config/agents` spec against the real Chromium browser (not
+jsdom) surfaced a real interaction defect the shared `Toggle` component (`components/forms/*`)
+carried into every screen that uses it (Policy's evaluation switch, Integrations, Agents'
+Enabled/AI-assisted columns, Deployment, …): `Toggle.tsx`'s input used Tailwind's `sr-only`
+(`clip: rect(0,0,0,0)`, `margin: -1px`) to hide it behind a decorative switch graphic. That clips
+the input's own painted/hit-testable box to nothing at a sub-pixel position pulled outside the
+switch by the negative margin, so a direct click at the switch's own visible position -- a real
+mouse, or Playwright's `role=checkbox` locator -- never lands on the input at all; only the
+browser's native label-forwarding (clicking the adjoining TEXT, the one thing wrapped in
+`<label>`) worked. `config-agents.spec.ts`'s live run against the real backend
+(`E2E_REAL_BASE_URL`, disposable port 5175) reproduced this deterministically, twice, both times
+timing out on `locator.click` with "`<span class="relative inline-flex h-5 w-9 shrink-0">` …
+intercepts pointer events".
+
+Fixed in two parts: (1) the whole switch graphic, not just the text, is now inside the `<label>`,
+so a real click on the visible switch forwards to the input via native label semantics; (2) the
+input itself changed from `sr-only` to `absolute inset-0 opacity-0` -- sized and positioned to
+exactly cover the switch and directly hit-testable at the position it is drawn, rather than clipped
+to a sub-pixel box a real click could never land inside. `opacity-0` hides it visually without
+removing it from hit-testing or the accessibility tree, unlike `sr-only`'s clip trick.
+
+New regression test `Toggle.test.tsx`: "toggles when the switch graphic itself is clicked, not only
+the text" -- clicks the `aria-hidden` decorative span directly and asserts `onChange` fires. Noted
+in the test's own comment that jsdom cannot reproduce the real pointer-interception failure mode
+(no real layout/hit-testing engine), so this pins the fix's mechanism (label-forwarding) rather
+than the original symptom; the live e2e re-run below is what actually proves the real-browser case.
+
+```
+$ npx playwright test --project=cfg4-e2e e2e/config-agents.spec.ts --workers=1 --reporter=list
+  (before fix)  1 failed -- locator.click timeout, same interception, twice
+  (after fix)   1 passed (16.9s)
+
+$ npx vitest run
+ Test Files  90 passed (90)
+      Tests  1093 passed (1093)          # was 1092; +1 (the new Toggle test)
+$ npm run typecheck / npm run lint -> exit 0
+
+$ npx playwright test --project=mock-chromium tests/canonical-routes.spec.ts -g accessibility --workers=1
+  44 passed -- zero axe violations, unchanged by this fix
+```
+
+No new palette, font or dependency (existing Tailwind utilities only). Files:
+`frontend/src/components/forms/Toggle.tsx`, `frontend/src/components/forms/Toggle.test.tsx`.

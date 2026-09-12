@@ -41,12 +41,32 @@ export function Toggle({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <div className="flex items-center gap-2.5">
+      {/*
+        CFG-7 (found running the item-1 live acceptance loop against
+        /config/agents -- a real Chromium click on this exact control,
+        not a jsdom simulation, is what surfaced it): the input used
+        `sr-only` (Tailwind's `clip: rect(0,0,0,0)` technique), which
+        clips the input's own PAINTED area to nothing at a sub-pixel box
+        pulled outside the switch by its `margin: -1px` -- so the browser's
+        own hit-test at that box's center resolved to the `relative`
+        parent span, not the input, and a direct click (mouse or
+        Playwright) on the switch's own visible position never reached
+        the checkbox at all; only the browser's native label-forwarding
+        (clicking the TEXT, inside the `<label>`) worked. Replaced with an
+        input sized and positioned to exactly cover the switch
+        (`absolute inset-0`, `opacity-0` rather than clipped), which is
+        directly hit-testable at the position the switch is drawn --
+        `opacity: 0` hides it visually without removing it from hit-testing
+        or the accessibility tree (unlike `display:none`/`visibility:hidden`
+        /`sr-only`'s clip trick). The outer `<label>` stays as a second,
+        independent way in: clicking the text still forwards natively.
+      */}
+      <label htmlFor={id} className="flex cursor-pointer items-center gap-2.5">
         <span className="relative inline-flex h-5 w-9 shrink-0">
           <input
             id={id}
             type="checkbox"
-            className="peer sr-only"
+            className="peer absolute inset-0 z-10 m-0 size-full cursor-pointer appearance-none opacity-0"
             checked={value}
             onChange={(event) => { onChange(event.target.checked); }}
             aria-describedby={hintId}
@@ -60,10 +80,8 @@ export function Toggle({
             className="absolute left-0.5 top-0.5 size-4 rounded-full bg-surface-container-lowest shadow-sm transition-transform peer-checked:translate-x-4"
           />
         </span>
-        <label htmlFor={id} className="cursor-pointer text-sm text-on-surface">
-          {label}
-        </label>
-      </div>
+        <span className="text-sm text-on-surface">{label}</span>
+      </label>
       {hint !== undefined ? <p id={hintId} className="text-[10px] text-outline">{hint}</p> : null}
 
       {reasonField !== undefined && reasonRequired ? (
