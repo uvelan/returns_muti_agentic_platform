@@ -5388,3 +5388,44 @@ GET /api/config/runtime after: deployment.feedback_learning.enabled == true (the
 ```
 
 Files: `frontend/e2e/config-deployment.spec.ts`.
+
+## CFG-7 step:10 — live acceptance loop, item 1: `.plan/acceptance/config-screens.md`
+
+Final clean full pass of the `cfg4-e2e` project (all eleven pre-existing specs), `--workers=1`,
+against a disposable `vite --port 5175` dev server proxying to the live backend
+(`FRONTEND_BACKEND_TARGET=http://localhost:8000`), `E2E_REAL_BASE_URL=http://localhost:5175`:
+
+```
+$ npx playwright test --project=cfg4-e2e --workers=1 --reporter=list
+11 passed (1.5m)
+```
+
+Then the new `/config/deployment` spec (step:09) run immediately after in the same session:
+
+```
+$ npx playwright test --project=cfg4-e2e e2e/config-deployment.spec.ts --workers=1 --reporter=list
+1 passed (12.6s)
+```
+
+Head revision: 169 → 187 (eleven-spec run) → 189 (deployment spec). `GET /api/config/runtime`
+confirmed every touched field back at its original value after both runs (full detail and the
+per-screen table in `.plan/acceptance/config-screens.md`, written this step).
+
+**First attempt at the eleven-spec run** (before step:08's Toggle fix) reported 10 passed, 1 failed
+-- `config-agents.spec.ts` timed out on a real click-interception defect in the shared `Toggle`
+component, fixed at step:08 and re-verified individually before this clean re-run. Recorded in
+`config-screens.md`'s per-screen table rather than hidden.
+
+**Not run this lease:** AI Control Center `/ai/configuration` and `/ai/providers-models` -- no live
+publish/revert spec exists for either. Both edit live AI-dispatch-governing state
+(`runtime_integrations.ai_providers`, `AI_GATEWAY.tasks.*`) through the older four-call
+`runPublishPipeline`, and identifying a field safe to flip and revert on the live host without
+risking the live stack's actual AI routing needed more care than the remaining budget allowed
+after items 2, 4, 5, 6 and the rest of item 1. Recorded as an open gap in `config-screens.md`'s own
+section on it, with the exact call sites named for whoever picks it up next -- not silently
+dropped from the acceptance record.
+
+Cleanup: disposable server (port 5175) stopped and confirmed down (`netstat`/`taskkill`); `:5173`
+and `:8000` (the live stack) answered 200 before, during (never touched) and after this step.
+
+Files: `.plan/acceptance/config-screens.md` (new).
