@@ -4447,3 +4447,19 @@ APPROVE` depends on the live `policy_evaluation.enabled: true`.
 
 Merge note: the merge commit `b9390061` carries the ledger's conflict markers (the resolver asserted on
 a missing CFG-8 table row before writing); this entry is the resolution, with the row added.
+
+---
+
+## CFG-8 accepted on the dev host (orchestrator)
+
+Serving worktree moved to the merge commit `b9390061`; full restart (backend routes added). Bootstrap
+`READY` on `publish-a47bf2f938c74394` (head 148, the six undecided keys unchanged). `/config/policy`
+renders with the Policy evaluation switch first and "Defaults for all products" below it.
+```
+GET /api/config/packaged/RETURN_PLATFORM -> 200, standard window {'days': 30, 'basis': 'PURCHASE_DATE'}
+POST /api/config/policy/preview (live policy, facts unstated)  10 days -> REVIEW_REQUIRED (FAIL_SAFE_REVIEW)   <- the operator's own D-0009: silence queues the return
+POST /api/config/policy/preview (live policy, facts stated)    10 days -> APPROVE, conditions ['RESTOCKING_FEE_APPLIES'], rules [... 'WITHIN_30_DAYS', 'NEW_RESALEABLE_CONDITION', 'RESTOCKING_FEE_APPLIES']
+                                                                40 days -> REVIEW_REQUIRED, rules [... 'STANDARD_STOCK_ITEM', 'OUTSIDE_STANDARD_WINDOW']
+POST /api/config/policy/preview (evaluation off)               -> decision None, evaluation_enabled False (SKIPPED_BY_CONFIGURATION)
+```
+Facts are tri-state strings (`TRUE`/`FALSE`/`UNKNOWN`) keyed by the thirteen checklist names.
