@@ -5198,3 +5198,31 @@ and the two other places the same unconditional check runs (`main.py:555-565` at
 (`Settings.validate_relationships`).
 
 Files: `docs/configuration/families.md`.
+
+## CFG-7 step:05 — CFG-5b A5, deferred (ledger reason, not a fix) -- closes item 3
+
+**CFG-5b A5** (an agent-activated release writes no `CONFIGURATION_*` audit record) is not fixed
+in this lease. The fix location CFG-5b's own review named is `record_configuration_audit`
+(`configuration/api/releases.py:263-`) needing a `Request`-free path, called from both
+`publish_release_with_domains` callers (`bootstrap/adapters/governance_agent_configuration.py`,
+`bootstrap/adapters/governance_improvement.py`) plus a change to
+`operations/repository.py::resolve_operational_repository` (which the audit helper calls, and
+which takes a `Request` for its own reasons) -- three files, none of which CFG-7's brief permits:
+`configuration/api/releases.py` is named explicitly under "Must not touch: … the release API", and
+`operations/repository.py`/the two bootstrap adapters are production backend code outside the
+narrow exception ("except a fix a named pre-existing failure requires" -- A5 is an audit-trail gap,
+not one of the 42 registered pre-existing failures item 5 covers).
+
+Per item 3's own instruction ("each closed with a test or a ledger reason"), A5 is closed here with
+the reason above rather than a fix that would require exceeding Owns. Fix location restated for
+whoever next holds the release API: lift the audit write out of `record_configuration_audit`'s
+`Request`-coupled body into a helper taking `OperationalRepository` directly, keep the existing
+`Request`-based call sites working through a thin wrapper, and call the new helper from both
+`publish_release_with_domains` callers.
+
+This closes item 3 (carried advisories): CFG-8 A1/A3 + forward note (step:01), CFG-5 H4 (step:01),
+CFG-6 A6 (step:03, HTTP layer only -- see step:03's own note on the startup half), A7 (step:01), A8
+(step:02), A11 (step:04); CFG-5b A5 (this step, deferred); CFG-3b A2/A5-A8 (already closed by later
+leases, verified against current source in step:01's notes, no code change needed); CFG-4 F6/F10
+(already carry a disposition from CFG-5/CFG-5's H5, nothing further, verified no regression in
+step:02's sweep run).
