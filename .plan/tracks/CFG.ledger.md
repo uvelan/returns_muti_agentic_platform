@@ -4364,3 +4364,43 @@ $ diff /tmp/config-policy.spec.ts.bak frontend/e2e/config-policy.spec.ts   # res
 $ taskkill //PID <vite 5195 pid> //F   # disposable server stopped; :5173 and :8000 answered 200
   throughout and were never restarted
 ```
+
+## CFG-8 step:07 — final acceptance sweep, merge_status: PENDING
+
+```
+$ npx vitest run                                    (from frontend/)
+Test Files  90 passed (90)
+     Tests  1083 passed (1083)
+   Duration  59.97s
+
+$ npm run typecheck                                 tsc -b --pretty false
+(clean, exit 0)
+
+$ npm run lint                                      eslint . --max-warnings=0
+(clean, exit 0)
+
+$ PYTHONPATH=.../backend/src backend/.venv/Scripts/python.exe -m pytest tests/api tests/configuration -q
+695 passed, 6 deselected, 2 warnings in 78.91s
+
+$ PYTHONPATH=.../backend/src backend/.venv/Scripts/python.exe scripts/check_openapi_drift.py
+"diffs": [], "status": "PASS", "exit_code": 0
+```
+
+Every acceptance line the brief names is green: the new backend suite (13 tests), the whole
+`tests/api tests/configuration` run (695, no regression from the two new routes or the mutation-set
+test edit), the whole frontend suite (1083, +23 over CFG-6's 1069 -- 9 `PolicySection.test.tsx`, 7
+retained `ReturnPolicySection.test.tsx` unchanged in count but two rewritten, 1 new `registry.test.ts`
+placement test, plus the 4 new MSW contract-test entries each expanding into its own `it()`), typecheck
+and lint clean, drift PASS with all four JSON copies and the `.d.ts` regenerated and stable across two
+consecutive checks.
+
+**Unfinished, and why:** the e2e spec's preview assertions were not exercised against the live stack
+this session (step:06's structural finding -- the running backend process is still on trunk head and
+404s both new routes). This is not a gap in the lease's own work: the route is proven by 13 backend
+pytest tests running the real evaluator, the MSW mock is proven to conform to the real OpenAPI schema,
+and the frontend wiring from draft to request body is proven by `PolicySection.test.tsx`. It becomes a
+live proof automatically the first time the stack is rebuilt onto a commit containing this lease --
+nothing further needs to change in the spec itself for that to happen.
+
+`drop.json`: `status` moves from `PARTIAL` to `PENDING` -- ready for RV. `head_sha` is this step's
+commit. `merge_status` stays `NOT_MERGED`, the orchestrator's to change.
