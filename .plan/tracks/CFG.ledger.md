@@ -5001,3 +5001,94 @@ $ npx vitest run
 $ npm run typecheck   -> exit 0
 $ npm run lint        -> exit 0
 ```
+
+## CFG-7 step:00 — worktree, PYTHONPATH, stale-base check
+
+```
+$ python -c "import return_platform; print(return_platform.__file__)"
+K:\Projects\Ret\returns_muti_agentic_platform\.claude\worktrees\cfg-7\backend\src\return_platform\__init__.py
+```
+Resolves inside `.claude/worktrees/cfg-7` -- not MAIN's checkout.
+
+```
+$ git rev-parse HEAD
+261dc3bc5f9876e5522653799c84c17aa5222410
+```
+Base sha `261dc3bc` -- trunk after CFG-5b merged (`(CFG) merge record: CFG-5b on trunk`), matches
+the brief. Branch `feat/cfg-7-acceptance`. `evidence/orchestration/` was untracked at session start
+per the memory note; `evidence/orchestration/drops/LEASE-CFG-7/` created this lease.
+
+## CFG-7 step:01 — carried advisories, batch 1: CFG-8 A1/A3 + forward note, CFG-5 H4, CFG-6 A7
+
+Four independent, small fixes landed together because they touch adjacent frontend files and each
+is a single carried advisory closed with a test, per the brief's item-3 priority.
+
+**CFG-8 A1** (`PolicySection.tsx:640-647`) -- `FERGUSON_STANDARD_RETURN` was a free `OrderedList`
+row; the backend's `mode="after"` model validator on `ReturnEligibilityPolicy`
+(`backend/src/return_platform/policy/eligibility_policy.py:431-444`) reports the refusal at the
+parent path `return_eligibility_policy`, not `…precedence`, so the inline error slot could never
+fill. Fixed at both ends:
+- `OrderedList` (`frontend/src/components/forms/OrderedList.tsx`) gains an optional
+  `fixedTrailing: (item) => boolean` prop: a matching row renders with no drag handle and no
+  up/down buttons ("Fixed last" label instead), and `moveAt`/`dropAt` both refuse to move anything
+  into or out of its slot. Tests: `OrderedList.test.tsx` `describe("fixedTrailing", …)` -- two new
+  tests (no move controls on the fixed row; the item above it cannot move past it).
+- `PolicySection.tsx`'s precedence `OrderedList` passes
+  `fixedTrailing={(value) => value === "FERGUSON_STANDARD_RETURN"}` and reads
+  `errorMap.get("…precedence") ?? errorMap.get("return_eligibility_policy")` so whichever path the
+  backend actually used lands on the control the operator just dragged.
+
+**CFG-8 A3** (`PolicySection.tsx:651` inside `TypedSectionScreen.tsx:249`) -- the preview panel
+(Block 7, `PolicyPreviewPanel`) was rendered inside `<fieldset disabled={!canWrite}>`, withholding
+Evaluate (writes nothing, scoped to `config.runtime.read` per `router.py:78-81`) from a read-only
+operator. Fixed by giving `TypedSectionScreen` a new optional `renderOutsideFieldset` render-prop,
+called with the same `{draft, get, set, errorMap}` context but rendered as a sibling *after* the
+fieldset closes, never inside it. `PolicySection.tsx` moves `PolicyPreviewPanel` into that slot.
+New test: `PolicySection.test.tsx` "keeps Evaluate enabled for a read-only operator who lacks
+config.release.write" -- `grants = ["config.runtime.read"]`, asserts the return-window field is
+disabled and Evaluate is enabled.
+
+**Forward note** (`config-policy.spec.ts`) -- the live e2e's `"Decision: APPROVE"` assertion
+implicitly depends on the live release's `policy_evaluation.enabled` being `true` (D-CFG-6 left it
+an undecided key, resolved "no" for *adoption*, not pinned `true` in the release). Added an
+explicit precondition: a `GET /api/config/runtime` before driving the UI, asserting
+`policy_evaluation.enabled === true` with a message naming why, so a future failure here reads as
+"the release changed" rather than a confusing preview-decision mismatch. Not run against the live
+stack in this step (see step:0x's acceptance pass); reviewed for correctness against the current
+spec structure only.
+
+**CFG-5 H4** (`DataSourcesSection.tsx:400`) -- the restored-rationale sweep (F4) missed the
+fifteenth of fifteen comments: `SummaryFact label="Records"` carried no reason for why the field is
+on the summary. One line restored above it, verbatim to the old `RailFact`'s wording per the
+review.
+
+**CFG-6 A7** (`EnumSelect.tsx`) -- `disabled`/`disabledReason` was exercised only through
+`DeploymentSection.test.tsx`. Added a unit test directly to `EnumSelect.test.tsx`: a disabled
+option renders with its reason both in the visible label and the `title` attribute, is `disabled`,
+and the select itself still lists it (CFG-6's own guarantee: visible-with-reason, not removed).
+
+```
+$ npx vitest run
+ Test Files  90 passed (90)
+      Tests  1085 passed (1085)          # was 1081 at CFG-6's head; +4 (EnumSelect, PolicySection,
+                                          #  2x OrderedList fixedTrailing)
+
+$ npm run typecheck   -> exit 0
+$ npm run lint        -> exit 0
+```
+
+Files: `frontend/src/domains/config/PolicySection.tsx`,
+`frontend/src/domains/config/PolicySection.test.tsx`,
+`frontend/src/domains/config/TypedSectionScreen.tsx`,
+`frontend/src/domains/config/DataSourcesSection.tsx`,
+`frontend/src/components/forms/OrderedList.tsx`, `frontend/src/components/forms/OrderedList.test.tsx`,
+`frontend/src/components/forms/EnumSelect.test.tsx`, `frontend/e2e/config-policy.spec.ts`.
+
+Remaining from item 3 after this step: CFG-6 A6 (HTTP-layer 422/startup tests), A8 (axe/
+canonical-routes for `/config/deployment`), A11 (document the whole-deployment gate); CFG-5b A5
+(agent-activated release audit gap, orchestrator already deferred this one explicitly to CFG-7);
+CFG-3b A2/A5-A8 -- checked against current source, all four already closed by later leases
+(`KeyValueTable.tsx`/`OrderedList.tsx` both take `error`, `PublishBar.tsx` wires
+`aria-describedby`, `/validate/{domain_key}` exists at `router.py:323`) -- recorded here rather
+than re-fixed; CFG-4 F6/F10 -- both already carry a ledger/RV disposition (F6 fixed in CFG-5, F10
+recorded as an environment flake in CFG-5's H5), nothing further to do, recorded as closed.

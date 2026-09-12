@@ -80,4 +80,46 @@ describe("OrderedList", () => {
     );
     expect(screen.getByRole("alert")).toHaveTextContent("At least one stage is required.");
   });
+
+  // CFG-8 A1: FERGUSON_STANDARD_RETURN pinned last -- the control itself
+  // refuses the drag rather than letting an operator move it and learn only
+  // from a page-level 422 after Validate.
+  describe("fixedTrailing", () => {
+    function ControlledPrecedence({ initial }: { initial: Stage[] }) {
+      const [items, setItems] = useState(initial);
+      return (
+        <OrderedList
+          label="Precedence order"
+          items={items}
+          onChange={setItems}
+          keyOf={(item) => item.id}
+          renderItem={(item) => <span>{item.name}</span>}
+          fixedTrailing={(item) => item.id === "fallback"}
+        />
+      );
+    }
+
+    const PRECEDENCE: Stage[] = [
+      { id: "custom-a", name: "CUSTOM_A" },
+      { id: "custom-b", name: "CUSTOM_B" },
+      { id: "fallback", name: "FERGUSON_STANDARD_RETURN" },
+    ];
+
+    it("disables the fixed item's own up/down buttons and shows no drag handle affordance", () => {
+      render(<ControlledPrecedence initial={PRECEDENCE} />);
+      expect(screen.queryByRole("button", { name: "Move fallback up" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Move fallback down" })).not.toBeInTheDocument();
+      expect(screen.getByText("Fixed last")).toBeInTheDocument();
+    });
+
+    it("refuses to move the item just above the fixed item past it", async () => {
+      const user = userEvent.setup();
+      render(<ControlledPrecedence initial={PRECEDENCE} />);
+      expect(screen.getByRole("button", { name: "Move custom-b down" })).toBeDisabled();
+      await user.click(screen.getByRole("button", { name: "Move custom-a down" }));
+      const items = screen.getAllByRole("listitem").map((item) => item.textContent ?? "");
+      // custom-a and custom-b swap; the fixed item stays last in both cases.
+      expect(items[2]).toContain("FERGUSON_STANDARD_RETURN");
+    });
+  });
 });

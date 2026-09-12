@@ -167,7 +167,7 @@ function PolicyEditor({
       canPublish={canPublish}
       jsonLabel="Policy section JSON"
       notObjectMessage="Each of return_eligibility_policy and policy_evaluation must be an object."
-      renderTyped={({ draft, get, set, errorMap }) => {
+      renderTyped={({ get, set, errorMap }) => {
         const eligibility = asObject(get(["return_eligibility_policy"]));
         const policyEvaluation = asObject(get(["policy_evaluation"]));
         const standard = asObject(eligibility.standard_stock_return);
@@ -635,26 +635,46 @@ function PolicyEditor({
             <FieldGroup
               kicker="Eligibility"
               title="Precedence"
-              description="Which policy wins when more than one applies. FERGUSON_STANDARD_RETURN is the platform's own fallback and must be last."
+              description="Which policy wins when more than one applies. FERGUSON_STANDARD_RETURN is the platform's own fallback and is pinned last -- reorder the rows above it."
             >
               <OrderedList
                 label="Precedence order"
-                error={errorMap.get("return_eligibility_policy.precedence")}
+                // CFG-8 A1: the model-level validator that pins the fallback
+                // last reports at the parent path (`return_eligibility_policy`),
+                // not `…precedence`, because it is a cross-field rule, not a
+                // per-field one -- so the inline slot at `…precedence` alone
+                // could never fill. Read both: whichever the backend actually
+                // used, the operator sees it on the control they just dragged.
+                error={
+                  errorMap.get("return_eligibility_policy.precedence") ??
+                  errorMap.get("return_eligibility_policy")
+                }
                 items={asStringArray(eligibility.precedence)}
                 keyOf={(value) => value}
+                // CFG-8 A1: `FERGUSON_STANDARD_RETURN` is the platform's own
+                // fallback and the model refuses a release where it is not
+                // last -- rendering it non-movable keeps the control itself
+                // honest about the constraint instead of letting an operator
+                // drag it, run Validate, and learn only from the page-level
+                // error list.
+                fixedTrailing={(value) => value === "FERGUSON_STANDARD_RETURN"}
                 onChange={(next) => { set(["return_eligibility_policy", "precedence"], next); }}
                 renderItem={(value) => <span className="font-mono text-xs">{value}</span>}
               />
             </FieldGroup>
-
-            {/* 7. Preview a decision */}
-            <PolicyPreviewPanel
-              returnEligibilityPolicy={asObject(draft.return_eligibility_policy)}
-              policyEvaluation={asObject(draft.policy_evaluation)}
-            />
           </div>
         );
       }}
+      renderOutsideFieldset={({ draft }) => (
+        // CFG-8 A3: a sibling of the fieldset above, not a child of it -- see
+        // `TypedSectionScreen`'s own note on `renderOutsideFieldset`. Evaluate
+        // writes nothing into the draft and the route is deliberately scoped
+        // to `config.runtime.read`, so a read-only operator must reach it.
+        <PolicyPreviewPanel
+          returnEligibilityPolicy={asObject(draft.return_eligibility_policy)}
+          policyEvaluation={asObject(draft.policy_evaluation)}
+        />
+      )}
     />
   );
 }

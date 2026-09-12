@@ -271,6 +271,23 @@ describe("Policy screen", () => {
     expect(screen.getByText(/Read-only access\. Editing this section requires config\.release\.write\./)).toBeInTheDocument();
   });
 
+  it(
+    // CFG-8 A3: Evaluate writes nothing into the draft and the route is
+    // scoped to `config.runtime.read` alone -- it must stay reachable for a
+    // principal who has only that, even though every typed field is
+    // disabled by the write fieldset right next to it.
+    "keeps Evaluate enabled for a read-only operator who lacks config.release.write",
+    async () => {
+      grants = ["config.runtime.read"];
+      render(<PolicySection />, { wrapper: Wrapper });
+
+      const window = await screen.findByRole("spinbutton", { name: "Return window" });
+      expect(window).toBeDisabled();
+      const evaluate = screen.getByRole("button", { name: "Evaluate" });
+      expect(evaluate).toBeEnabled();
+    },
+  );
+
   it("shows the error and keeps the draft when Publish is refused", async () => {
     const user = userEvent.setup();
     mocks.publish.mockRejectedValue(new APIError("Domain patch refused: precedence must end in FERGUSON_STANDARD_RETURN", 422));
