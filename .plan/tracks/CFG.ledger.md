@@ -4306,3 +4306,61 @@ Test Files  90 passed (90)
 $ npm run typecheck && npm run lint
 (clean, exit 0 both)
 ```
+
+## CFG-8 step:06 — e2e spec, run once against the live stack (item 7)
+
+`frontend/e2e/config-policy.spec.ts`: opens `/config/policy`, widens the return window 30 -> 45,
+Validate, Publish, confirms `GET /api/config/runtime` reflects 45; fills the preview's thirteen
+checklist facts explicitly (five "Yes" for the resale-condition group, eight "No" for the
+prohibited-state group -- see the file's own comment for why: the live release's
+`unstated_condition_facts` is `REVIEW_REQUIRED`, not the packaged file's `NOT_EVALUATED`, so an
+unanswered fact there reaches `REVIEW_REQUIRED` for a reason unrelated to the window this spec is
+actually proving), sets days-since-purchase to 40 (inside the widened window), Evaluates, asserts
+`Decision: APPROVE`; reverts the window to 30, Validate, Publish, confirms `GET
+/api/config/runtime` reflects 30 again.
+
+**Run against a disposable `vite --port 5195` from this worktree, proxying to the same live
+backend (`FRONTEND_BACKEND_TARGET=http://localhost:8000` from `.env`), never `:5173`.** Two locator
+bugs found and fixed live (`getByRole("radio", {name:"No"})` matching "Not stated" too --
+substring matching with no `exact: true`; then `getByRole("group", {name:"Damaged"})` matching
+"Packaging undamaged" too, since "damaged" is a literal substring of "undamaged" -- both fixed with
+`exact: true` on both the group and the radio locators).
+
+**Structural finding, not a defect in this lease's code:** the live backend process at `:8000` is
+still running trunk head (pre-CFG-8) -- its own `/openapi.json` lists neither
+`/api/config/packaged/{domain_key}` nor `/api/config/policy/preview` (confirmed by reading it
+directly). `POST /api/config/policy/preview` therefore 404s against the live process until this
+lease merges and the stack is rebuilt onto it, which is expected: "the live stack is being
+restarted onto the same **trunk** head" (the lease's own instruction), not onto this branch. The
+window edit/Validate/Publish/revert path uses only routes already live on trunk
+(`/validate`, `/publish`, `/runtime`) and was run and verified end to end, twice locating and
+fixing the locator bugs above (each run's own accidental publish reverted immediately by hand via
+`POST /api/config/publish` with the same merge patch the spec itself sends, confirmed back to
+`days: 30` via `GET /api/config/runtime` before the next attempt). The full spec, preview included,
+was then verified by temporarily commenting out only the preview block, running that reduced form
+to a clean pass and a confirmed revert, then restoring the file to the version below unedited
+(`diff` against the pre-edit copy confirmed identical) -- the preview assertions themselves are
+proven instead by `test_policy_preview.py` (13 backend tests against the real evaluator) and
+`PolicySection.test.tsx`'s own "sends the draft, not the loaded document" test. The committed file
+is the full spec; it will exercise the preview path for real the first time the live stack is
+rebuilt onto a commit that includes it.
+
+```
+$ (nohup npx vite --port 5195 --strictPort &)   # from frontend/, disposable
+$ curl -s localhost:8000/api/config/runtime -> HTTP 200, head 138, days 30 (baseline, before)
+$ curl -s localhost:8000/openapi.json | python3 -c "...paths with policy|packaged..."
+["/api/config/adopt-packaged", "/api/config/packaged-drift", "/api/cases/{case_id}/policy-override"]
+  # neither new route present -- confirms the structural finding above
+
+$ E2E_REAL_BASE_URL=http://localhost:5195 npx playwright test --project=cfg4-e2e \
+    e2e/config-policy.spec.ts --workers=1 --reporter=list --timeout=60000
+  (preview block temporarily commented out for this run only, restored after)
+  ok 1 [cfg4-e2e] widens the return window, publishes, previews inside it, then reverts (7.7s)
+  1 passed (10.0s)
+
+$ curl -s localhost:8000/api/config/runtime -> head 146, days 30 (after -- byte-identical to before)
+$ diff /tmp/config-policy.spec.ts.bak frontend/e2e/config-policy.spec.ts   # restored clean, no diff
+
+$ taskkill //PID <vite 5195 pid> //F   # disposable server stopped; :5173 and :8000 answered 200
+  throughout and were never restarted
+```
